@@ -7,7 +7,7 @@ The native workbench is a cross-platform C + GTK proof instrument that sits besi
 - `timeout` / `cancelled`: local budget ended before completion
 - `unsolved`: no exact local factor proof found
 
-RSA-260 is intentionally not claimed solved. The native app may profile and attempt bounded methods, but it must keep RSA-260 unresolved unless exact factors are found and the factor product equals the input.
+Large challenge fixtures are intentionally not claimed solved. The native app may profile and attempt bounded methods, but it must keep a challenge number unresolved unless exact factors are found and the factor product equals the input.
 
 ## Build
 
@@ -53,7 +53,7 @@ The CLI emits the same reproducible JSON shape used by the GTK app:
 - `factorReport`
 - `cyclotomicReport`
 - `benchmarkReport`
-- source notes linking behavior back to Payam's paper and the RSA-260 local-solver limit
+- source notes linking behavior back to Payam's paper and the local-solver limit for large composites
 
 ## GUI Taste Direction
 

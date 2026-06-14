@@ -54,21 +54,21 @@
             <h2>Scan Controls</h2>
             <div class="control-grid">
               <label for="n-min">n min</label>
-              <input id="n-min" type="number" min="1" max="8192" value="3">
+              <input id="n-min" type="number" min="1" max="32768" value="3">
               <label for="n-max">n max</label>
-              <input id="n-max" type="number" min="1" max="8192" value="128">
+              <input id="n-max" type="number" min="1" max="32768" value="128">
               <label for="base-window">Base window</label>
               <input id="base-window" type="number" min="0" max="12" value="2">
               <label for="time-budget">Time budget</label>
-              <input id="time-budget" type="number" min="100" max="15000" value="3000">
+              <input id="time-budget" type="number" min="100" max="60000" value="3000">
               <label for="verification-limit">Verify limit</label>
-              <input id="verification-limit" type="number" min="1" max="64" value="24">
+              <input id="verification-limit" type="number" min="1" max="128" value="24">
               <label for="k-value">k</label>
               <input id="k-value" type="number" min="1" value="1">
             </div>
             <div class="segmented" role="group" aria-label="Scan mode">
               <button type="button" class="selected" data-mode="explore">Explore</button>
-              <button type="button" data-mode="rsa">RSA Solver</button>
+              <button type="button" data-mode="rsa">Factor Solver</button>
               <button type="button" data-mode="deep">Deep Scan</button>
               <button type="button" data-mode="counterexample">Hunt Counterexamples</button>
               <button type="button" data-mode="verify">Verify Claim</button>
@@ -80,7 +80,7 @@
             <div class="sample-grid">
               <button type="button" data-sample="phi21">Φ21(3)</button>
               <button type="button" data-sample="semiprime" data-sample-mode="rsa">Toy Solve 10403</button>
-              <button type="button" data-sample="rsa260" data-sample-mode="rsa">RSA-260</button>
+              <button type="button" data-sample="rsa260" data-sample-mode="rsa">260-digit RSA test</button>
               <button type="button" data-sample="phi3">Counterexample 111</button>
               <button type="button" data-sample="phi3large">1k Φ3 Fixture</button>
               <button type="button" data-sample="fermat12" data-sample-mode="deep">Fermat F12</button>
@@ -101,7 +101,7 @@
             <p>Payam’s paper proposes an “X-ray” for large integers: instead of asking only whether a number is prime, it asks whether the number hides a cyclotomic construction.</p>
             <p>This app turns that idea into an interactive instrument. It searches candidate <code>n</code>, computes <code>φ(n)</code>, estimates possible bases, evaluates <code>Φₙ(b)</code>, and shows the evidence trail.</p>
             <p>The skeptical parts are intentional: the PDF says to recover structure with root tests and symbolic algebra, but the visible script is incomplete. The cabinet therefore also shows counterexamples where a real cyclotomic value fails the shortcut.</p>
-            <p>RSA Solver extends the same X-ray spirit to factorization: it verifies exact factors when local methods solve the input, and emits a GNFS escalation pack when RSA-260 remains unsolved in-browser.</p>
+            <p>Factor Solver extends the same X-ray spirit to composites: it verifies exact factors when local methods solve the input, and keeps large challenge fixtures unresolved unless a product proof exists.</p>
           </div>
         </aside>
 
@@ -110,6 +110,13 @@
             <div>
               <h2>Cyclotomic Candidates</h2>
               <p id="scan-status">Ready. Load a sample or paste an integer.</p>
+              <div class="scan-progress" aria-label="Scan progress">
+                <span id="scan-progress-bar"></span>
+              </div>
+              <p class="scan-meta">
+                <span id="scan-progress-text">Ready to run.</span>
+                <span id="scan-config-meta"></span>
+              </p>
             </div>
             <div class="view-switch" role="group" aria-label="Stage view">
               <button type="button" class="selected" data-view="chamber">Chamber</button>
@@ -164,11 +171,11 @@
 
           <section class="inspector-panel rsa-scout">
             <div class="panel-title">
-              <h2>RSA Solver</h2>
+              <h2>Factor Solver</h2>
               <button type="button" title="Focus panel" data-focus="rsa">↗</button>
             </div>
             <div id="rsa-copy">
-              <p>Load a composite or choose RSA Solver mode to run local factorization and produce an escalation pack when needed.</p>
+              <p>Load a composite or choose Factor Solver mode to run local factorization and produce an escalation pack when needed.</p>
             </div>
           </section>
 
@@ -226,9 +233,9 @@
       </section>
     </main>
 
-    <script src="src/polynomial.js?v=20260614-solver"></script>
-    <script src="src/scanner.js?v=20260614-solver"></script>
-    <script src="src/i18n.js?v=20260614-solver"></script>
-    <script src="src/app.js?v=20260614-solver"></script>
+    <script src="src/polynomial.js?v=20260614-workflow"></script>
+    <script src="src/scanner.js?v=20260614-workflow"></script>
+    <script src="src/i18n.js?v=20260614-workflow"></script>
+    <script src="src/app.js?v=20260614-workflow"></script>
   </body>
 </html>

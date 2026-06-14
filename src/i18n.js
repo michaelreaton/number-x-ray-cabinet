@@ -21,14 +21,14 @@
       timeBudget: "Time budget",
       verificationLimit: "Verify limit",
       explore: "Explore",
-      rsa: "RSA Solver",
+      rsa: "Factor Solver",
       deep: "Deep Scan",
       counterMode: "Hunt Counterexamples",
       verify: "Verify Claim",
       samples: "Samples",
       samplePhi21: "Φ21(3)",
       sampleSemiprime: "Toy Solve 10403",
-      sampleRSA260: "RSA-260",
+      sampleRSA260: "260-digit RSA test",
       samplePhi3: "Counterexample 111",
       samplePhi3Large: "1k Φ3 Fixture",
       sampleFermat12: "Fermat F12",
@@ -47,7 +47,7 @@
       bridgeP3:
         "The skeptical parts are intentional: the PDF says to recover structure with root tests and symbolic algebra, but the visible script is incomplete. The cabinet therefore also shows counterexamples where a real cyclotomic value fails the shortcut.",
       bridgeP4:
-        "RSA Solver extends the same X-ray spirit to factorization: it verifies exact factors when local methods solve the input, and emits a GNFS escalation pack when RSA-260 remains unsolved in-browser.",
+        "Factor Solver extends the same X-ray spirit to composites: it verifies exact factors when local methods solve the input, and keeps large challenge fixtures unresolved unless a product proof exists.",
       candidates: "Cyclotomic Candidates",
       ready: "Ready. Load a sample or paste an integer.",
       chamber: "Chamber",
@@ -63,8 +63,8 @@
       treasureInitial: "Top regions appear after the first scan.",
       skeletonKey: "Skeleton Key",
       noCandidate: "No candidate selected.",
-      rsaScout: "RSA Solver",
-      rsaInitial: "Load a composite or choose RSA Solver mode to run local factorization and produce an escalation pack when needed.",
+      rsaScout: "Factor Solver",
+      rsaInitial: "Load a composite or choose Factor Solver mode to run local factorization and produce an escalation pack when needed.",
       rsaTarget: "Target",
       rsaTargetLine: "{target} · {digits} digits · {bits} bits",
       rsaSolverStatus: "Solver",
@@ -102,7 +102,7 @@
       rsaVerified: "verified",
       rsaUnknown: "unknown",
       rsaSourceLine: "Recognized from the RSA challenge list.",
-      rsaReconLine: "Local solving stops at the browser budget; RSA-260 needs GNFS-class work.",
+      rsaReconLine: "Local solving stops at the browser budget; larger composites need GNFS-class work.",
       counterexample: "Counterexample",
       counterInitial: "Counterexamples show when an exact cyclotomic value fails the PDF’s perfect-root shortcut.",
       verdict: "Verdict",
@@ -114,6 +114,13 @@
       scanning: "Profiling, screening, and verifying candidates...",
       progressStatus: "{stage}: {count}/{total} in {ms} ms",
       cancelled: "Scan cancelled.",
+      complete: "Complete",
+      readyToRun: "Ready to run.",
+      inputChanged: "Input changed. Run X-Ray to scan the current number.",
+      settingsChanged: "Scan settings changed. Run X-Ray to rescan with the visible controls.",
+      sampleLoaded: "{sample} loaded. Review settings, then run.",
+      modeSelected: "{mode} selected. Current controls will be used when you run.",
+      configSummary: "{mode} · n {nMin}-{nMax} · verify {verify} · {seconds}s budget",
       scannedStatus: "Scanned {count} candidates in {ms} ms.{timeout}",
       timeout: " Time budget reached; showing partial evidence.",
       topRegion: "Top region: n ≈ {n}; best base {base}; {verdict} evidence.",
@@ -184,14 +191,14 @@
       timeBudget: "بودجه زمان",
       verificationLimit: "حد راستی‌آزمایی",
       explore: "کاوش",
-      rsa: "حل‌گر RSA",
+      rsa: "حل‌گر عامل‌ها",
       deep: "اسکن عمیق",
       counterMode: "شکار نمونه نقض",
       verify: "راستی‌آزمایی ادعا",
       samples: "نمونه‌ها",
       samplePhi21: "Φ21(3)",
       sampleSemiprime: "حل نمونه 10403",
-      sampleRSA260: "RSA-260",
+      sampleRSA260: "آزمون RSA ۲۶۰ رقمی",
       samplePhi3: "نمونه نقض 111",
       samplePhi3Large: "نمونه Φ3 هزاررقمی",
       sampleFermat12: "فرما F12",
@@ -210,7 +217,7 @@
       bridgeP3:
         "بخش‌های بدبینانه عمدی‌اند: PDF می‌گوید ساختار با آزمون ریشه و جبر نمادین بازیابی می‌شود، اما اسکریپت قابل‌مشاهده کامل نیست. بنابراین کابینت نمونه‌های نقض را هم نشان می‌دهد؛ جاهایی که یک مقدار سیکلوتومیک واقعی از میان‌بُر ریشه عبور نمی‌کند.",
       bridgeP4:
-        "حل‌گر RSA همین روحیهٔ ایکس‌ری را به فاکتورگیری می‌برد: وقتی روش‌های محلی ورودی را حل کنند عامل‌ها را دقیق راستی‌آزمایی می‌کند، و وقتی RSA-260 در مرورگر حل نشود بستهٔ ارتقا به GNFS می‌سازد.",
+        "حل‌گر عامل‌ها همین روحیهٔ ایکس‌ری را به عددهای مرکب می‌برد: وقتی روش‌های محلی ورودی را حل کنند عامل‌ها را دقیق راستی‌آزمایی می‌کند، و نمونه‌های چالشی بزرگ را بدون اثبات حاصل‌ضرب حل‌شده اعلام نمی‌کند.",
       candidates: "نامزدهای سیکلوتومیک",
       ready: "آماده است. یک نمونه را بارگذاری کنید یا عددی وارد کنید.",
       chamber: "محفظه",
@@ -226,8 +233,8 @@
       treasureInitial: "ناحیه‌های برتر بعد از اولین اسکن ظاهر می‌شوند.",
       skeletonKey: "کلید استخوانی",
       noCandidate: "هیچ نامزدی انتخاب نشده است.",
-      rsaScout: "حل‌گر RSA",
-      rsaInitial: "یک عدد مرکب را بارگذاری کنید یا حالت حل‌گر RSA را برای فاکتورگیری محلی و ساخت بستهٔ ارتقا انتخاب کنید.",
+      rsaScout: "حل‌گر عامل‌ها",
+      rsaInitial: "یک عدد مرکب را بارگذاری کنید یا حالت حل‌گر عامل‌ها را برای فاکتورگیری محلی و ساخت بستهٔ ارتقا انتخاب کنید.",
       rsaTarget: "هدف",
       rsaTargetLine: "{target} · {digits} رقم · {bits} بیت",
       rsaSolverStatus: "حل‌گر",
@@ -265,7 +272,7 @@
       rsaVerified: "راستی‌آزمایی شد",
       rsaUnknown: "نامعلوم",
       rsaSourceLine: "از فهرست چالش RSA شناسایی شد.",
-      rsaReconLine: "حل محلی در بودجهٔ مرورگر متوقف می‌شود؛ RSA-260 به کار در اندازهٔ GNFS نیاز دارد.",
+      rsaReconLine: "حل محلی در بودجهٔ مرورگر متوقف می‌شود؛ عددهای مرکب بزرگ به کار در اندازهٔ GNFS نیاز دارند.",
       counterexample: "نمونه نقض",
       counterInitial: "نمونه‌های نقض نشان می‌دهند چه زمانی یک مقدار سیکلوتومیک دقیق از آزمون ریشهٔ کاملِ PDF عبور نمی‌کند.",
       verdict: "حکم",
@@ -277,6 +284,13 @@
       scanning: "در حال نمایه‌سازی، غربال و راستی‌آزمایی نامزدها...",
       progressStatus: "{stage}: {count}/{total} در {ms} میلی‌ثانیه",
       cancelled: "اسکن لغو شد.",
+      complete: "کامل شد",
+      readyToRun: "آمادهٔ اجراست.",
+      inputChanged: "ورودی تغییر کرد. برای اسکن عدد فعلی، ایکس‌ری را اجرا کنید.",
+      settingsChanged: "تنظیمات اسکن تغییر کرد. برای اسکن دوباره با همین کنترل‌ها، اجرا کنید.",
+      sampleLoaded: "{sample} بارگذاری شد. تنظیمات را بررسی کنید، سپس اجرا کنید.",
+      modeSelected: "{mode} انتخاب شد. هنگام اجرا همین کنترل‌های فعلی استفاده می‌شود.",
+      configSummary: "{mode} · n {nMin}-{nMax} · راستی‌آزمایی {verify} · بودجه {seconds}ث",
       scannedStatus: "{count} نامزد در {ms} میلی‌ثانیه اسکن شد.{timeout}",
       timeout: " بودجه زمان تمام شد؛ شواهد جزئی نمایش داده می‌شود.",
       topRegion: "ناحیه برتر: n ≈ {n}؛ بهترین پایه {base}؛ شواهد {verdict}.",
@@ -395,7 +409,7 @@
       screen: "Screen",
       hypothesize: "Hypothesize",
       verify: "Verify",
-      rsa: "RSA Target",
+      rsa: "Factor target",
       solve: "Solve"
     },
     fa: {
@@ -403,8 +417,25 @@
       screen: "غربال",
       hypothesize: "فرضیه‌سازی",
       verify: "راستی‌آزمایی",
-      rsa: "هدف RSA",
+      rsa: "هدف عامل‌گیری",
       solve: "حل"
+    }
+  };
+
+  const modeLabels = {
+    en: {
+      explore: "Explore",
+      rsa: "Factor Solver",
+      deep: "Deep Scan",
+      counterexample: "Counterexamples",
+      verify: "Verify"
+    },
+    fa: {
+      explore: "کاوش",
+      rsa: "حل‌گر عامل‌ها",
+      deep: "اسکن عمیق",
+      counterexample: "نمونه نقض",
+      verify: "راستی‌آزمایی"
     }
   };
 
@@ -477,6 +508,11 @@
   function stage(value) {
     const language = currentLanguage();
     return stageLabels[language][value] || value;
+  }
+
+  function modeName(value) {
+    const language = currentLanguage();
+    return modeLabels[language][value] || value;
   }
 
   function stageStatus(value) {
@@ -632,6 +668,7 @@
     verdict,
     evidenceLabel,
     stage,
+    modeName,
     stageStatus,
     verifyStatus,
     action,

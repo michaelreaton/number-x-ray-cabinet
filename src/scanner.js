@@ -9,7 +9,7 @@
 
   const RESIDUE_PRIMES = [3, 5, 7, 11, 13, 17, 19, 23, 29];
   const SCREEN_PRIMES = [1000003, 1000033, 1000037, 1000039, 1000081];
-  const REPORT_LIMIT = 64;
+  const REPORT_LIMIT = 128;
   const SOURCE_NOTE =
     "Credit: Payam. Payam_Idea.pdf is the source paper for this app. Its visible script is cut off after `import sympy as sp`, so this app reconstructs the scanner idea and exposes fragile assumptions.";
   const RSA_CHECKSUM_MODULUS = 991889n;
@@ -182,7 +182,7 @@
 
   function clampConfig(config = {}) {
     const mode = ["explore", "counterexample", "verify", "deep", "rsa"].includes(config.mode) ? config.mode : "explore";
-    const nCeiling = 8192;
+    const nCeiling = 32768;
     const defaultNMax = mode === "deep" || mode === "rsa" ? 8192 : 128;
     const nMin = clampInt(config.nMin ?? 3, 1, nCeiling);
     const nMax = clampInt(config.nMax ?? defaultNMax, nMin, nCeiling);
@@ -192,7 +192,7 @@
       nMin,
       nMax,
       baseWindow: clampInt(config.baseWindow ?? 2, 0, 12),
-      timeBudgetMs: clampInt(config.timeBudgetMs ?? defaultBudget, 100, 15000),
+      timeBudgetMs: clampInt(config.timeBudgetMs ?? defaultBudget, 100, 60000),
       mode,
       k: BigInt(config.k ?? 1),
       verificationLimit: clampInt(config.verificationLimit ?? defaultVerifyLimit, 1, REPORT_LIMIT),
@@ -467,7 +467,7 @@
           ? ["Use the partial factor, then continue factoring the cofactor."]
         : [
             "Treat this as an unsolved local attempt.",
-            "Export JSON and use GNFS-class tools for a real RSA-260 factor attempt.",
+            "Export JSON and use GNFS-class tools for a real factorization attempt.",
             "Compare the cyclotomic matrix for nonrandom algebraic fingerprints."
           ],
       elapsedMs: Date.now() - startedAt
@@ -764,7 +764,7 @@
       if ((n - config.nMin + 1) % 64 === 0 || n === config.nMax) {
         emit({ stage: "screen", completed: n - config.nMin + 1, total, message: "Screening residues and roots" });
       }
-      if (candidates.length >= REPORT_LIMIT && Date.now() - startedAt > screenBudgetMs && n < config.nMax) {
+      if (config.mode === "explore" && candidates.length >= REPORT_LIMIT && Date.now() - startedAt > screenBudgetMs && n < config.nMax) {
         timedOut = true;
         break;
       }

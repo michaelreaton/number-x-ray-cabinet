@@ -10,7 +10,8 @@
     selectedN: null,
     activeWorker: null,
     compact: false,
-    lastStatus: "ready"
+    lastStatus: "ready",
+    lastConfigSignature: null
   };
 
   const el = {
@@ -31,19 +32,35 @@
     counterCopy: document.getElementById("counterexample-copy"),
     verdictCopy: document.getElementById("verdict-copy")
   };
+  el.statusDot = document.querySelector(".status-dot");
+  el.engineStatus = document.querySelector(".engine-status");
+  el.progressBar = document.getElementById("scan-progress-bar");
+  el.progressText = document.getElementById("scan-progress-text");
+  el.progressMeta = document.getElementById("scan-config-meta");
 
   function init() {
     i18n.applyStatic();
     el.input.value = scanner.sampleValue("large");
     updateDigitCount();
     bindEvents();
-    runScan();
+    setBusy(false);
+    state.lastStatus = "ready";
+    refreshStatusText();
+    renderAll();
   }
 
   function bindEvents() {
-    el.input.addEventListener("input", updateDigitCount);
+    el.input.addEventListener("input", () => {
+      updateDigitCount();
+      markStale(i18n.t("inputChanged"));
+    });
     el.runButton.addEventListener("click", runScan);
-    el.cancelButton.addEventListener("click", cancelScan);
+    el.cancelButton.addEventListener("click", () => cancelScan());
+
+    document.querySelectorAll("#n-min, #n-max, #base-window, #time-budget, #verification-limit, #k-value").forEach((input) => {
+      input.addEventListener("input", () => markStale(i18n.t("settingsChanged")));
+      input.addEventListener("change", () => markStale(i18n.t("settingsChanged")));
+    });
 
     document.querySelectorAll("[data-sample]").forEach((button) => {
       button.addEventListener("click", () => {
@@ -51,14 +68,14 @@
         if (button.dataset.sampleMode) setMode(button.dataset.sampleMode);
         applySampleDefaults(button.dataset.sample);
         updateDigitCount();
-        runScan();
+        markStale(i18n.t("sampleLoaded", { sample: button.textContent.trim() || button.dataset.sample }));
       });
     });
 
     document.querySelectorAll("[data-mode]").forEach((button) => {
       button.addEventListener("click", () => {
         setMode(button.dataset.mode);
-        runScan();
+        markStale(i18n.t("modeSelected", { mode: button.textContent.trim() || button.dataset.mode }));
       });
     });
 
@@ -106,15 +123,7 @@
     state.mode = mode;
     const button = document.querySelector(`[data-mode="${mode}"]`);
     if (button) selectInGroup("[data-mode]", button);
-    applyModeDefaults(state.mode);
-  }
-
-  function updateDigitCount() {
-    const preview = scanner.previewIntegerInput(el.input.value);
-    el.digitCount.classList.toggle("bad", !preview.parseable && preview.digits > 0);
-    el.digitCount.textContent = preview.parseable
-      ? i18n.t("digits", { count: preview.digits })
-      : i18n.t("digitsFound", { count: preview.digits });
+    updateConfigMeta();
   }
 
   function readConfig() {
@@ -129,20 +138,15 @@
     };
   }
 
-  function applyModeDefaults(mode) {
-    const nMax = document.getElementById("n-max");
-    const baseWindow = document.getElementById("base-window");
-    const timeBudget = document.getElementById("time-budget");
-    const verificationLimit = document.getElementById("verification-limit");
-    if (mode === "deep" || mode === "rsa") {
-      if (Number(nMax.value) < 8192) nMax.value = "8192";
-      if (Number(baseWindow.value) > 1) baseWindow.value = "1";
-      timeBudget.value = "15000";
-      verificationLimit.value = mode === "rsa" ? "40" : "48";
-      return;
-    }
-    if (Number(timeBudget.value) >= 15000 && mode === "explore") timeBudget.value = "3000";
-    if (Number(verificationLimit.value) > 24 && mode === "explore") verificationLimit.value = "24";
+  function updateDigitCount() {
+    const preview = scanner.previewIntegerInput(el.input.value);
+    el.digitCount.classList.toggle("bad", !preview.parseable && preview.digits > 0);
+    el.digitCount.textContent = preview.parseable
+      ? i18n.t("digits", { count: preview.digits })
+      : i18n.t("digitsFound", { count: preview.digits });
+    if (preview.error) el.digitCount.title = preview.error;
+    else el.digitCount.removeAttribute("title");
+    updateConfigMeta();
   }
 
   function applySampleDefaults(sample) {
@@ -158,8 +162,8 @@
       document.getElementById("n-min").value = "8192";
       document.getElementById("n-max").value = "8192";
       document.getElementById("base-window").value = "0";
-      document.getElementById("time-budget").value = "15000";
-      document.getElementById("verification-limit").value = "64";
+      document.getElementById("time-budget").value = "20000";
+      document.getElementById("verification-limit").value = "80";
       return;
     }
     document.getElementById("n-min").value = "3";
@@ -168,29 +172,42 @@
   function setBusy(isBusy) {
     el.runButton.disabled = isBusy;
     el.cancelButton.classList.toggle("hidden", !isBusy);
+    document.body.classList.toggle("is-scanning", isBusy);
+    const statusDot = document.querySelector(".status-dot");
+    statusDot?.classList.toggle("scanning", isBusy);
+    statusDot?.classList.toggle("error", false);
+    el.engineStatus?.setAttribute("aria-live", "polite");
     if (isBusy) {
       state.lastStatus = "scanning";
       state.progress = null;
       el.status.textContent = i18n.t("scanning");
+      setProgress(0, i18n.t("scanning"), configSummary(readConfig()));
+    } else if (!state.progress) {
+      setProgress(0, "", configSummary(readConfig()));
     }
   }
 
-  function cancelScan() {
+  function cancelScan(options = {}) {
+    const hadWorker = Boolean(state.activeWorker);
     if (state.activeWorker) {
       state.activeWorker.terminate();
       state.activeWorker = null;
     }
     setBusy(false);
     el.runButton.disabled = false;
-    state.lastStatus = "cancelled";
-    el.status.textContent = i18n.t("cancelled");
+    if (!options.silent && hadWorker) {
+      state.lastStatus = "cancelled";
+      el.status.textContent = i18n.t("cancelled");
+      setProgress(0, i18n.t("cancelled"), configSummary(readConfig()));
+    }
   }
 
   function runScan() {
-    cancelScan();
+    cancelScan({ silent: true });
     setBusy(true);
     const input = el.input.value;
     const config = readConfig();
+    state.lastConfigSignature = configSignature(config, input);
     if (window.Worker) {
       try {
         runWorkerScan(input, config);
@@ -203,7 +220,7 @@
   }
 
   function runWorkerScan(input, config) {
-    const worker = new Worker("src/worker.js?v=20260614-solver");
+    const worker = new Worker("src/worker.js?v=20260614-workflow");
     const id = crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
     state.activeWorker = worker;
     worker.onmessage = (event) => {
@@ -244,6 +261,7 @@
     state.progress = null;
     state.selectedN = report.bestCandidate?.n || null;
     state.lastStatus = "report";
+    setProgress(100, i18n.t("complete"), configSummary(report.config));
     refreshStatusText();
     renderAll();
   }
@@ -253,20 +271,41 @@
     if (state.lastStatus === "scanning") {
       const total = Math.max(1, progress.total || 1);
       const completed = Math.min(total, progress.completed || 0);
+      const percent = Math.round((completed / total) * 100);
       el.status.textContent = i18n.t("progressStatus", {
         stage: i18n.stage(progress.stage),
         count: completed,
         total,
         ms: progress.elapsedMs || 0
       });
+      setProgress(percent, `${i18n.stage(progress.stage)} ${completed}/${total}`, configSummary(readConfig()));
     }
   }
 
   function showError(message) {
     state.lastStatus = "error";
     el.status.textContent = message;
+    document.querySelector(".status-dot")?.classList.add("error");
+    setProgress(0, message, configSummary(readConfig()));
     state.report = null;
     renderAll();
+  }
+
+  function markStale(message) {
+    if (state.activeWorker) return;
+    updateConfigMeta();
+    const signature = configSignature(readConfig(), el.input.value);
+    if (state.report && state.lastConfigSignature && signature !== state.lastConfigSignature) {
+      state.lastStatus = "stale";
+      el.status.textContent = message || i18n.t("settingsChanged");
+      setProgress(0, i18n.t("readyToRun"), configSummary(readConfig()));
+      return;
+    }
+    if (!state.report) {
+      state.lastStatus = "ready";
+      el.status.textContent = message || i18n.t("ready");
+      setProgress(0, i18n.t("readyToRun"), configSummary(readConfig()));
+    }
   }
 
   function refreshStatusText() {
@@ -283,6 +322,10 @@
       el.status.textContent = i18n.t("cancelled");
       return;
     }
+    if (state.lastStatus === "stale") {
+      el.status.textContent = i18n.t("settingsChanged");
+      return;
+    }
     if (state.lastStatus === "report" && state.report) {
       el.status.textContent = i18n.t("scannedStatus", {
         count: state.report.candidates.length,
@@ -290,6 +333,33 @@
         timeout: state.report.timedOut ? i18n.t("timeout") : ""
       });
     }
+    updateConfigMeta();
+  }
+
+  function configSignature(config, input) {
+    return JSON.stringify({ input: scanner.previewIntegerInput(input).normalized || input, config });
+  }
+
+  function configSummary(config) {
+    const safe = config || readConfig();
+    return i18n.t("configSummary", {
+      mode: i18n.modeName(safe.mode || state.mode),
+      nMin: safe.nMin,
+      nMax: safe.nMax,
+      verify: safe.verificationLimit,
+      seconds: Math.round(Number(safe.timeBudgetMs || 0) / 1000)
+    });
+  }
+
+  function updateConfigMeta() {
+    if (!el.progressMeta) return;
+    el.progressMeta.textContent = configSummary(readConfig());
+  }
+
+  function setProgress(percent, label, meta) {
+    if (el.progressBar) el.progressBar.style.width = `${Math.max(0, Math.min(100, percent || 0))}%`;
+    if (el.progressText) el.progressText.textContent = label || i18n.t("readyToRun");
+    if (el.progressMeta) el.progressMeta.textContent = meta || configSummary(readConfig());
   }
 
   function renderAll() {
