@@ -30,3 +30,29 @@ test("known cyclotomic evaluations match the plan examples", () => {
   assert.equal(math.evaluateCyclotomic(5, 2n), 31n);
   assert.equal(math.evaluateCyclotomic(8, 2n), 17n);
 });
+
+test("modular cyclotomic evaluation matches exact evaluation on small cases", () => {
+  for (const n of [1, 2, 3, 4, 5, 6, 8, 9, 10, 12, 15, 21, 30]) {
+    for (const base of [2n, 3n, 5n, 10n, 37n]) {
+      const exact = math.evaluateCyclotomic(n, base);
+      for (const prime of [3, 5, 7, 11, 13, 1000003]) {
+        const expected = ((exact % BigInt(prime)) + BigInt(prime)) % BigInt(prime);
+        assert.equal(math.evaluateCyclotomicMod(n, base, prime), expected, `n=${n} base=${base} mod=${prime}`);
+      }
+    }
+  }
+});
+
+test("product-form modular screen agrees when the division path is invertible", () => {
+  for (const n of [3, 5, 7, 8, 11, 16, 21, 32, 45]) {
+    for (const base of [2n, 10n, 123456789n]) {
+      for (const prime of [1000003, 1000033, 1000037]) {
+        const product = math.evaluateCyclotomicModProduct(n, base, prime);
+        if (product === null) continue;
+        const exact = math.evaluateCyclotomic(n, base);
+        const expected = ((exact % BigInt(prime)) + BigInt(prime)) % BigInt(prime);
+        assert.equal(product, expected, `n=${n} base=${base} mod=${prime}`);
+      }
+    }
+  }
+});
