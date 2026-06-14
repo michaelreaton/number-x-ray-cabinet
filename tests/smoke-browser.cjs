@@ -29,7 +29,13 @@ function sleep(ms) {
 async function waitForFile(filePath, timeoutMs = 6000) {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
-    if (fs.existsSync(filePath)) return fs.readFileSync(filePath, "utf8");
+    if (fs.existsSync(filePath)) {
+      try {
+        return fs.readFileSync(filePath, "utf8");
+      } catch (error) {
+        if (error.code !== "EBUSY") throw error;
+      }
+    }
     await sleep(50);
   }
   throw new Error(`Timed out waiting for ${filePath}`);
