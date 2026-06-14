@@ -71,6 +71,142 @@
     return result;
   }
 
+  function primeSieve(limit) {
+    limit = Number(limit);
+    if (!Number.isInteger(limit) || limit < 2) return [];
+    const flags = new Uint8Array(limit + 1);
+    const primes = [];
+    for (let value = 2; value <= limit; value += 1) {
+      if (flags[value]) continue;
+      primes.push(value);
+      if (value * value <= limit) {
+        for (let multiple = value * value; multiple <= limit; multiple += value) flags[multiple] = 1;
+      }
+    }
+    return primes;
+  }
+
+  function smallFactorScan(value, limit = 10000) {
+    const n = absBigInt(BigInt(value));
+    const primes = primeSieve(limit);
+    for (let index = 0; index < primes.length; index += 1) {
+      const prime = primes[index];
+      const factor = BigInt(prime);
+      if (n === factor) {
+        return { limit, tested: primes.length, factor: null, factorText: null, exactSelf: true };
+      }
+      if (n % factor === 0n) {
+        return { limit, tested: index + 1, factor, factorText: factor.toString(), exactSelf: false };
+      }
+    }
+    return { limit, tested: primes.length, factor: null, factorText: null, exactSelf: false };
+  }
+
+  function isProbablePrime(value, bases = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37]) {
+    const n = BigInt(value);
+    if (n < 2n) return { probablyPrime: false, witness: "lt-2", rounds: 0 };
+    for (const small of [2n, 3n, 5n, 7n, 11n, 13n, 17n, 19n, 23n, 29n, 31n, 37n]) {
+      if (n === small) return { probablyPrime: true, witness: null, rounds: 0 };
+      if (n % small === 0n) return { probablyPrime: false, witness: small.toString(), rounds: 0 };
+    }
+
+    let d = n - 1n;
+    let s = 0;
+    while ((d & 1n) === 0n) {
+      d >>= 1n;
+      s += 1;
+    }
+
+    let rounds = 0;
+    for (const rawBase of bases) {
+      const a = BigInt(rawBase) % n;
+      if (a < 2n) continue;
+      rounds += 1;
+      let x = modPow(a, d, n);
+      if (x === 1n || x === n - 1n) continue;
+      let maybePrime = false;
+      for (let r = 1; r < s; r += 1) {
+        x = (x * x) % n;
+        if (x === n - 1n) {
+          maybePrime = true;
+          break;
+        }
+      }
+      if (!maybePrime) {
+        return { probablyPrime: false, witness: a.toString(), rounds };
+      }
+    }
+    return { probablyPrime: true, witness: null, rounds };
+  }
+
+  function fermatFactorScout(value, iterations = 1000) {
+    const n = BigInt(value);
+    const maxIterations = Math.max(0, Number(iterations) || 0);
+    if (n < 2n) return { found: false, reason: "n < 2", iterations: 0 };
+    if ((n & 1n) === 0n) {
+      return { found: true, iterations: 0, offset: 0, factor: 2n, cofactor: n / 2n, method: "even" };
+    }
+
+    const root = integerNthRoot(n, 2);
+    let a = root.exact ? root.root : root.root + 1n;
+    for (let offset = 0; offset <= maxIterations; offset += 1) {
+      const b2 = a * a - n;
+      const b = integerNthRoot(b2, 2);
+      if (b.exact) {
+        const factor = a - b.root;
+        const cofactor = a + b.root;
+        if (factor > 1n && cofactor > 1n && factor * cofactor === n) {
+          return { found: true, iterations: offset, offset, factor, cofactor, method: "fermat" };
+        }
+      }
+      a += 1n;
+    }
+    return {
+      found: false,
+      iterations: maxIterations,
+      offset: maxIterations,
+      start: root.exact ? root.root.toString() : (root.root + 1n).toString(),
+      method: "fermat"
+    };
+  }
+
+  function pollardRhoScout(value, options = {}) {
+    const n = BigInt(value);
+    const iterations = Math.max(0, Number(options.iterations ?? 1000) || 0);
+    const seeds = (options.seeds || [2n, 3n, 5n, 7n]).map((seed) => BigInt(seed));
+    const constants = (options.constants || [1n, 3n, 5n, 11n]).map((constant) => BigInt(constant));
+    if (n < 2n) return { found: false, reason: "n < 2", attempts: [] };
+    if ((n & 1n) === 0n) {
+      return { found: true, factor: 2n, cofactor: n / 2n, attempts: [{ seed: "2", c: "0", iterations: 0, status: "factor" }] };
+    }
+
+    const attempts = [];
+    for (let index = 0; index < Math.min(seeds.length, constants.length); index += 1) {
+      let x = modNormalize(seeds[index], n);
+      let y = x;
+      const c = modNormalize(constants[index], n);
+      let d = 1n;
+      let step = 0;
+      const f = (next) => (next * next + c) % n;
+      while (d === 1n && step < iterations) {
+        x = f(x);
+        y = f(f(y));
+        d = gcd(absBigInt(x - y), n);
+        step += 1;
+      }
+      const attempt = { seed: seeds[index].toString(), c: c.toString(), iterations: step, status: "miss" };
+      if (d > 1n && d < n) {
+        attempt.status = "factor";
+        attempt.factor = d.toString();
+        attempts.push(attempt);
+        return { found: true, factor: d, cofactor: n / d, attempts };
+      }
+      if (d === n) attempt.status = "cycle";
+      attempts.push(attempt);
+    }
+    return { found: false, attempts };
+  }
+
   function modInverse(value, modulus) {
     const mod = BigInt(modulus);
     let a = modNormalize(value, mod);
@@ -414,6 +550,11 @@
     gcd,
     powBigInt,
     powCompare,
+    primeSieve,
+    smallFactorScan,
+    isProbablePrime,
+    fermatFactorScout,
+    pollardRhoScout,
     modPow,
     modInverse,
     integerNthRoot,
