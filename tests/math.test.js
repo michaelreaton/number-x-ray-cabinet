@@ -74,3 +74,25 @@ test("bounded Fermat and Pollard Rho scouts can recover toy semiprime factors", 
   assert.equal(rho.found, true);
   assert.equal(rho.factor * rho.cofactor, 8051n);
 });
+
+test("recursive factor solver verifies completed factorizations", () => {
+  const solved = math.solveFactorization(10403n, {
+    smallPrimeLimit: 50,
+    fermatIterations: 20,
+    rhoIterations: 200,
+    timeBudgetMs: 1000
+  });
+  assert.equal(solved.status, "solved");
+  assert.equal(solved.productVerified, true);
+  assert.deepEqual(solved.factors.map((factor) => factor.value), ["101", "103"]);
+
+  const unresolved = math.solveFactorization(10403n, {
+    smallPrimeLimit: 50,
+    fermatIterations: 0,
+    rhoIterations: 0,
+    timeBudgetMs: 1000
+  });
+  assert.equal(unresolved.status, "unsolved");
+  assert.equal(unresolved.productVerified, false);
+  assert.equal(unresolved.accountingVerified, true);
+});
