@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Number X-Ray Cabinet</title>
+    <link rel="stylesheet" href="src/styles.css">
+  </head>
+  <body>
+    <main class="cabinet-shell" aria-label="Number X-Ray Cabinet">
+      <header class="topbar">
+        <div class="brand-block">
+          <h1>Number X-Ray Cabinet</h1>
+          <p>Detecting hidden cyclotomic structure in large integers.</p>
+        </div>
+        <nav class="top-actions" aria-label="Application status">
+          <a class="paper-credit" href="assets/Payam_Idea.pdf" target="_blank" rel="noopener">
+            Credit: Payam · Paper
+          </a>
+          <div class="language-switch" role="group" aria-label="Language">
+            <button type="button" class="selected" data-lang="en" aria-pressed="true">EN</button>
+            <button type="button" data-lang="fa" aria-pressed="false">FA</button>
+          </div>
+          <span class="engine-status"><span class="status-dot"></span>Engine: local BigInt</span>
+          <button class="icon-text" type="button" data-action="show-docs" title="Show source notes">
+            <span aria-hidden="true">?</span>
+            Docs
+          </button>
+          <button class="icon-text" type="button" data-action="toggle-density" title="Toggle compact display">
+            <span aria-hidden="true">⚙</span>
+            Settings
+          </button>
+        </nav>
+      </header>
+
+      <section class="workbench">
+        <aside class="input-rail" aria-label="Scanner input and controls">
+          <div class="rail-section">
+            <h2>Input</h2>
+            <label for="integer-input">Paste integer</label>
+            <textarea id="integer-input" spellcheck="false" rows="5"></textarea>
+            <div class="input-meta">
+              <span id="digit-count">Digits: 0</span>
+              <button type="button" class="subtle-button" data-action="clear-input">Clear</button>
+            </div>
+            <button type="button" id="run-button" class="run-button">
+              <span>Run X-Ray</span>
+              <span class="run-glyph" aria-hidden="true"></span>
+            </button>
+            <button type="button" id="cancel-button" class="subtle-button hidden">Cancel scan</button>
+          </div>
+
+          <div class="rail-section">
+            <h2>Scan Controls</h2>
+            <div class="control-grid">
+              <label for="n-min">n min</label>
+              <input id="n-min" type="number" min="1" max="4096" value="3">
+              <label for="n-max">n max</label>
+              <input id="n-max" type="number" min="1" max="4096" value="128">
+              <label for="base-window">Base window</label>
+              <input id="base-window" type="number" min="0" max="12" value="2">
+              <label for="time-budget">Time budget</label>
+              <input id="time-budget" type="number" min="100" max="10000" value="1800">
+              <label for="k-value">k</label>
+              <input id="k-value" type="number" min="1" value="1">
+            </div>
+            <div class="segmented" role="group" aria-label="Scan mode">
+              <button type="button" class="selected" data-mode="explore">Explore</button>
+              <button type="button" data-mode="counterexample">Hunt Counterexamples</button>
+              <button type="button" data-mode="verify">Verify Claim</button>
+            </div>
+          </div>
+
+          <div class="rail-section">
+            <h2>Samples</h2>
+            <div class="sample-grid">
+              <button type="button" data-sample="phi21">Φ21(3)</button>
+              <button type="button" data-sample="phi3">Counterexample 111</button>
+              <button type="button" data-sample="phi5">Prime 31</button>
+              <button type="button" data-sample="carmichael">Carmichael 561</button>
+              <button type="button" data-sample="primepower">Prime Power 3^7</button>
+              <button type="button" data-sample="large">150-digit Probe</button>
+            </div>
+          </div>
+
+          <div class="rail-section source-note" id="source-note">
+            <h2>Source Note</h2>
+            <p>Built from Payam’s paper, <a href="assets/Payam_Idea.pdf" target="_blank" rel="noopener">Payam_Idea.pdf</a>. The export cuts off the promised Python script after <code>import sympy as sp</code>, so this cabinet reconstructs the idea and marks fragile assumptions directly.</p>
+          </div>
+
+          <div class="rail-section paper-bridge">
+            <h2>Payam’s Paper → This Lab</h2>
+            <p>Payam’s paper proposes an “X-ray” for large integers: instead of asking only whether a number is prime, it asks whether the number hides a cyclotomic construction.</p>
+            <p>This app turns that idea into an interactive instrument. It searches candidate <code>n</code>, computes <code>φ(n)</code>, estimates possible bases, evaluates <code>Φₙ(b)</code>, and shows the evidence trail.</p>
+            <p>The skeptical parts are intentional: the PDF says to recover structure with root tests and symbolic algebra, but the visible script is incomplete. The cabinet therefore also shows counterexamples where a real cyclotomic value fails the shortcut.</p>
+          </div>
+        </aside>
+
+        <section class="main-stage" aria-label="Cyclotomic candidates">
+          <div class="stage-header">
+            <div>
+              <h2>Cyclotomic Candidates</h2>
+              <p id="scan-status">Ready. Load a sample or paste an integer.</p>
+            </div>
+            <div class="view-switch" role="group" aria-label="Stage view">
+              <button type="button" class="selected" data-view="chamber">Chamber</button>
+              <button type="button" data-view="table">Table</button>
+            </div>
+          </div>
+
+          <div id="chamber-view" class="chamber-view">
+            <div id="chamber-svg" class="chamber-svg" aria-label="Candidate chamber visualization"></div>
+            <aside class="legend-panel" aria-label="Evidence legend">
+              <h3>Evidence score</h3>
+              <p><span class="legend-line strong"></span>≥ 0.75</p>
+              <p><span class="legend-line weak"></span>0.40 – 0.75</p>
+              <p><span class="legend-line filtered"></span>&lt; 0.40</p>
+              <h3>Signals combined</h3>
+              <ul>
+                <li>Exact Φ<sub>n</sub>(b) equality</li>
+                <li>φ(n)-root proximity</li>
+                <li>Residue agreement</li>
+                <li>gcd(k,n) structure</li>
+              </ul>
+            </aside>
+          </div>
+
+          <div id="stage-table-view" class="stage-table-view hidden"></div>
+
+          <section class="evidence-strip" aria-label="Evidence timeline">
+            <div class="strip-title">Evidence</div>
+            <div id="evidence-timeline" class="timeline"></div>
+          </section>
+        </section>
+
+        <aside class="inspector" aria-label="Candidate inspector">
+          <section class="inspector-panel treasure">
+            <div class="panel-title">
+              <h2>Treasure Map</h2>
+              <button type="button" title="Focus panel" data-focus="treasure">↗</button>
+            </div>
+            <div id="score-chart" class="score-chart"></div>
+            <p id="treasure-copy">Top regions appear after the first scan.</p>
+          </section>
+
+          <section class="inspector-panel">
+            <div class="panel-title">
+              <h2>Skeleton Key</h2>
+              <button type="button" title="Focus panel" data-focus="skeleton">↗</button>
+            </div>
+            <div id="skeleton-copy" class="kv-stack">
+              <p>No candidate selected.</p>
+            </div>
+          </section>
+
+          <section class="inspector-panel counter">
+            <div class="panel-title">
+              <h2>Counterexample</h2>
+              <button type="button" title="Focus panel" data-focus="counter">↗</button>
+            </div>
+            <div id="counterexample-copy">
+              <p>Counterexamples show when an exact cyclotomic value fails the PDF’s perfect-root shortcut.</p>
+            </div>
+          </section>
+
+          <section class="inspector-panel verdict">
+            <div class="panel-title">
+              <h2>Verdict</h2>
+            </div>
+            <div id="verdict-copy">
+              <p>Awaiting scan.</p>
+            </div>
+            <button type="button" class="export-button" data-action="export-json">Export report (JSON)</button>
+          </section>
+        </aside>
+      </section>
+
+      <section class="audit-region" aria-label="Audit log">
+        <div class="audit-tabs" aria-hidden="true">
+          <span class="active"></span>
+          <span></span>
+          <span></span>
+        </div>
+        <div class="audit-table-wrap">
+          <table class="audit-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>n</th>
+                <th>φ(n)</th>
+                <th>Base (b est.)</th>
+                <th>Score</th>
+                <th>Φ<sub>n</sub>(b) match</th>
+                <th>gcd(k,n)</th>
+                <th>Root test</th>
+                <th>Verdict</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody id="audit-body">
+              <tr>
+                <td colspan="10">Run a scan to populate the audit log.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script src="src/polynomial.js"></script>
+    <script src="src/scanner.js"></script>
+    <script src="src/i18n.js"></script>
+    <script src="src/app.js"></script>
+  </body>
+</html>
