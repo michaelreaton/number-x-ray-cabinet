@@ -130,6 +130,7 @@ async function main() {
       matrix: document.querySelector('.matrix-summary')?.textContent,
       deep: document.querySelector('[data-mode="deep"]')?.textContent,
       rsaMode: document.querySelector('[data-mode="rsa"]')?.textContent,
+      semiprimeSample: document.querySelector('[data-sample="semiprime"]')?.textContent,
       rsaSample: document.querySelector('[data-sample="rsa260"]')?.textContent,
       largeSample: document.querySelector('[data-sample="phi3large"]')?.textContent,
       stageCount: document.querySelectorAll('.stage-pill').length,
@@ -140,7 +141,8 @@ async function main() {
     assert.match(english.credit, /Payam/);
     assert.match(english.matrix, /Discovery Matrix/);
     assert.match(english.deep, /Deep Scan/);
-    assert.match(english.rsaMode, /RSA Scout/);
+    assert.match(english.rsaMode, /RSA Solver/);
+    assert.match(english.semiprimeSample, /10403/);
     assert.match(english.rsaSample, /RSA-260/);
     assert.match(english.largeSample, /1k/);
     assert.equal(english.stageCount, 4);
@@ -157,6 +159,30 @@ async function main() {
       setTimeout(() => resolve(null), 250);
     })`);
     assert.equal(exportName, "number-x-ray-report.json");
+
+    await cdp.send("Runtime.evaluate", {
+      expression: `
+        document.querySelector('[data-sample="semiprime"]').click();
+        document.querySelector('#cancel-button').click();
+        document.querySelector('#n-min').value = '3';
+        document.querySelector('#n-max').value = '16';
+        document.querySelector('#base-window').value = '0';
+        document.querySelector('#time-budget').value = '2000';
+        document.querySelector('#verification-limit').value = '2';
+        document.querySelector('#run-button').click();
+      `
+    });
+    await waitForExpression(cdp, "document.querySelector('#scan-status')?.textContent.includes('Scanned') && document.querySelector('#rsa-copy')?.textContent.includes('Solved')", 12000);
+    const toySolve = await evaluate(cdp, `({
+      panel: document.querySelector('#rsa-copy')?.textContent,
+      stageCount: document.querySelectorAll('.stage-pill').length,
+      overflowX: document.documentElement.scrollWidth > document.documentElement.clientWidth
+    })`);
+    assert.match(toySolve.panel, /101/);
+    assert.match(toySolve.panel, /103/);
+    assert.match(toySolve.panel, /verified/i);
+    assert.equal(toySolve.stageCount, 6);
+    assert.equal(toySolve.overflowX, false);
 
     await cdp.send("Runtime.evaluate", {
       expression: `
@@ -183,7 +209,8 @@ async function main() {
     assert.match(rsa.status, /Scanned/);
     assert.match(rsa.panel, /RSA-260/);
     assert.match(rsa.panel, /327430/);
-    assert.equal(rsa.stageCount, 5);
+    assert.match(rsa.panel, /unsolved locally|GNFS/i);
+    assert.equal(rsa.stageCount, 6);
     assert.equal(rsa.overflowX, false);
 
     await cdp.send("Runtime.evaluate", {
@@ -235,7 +262,7 @@ async function main() {
     assert.match(persian.bridge, /مقالهٔ پیام/);
     assert.match(persian.matrixButton, /ماتریس/);
     assert.match(persian.deep, /عمیق/);
-    assert.match(persian.rsaMode, /RSA|دیده/);
+    assert.match(persian.rsaMode, /RSA|حل/);
     assert.equal(persian.overflowX, false);
 
     await cdp.send("Page.navigate", { url: pathToFileURL(path.join(root, "fa", "index.html")).href });
