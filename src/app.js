@@ -102,8 +102,11 @@
   }
 
   function updateDigitCount() {
-    const cleaned = el.input.value.replace(/[\s,_+-]/g, "");
-    el.digitCount.textContent = i18n.t("digits", { count: cleaned.length });
+    const preview = scanner.previewIntegerInput(el.input.value);
+    el.digitCount.classList.toggle("bad", !preview.parseable && preview.digits > 0);
+    el.digitCount.textContent = preview.parseable
+      ? i18n.t("digits", { count: preview.digits })
+      : i18n.t("digitsFound", { count: preview.digits });
   }
 
   function readConfig() {
@@ -172,7 +175,7 @@
   }
 
   function runWorkerScan(input, config) {
-    const worker = new Worker("src/worker.js?v=20260614-deep");
+    const worker = new Worker("src/worker.js?v=20260614-input");
     const id = crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
     state.activeWorker = worker;
     worker.onmessage = (event) => {

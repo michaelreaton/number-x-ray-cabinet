@@ -13,11 +13,141 @@
   const SOURCE_NOTE =
     "Credit: Payam. Payam_Idea.pdf is the source paper for this app. Its visible script is cut off after `import sympy as sp`, so this app reconstructs the scanner idea and exposes fragile assumptions.";
 
-  function parseIntegerInput(raw) {
-    const compact = String(raw || "").replace(/[\s,_]/g, "");
-    if (!/^[+-]?\d+$/.test(compact)) {
-      throw new Error("Input must be an integer. Spaces, commas, and underscores are allowed as separators.");
+  function normalizeInputText(raw) {
+    return String(raw ?? "")
+      .normalize("NFKC")
+      .replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "")
+      .replace(/[\u2212\u2012\u2013\u2014\uFE63\uFF0D]/g, "-")
+      .replace(/[\uFF0B]/g, "+")
+      .replace(/[۰-۹]/g, (digit) => String(digit.charCodeAt(0) - 0x06f0))
+      .replace(/[٠-٩]/g, (digit) => String(digit.charCodeAt(0) - 0x0660))
+      .replace(/[０-９]/g, (digit) => String(digit.charCodeAt(0) - 0xff10));
+  }
+
+  function cleanIntegerCandidate(rawCandidate) {
+    let candidate = String(rawCandidate || "").trim().replace(/^[`"'“”]+|[`"'“”]+$/g, "");
+    if (!candidate) return null;
+    if ((candidate.match(/[+-]/g) || []).length > 1 || /[+-].+\d.*[+-]/.test(candidate)) return null;
+
+    let sign = "";
+    if (/^[+-]/.test(candidate)) {
+      sign = candidate[0] === "-" ? "-" : "";
+      candidate = candidate.slice(1).trim();
     }
+
+    if (/[.٫]/.test(candidate)) {
+      const groups = candidate.split(/[.٫]/);
+      const groupedThousands =
+        groups.length > 1 &&
+        /^[0-9]{1,3}$/.test(groups[0].replace(/[\s,_'’٬،]/g, "")) &&
+        groups.slice(1).every((group) => /^[0-9]{3}$/.test(group.replace(/[\s,_'’٬،]/g, "")));
+      if (!groupedThousands) {
+        throw new Error("Decimals and scientific notation are not exact integer input. Paste the full decimal digits.");
+      }
+    }
+
+    const digits = candidate.replace(/[.٫\s,_'’٬،]/g, "");
+    if (!/^[0-9]+$/.test(digits)) return null;
+    return `${sign}${digits}`;
+  }
+
+  function candidateRecords(text) {
+    const records = [];
+    const errors = [];
+    const pattern = /[+-]?[0-9][0-9\s,_'’.,٬،٫]*/g;
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      try {
+        const cleaned = cleanIntegerCandidate(match[0]);
+        if (cleaned) {
+          records.push({
+            value: cleaned,
+            digits: cleaned.replace(/^[+-]/, "").replace(/^0+(?=[0-9])/, "").length
+          });
+        }
+      } catch (error) {
+        errors.push(error.message);
+      }
+    }
+    return { records, errors };
+  }
+
+  function chooseIntegerCandidate(records, errors = []) {
+    const unique = [];
+    const seen = new Set();
+    for (const record of records) {
+      if (!seen.has(record.value)) {
+        unique.push(record);
+        seen.add(record.value);
+      }
+    }
+    if (!unique.length) {
+      throw new Error(errors[0] || "Input must contain a positive integer.");
+    }
+    if (unique.length === 1) return unique[0].value;
+
+    const ranked = unique.slice().sort((a, b) => b.digits - a.digits);
+    if (ranked[0].digits > ranked[1].digits) return ranked[0].value;
+    throw new Error("Input contains multiple possible integers. Use `N = ...` or paste only the target integer.");
+  }
+
+  function normalizeIntegerInput(raw) {
+    const text = normalizeInputText(raw);
+    if (/[0-9]\s*[eE]\s*[+-]?\s*[0-9]/.test(text)) {
+      throw new Error("Scientific notation is not exact integer input. Paste the full decimal digits.");
+    }
+
+    const labeledPattern =
+      /(?:^|[^A-Za-z0-9])(?:N|target|Target|input|Input|integer|Integer|value|Value|number|Number)\s*[:=]\s*([+-]?[0-9][0-9\s,_'’.,٬،٫]*)/g;
+    let match;
+    const labeled = [];
+    const labeledErrors = [];
+    while ((match = labeledPattern.exec(text)) !== null) {
+      try {
+        const cleaned = cleanIntegerCandidate(match[1]);
+        if (cleaned) {
+          labeled.push({
+            value: cleaned,
+            digits: cleaned.replace(/^[+-]/, "").replace(/^0+(?=[0-9])/, "").length
+          });
+        }
+      } catch (error) {
+        labeledErrors.push(error.message);
+      }
+    }
+    if (labeled.length) return labeled[labeled.length - 1].value;
+
+    if (text.includes("=")) {
+      const rhs = text.slice(text.lastIndexOf("=") + 1);
+      const rhsCandidates = candidateRecords(rhs);
+      if (rhsCandidates.records.length) return chooseIntegerCandidate(rhsCandidates.records, rhsCandidates.errors);
+      if (rhsCandidates.errors.length) throw new Error(rhsCandidates.errors[0]);
+    }
+
+    const all = candidateRecords(text);
+    return chooseIntegerCandidate(all.records, all.errors);
+  }
+
+  function previewIntegerInput(raw) {
+    const text = normalizeInputText(raw);
+    try {
+      const normalized = normalizeIntegerInput(text);
+      return {
+        parseable: true,
+        digits: normalized.replace(/^[+-]/, "").replace(/^0+(?=[0-9])/, "").length,
+        normalized
+      };
+    } catch (error) {
+      return {
+        parseable: false,
+        digits: (text.match(/[0-9]/g) || []).length,
+        error: error.message
+      };
+    }
+  }
+
+  function parseIntegerInput(raw) {
+    const compact = normalizeIntegerInput(raw);
     const value = BigInt(compact);
     if (value <= 0n) throw new Error("Input must be a positive integer.");
     return value;
@@ -525,6 +655,8 @@
 
   return {
     parseIntegerInput,
+    normalizeIntegerInput,
+    previewIntegerInput,
     formatBigInt,
     clampConfig,
     scanCandidate,

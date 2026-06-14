@@ -24,6 +24,31 @@ test("invalid input is rejected", () => {
   assert.throws(() => scanner.scanNumber("-17"), /positive/);
 });
 
+test("poorly formatted integer input is normalized when the target is clear", () => {
+  assert.equal(scanner.parseIntegerInput("N = 1,234_567"), 1234567n);
+  assert.equal(scanner.parseIntegerInput("wrapped:\n  1 234\n  567"), 1234567n);
+  assert.equal(scanner.parseIntegerInput("Φ3(10) = 111"), 111n);
+  assert.equal(scanner.parseIntegerInput("عدد = ۱۲۳٬۴۵۶"), 123456n);
+  assert.equal(scanner.parseIntegerInput("１２３，４５６"), 123456n);
+});
+
+test("ambiguous or non-exact numeric input is rejected", () => {
+  assert.throws(() => scanner.parseIntegerInput("111 and 222"), /multiple possible integers/);
+  assert.throws(() => scanner.parseIntegerInput("1e6"), /Scientific notation/);
+  assert.throws(() => scanner.parseIntegerInput("3.14"), /Decimals/);
+});
+
+test("input preview reports parsed digits or ambiguous digit counts", () => {
+  assert.deepEqual(scanner.previewIntegerInput("N = 000,111"), {
+    parseable: true,
+    digits: 3,
+    normalized: "000111"
+  });
+  const ambiguous = scanner.previewIntegerInput("111 and 222");
+  assert.equal(ambiguous.parseable, false);
+  assert.equal(ambiguous.digits, 6);
+});
+
 test("huge input produces a bounded report", () => {
   const report = scanner.scanNumber(
     "164265132454124777535030081362342972685864000000000000000000000000039",

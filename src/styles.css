@@ -273,6 +273,10 @@ button:focus-visible {
   min-height: 32px;
 }
 
+#digit-count.bad {
+  color: var(--amber);
+}
+
 .run-button {
   display: grid;
   grid-template-columns: 1fr 48px;
