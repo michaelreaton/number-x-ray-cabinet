@@ -1,8 +1,8 @@
 # Number X-Ray Cabinet
 
-A self-contained browser lab inspired by Payam's `Payam_Idea.pdf`.
+A self-contained browser lab inspired by Payam's live [MY GFN2](https://amathz.com/my_gfn.html) page.
 
-The app explores Payam's idea of using an "X-ray" process to look for hidden cyclotomic structure inside large integers. It computes candidate `n`, `phi(n)`, estimated bases, `Phi_n(b)` matches, residue checks, and counterexamples where the shortcut logic is fragile.
+The app explores Payam's idea of looking for hidden cyclotomic structure inside large integers. Payam frames generalized Fermat and Shanks-style families through generalized Mersenne chains, then gives the compact form `Phi(n)(2^p^m)`, where `n` is squarefree and `p` is a prime dividing `n`. The scanner turns that idea into bounded evidence: candidate `n`, `phi(n)`, estimated bases, `Phi_n(b)` matches, residue checks, and counterexamples where root-shortcut logic is fragile.
 
 Deep Scan uses a staged pipeline: profile the input, screen many `n` values with fast modular probes, rank hypotheses, then spend the remaining budget on exact `Phi_n(b) = N` verification. Exact matches are only labeled exact after verification; screened hints remain evidence.
 
@@ -60,9 +60,9 @@ This version is written right-to-left in Persian for Payam while keeping formula
 
 ## Credit
 
-Concept and source paper: Payam, [`Payam_Idea.pdf`](assets/Payam_Idea.pdf).
+Concept and source page: Payam, [MY GFN2](https://amathz.com/my_gfn.html).
 
-The PDF export cuts off the promised Python script after `import sympy as sp`, so this implementation reconstructs the scanner idea and labels reconstructed or skeptical behavior in the UI.
+Payam's page connects Fermat numbers, generalized Fermat numbers, Shanks numbers, alternating Shanks numbers, and broader cyclotomic families through `Phi(n)(2^p^m)`. This implementation uses that as the public source link and keeps exact matches separate from evidence, partial results, and counterexamples.
 
 RSA-260 metadata and checksum come from the public RSA Challenge List mirror at <https://www.ontko.com/pub/rayo/primes/rsa_fact.html>.
 

@@ -14,8 +14,8 @@
           <p>Detecting hidden cyclotomic structure in large integers.</p>
         </div>
         <nav class="top-actions" aria-label="Application status">
-          <a class="paper-credit" href="assets/Payam_Idea.pdf" target="_blank" rel="noopener">
-            Credit: Payam · Paper
+          <a class="paper-credit" href="https://amathz.com/my_gfn.html" target="_blank" rel="noopener">
+            Credit: Payam · MY GFN2
           </a>
           <div class="language-switch" role="group" aria-label="Language">
             <button type="button" class="selected" data-lang="en" aria-pressed="true">EN</button>
@@ -93,14 +93,14 @@
 
           <div class="rail-section source-note" id="source-note">
             <h2>Source Note</h2>
-            <p>Built from Payam’s paper, <a href="assets/Payam_Idea.pdf" target="_blank" rel="noopener">Payam_Idea.pdf</a>. The export cuts off the promised Python script after <code>import sympy as sp</code>, so this cabinet reconstructs the idea and marks fragile assumptions directly.</p>
+            <p>Built from Payam’s live source page, <a href="https://amathz.com/my_gfn.html" target="_blank" rel="noopener">MY GFN2</a>. Payam generalizes Fermat and Shanks-style numbers as cyclotomic families such as <code>Phi(n)(2^p^m)</code>, where <code>n</code> is squarefree and <code>p</code> divides <code>n</code>.</p>
           </div>
 
           <div class="rail-section paper-bridge">
-            <h2>Payam’s Paper → This Lab</h2>
-            <p>Payam’s paper proposes an “X-ray” for large integers: instead of asking only whether a number is prime, it asks whether the number hides a cyclotomic construction.</p>
-            <p>This app turns that idea into an interactive instrument. It searches candidate <code>n</code>, computes <code>φ(n)</code>, estimates possible bases, evaluates <code>Φₙ(b)</code>, and shows the evidence trail.</p>
-            <p>The skeptical parts are intentional: the PDF says to recover structure with root tests and symbolic algebra, but the visible script is incomplete. The cabinet therefore also shows counterexamples where a real cyclotomic value fails the shortcut.</p>
+            <h2>Payam’s MY GFN2 → This Lab</h2>
+            <p>Payam’s MY GFN2 page starts from Fermat numbers, generalized Fermat numbers, and generalized Mersenne chains, then pulls out principal cyclotomic parts.</p>
+            <p>The compact target Payam gives is <code>Phi(n)(2^p^m)</code>: <code>n</code> is squarefree, <code>p</code> is a prime divisor of <code>n</code>, and special cases recover Fermat, Shanks, and alternating Shanks numbers.</p>
+            <p>This app turns that source idea into an interactive instrument. It searches candidate <code>n</code>, computes <code>φ(n)</code>, estimates possible bases, evaluates <code>Φₙ(b)</code>, and labels exact equality separately from suggestive evidence.</p>
             <p>Factor Solver extends the same X-ray spirit to composites: it verifies exact factors when local methods solve the input, and keeps large challenge fixtures unresolved unless a product proof exists.</p>
           </div>
         </aside>
@@ -185,7 +185,7 @@
               <button type="button" title="Focus panel" data-focus="counter">↗</button>
             </div>
             <div id="counterexample-copy">
-              <p>Counterexamples show when an exact cyclotomic value fails the PDF’s perfect-root shortcut.</p>
+              <p>Counterexamples show when an exact cyclotomic value fails a perfect-root shortcut.</p>
             </div>
           </section>
 

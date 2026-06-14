@@ -16,7 +16,7 @@ https://michaelreaton.github.io/number-x-ray-cabinet/
 2. In GitHub, open **Settings → Pages**.
 3. Set **Source** to **GitHub Actions**.
 4. Push to `master` or `main`, or run the `Deploy static site to GitHub Pages` workflow manually.
-5. The workflow publishes the repository root, so `index.html` becomes the app entry point and `assets/Payam_Idea.pdf` remains the paper link.
+5. The workflow publishes the repository root, so `index.html` becomes the app entry point and the Payam credit link points to <https://amathz.com/my_gfn.html>.
 
 The local repo is configured with:
 

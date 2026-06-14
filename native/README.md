@@ -53,7 +53,7 @@ The CLI emits the same reproducible JSON shape used by the GTK app:
 - `factorReport`
 - `cyclotomicReport`
 - `benchmarkReport`
-- source notes linking behavior back to Payam's paper and the local-solver limit for large composites
+- source notes linking behavior back to Payam's MY GFN2 page and the local-solver limit for large composites
 
 ## GUI Taste Direction
 

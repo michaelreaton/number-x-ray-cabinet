@@ -11,7 +11,7 @@
   const SCREEN_PRIMES = [1000003, 1000033, 1000037, 1000039, 1000081];
   const REPORT_LIMIT = 128;
   const SOURCE_NOTE =
-    "Credit: Payam. Payam_Idea.pdf is the source paper for this app. Its visible script is cut off after `import sympy as sp`, so this app reconstructs the scanner idea and exposes fragile assumptions.";
+    "Credit: Payam. MY GFN2 (https://amathz.com/my_gfn.html) is the live source page for this app. Payam frames the target family as Phi(n)(2^p^m), with n squarefree and p a prime divisor of n; exact equality is reported separately from evidence and counterexamples.";
   const RSA_CHECKSUM_MODULUS = 991889n;
   const RSA_CHALLENGE_SOURCE = "https://www.ontko.com/pub/rayo/primes/rsa_fact.html";
   const RSA260_VALUE =
