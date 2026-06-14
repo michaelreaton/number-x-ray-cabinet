@@ -146,11 +146,23 @@
   }
 
   function applySampleDefaults(sample) {
-    if (sample !== "semiprime") return;
-    document.getElementById("n-max").value = "128";
-    document.getElementById("base-window").value = "1";
-    document.getElementById("time-budget").value = "1500";
-    document.getElementById("verification-limit").value = "24";
+    if (sample === "semiprime") {
+      document.getElementById("n-min").value = "3";
+      document.getElementById("n-max").value = "128";
+      document.getElementById("base-window").value = "1";
+      document.getElementById("time-budget").value = "1500";
+      document.getElementById("verification-limit").value = "24";
+      return;
+    }
+    if (sample === "fermat12") {
+      document.getElementById("n-min").value = "8192";
+      document.getElementById("n-max").value = "8192";
+      document.getElementById("base-window").value = "0";
+      document.getElementById("time-budget").value = "15000";
+      document.getElementById("verification-limit").value = "64";
+      return;
+    }
+    document.getElementById("n-min").value = "3";
   }
 
   function setBusy(isBusy) {

@@ -31,6 +31,7 @@
       sampleRSA260: "RSA-260",
       samplePhi3: "Counterexample 111",
       samplePhi3Large: "1k Φ3 Fixture",
+      sampleFermat12: "Fermat F12",
       samplePhi5: "Prime 31",
       sampleCarmichael: "Carmichael 561",
       samplePrimePower: "Prime Power 3^7",
@@ -193,6 +194,7 @@
       sampleRSA260: "RSA-260",
       samplePhi3: "نمونه نقض 111",
       samplePhi3Large: "نمونه Φ3 هزاررقمی",
+      sampleFermat12: "فرما F12",
       samplePhi5: "عدد اول 31",
       sampleCarmichael: "کارمایکل 561",
       samplePrimePower: "توان اول 3^7",
@@ -568,6 +570,7 @@
     setText('[data-sample="rsa260"]', "sampleRSA260");
     setText('[data-sample="phi3"]', "samplePhi3");
     setText('[data-sample="phi3large"]', "samplePhi3Large");
+    setText('[data-sample="fermat12"]', "sampleFermat12");
     setText('[data-sample="phi5"]', "samplePhi5");
     setText('[data-sample="carmichael"]', "sampleCarmichael");
     setText('[data-sample="primepower"]', "samplePrimePower");
