@@ -49,6 +49,7 @@
       button.addEventListener("click", () => {
         el.input.value = scanner.sampleValue(button.dataset.sample);
         if (button.dataset.sampleMode) setMode(button.dataset.sampleMode);
+        applySampleDefaults(button.dataset.sample);
         updateDigitCount();
         runScan();
       });
@@ -144,6 +145,14 @@
     if (Number(verificationLimit.value) > 24 && mode === "explore") verificationLimit.value = "24";
   }
 
+  function applySampleDefaults(sample) {
+    if (sample !== "semiprime") return;
+    document.getElementById("n-max").value = "128";
+    document.getElementById("base-window").value = "1";
+    document.getElementById("time-budget").value = "1500";
+    document.getElementById("verification-limit").value = "24";
+  }
+
   function setBusy(isBusy) {
     el.runButton.disabled = isBusy;
     el.cancelButton.classList.toggle("hidden", !isBusy);
@@ -182,7 +191,7 @@
   }
 
   function runWorkerScan(input, config) {
-    const worker = new Worker("src/worker.js?v=20260614-rsa");
+    const worker = new Worker("src/worker.js?v=20260614-solver");
     const id = crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
     state.activeWorker = worker;
     worker.onmessage = (event) => {
@@ -524,24 +533,39 @@
     const primalityText = recon.primality.probablyPrime
       ? i18n.t("rsaProbablyPrimeLine", { rounds: recon.primality.rounds })
       : i18n.t("rsaCompositeWitnessLine", { witness: recon.primality.witness });
-    const factorText = recon.factorPair
-      ? `${scanner.formatBigInt(recon.factorPair.factor, 18)} × ${scanner.formatBigInt(recon.factorPair.cofactor, 18)}`
-      : i18n.t("rsaNoFactor");
-    const factorClass = recon.factorPair ? "good" : "warn";
+    const solver = recon.solver || {};
+    const factorText = solver.factors?.length
+      ? solver.factors.map((factor) => formatFactorRecord(factor)).join(" · ")
+      : recon.factorPair
+        ? `${scanner.formatBigInt(recon.factorPair.factor, 18)} × ${scanner.formatBigInt(recon.factorPair.cofactor, 18)}`
+        : i18n.t("rsaNoFactor");
+    const unresolvedText = solver.unresolved?.length
+      ? solver.unresolved.map((item) => scanner.formatBigInt(item.value, 18)).join(" · ")
+      : i18n.t("no");
+    const factorClass = solver.status === "solved" ? "good" : recon.factorPair ? "warn" : "bad";
+    const proofClass = solver.productVerified ? "good" : "bad";
 
     el.rsaCopy.innerHTML = `
       <p class="verdict-head ${recon.factorPair ? "good" : "warn"}">${displayRsaVerdict(recon)}</p>
       <dl class="recon-grid">
         <dt>${i18n.t("rsaTarget")}</dt><dd>${i18n.t("rsaTargetLine", { target: recon.targetLabel, digits: recon.digits, bits: recon.bitLength })}</dd>
+        <dt>${i18n.t("rsaSolverStatus")}</dt><dd class="${factorClass}">${solver.status || i18n.t("rsaUnknown")} · ${solver.elapsedMs || 0} ms</dd>
+        <dt>${i18n.t("rsaFactors")}</dt><dd class="${factorClass}">${factorText}</dd>
+        <dt>${i18n.t("rsaUnresolved")}</dt><dd>${unresolvedText}</dd>
+        <dt>${i18n.t("rsaProductProof")}</dt><dd class="${proofClass}">${solver.productVerified ? i18n.t("rsaProofPass") : i18n.t("rsaProofFail")}</dd>
         <dt>${i18n.t("rsaChecksum")}</dt><dd class="${checksumClass}">${checksumText}</dd>
         <dt>${i18n.t("rsaComposite")}</dt><dd>${primalityText}</dd>
         <dt>${i18n.t("rsaSmallSieve")}</dt><dd>${i18n.t("rsaSieveLine", { count: recon.smallPrimeSieve.tested, limit: recon.smallPrimeSieve.limit })}</dd>
         <dt>${i18n.t("rsaFermat")}</dt><dd>${i18n.t("rsaFermatLine", { count: recon.fermat.iterations, status: rsaStatusLabel(recon.fermat.status) })}</dd>
         <dt>${i18n.t("rsaRho")}</dt><dd>${i18n.t("rsaRhoLine", { count: recon.pollardRho.attempts.length, status: rsaStatusLabel(recon.pollardRho.status) })}</dd>
-        <dt>${i18n.t("rsaFactor")}</dt><dd class="${factorClass}">${factorText}</dd>
+        <dt>${i18n.t("rsaEscalation")}</dt><dd>${solver.escalation?.required ? i18n.t("rsaCommandPack") : i18n.t("no")}</dd>
       </dl>
-      <p>${recon.recognized ? i18n.t("rsaSourceLine") : i18n.t("rsaReconLine")}</p>
-      <p>${i18n.t("rsaReconLine")}</p>`;
+      <p>${recon.recognized ? i18n.t("rsaSourceLine") : i18n.t("rsaReconLine")}</p>`;
+  }
+
+  function formatFactorRecord(factor) {
+    const power = factor.exponent > 1 ? `^${factor.exponent}` : "";
+    return `${scanner.formatBigInt(factor.value, 18)}${power}`;
   }
 
   function rsaStatusLabel(status) {
@@ -556,8 +580,11 @@
   }
 
   function displayRsaVerdict(recon) {
-    if (recon.factorPair) return i18n.t("rsaFactorFound");
-    if (recon.recognized) return i18n.t("rsaRecognizedNoFactor", { target: recon.targetLabel });
+    const solver = recon.solver || {};
+    if (solver.status === "solved") return i18n.t("rsaSolved");
+    if (solver.status === "partial" || recon.factorPair) return i18n.t("rsaPartial");
+    if (solver.status === "timeout") return i18n.t("rsaTimeout");
+    if (recon.recognized) return i18n.t("rsaUnsolved", { target: recon.targetLabel });
     if (recon.primality.probablyPrime) return i18n.t("rsaProbablyPrimeLine", { rounds: recon.primality.rounds });
     return i18n.t("rsaCompositeNoFactor");
   }

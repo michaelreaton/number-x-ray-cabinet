@@ -21,12 +21,13 @@
       timeBudget: "Time budget",
       verificationLimit: "Verify limit",
       explore: "Explore",
-      rsa: "RSA Scout",
+      rsa: "RSA Solver",
       deep: "Deep Scan",
       counterMode: "Hunt Counterexamples",
       verify: "Verify Claim",
       samples: "Samples",
       samplePhi21: "Φ21(3)",
+      sampleSemiprime: "Toy Solve 10403",
       sampleRSA260: "RSA-260",
       samplePhi3: "Counterexample 111",
       samplePhi3Large: "1k Φ3 Fixture",
@@ -45,7 +46,7 @@
       bridgeP3:
         "The skeptical parts are intentional: the PDF says to recover structure with root tests and symbolic algebra, but the visible script is incomplete. The cabinet therefore also shows counterexamples where a real cyclotomic value fails the shortcut.",
       bridgeP4:
-        "RSA Scout extends the same X-ray spirit to RSA-260: it does bounded local reconnaissance, then clearly separates “factor found,” “composite evidence,” and “no factor inside this browser budget.”",
+        "RSA Solver extends the same X-ray spirit to factorization: it verifies exact factors when local methods solve the input, and emits a GNFS escalation pack when RSA-260 remains unsolved in-browser.",
       candidates: "Cyclotomic Candidates",
       ready: "Ready. Load a sample or paste an integer.",
       chamber: "Chamber",
@@ -61,10 +62,11 @@
       treasureInitial: "Top regions appear after the first scan.",
       skeletonKey: "Skeleton Key",
       noCandidate: "No candidate selected.",
-      rsaScout: "RSA Scout",
-      rsaInitial: "Load RSA-260 or choose RSA Scout mode to run bounded local reconnaissance.",
+      rsaScout: "RSA Solver",
+      rsaInitial: "Load a composite or choose RSA Solver mode to run local factorization and produce an escalation pack when needed.",
       rsaTarget: "Target",
       rsaTargetLine: "{target} · {digits} digits · {bits} bits",
+      rsaSolverStatus: "Solver",
       rsaChecksum: "Checksum",
       rsaComposite: "Composite test",
       rsaSmallSieve: "Small-prime sieve",
@@ -73,6 +75,17 @@
       rsaFactor: "Factor",
       rsaNoFactor: "No factor found inside this browser budget.",
       rsaFactorFound: "Nontrivial factor found.",
+      rsaSolved: "Solved: factors verified.",
+      rsaPartial: "Partial solve: factor found, cofactor remains.",
+      rsaUnsolved: "{target}: unsolved locally; GNFS escalation required.",
+      rsaTimeout: "Solver budget reached before completion.",
+      rsaFactors: "Factors",
+      rsaUnresolved: "Unresolved",
+      rsaProductProof: "Product proof",
+      rsaProofPass: "verified",
+      rsaProofFail: "not verified",
+      rsaEscalation: "Escalation",
+      rsaCommandPack: "CADO-NFS command pack is included in JSON export.",
       rsaRecognizedNoFactor: "{target}: no factor found inside this browser budget.",
       rsaCompositeNoFactor: "Composite witness found, but no factor inside this browser budget.",
       rsaProbablyPrimeLine: "probably prime after {rounds} rounds",
@@ -88,7 +101,7 @@
       rsaVerified: "verified",
       rsaUnknown: "unknown",
       rsaSourceLine: "Recognized from the RSA challenge list.",
-      rsaReconLine: "This is reconnaissance, not a GNFS-class factorization attempt.",
+      rsaReconLine: "Local solving stops at the browser budget; RSA-260 needs GNFS-class work.",
       counterexample: "Counterexample",
       counterInitial: "Counterexamples show when an exact cyclotomic value fails the PDF’s perfect-root shortcut.",
       verdict: "Verdict",
@@ -170,12 +183,13 @@
       timeBudget: "بودجه زمان",
       verificationLimit: "حد راستی‌آزمایی",
       explore: "کاوش",
-      rsa: "دیده‌بان RSA",
+      rsa: "حل‌گر RSA",
       deep: "اسکن عمیق",
       counterMode: "شکار نمونه نقض",
       verify: "راستی‌آزمایی ادعا",
       samples: "نمونه‌ها",
       samplePhi21: "Φ21(3)",
+      sampleSemiprime: "حل نمونه 10403",
       sampleRSA260: "RSA-260",
       samplePhi3: "نمونه نقض 111",
       samplePhi3Large: "نمونه Φ3 هزاررقمی",
@@ -194,7 +208,7 @@
       bridgeP3:
         "بخش‌های بدبینانه عمدی‌اند: PDF می‌گوید ساختار با آزمون ریشه و جبر نمادین بازیابی می‌شود، اما اسکریپت قابل‌مشاهده کامل نیست. بنابراین کابینت نمونه‌های نقض را هم نشان می‌دهد؛ جاهایی که یک مقدار سیکلوتومیک واقعی از میان‌بُر ریشه عبور نمی‌کند.",
       bridgeP4:
-        "دیده‌بان RSA همین روحیهٔ ایکس‌ری را به RSA-260 می‌برد: شناسایی محلی و محدود انجام می‌دهد و بین «عامل پیدا شد»، «شاهد مرکب بودن» و «در این بودجهٔ مرورگر عاملی پیدا نشد» روشن فرق می‌گذارد.",
+        "حل‌گر RSA همین روحیهٔ ایکس‌ری را به فاکتورگیری می‌برد: وقتی روش‌های محلی ورودی را حل کنند عامل‌ها را دقیق راستی‌آزمایی می‌کند، و وقتی RSA-260 در مرورگر حل نشود بستهٔ ارتقا به GNFS می‌سازد.",
       candidates: "نامزدهای سیکلوتومیک",
       ready: "آماده است. یک نمونه را بارگذاری کنید یا عددی وارد کنید.",
       chamber: "محفظه",
@@ -210,10 +224,11 @@
       treasureInitial: "ناحیه‌های برتر بعد از اولین اسکن ظاهر می‌شوند.",
       skeletonKey: "کلید استخوانی",
       noCandidate: "هیچ نامزدی انتخاب نشده است.",
-      rsaScout: "دیده‌بان RSA",
-      rsaInitial: "RSA-260 را بارگذاری کنید یا حالت دیده‌بان RSA را برای شناسایی محلی محدود انتخاب کنید.",
+      rsaScout: "حل‌گر RSA",
+      rsaInitial: "یک عدد مرکب را بارگذاری کنید یا حالت حل‌گر RSA را برای فاکتورگیری محلی و ساخت بستهٔ ارتقا انتخاب کنید.",
       rsaTarget: "هدف",
       rsaTargetLine: "{target} · {digits} رقم · {bits} بیت",
+      rsaSolverStatus: "حل‌گر",
       rsaChecksum: "چک‌سام",
       rsaComposite: "آزمون مرکب بودن",
       rsaSmallSieve: "غربال اول‌های کوچک",
@@ -222,6 +237,17 @@
       rsaFactor: "عامل",
       rsaNoFactor: "در این بودجهٔ مرورگر عاملی پیدا نشد.",
       rsaFactorFound: "عامل غیر بدیهی پیدا شد.",
+      rsaSolved: "حل شد: عامل‌ها راستی‌آزمایی شدند.",
+      rsaPartial: "حل جزئی: عامل پیدا شد، اما هم‌عامل باقی مانده است.",
+      rsaUnsolved: "{target}: به‌صورت محلی حل نشد؛ ارتقا به GNFS لازم است.",
+      rsaTimeout: "بودجهٔ حل‌گر پیش از تکمیل تمام شد.",
+      rsaFactors: "عامل‌ها",
+      rsaUnresolved: "حل‌نشده",
+      rsaProductProof: "اثبات حاصل‌ضرب",
+      rsaProofPass: "راستی‌آزمایی شد",
+      rsaProofFail: "راستی‌آزمایی نشد",
+      rsaEscalation: "ارتقا",
+      rsaCommandPack: "بستهٔ دستورهای CADO-NFS در خروجی JSON آمده است.",
       rsaRecognizedNoFactor: "{target}: در این بودجهٔ مرورگر عاملی پیدا نشد.",
       rsaCompositeNoFactor: "شاهد مرکب بودن پیدا شد، اما در این بودجهٔ مرورگر عاملی پیدا نشد.",
       rsaProbablyPrimeLine: "پس از {rounds} دور احتمالاً اول است",
@@ -237,7 +263,7 @@
       rsaVerified: "راستی‌آزمایی شد",
       rsaUnknown: "نامعلوم",
       rsaSourceLine: "از فهرست چالش RSA شناسایی شد.",
-      rsaReconLine: "این شناسایی مقدماتی است، نه تلاش فاکتورگیری در اندازهٔ GNFS.",
+      rsaReconLine: "حل محلی در بودجهٔ مرورگر متوقف می‌شود؛ RSA-260 به کار در اندازهٔ GNFS نیاز دارد.",
       counterexample: "نمونه نقض",
       counterInitial: "نمونه‌های نقض نشان می‌دهند چه زمانی یک مقدار سیکلوتومیک دقیق از آزمون ریشهٔ کاملِ PDF عبور نمی‌کند.",
       verdict: "حکم",
@@ -367,14 +393,16 @@
       screen: "Screen",
       hypothesize: "Hypothesize",
       verify: "Verify",
-      rsa: "RSA Scout"
+      rsa: "RSA Target",
+      solve: "Solve"
     },
     fa: {
       profile: "نمایه",
       screen: "غربال",
       hypothesize: "فرضیه‌سازی",
       verify: "راستی‌آزمایی",
-      rsa: "دیده‌بان RSA"
+      rsa: "هدف RSA",
+      solve: "حل"
     }
   };
 
@@ -536,6 +564,7 @@
     setText('[data-mode="verify"]', "verify");
     setText(".input-rail .rail-section:nth-child(3) h2", "samples");
     setText('[data-sample="phi21"]', "samplePhi21");
+    setText('[data-sample="semiprime"]', "sampleSemiprime");
     setText('[data-sample="rsa260"]', "sampleRSA260");
     setText('[data-sample="phi3"]', "samplePhi3");
     setText('[data-sample="phi3large"]', "samplePhi3Large");
