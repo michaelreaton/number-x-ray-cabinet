@@ -6,6 +6,11 @@
   root.XRayPolynomial = api;
 })(typeof globalThis !== "undefined" ? globalThis : this, function createPolynomialApi() {
   const cyclotomicCache = new Map();
+  const cyclotomicModCache = new Map();
+  const factorCache = new Map();
+  const phiCache = new Map();
+  const divisorCache = new Map();
+  const mobiusCache = new Map();
 
   function absBigInt(value) {
     return value < 0n ? -value : value;
@@ -46,6 +51,41 @@
     return -1;
   }
 
+  function modNormalize(value, modulus) {
+    const mod = BigInt(modulus);
+    let next = BigInt(value) % mod;
+    if (next < 0n) next += mod;
+    return next;
+  }
+
+  function modPow(base, exponent, modulus) {
+    const mod = BigInt(modulus);
+    let nextBase = modNormalize(base, mod);
+    let exp = BigInt(exponent);
+    let result = 1n;
+    while (exp > 0n) {
+      if (exp & 1n) result = (result * nextBase) % mod;
+      exp >>= 1n;
+      if (exp > 0n) nextBase = (nextBase * nextBase) % mod;
+    }
+    return result;
+  }
+
+  function modInverse(value, modulus) {
+    const mod = BigInt(modulus);
+    let a = modNormalize(value, mod);
+    let b = mod;
+    let x0 = 1n;
+    let x1 = 0n;
+    while (b !== 0n) {
+      const quotient = a / b;
+      [a, b] = [b, a - quotient * b];
+      [x0, x1] = [x1, x0 - quotient * x1];
+    }
+    if (a !== 1n) return null;
+    return modNormalize(x0, mod);
+  }
+
   function integerNthRoot(value, exponent) {
     value = BigInt(value);
     exponent = Number(exponent);
@@ -79,6 +119,7 @@
   function primeFactorization(n) {
     n = Number(n);
     if (!Number.isInteger(n) || n < 1) throw new RangeError("n must be a positive integer");
+    if (factorCache.has(n)) return factorCache.get(n).map((factor) => factor.slice());
     const factors = [];
     let remaining = n;
     for (let p = 2; p * p <= remaining; p += p === 2 ? 1 : 2) {
@@ -92,18 +133,24 @@
       }
     }
     if (remaining > 1) factors.push([remaining, 1]);
+    factorCache.set(n, factors.map((factor) => factor.slice()));
     return factors;
   }
 
   function phi(n) {
+    n = Number(n);
+    if (phiCache.has(n)) return phiCache.get(n);
     let result = Number(n);
     for (const [prime] of primeFactorization(n)) {
       result = Math.floor((result / prime) * (prime - 1));
     }
+    phiCache.set(n, result);
     return result;
   }
 
   function divisors(n) {
+    n = Number(n);
+    if (divisorCache.has(n)) return divisorCache.get(n).slice();
     const factors = primeFactorization(n);
     let values = [1];
     for (const [prime, exponent] of factors) {
@@ -114,7 +161,24 @@
         for (const value of current) values.push(value * power);
       }
     }
-    return values.sort((a, b) => a - b);
+    values = values.sort((a, b) => a - b);
+    divisorCache.set(n, values.slice());
+    return values;
+  }
+
+  function mobius(n) {
+    n = Number(n);
+    if (mobiusCache.has(n)) return mobiusCache.get(n);
+    let sign = 1;
+    for (const [, exponent] of primeFactorization(n)) {
+      if (exponent > 1) {
+        mobiusCache.set(n, 0);
+        return 0;
+      }
+      sign *= -1;
+    }
+    mobiusCache.set(n, sign);
+    return sign;
   }
 
   function trim(poly) {
@@ -157,6 +221,45 @@
     return trim(quotient);
   }
 
+  function trimMod(poly) {
+    let last = poly.length - 1;
+    while (last > 0 && poly[last] === 0) last -= 1;
+    return poly.slice(0, last + 1);
+  }
+
+  function multiplyPolyMod(a, b, modulus) {
+    const result = Array(a.length + b.length - 1).fill(0);
+    for (let i = 0; i < a.length; i += 1) {
+      for (let j = 0; j < b.length; j += 1) {
+        result[i + j] = (result[i + j] + a[i] * b[j]) % modulus;
+      }
+    }
+    return trimMod(result);
+  }
+
+  function dividePolyExactMod(numerator, denominator, modulus) {
+    numerator = trimMod(numerator.slice());
+    denominator = trimMod(denominator.slice());
+    const denDegree = denominator.length - 1;
+    const inverseLead = Number(modInverse(BigInt(denominator[denDegree]), BigInt(modulus)));
+    if (!Number.isFinite(inverseLead)) throw new Error("modular polynomial denominator is not invertible");
+    const quotient = Array(Math.max(1, numerator.length - denominator.length + 1)).fill(0);
+    while (numerator.length >= denominator.length) {
+      const degree = numerator.length - denominator.length;
+      const coefficient = (numerator[numerator.length - 1] * inverseLead) % modulus;
+      quotient[degree] = coefficient;
+      for (let i = 0; i < denominator.length; i += 1) {
+        numerator[degree + i] = (numerator[degree + i] - coefficient * denominator[i]) % modulus;
+        if (numerator[degree + i] < 0) numerator[degree + i] += modulus;
+      }
+      numerator = trimMod(numerator);
+    }
+    if (numerator.some((value) => value % modulus !== 0)) {
+      throw new Error("modular polynomial division was not exact");
+    }
+    return trimMod(quotient);
+  }
+
   function cyclotomicCoefficients(n) {
     n = Number(n);
     if (cyclotomicCache.has(n)) return cyclotomicCache.get(n).slice();
@@ -174,6 +277,28 @@
       result = dividePolyExact(numerator, denominator);
     }
     cyclotomicCache.set(n, result.slice());
+    return result;
+  }
+
+  function cyclotomicCoefficientsMod(n, modulus) {
+    n = Number(n);
+    modulus = Number(modulus);
+    const key = `${n}:${modulus}`;
+    if (cyclotomicModCache.has(key)) return cyclotomicModCache.get(key).slice();
+    let result;
+    if (n === 1) {
+      result = [modulus - 1, 1];
+    } else {
+      const numerator = Array(n + 1).fill(0);
+      numerator[0] = modulus - 1;
+      numerator[n] = 1;
+      let denominator = [1];
+      for (const d of divisors(n)) {
+        if (d < n) denominator = multiplyPolyMod(denominator, cyclotomicCoefficientsMod(d, modulus), modulus);
+      }
+      result = dividePolyExactMod(numerator, denominator, modulus);
+    }
+    cyclotomicModCache.set(key, result.slice());
     return result;
   }
 
@@ -198,12 +323,42 @@
     return value;
   }
 
+  function evaluatePolynomialModNumber(coefficients, x, modulus) {
+    let value = 0;
+    let nextX = Number(modNormalize(x, BigInt(modulus)));
+    for (let i = coefficients.length - 1; i >= 0; i -= 1) {
+      value = (value * nextX + coefficients[i]) % modulus;
+      if (value < 0) value += modulus;
+    }
+    return BigInt(value);
+  }
+
   function evaluateCyclotomic(n, base) {
     return evaluatePolynomial(cyclotomicCoefficients(n), BigInt(base));
   }
 
+  function evaluateCyclotomicModProduct(n, base, modulus) {
+    const mod = BigInt(modulus);
+    let result = 1n;
+    for (const d of divisors(n)) {
+      const mu = mobius(Number(n) / d);
+      if (mu === 0) continue;
+      const term = modNormalize(modPow(base, d, mod) - 1n, mod);
+      if (mu > 0) {
+        result = (result * term) % mod;
+      } else {
+        const inverse = modInverse(term, mod);
+        if (inverse === null) return null;
+        result = (result * inverse) % mod;
+      }
+    }
+    return result;
+  }
+
   function evaluateCyclotomicMod(n, base, modulus) {
-    return evaluatePolynomialMod(cyclotomicCoefficients(n), base, modulus);
+    const productValue = evaluateCyclotomicModProduct(n, base, modulus);
+    if (productValue !== null) return productValue;
+    return evaluatePolynomialModNumber(cyclotomicCoefficientsMod(n, modulus), base, Number(modulus));
   }
 
   function formatPolynomial(coefficients, variable = "x", maxTerms = 9) {
@@ -235,6 +390,17 @@
     return absBigInt(BigInt(value)).toString().length;
   }
 
+  function bitLength(value) {
+    const text = absBigInt(BigInt(value)).toString(2);
+    return text === "0" ? 0 : text.length;
+  }
+
+  function log10Estimate(value) {
+    const text = absBigInt(BigInt(value)).toString();
+    const head = Number(text.slice(0, Math.min(16, text.length)));
+    return Math.log10(head) + text.length - Math.min(16, text.length);
+  }
+
   function squareShape(base) {
     const rootInfo = integerNthRoot(absBigInt(BigInt(base)), 2);
     if (rootInfo.exact) {
@@ -247,17 +413,24 @@
     absBigInt,
     gcd,
     powBigInt,
+    powCompare,
+    modPow,
+    modInverse,
     integerNthRoot,
     primeFactorization,
     phi,
     divisors,
+    mobius,
     cyclotomicCoefficients,
+    cyclotomicCoefficientsMod,
     evaluatePolynomial,
     evaluatePolynomialMod,
     evaluateCyclotomic,
     evaluateCyclotomicMod,
     formatPolynomial,
     bigIntDigitLength,
+    bitLength,
+    log10Estimate,
     squareShape
   };
 });
