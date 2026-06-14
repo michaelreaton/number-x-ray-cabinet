@@ -53,37 +53,59 @@ static void test_exact_expression_parser(void) {
 }
 
 static void test_scratch_bigint_oracle(void) {
-  XrayScratchBigInt a, b, sum, product;
+  XrayScratchBigInt a, b, sum, difference, product, quotient;
   xray_bigint_init(&a);
   xray_bigint_init(&b);
   xray_bigint_init(&sum);
+  xray_bigint_init(&difference);
   xray_bigint_init(&product);
+  xray_bigint_init(&quotient);
   CHECK(xray_bigint_set_decimal(&a, "123456789012345678901234567890"));
   CHECK(xray_bigint_set_decimal(&b, "98765432109876543210"));
   CHECK(xray_bigint_add(&sum, &a, &b));
+  CHECK(xray_bigint_sub(&difference, &a, &b));
   CHECK(xray_bigint_mul(&product, &a, &b));
+  uint32_t rem = 0;
+  CHECK(xray_bigint_divmod_u32(&quotient, &rem, &a, 65537U));
 
   char *sum_text = xray_bigint_get_decimal(&sum);
+  char *difference_text = xray_bigint_get_decimal(&difference);
   char *product_text = xray_bigint_get_decimal(&product);
-  mpz_t ga, gb, gsum, gproduct;
-  mpz_inits(ga, gb, gsum, gproduct, NULL);
+  char *quotient_text = xray_bigint_get_decimal(&quotient);
+  mpz_t ga, gb, gsum, gdifference, gproduct, gquotient;
+  mpz_inits(ga, gb, gsum, gdifference, gproduct, gquotient, NULL);
   mpz_set_str(ga, "123456789012345678901234567890", 10);
   mpz_set_str(gb, "98765432109876543210", 10);
   mpz_add(gsum, ga, gb);
+  mpz_sub(gdifference, ga, gb);
   mpz_mul(gproduct, ga, gb);
+  unsigned long oracle_rem = mpz_tdiv_q_ui(gquotient, ga, 65537U);
   char *oracle_sum = mpz_get_str(NULL, 10, gsum);
+  char *oracle_difference = mpz_get_str(NULL, 10, gdifference);
   char *oracle_product = mpz_get_str(NULL, 10, gproduct);
+  char *oracle_quotient = mpz_get_str(NULL, 10, gquotient);
   CHECK(strcmp(sum_text, oracle_sum) == 0);
+  CHECK(strcmp(difference_text, oracle_difference) == 0);
   CHECK(strcmp(product_text, oracle_product) == 0);
+  CHECK(strcmp(quotient_text, oracle_quotient) == 0);
+  CHECK(rem == (uint32_t)oracle_rem);
+  CHECK(xray_bigint_mod_u32(&a, 65537U) == (uint32_t)oracle_rem);
+  CHECK(!xray_bigint_is_zero(&a));
   free(sum_text);
+  free(difference_text);
   free(product_text);
+  free(quotient_text);
   free(oracle_sum);
+  free(oracle_difference);
   free(oracle_product);
-  mpz_clears(ga, gb, gsum, gproduct, NULL);
+  free(oracle_quotient);
+  mpz_clears(ga, gb, gsum, gdifference, gproduct, gquotient, NULL);
   xray_bigint_clear(&a);
   xray_bigint_clear(&b);
   xray_bigint_clear(&sum);
+  xray_bigint_clear(&difference);
   xray_bigint_clear(&product);
+  xray_bigint_clear(&quotient);
 }
 
 static void test_ambiguous_input_rejected(void) {
@@ -224,8 +246,24 @@ static void test_large_nonhit_does_not_false_solve(void) {
 static void test_benchmarks(void) {
   XrayBenchmarkReport report;
   CHECK(xray_benchmark_run(&report));
-  CHECK(report.result_count >= 9);
+  CHECK(report.result_count >= 20);
   CHECK(report.passed_count == report.result_count);
+  size_t scratch_rows = 0;
+  for (size_t index = 0; index < report.result_count; ++index) {
+    if (strcmp(report.results[index].category, "scratch-vs-gmp") == 0) {
+      scratch_rows++;
+      CHECK(report.results[index].parity_verified);
+      CHECK(report.results[index].scratch_us > 0);
+      CHECK(report.results[index].gmp_us > 0);
+      CHECK(report.results[index].speed_ratio > 0.0);
+    }
+  }
+  CHECK(scratch_rows >= 14);
+  char *json = xray_benchmark_report_json(&report);
+  CHECK(json != NULL);
+  CHECK(strstr(json, "\"replacementReady\"") != NULL);
+  CHECK(strstr(json, "\"scratchUs\"") != NULL);
+  free(json);
   xray_benchmark_report_clear(&report);
 }
 

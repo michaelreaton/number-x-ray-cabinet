@@ -5,6 +5,14 @@
 #include <string.h>
 #include <time.h>
 
+#ifdef _WIN32
+typedef union XrayWinLargeInteger {
+  long long QuadPart;
+} XrayWinLargeInteger;
+__declspec(dllimport) int __stdcall QueryPerformanceFrequency(XrayWinLargeInteger *frequency);
+__declspec(dllimport) int __stdcall QueryPerformanceCounter(XrayWinLargeInteger *counter);
+#endif
+
 static char *xray_strdup_local(const char *text) {
   size_t length = text ? strlen(text) : 0;
   char *copy = (char *)calloc(length + 1, 1);
@@ -14,7 +22,21 @@ static char *xray_strdup_local(const char *text) {
 }
 
 unsigned long xray_now_ms(void) {
-  return (unsigned long)((clock() * 1000ULL) / CLOCKS_PER_SEC);
+  return (unsigned long)(xray_now_us() / 1000ULL);
+}
+
+unsigned long long xray_now_us(void) {
+#ifdef _WIN32
+  XrayWinLargeInteger frequency;
+  XrayWinLargeInteger counter;
+  QueryPerformanceFrequency(&frequency);
+  QueryPerformanceCounter(&counter);
+  return (unsigned long long)((counter.QuadPart * 1000000LL) / frequency.QuadPart);
+#else
+  struct timespec now;
+  timespec_get(&now, TIME_UTC);
+  return (unsigned long long)now.tv_sec * 1000000ULL + (unsigned long long)(now.tv_nsec / 1000);
+#endif
 }
 
 XrayFactorConfig xray_factor_default_config(void) {

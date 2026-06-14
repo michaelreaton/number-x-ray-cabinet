@@ -6,6 +6,7 @@
 #include <string.h>
 
 #define XRAY_BIGINT_BASE 1000000000U
+#define XRAY_BIGINT_BASE_DIGITS 9U
 
 void xray_bigint_init(XrayScratchBigInt *value) {
   if (!value) return;
@@ -44,6 +45,18 @@ static int set_u32(XrayScratchBigInt *value, uint32_t small) {
   return 1;
 }
 
+int xray_bigint_is_zero(const XrayScratchBigInt *value) {
+  return !value || value->count == 0;
+}
+
+int xray_bigint_copy(XrayScratchBigInt *out, const XrayScratchBigInt *value) {
+  if (!out || !value) return 0;
+  if (!reserve_limbs(out, value->count ? value->count : 1)) return 0;
+  if (value->count) memcpy(out->limbs, value->limbs, sizeof(uint32_t) * value->count);
+  out->count = value->count;
+  return 1;
+}
+
 static int mul_small_inplace(XrayScratchBigInt *value, uint32_t multiplier) {
   if (value->count == 0 || multiplier == 1) return 1;
   if (multiplier == 0) {
@@ -79,12 +92,27 @@ int xray_bigint_set_decimal(XrayScratchBigInt *value, const char *decimal) {
   if (!value || !decimal) return 0;
   value->count = 0;
   int saw_digit = 0;
+  uint32_t chunk = 0;
+  unsigned int chunk_digits = 0;
+  static const uint32_t powers10[] = {
+    1U, 10U, 100U, 1000U, 10000U, 100000U, 1000000U, 10000000U, 100000000U
+  };
   for (const unsigned char *p = (const unsigned char *)decimal; *p; ++p) {
     if (*p == ',' || *p == '_' || isspace(*p)) continue;
     if (!isdigit(*p)) return 0;
     saw_digit = 1;
-    if (!mul_small_inplace(value, 10)) return 0;
-    if (!add_small_inplace(value, (uint32_t)(*p - '0'))) return 0;
+    chunk = chunk * 10U + (uint32_t)(*p - '0');
+    chunk_digits++;
+    if (chunk_digits == XRAY_BIGINT_BASE_DIGITS) {
+      if (!mul_small_inplace(value, XRAY_BIGINT_BASE)) return 0;
+      if (!add_small_inplace(value, chunk)) return 0;
+      chunk = 0;
+      chunk_digits = 0;
+    }
+  }
+  if (chunk_digits) {
+    if (!mul_small_inplace(value, powers10[chunk_digits])) return 0;
+    if (!add_small_inplace(value, chunk)) return 0;
   }
   if (!saw_digit) return 0;
   normalize(value);
@@ -139,6 +167,27 @@ int xray_bigint_add(XrayScratchBigInt *out, const XrayScratchBigInt *left, const
   return 1;
 }
 
+int xray_bigint_sub(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
+  if (!out || !left || !right) return 0;
+  if (xray_bigint_compare(left, right) < 0) return 0;
+  if (!reserve_limbs(out, left->count ? left->count : 1)) return 0;
+  uint64_t borrow = 0;
+  for (size_t index = 0; index < left->count; ++index) {
+    uint64_t lhs = left->limbs[index];
+    uint64_t rhs = borrow + (index < right->count ? right->limbs[index] : 0U);
+    if (lhs < rhs) {
+      out->limbs[index] = (uint32_t)(lhs + XRAY_BIGINT_BASE - rhs);
+      borrow = 1;
+    } else {
+      out->limbs[index] = (uint32_t)(lhs - rhs);
+      borrow = 0;
+    }
+  }
+  out->count = left->count;
+  normalize(out);
+  return borrow == 0;
+}
+
 int xray_bigint_mul(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
   if (!out || !left || !right) return 0;
   if (left->count == 0 || right->count == 0) return set_u32(out, 0);
@@ -166,5 +215,29 @@ int xray_bigint_mul(XrayScratchBigInt *out, const XrayScratchBigInt *left, const
     }
   }
   normalize(out);
+  return 1;
+}
+
+uint32_t xray_bigint_mod_u32(const XrayScratchBigInt *value, uint32_t modulus) {
+  if (!value || modulus == 0) return 0;
+  uint64_t remainder = 0;
+  for (size_t index = value->count; index-- > 0;) {
+    remainder = (remainder * XRAY_BIGINT_BASE + value->limbs[index]) % modulus;
+  }
+  return (uint32_t)remainder;
+}
+
+int xray_bigint_divmod_u32(XrayScratchBigInt *quotient, uint32_t *remainder, const XrayScratchBigInt *value, uint32_t divisor) {
+  if (!quotient || !value || divisor == 0) return 0;
+  if (!reserve_limbs(quotient, value->count ? value->count : 1)) return 0;
+  uint64_t rem = 0;
+  for (size_t index = value->count; index-- > 0;) {
+    uint64_t current = rem * XRAY_BIGINT_BASE + value->limbs[index];
+    quotient->limbs[index] = (uint32_t)(current / divisor);
+    rem = current % divisor;
+  }
+  quotient->count = value->count;
+  normalize(quotient);
+  if (remainder) *remainder = (uint32_t)rem;
   return 1;
 }

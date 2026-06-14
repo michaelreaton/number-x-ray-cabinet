@@ -21,9 +21,14 @@ void xray_bigint_init(XrayScratchBigInt *value);
 void xray_bigint_clear(XrayScratchBigInt *value);
 int xray_bigint_set_decimal(XrayScratchBigInt *value, const char *decimal);
 char *xray_bigint_get_decimal(const XrayScratchBigInt *value);
+int xray_bigint_is_zero(const XrayScratchBigInt *value);
+int xray_bigint_copy(XrayScratchBigInt *out, const XrayScratchBigInt *value);
 int xray_bigint_add(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right);
+int xray_bigint_sub(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right);
 int xray_bigint_mul(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right);
 int xray_bigint_compare(const XrayScratchBigInt *left, const XrayScratchBigInt *right);
+uint32_t xray_bigint_mod_u32(const XrayScratchBigInt *value, uint32_t modulus);
+int xray_bigint_divmod_u32(XrayScratchBigInt *quotient, uint32_t *remainder, const XrayScratchBigInt *value, uint32_t divisor);
 
 typedef struct XrayFactorConfig {
   unsigned long trial_limit;
@@ -118,10 +123,18 @@ typedef struct XrayCyclotomicReport {
 
 typedef struct XrayBenchmarkResult {
   char name[64];
+  char category[32];
+  char operation[32];
   char status[24];
+  size_t digits;
+  unsigned long long scratch_us;
+  unsigned long long gmp_us;
+  double speed_ratio;
+  int parity_verified;
+  int replacement_ready;
   unsigned long elapsed_ms;
   int passed;
-  char detail[192];
+  char detail[256];
 } XrayBenchmarkResult;
 
 typedef struct XrayBenchmarkReport {
@@ -185,6 +198,7 @@ int xray_evaluate_expression(const char *raw, mpz_t out, XrayExpressionResult *r
 void xray_expression_result_clear(XrayExpressionResult *result);
 char *xray_preview_decimal(const mpz_t value, size_t max_chars);
 unsigned long xray_now_ms(void);
+unsigned long long xray_now_us(void);
 
 int xray_is_probable_prime(const mpz_t value, int rounds);
 int xray_integer_nth_root(mpz_t root, const mpz_t value, unsigned long n);
