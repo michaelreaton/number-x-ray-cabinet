@@ -81,8 +81,13 @@ static int add_small_inplace(XrayScratchBigInt *value, uint32_t addend) {
   while (carry) {
     if (index == value->count) value->limbs[value->count++] = 0;
     uint64_t sum = (uint64_t)value->limbs[index] + carry;
-    value->limbs[index] = (uint32_t)(sum % XRAY_BIGINT_BASE);
-    carry = sum / XRAY_BIGINT_BASE;
+    if (sum >= XRAY_BIGINT_BASE) {
+      value->limbs[index] = (uint32_t)(sum - XRAY_BIGINT_BASE);
+      carry = 1;
+    } else {
+      value->limbs[index] = (uint32_t)sum;
+      carry = 0;
+    }
     index++;
   }
   return 1;
@@ -158,8 +163,13 @@ int xray_bigint_add(XrayScratchBigInt *out, const XrayScratchBigInt *left, const
     uint64_t sum = carry;
     if (index < left->count) sum += left->limbs[index];
     if (index < right->count) sum += right->limbs[index];
-    out->limbs[index] = (uint32_t)(sum % XRAY_BIGINT_BASE);
-    carry = sum / XRAY_BIGINT_BASE;
+    if (sum >= XRAY_BIGINT_BASE) {
+      out->limbs[index] = (uint32_t)(sum - XRAY_BIGINT_BASE);
+      carry = 1;
+    } else {
+      out->limbs[index] = (uint32_t)sum;
+      carry = 0;
+    }
   }
   out->count = max_count;
   if (carry) out->limbs[out->count++] = (uint32_t)carry;
