@@ -94,10 +94,12 @@ static void append_factor_json(JsonBuffer *buffer, const XrayFactorReport *repor
     report->timed_out ? "true" : "false",
     report->cancelled ? "true" : "false",
     report->elapsed_ms);
-  jb_printf(buffer, ",\"config\":{\"trialLimit\":%lu,\"fermatIterations\":%lu,\"rhoIterations\":%lu,\"maxPasses\":%lu,\"timeBudgetMs\":%lu}",
+  jb_printf(buffer, ",\"config\":{\"trialLimit\":%lu,\"fermatIterations\":%lu,\"rhoIterations\":%lu,\"pm1Bound\":%lu,\"brentIterations\":%lu,\"maxPasses\":%lu,\"timeBudgetMs\":%lu}",
     report->config.trial_limit,
     report->config.fermat_iterations,
     report->config.rho_iterations,
+    report->config.pm1_bound,
+    report->config.brent_iterations,
     report->config.max_passes,
     report->config.time_budget_ms);
   jb_append(buffer, ",\"factors\":[");
@@ -185,6 +187,37 @@ static void append_benchmark_json(JsonBuffer *buffer, const XrayBenchmarkReport 
   jb_append(buffer, "]}");
 }
 
+static void append_expression_json(JsonBuffer *buffer, const XrayExpressionResult *expression) {
+  jb_append(buffer, "\"expression\":{");
+  jb_append(buffer, "\"raw\":"); jb_string(buffer, expression ? expression->raw : NULL);
+  jb_append(buffer, ",\"normalized\":"); jb_string(buffer, expression ? expression->normalized : NULL);
+  jb_append(buffer, ",\"error\":"); jb_string(buffer, expression ? expression->error : NULL);
+  jb_printf(buffer, ",\"ok\":%s,\"digits\":%zu,\"bitLength\":%zu}",
+    expression && expression->ok ? "true" : "false",
+    expression ? expression->digits : 0,
+    expression ? expression->bit_length : 0);
+}
+
+static void append_gnfs_json(JsonBuffer *buffer, const XrayGnfsReport *report) {
+  jb_append(buffer, "\"gnfsReport\":{");
+  jb_append(buffer, "\"input\":"); jb_string(buffer, report ? report->input : NULL);
+  jb_append(buffer, ",\"runDir\":"); jb_string(buffer, report ? report->run_dir : NULL);
+  jb_append(buffer, ",\"status\":"); jb_string(buffer, report ? report->status : "skipped");
+  jb_printf(buffer, ",\"elapsedMs\":%lu,\"stages\":[", report ? report->elapsed_ms : 0);
+  if (report) {
+    for (size_t index = 0; index < report->stage_count; ++index) {
+      if (index) jb_append(buffer, ",");
+      jb_append(buffer, "{");
+      jb_append(buffer, "\"name\":"); jb_string(buffer, report->stages[index].name);
+      jb_append(buffer, ",\"status\":"); jb_string(buffer, report->stages[index].status);
+      jb_append(buffer, ",\"artifact\":"); jb_string(buffer, report->stages[index].artifact);
+      jb_append(buffer, ",\"detail\":"); jb_string(buffer, report->stages[index].detail);
+      jb_printf(buffer, ",\"elapsedMs\":%lu}", report->stages[index].elapsed_ms);
+    }
+  }
+  jb_append(buffer, "]}");
+}
+
 char *xray_factor_report_json(const XrayFactorReport *report) {
   JsonBuffer buffer = {0};
   jb_append(&buffer, "{");
@@ -205,6 +238,33 @@ char *xray_benchmark_report_json(const XrayBenchmarkReport *report) {
   JsonBuffer buffer = {0};
   jb_append(&buffer, "{");
   append_benchmark_json(&buffer, report);
+  jb_append(&buffer, "}");
+  return jb_take(&buffer);
+}
+
+char *xray_workbench_full_report_json(const XrayWorkbenchReport *report) {
+  JsonBuffer buffer = {0};
+  jb_append(&buffer, "{");
+  jb_append(&buffer, "\"app\":\"Number X-Ray Workbench\",");
+  jb_append(&buffer, "\"version\":"); jb_string(&buffer, XRAY_VERSION);
+  jb_append(&buffer, ",\"runDir\":"); jb_string(&buffer, report ? report->run_dir : NULL);
+  jb_append(&buffer, ",\"sourceNotes\":[");
+  jb_string(&buffer, "Built from Payam's MY GFN2 page (https://amathz.com/my_gfn.html): Number X-Ray runs cyclotomic construction backward and labels evidence unless exact verification passes.");
+  jb_append(&buffer, ",");
+  jb_string(&buffer, "GNFS stage-proof artifacts are scaffolding for an in-house implementation; they are not external CADO-NFS execution.");
+  jb_append(&buffer, "],");
+  append_expression_json(&buffer, report ? &report->expression : NULL);
+  jb_append(&buffer, ",");
+  if (report && report->factor.input) append_factor_json(&buffer, &report->factor);
+  else jb_append(&buffer, "\"factorReport\":null");
+  jb_append(&buffer, ",");
+  if (report && report->cyclotomic.input) append_cyclotomic_json(&buffer, &report->cyclotomic);
+  else jb_append(&buffer, "\"cyclotomicReport\":null");
+  jb_append(&buffer, ",");
+  if (report && report->benchmark.result_count) append_benchmark_json(&buffer, &report->benchmark);
+  else jb_append(&buffer, "\"benchmarkReport\":null");
+  jb_append(&buffer, ",");
+  append_gnfs_json(&buffer, report ? &report->gnfs : NULL);
   jb_append(&buffer, "}");
   return jb_take(&buffer);
 }

@@ -89,6 +89,12 @@ unsigned int xray_phi_ui(unsigned int n) {
 }
 
 int xray_cyclotomic_eval_ui(mpz_t out, unsigned int n, const mpz_t base) {
+  if (n >= 2 && (n & (n - 1U)) == 0) {
+    unsigned int exponent = n / 2U;
+    mpz_pow_ui(out, base, exponent);
+    mpz_add_ui(out, out, 1);
+    return 1;
+  }
   Poly poly = {0};
   if (!cyclotomic_poly(&poly, n)) return 0;
   mpz_set_ui(out, 0);

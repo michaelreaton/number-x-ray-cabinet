@@ -41,6 +41,15 @@ If GTK4 development headers are unavailable, CMake skips the `xray_workbench` GU
 
 The app includes Fermat F12, `2^4096 + 1 = Phi_8192(2)`, as a large exact cyclotomic example. It is meant to test discovery, reporting, and UI handling for much larger structured numbers; it must not be reported as factored unless exact factors are found and product verification passes.
 
+## GMP Parity And Performance Bar
+
+GMP/MPIR is the temporary oracle while the from-scratch integer core grows up. Replacing any GMP-backed path requires two gates:
+
+- exact oracle parity against GMP/MPIR for serialization, arithmetic, modular arithmetic, roots, and factor accounting
+- a benchmark record showing the native path matches or outperforms the GMP/MPIR baseline for the operation and operand size being replaced
+
+Until both gates pass, reports and documentation must label the scratch bigint layer as a migration foothold, not as the production solver engine.
+
 ## CLI
 
 ```powershell

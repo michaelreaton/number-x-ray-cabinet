@@ -25,6 +25,67 @@ static void test_parse_messy_input(void) {
   mpz_clear(value);
 }
 
+static void test_exact_expression_parser(void) {
+  mpz_t value, expected;
+  mpz_inits(value, expected, NULL);
+  XrayExpressionResult expression;
+  CHECK(xray_evaluate_expression("2^12 + 1", value, &expression));
+  CHECK(strcmp(expression.normalized, "4097") == 0);
+  CHECK(mpz_cmp_ui(value, 4097) == 0);
+  xray_expression_result_clear(&expression);
+
+  CHECK(xray_evaluate_expression("Phi(8192, 2)", value, &expression));
+  mpz_set_ui(expected, 1);
+  mpz_mul_2exp(expected, expected, 4096);
+  mpz_add_ui(expected, expected, 1);
+  CHECK(mpz_cmp(value, expected) == 0);
+  CHECK(expression.digits > 1200);
+  xray_expression_result_clear(&expression);
+
+  CHECK(xray_evaluate_expression("Fermat(12)", value, &expression));
+  CHECK(mpz_cmp(value, expected) == 0);
+  xray_expression_result_clear(&expression);
+
+  CHECK(!xray_evaluate_expression("10 / 3", value, &expression));
+  CHECK(expression.error != NULL);
+  xray_expression_result_clear(&expression);
+  mpz_clears(value, expected, NULL);
+}
+
+static void test_scratch_bigint_oracle(void) {
+  XrayScratchBigInt a, b, sum, product;
+  xray_bigint_init(&a);
+  xray_bigint_init(&b);
+  xray_bigint_init(&sum);
+  xray_bigint_init(&product);
+  CHECK(xray_bigint_set_decimal(&a, "123456789012345678901234567890"));
+  CHECK(xray_bigint_set_decimal(&b, "98765432109876543210"));
+  CHECK(xray_bigint_add(&sum, &a, &b));
+  CHECK(xray_bigint_mul(&product, &a, &b));
+
+  char *sum_text = xray_bigint_get_decimal(&sum);
+  char *product_text = xray_bigint_get_decimal(&product);
+  mpz_t ga, gb, gsum, gproduct;
+  mpz_inits(ga, gb, gsum, gproduct, NULL);
+  mpz_set_str(ga, "123456789012345678901234567890", 10);
+  mpz_set_str(gb, "98765432109876543210", 10);
+  mpz_add(gsum, ga, gb);
+  mpz_mul(gproduct, ga, gb);
+  char *oracle_sum = mpz_get_str(NULL, 10, gsum);
+  char *oracle_product = mpz_get_str(NULL, 10, gproduct);
+  CHECK(strcmp(sum_text, oracle_sum) == 0);
+  CHECK(strcmp(product_text, oracle_product) == 0);
+  free(sum_text);
+  free(product_text);
+  free(oracle_sum);
+  free(oracle_product);
+  mpz_clears(ga, gb, gsum, gproduct, NULL);
+  xray_bigint_clear(&a);
+  xray_bigint_clear(&b);
+  xray_bigint_clear(&sum);
+  xray_bigint_clear(&product);
+}
+
 static void test_ambiguous_input_rejected(void) {
   mpz_t value;
   mpz_init(value);
@@ -52,6 +113,8 @@ static void test_factor_solver_unresolved_budget(void) {
   config.trial_limit = 50;
   config.fermat_iterations = 0;
   config.rho_iterations = 0;
+  config.pm1_bound = 0;
+  config.brent_iterations = 0;
   config.time_budget_ms = 1000;
   XrayFactorReport report;
   CHECK(xray_factor_solve("10403", &config, &report));
@@ -78,6 +141,23 @@ static void test_rho_and_prime_power(void) {
   xray_factor_report_clear(&power);
 }
 
+static void test_stronger_factor_methods(void) {
+  mpz_t value, factor, cofactor;
+  mpz_inits(value, factor, cofactor, NULL);
+  mpz_set_ui(value, 8051);
+  CHECK(xray_brent_rho_factor(factor, cofactor, value, 5000));
+  CHECK(mpz_cmp_ui(factor, 1) > 0);
+  CHECK(mpz_cmp_ui(cofactor, 1) > 0);
+  mpz_mul(factor, factor, cofactor);
+  CHECK(mpz_cmp(factor, value) == 0);
+
+  mpz_set_ui(value, 8051);
+  CHECK(xray_pollard_pm1_factor(factor, cofactor, value, 32));
+  mpz_mul(factor, factor, cofactor);
+  CHECK(mpz_cmp(factor, value) == 0);
+  mpz_clears(value, factor, cofactor, NULL);
+}
+
 static void test_cyclotomic_known_values(void) {
   mpz_t base, value, expected;
   mpz_inits(base, value, expected, NULL);
@@ -95,6 +175,22 @@ static void test_cyclotomic_known_values(void) {
   CHECK(xray_cyclotomic_eval_ui(value, 8, base));
   CHECK(mpz_cmp(value, expected) == 0);
   mpz_clears(base, value, expected, NULL);
+}
+
+static void test_workspace_and_gnfs_artifacts(void) {
+  XrayRunConfig config = xray_run_default_config();
+  snprintf(config.workspace_root, sizeof(config.workspace_root), "native-test-runs");
+  config.enable_benchmark = 0;
+  XrayWorkbenchReport report;
+  CHECK(xray_workbench_run("2^12 + 1", &config, &report));
+  CHECK(report.expression.ok);
+  CHECK(strcmp(report.expression.normalized, "4097") == 0);
+  CHECK(report.run_dir != NULL);
+  CHECK(report.json != NULL);
+  CHECK(report.gnfs.stage_count == 7);
+  CHECK(strstr(report.json, "\"expression\"") != NULL);
+  CHECK(strstr(report.json, "\"gnfsReport\"") != NULL);
+  xray_workbench_report_clear(&report);
 }
 
 static void test_cyclotomic_scan_exact(void) {
@@ -135,12 +231,16 @@ static void test_benchmarks(void) {
 
 int main(void) {
   test_parse_messy_input();
+  test_exact_expression_parser();
+  test_scratch_bigint_oracle();
   test_ambiguous_input_rejected();
   test_factor_solver_exact();
   test_factor_solver_unresolved_budget();
   test_rho_and_prime_power();
+  test_stronger_factor_methods();
   test_cyclotomic_known_values();
   test_cyclotomic_scan_exact();
+  test_workspace_and_gnfs_artifacts();
   test_large_nonhit_does_not_false_solve();
   test_benchmarks();
   puts("native xray tests passed");

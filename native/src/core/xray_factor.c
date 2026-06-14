@@ -1,6 +1,5 @@
 #include "xray_workbench.h"
 
-#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,10 +13,6 @@ static char *xray_strdup_local(const char *text) {
   return copy;
 }
 
-static void set_error(char **error_message, const char *message) {
-  if (error_message) *error_message = xray_strdup_local(message);
-}
-
 unsigned long xray_now_ms(void) {
   return (unsigned long)((clock() * 1000ULL) / CLOCKS_PER_SEC);
 }
@@ -27,68 +22,12 @@ XrayFactorConfig xray_factor_default_config(void) {
   config.trial_limit = 50000;
   config.fermat_iterations = 2000;
   config.rho_iterations = 1200;
+  config.pm1_bound = 10000;
+  config.brent_iterations = 8000;
   config.max_passes = 96;
   config.time_budget_ms = 5000;
   config.cancel_flag = NULL;
   return config;
-}
-
-int xray_parse_integer(const char *raw, mpz_t out, char **normalized, char **error_message) {
-  if (normalized) *normalized = NULL;
-  if (error_message) *error_message = NULL;
-  if (!raw) {
-    set_error(error_message, "Input is empty.");
-    return 0;
-  }
-
-  size_t raw_len = strlen(raw);
-  char *digits = (char *)calloc(raw_len + 1, 1);
-  if (!digits) {
-    set_error(error_message, "Out of memory while parsing input.");
-    return 0;
-  }
-
-  size_t used = 0;
-  int saw_digit = 0;
-  for (size_t index = 0; index < raw_len; ++index) {
-    unsigned char ch = (unsigned char)raw[index];
-    if (isdigit(ch)) {
-      digits[used++] = (char)ch;
-      saw_digit = 1;
-      continue;
-    }
-    if (ch == '-' && !saw_digit) {
-      free(digits);
-      set_error(error_message, "Input must be a positive integer.");
-      return 0;
-    }
-    if (ch == '.' || ch == 'e' || ch == 'E') {
-      free(digits);
-      set_error(error_message, "Decimal or exponent notation is ambiguous for exact integer scans.");
-      return 0;
-    }
-  }
-
-  while (used > 1 && digits[0] == '0') {
-    memmove(digits, digits + 1, used);
-    used--;
-  }
-
-  if (!used) {
-    free(digits);
-    set_error(error_message, "No decimal digits were found.");
-    return 0;
-  }
-
-  if (mpz_set_str(out, digits, 10) != 0 || mpz_sgn(out) <= 0) {
-    free(digits);
-    set_error(error_message, "Input must be a positive integer.");
-    return 0;
-  }
-
-  if (normalized) *normalized = digits;
-  else free(digits);
-  return 1;
 }
 
 char *xray_preview_decimal(const mpz_t value, size_t max_chars) {
@@ -245,6 +184,95 @@ int xray_pollard_rho_factor(mpz_t factor, mpz_t cofactor, const mpz_t value, uns
   }
 
   mpz_clears(x, y, c, d, diff, NULL);
+  return 0;
+}
+
+int xray_pollard_pm1_factor(mpz_t factor, mpz_t cofactor, const mpz_t value, unsigned long bound) {
+  if (bound < 2 || mpz_cmp_ui(value, 4) < 0 || mpz_even_p(value)) return 0;
+  mpz_t a, d, exponent;
+  mpz_inits(a, d, exponent, NULL);
+  mpz_set_ui(a, 2);
+  for (unsigned long prime = 2; prime <= bound; ++prime) {
+    if (!is_prime_ulong(prime)) continue;
+    unsigned long power = prime;
+    while (power <= bound / prime) power *= prime;
+    mpz_set_ui(exponent, power);
+    mpz_powm(a, a, exponent, value);
+  }
+  mpz_sub_ui(d, a, 1);
+  mpz_gcd(d, d, value);
+  if (mpz_cmp_ui(d, 1) > 0 && mpz_cmp(d, value) < 0) {
+    mpz_set(factor, d);
+    mpz_tdiv_q(cofactor, value, factor);
+    mpz_clears(a, d, exponent, NULL);
+    return 1;
+  }
+  mpz_clears(a, d, exponent, NULL);
+  return 0;
+}
+
+int xray_brent_rho_factor(mpz_t factor, mpz_t cofactor, const mpz_t value, unsigned long iterations) {
+  if (iterations == 0 || mpz_cmp_ui(value, 4) < 0) return 0;
+  if (mpz_even_p(value)) {
+    mpz_set_ui(factor, 2);
+    mpz_tdiv_q(cofactor, value, factor);
+    return 1;
+  }
+
+  mpz_t y, c, m, g, r, q, x, ys, diff;
+  mpz_inits(y, c, m, g, r, q, x, ys, diff, NULL);
+  const unsigned long seeds[] = {2, 3, 5, 7, 11, 13};
+  const unsigned long constants[] = {1, 3, 5, 7, 11};
+
+  for (size_t si = 0; si < sizeof(seeds) / sizeof(seeds[0]); ++si) {
+    for (size_t ci = 0; ci < sizeof(constants) / sizeof(constants[0]); ++ci) {
+      mpz_set_ui(y, seeds[si]);
+      mpz_set_ui(c, constants[ci]);
+      mpz_set_ui(m, 64);
+      mpz_set_ui(g, 1);
+      mpz_set_ui(r, 1);
+      unsigned long used = 0;
+      while (mpz_cmp_ui(g, 1) == 0 && used < iterations) {
+        mpz_set(x, y);
+        unsigned long r_ui = mpz_fits_ulong_p(r) ? (unsigned long)mpz_get_ui(r) : iterations;
+        for (unsigned long i = 0; i < r_ui && used < iterations; ++i, ++used) rho_step(y, c, value);
+        unsigned long k = 0;
+        while (k < r_ui && mpz_cmp_ui(g, 1) == 0 && used < iterations) {
+          mpz_set(ys, y);
+          unsigned long chunk = r_ui - k;
+          unsigned long m_ui = (unsigned long)mpz_get_ui(m);
+          if (chunk > m_ui) chunk = m_ui;
+          mpz_set_ui(q, 1);
+          for (unsigned long i = 0; i < chunk && used < iterations; ++i, ++used) {
+            rho_step(y, c, value);
+            mpz_sub(diff, x, y);
+            mpz_abs(diff, diff);
+            mpz_mul(q, q, diff);
+            mpz_mod(q, q, value);
+          }
+          mpz_gcd(g, q, value);
+          k += chunk;
+        }
+        mpz_mul_ui(r, r, 2);
+      }
+      if (mpz_cmp(g, value) == 0) {
+        do {
+          rho_step(ys, c, value);
+          mpz_sub(diff, x, ys);
+          mpz_abs(diff, diff);
+          mpz_gcd(g, diff, value);
+        } while (mpz_cmp_ui(g, 1) == 0 && used++ < iterations);
+      }
+      if (mpz_cmp_ui(g, 1) > 0 && mpz_cmp(g, value) < 0) {
+        mpz_set(factor, g);
+        mpz_tdiv_q(cofactor, value, factor);
+        mpz_clears(y, c, m, g, r, q, x, ys, diff, NULL);
+        return 1;
+      }
+    }
+  }
+
+  mpz_clears(y, c, m, g, r, q, x, ys, diff, NULL);
   return 0;
 }
 
@@ -426,6 +454,24 @@ int xray_factor_solve(const char *raw_input, const XrayFactorConfig *config_inpu
       continue;
     }
     append_step(report, "fermat", config.fermat_iterations ? "miss" : "disabled", current, "no square offset inside configured budget", started_at);
+
+    if (xray_pollard_pm1_factor(factor, cofactor, current, config.pm1_bound)) {
+      append_step(report, "pollard-p-1", "factor-found", current, "p-1 smoothness yielded factor", started_at);
+      queue_push(&queue, &queue_count, &queue_capacity, cofactor);
+      queue_push(&queue, &queue_count, &queue_capacity, factor);
+      mpz_clears(factor, cofactor, current, NULL);
+      continue;
+    }
+    append_step(report, "pollard-p-1", config.pm1_bound ? "miss" : "disabled", current, "no p-1 factor inside configured bound", started_at);
+
+    if (xray_brent_rho_factor(factor, cofactor, current, config.brent_iterations)) {
+      append_step(report, "brent-rho", "factor-found", current, "Brent cycle search yielded factor", started_at);
+      queue_push(&queue, &queue_count, &queue_capacity, cofactor);
+      queue_push(&queue, &queue_count, &queue_capacity, factor);
+      mpz_clears(factor, cofactor, current, NULL);
+      continue;
+    }
+    append_step(report, "brent-rho", config.brent_iterations ? "miss" : "disabled", current, "no factor inside Brent Rho budget", started_at);
 
     if (xray_pollard_rho_factor(factor, cofactor, current, config.rho_iterations)) {
       append_step(report, "pollard-rho", "factor-found", current, "bounded rho walk yielded factor", started_at);

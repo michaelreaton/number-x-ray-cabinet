@@ -30,10 +30,14 @@ if(NOT XRAY_GMP_INCLUDE_DIR OR NOT XRAY_GMP_LIBRARY)
 endif()
 
 add_library(xray_core STATIC
+  src/core/xray_expression.c
+  src/core/xray_scratch_bigint.c
   src/core/xray_factor.c
   src/core/xray_cyclotomic.c
   src/core/xray_report.c
   src/core/xray_benchmark.c
+  src/core/xray_gnfs.c
+  src/core/xray_workspace.c
 )
 
 target_include_directories(xray_core

@@ -2,6 +2,7 @@
 #define XRAY_WORKBENCH_H
 
 #include <stddef.h>
+#include <stdint.h>
 #include <gmp.h>
 
 #ifdef __cplusplus
@@ -10,14 +11,39 @@ extern "C" {
 
 #define XRAY_VERSION "0.1.0-native-proof"
 
+typedef struct XrayScratchBigInt {
+  uint32_t *limbs;
+  size_t count;
+  size_t capacity;
+} XrayScratchBigInt;
+
+void xray_bigint_init(XrayScratchBigInt *value);
+void xray_bigint_clear(XrayScratchBigInt *value);
+int xray_bigint_set_decimal(XrayScratchBigInt *value, const char *decimal);
+char *xray_bigint_get_decimal(const XrayScratchBigInt *value);
+int xray_bigint_add(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right);
+int xray_bigint_mul(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right);
+int xray_bigint_compare(const XrayScratchBigInt *left, const XrayScratchBigInt *right);
+
 typedef struct XrayFactorConfig {
   unsigned long trial_limit;
   unsigned long fermat_iterations;
   unsigned long rho_iterations;
+  unsigned long pm1_bound;
+  unsigned long brent_iterations;
   unsigned long max_passes;
   unsigned long time_budget_ms;
   const volatile int *cancel_flag;
 } XrayFactorConfig;
+
+typedef struct XrayExpressionResult {
+  char *raw;
+  char *normalized;
+  char *error;
+  size_t digits;
+  size_t bit_length;
+  int ok;
+} XrayExpressionResult;
 
 typedef struct XrayFactorRecord {
   char *value;
@@ -105,17 +131,58 @@ typedef struct XrayBenchmarkReport {
   unsigned long elapsed_ms;
 } XrayBenchmarkReport;
 
+typedef struct XrayGnfsStage {
+  char name[48];
+  char status[32];
+  char artifact[192];
+  char detail[240];
+  unsigned long elapsed_ms;
+} XrayGnfsStage;
+
+typedef struct XrayGnfsReport {
+  char *input;
+  char *run_dir;
+  char status[32];
+  XrayGnfsStage *stages;
+  size_t stage_count;
+  unsigned long elapsed_ms;
+} XrayGnfsReport;
+
+typedef struct XrayRunConfig {
+  XrayFactorConfig factor;
+  XrayCyclotomicConfig cyclotomic;
+  int enable_factor;
+  int enable_cyclotomic;
+  int enable_benchmark;
+  int enable_gnfs_stage_proof;
+  unsigned int threads;
+  unsigned long memory_mb;
+  char scan_depth[32];
+  char proof_strategy[64];
+  char primality_mode[64];
+  char workspace_root[260];
+  const volatile int *cancel_flag;
+} XrayRunConfig;
+
 typedef struct XrayWorkbenchReport {
+  XrayExpressionResult expression;
   XrayFactorReport factor;
   XrayCyclotomicReport cyclotomic;
   XrayBenchmarkReport benchmark;
+  XrayGnfsReport gnfs;
+  char *run_dir;
+  char *json;
+  char *events_jsonl;
   char *source_notes;
 } XrayWorkbenchReport;
 
 XrayFactorConfig xray_factor_default_config(void);
 XrayCyclotomicConfig xray_cyclotomic_default_config(void);
+XrayRunConfig xray_run_default_config(void);
 
 int xray_parse_integer(const char *raw, mpz_t out, char **normalized, char **error_message);
+int xray_evaluate_expression(const char *raw, mpz_t out, XrayExpressionResult *result);
+void xray_expression_result_clear(XrayExpressionResult *result);
 char *xray_preview_decimal(const mpz_t value, size_t max_chars);
 unsigned long xray_now_ms(void);
 
@@ -124,6 +191,8 @@ int xray_integer_nth_root(mpz_t root, const mpz_t value, unsigned long n);
 int xray_small_factor(mpz_t factor, const mpz_t value, unsigned long limit);
 int xray_fermat_factor(mpz_t factor, mpz_t cofactor, const mpz_t value, unsigned long iterations);
 int xray_pollard_rho_factor(mpz_t factor, mpz_t cofactor, const mpz_t value, unsigned long iterations);
+int xray_brent_rho_factor(mpz_t factor, mpz_t cofactor, const mpz_t value, unsigned long iterations);
+int xray_pollard_pm1_factor(mpz_t factor, mpz_t cofactor, const mpz_t value, unsigned long bound);
 int xray_perfect_power_factor(mpz_t base, unsigned long *exponent, const mpz_t value, unsigned long max_exponent);
 
 int xray_factor_solve(const char *raw_input, const XrayFactorConfig *config, XrayFactorReport *report);
@@ -140,6 +209,12 @@ int xray_benchmark_run(XrayBenchmarkReport *report);
 void xray_benchmark_report_clear(XrayBenchmarkReport *report);
 char *xray_benchmark_report_json(const XrayBenchmarkReport *report);
 
+int xray_gnfs_stage_proof(const char *normalized_input, const char *run_dir, XrayGnfsReport *report);
+void xray_gnfs_report_clear(XrayGnfsReport *report);
+
+int xray_workbench_run(const char *raw_input, const XrayRunConfig *config, XrayWorkbenchReport *report);
+void xray_workbench_report_clear(XrayWorkbenchReport *report);
+char *xray_workbench_full_report_json(const XrayWorkbenchReport *report);
 char *xray_workbench_report_json(const XrayFactorReport *factor, const XrayCyclotomicReport *cyclotomic, const XrayBenchmarkReport *benchmark);
 
 #ifdef __cplusplus

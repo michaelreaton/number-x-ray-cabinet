@@ -53,6 +53,64 @@ static void run_cyclo_case(XrayBenchmarkReport *report, const char *name, unsign
   append_result(report, &result);
 }
 
+static void run_scratch_bigint_gate(XrayBenchmarkReport *report) {
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "scratch bigint GMP gate");
+
+  XrayScratchBigInt a, b, sum, product;
+  xray_bigint_init(&a);
+  xray_bigint_init(&b);
+  xray_bigint_init(&sum);
+  xray_bigint_init(&product);
+  mpz_t ga, gb, gsum, gproduct;
+  mpz_inits(ga, gb, gsum, gproduct, NULL);
+
+  int ok = xray_bigint_set_decimal(&a, "1234567890123456789012345678901234567890") &&
+    xray_bigint_set_decimal(&b, "987654321098765432109876543210") &&
+    mpz_set_str(ga, "1234567890123456789012345678901234567890", 10) == 0 &&
+    mpz_set_str(gb, "987654321098765432109876543210", 10) == 0;
+
+  unsigned long scratch_started = xray_now_ms();
+  for (unsigned int index = 0; ok && index < 200; ++index) {
+    ok = xray_bigint_add(&sum, &a, &b) && xray_bigint_mul(&product, &a, &b);
+  }
+  unsigned long scratch_ms = xray_now_ms() - scratch_started;
+
+  unsigned long gmp_started = xray_now_ms();
+  for (unsigned int index = 0; index < 200; ++index) {
+    mpz_add(gsum, ga, gb);
+    mpz_mul(gproduct, ga, gb);
+  }
+  unsigned long gmp_ms = xray_now_ms() - gmp_started;
+
+  char *sum_text = xray_bigint_get_decimal(&sum);
+  char *product_text = xray_bigint_get_decimal(&product);
+  char *oracle_sum = mpz_get_str(NULL, 10, gsum);
+  char *oracle_product = mpz_get_str(NULL, 10, gproduct);
+  int parity = ok && sum_text && product_text && oracle_sum && oracle_product &&
+    strcmp(sum_text, oracle_sum) == 0 && strcmp(product_text, oracle_product) == 0;
+
+  result.elapsed_ms = scratch_ms + gmp_ms;
+  result.passed = parity;
+  snprintf(result.status, sizeof(result.status), "%s", parity ? "parity" : "failed");
+  snprintf(result.detail, sizeof(result.detail),
+    "scratchMs=%lu gmpMs=%lu gate=match-or-outperform-before-replacement",
+    scratch_ms,
+    gmp_ms);
+
+  free(sum_text);
+  free(product_text);
+  free(oracle_sum);
+  free(oracle_product);
+  mpz_clears(ga, gb, gsum, gproduct, NULL);
+  xray_bigint_clear(&a);
+  xray_bigint_clear(&b);
+  xray_bigint_clear(&sum);
+  xray_bigint_clear(&product);
+  append_result(report, &result);
+}
+
 int xray_benchmark_run(XrayBenchmarkReport *report) {
   if (!report) return 0;
   memset(report, 0, sizeof(*report));
@@ -67,6 +125,7 @@ int xray_benchmark_run(XrayBenchmarkReport *report) {
   run_cyclo_case(report, "Phi_3(10)", 3, "10", "111");
   run_cyclo_case(report, "Phi_5(2)", 5, "2", "31");
   run_cyclo_case(report, "Phi_8(2)", 8, "2", "17");
+  run_scratch_bigint_gate(report);
 
   report->elapsed_ms = xray_now_ms() - started;
   return 1;

@@ -19,6 +19,12 @@ typedef struct AppState {
   GtkWidget *run_button;
   GtkWidget *cancel_button;
   GtkWidget *language_button;
+  GtkWidget *scan_depth_combo;
+  GtkWidget *proof_strategy_combo;
+  GtkWidget *factor_bits_combo;
+  GtkWidget *primality_combo;
+  GtkWidget *threads_combo;
+  GtkWidget *memory_combo;
   GtkWidget *toy_button;
   GtkWidget *challenge_button;
   GtkWidget *fermat12_button;
@@ -40,17 +46,26 @@ typedef struct RunResult {
   char proof_status[128];
   char cyclo_status[128];
   char bench_status[128];
-  char log_line[384];
+  char log_line[2048];
 } RunResult;
 
 typedef struct RunJob {
   AppState *app;
   char *input;
+  XrayRunConfig config;
 } RunJob;
 
 static const char *payam_paper_url = "https://amathz.com/my_gfn.html";
 static const char *rsa260_value =
   "22112825529529666435281085255026230927612089502470015394413748319128822941402001986512729726569746599085900330031400051170742204560859276357953757185954298838958709229238491006703034124620545784566413664540684214361293017694020846391065875914794251435144458199";
+
+static char *gui_strdup(const char *text) {
+  size_t length = text ? strlen(text) : 0;
+  char *copy = (char *)calloc(length + 1, 1);
+  if (!copy) return NULL;
+  if (length) memcpy(copy, text, length);
+  return copy;
+}
 
 static const char *workbench_css =
   "window { background: #060809; color: #d8dedf; font-family: Segoe UI, Inter, sans-serif; }"
@@ -260,6 +275,30 @@ static GtkWidget *field_face(const char *text) {
   GtkWidget *label = label_with_width(text, "select-face", 36, FALSE);
   gtk_widget_set_hexpand(label, TRUE);
   return label;
+}
+
+static GtkWidget *combo_face(const char **items, int active_index) {
+  GtkWidget *combo = gtk_combo_box_text_new();
+  for (int index = 0; items[index]; ++index) {
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(combo), items[index]);
+  }
+  gtk_combo_box_set_active(GTK_COMBO_BOX(combo), active_index);
+  gtk_widget_add_css_class(combo, "select-face");
+  gtk_widget_set_hexpand(combo, TRUE);
+  return combo;
+}
+
+static GtkWidget *combo_row(const char *label, const char **items, int active_index, GtkWidget **combo_out) {
+  GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+  gtk_widget_add_css_class(row, "control-row");
+  GtkWidget *name = label_with_width(label, "field-label", 20, FALSE);
+  gtk_widget_set_size_request(name, 138, -1);
+  gtk_box_append(GTK_BOX(row), name);
+  GtkWidget *combo = combo_face(items, active_index);
+  gtk_box_append(GTK_BOX(row), combo);
+  gtk_box_append(GTK_BOX(row), label_with_width("?", "micro", 2, FALSE));
+  if (combo_out) *combo_out = combo;
+  return row;
 }
 
 static GtkWidget *control_row(const char *label, const char *value, int help) {
@@ -607,6 +646,78 @@ static void set_language(AppState *app) {
   }
 }
 
+static char *combo_text(GtkWidget *combo, const char *fallback) {
+  if (!combo) return g_strdup(fallback);
+  char *text = gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(combo));
+  if (!text) return g_strdup(fallback);
+  return text;
+}
+
+static XrayRunConfig config_from_ui(AppState *app) {
+  XrayRunConfig config = xray_run_default_config();
+  config.cancel_flag = &app->cancel_requested;
+  char *depth = combo_text(app->scan_depth_combo, "Deep");
+  char *strategy = combo_text(app->proof_strategy_combo, "Deterministic");
+  char *factor_bits = combo_text(app->factor_bits_combo, "128");
+  char *primality = combo_text(app->primality_combo, "Probable-prime proof");
+  char *threads = combo_text(app->threads_combo, "Auto (12)");
+  char *memory = combo_text(app->memory_combo, "16 GB");
+
+  snprintf(config.scan_depth, sizeof(config.scan_depth), "%s", depth);
+  snprintf(config.proof_strategy, sizeof(config.proof_strategy), "%s", strategy);
+  snprintf(config.primality_mode, sizeof(config.primality_mode), "%s", primality);
+  config.threads = strstr(threads, "16") ? 16U : strstr(threads, "8") ? 8U : strstr(threads, "4") ? 4U : 12U;
+  config.memory_mb = strstr(memory, "32") ? 32768UL : strstr(memory, "8") ? 8192UL : 16384UL;
+
+  if (strstr(depth, "Standard")) {
+    config.cyclotomic.n_max = 128;
+    config.cyclotomic.time_budget_ms = 3000;
+    config.enable_gnfs_stage_proof = 0;
+  } else if (strstr(depth, "GNFS")) {
+    config.cyclotomic.n_max = 8192;
+    config.cyclotomic.time_budget_ms = 6000;
+    config.enable_gnfs_stage_proof = 1;
+  } else {
+    config.cyclotomic.n_max = 512;
+    config.cyclotomic.time_budget_ms = 5000;
+    config.enable_gnfs_stage_proof = 1;
+  }
+
+  if (strstr(strategy, "Aggressive")) {
+    config.factor.trial_limit = 250000;
+    config.factor.fermat_iterations = 10000;
+    config.factor.rho_iterations = 10000;
+    config.factor.brent_iterations = 50000;
+    config.factor.pm1_bound = 50000;
+    config.factor.time_budget_ms = 12000;
+  } else if (strstr(strategy, "GNFS")) {
+    config.factor.trial_limit = 50000;
+    config.factor.fermat_iterations = 2000;
+    config.factor.rho_iterations = 1200;
+    config.factor.brent_iterations = 8000;
+    config.factor.pm1_bound = 10000;
+    config.factor.time_budget_ms = 5000;
+    config.enable_gnfs_stage_proof = 1;
+  }
+
+  if (strstr(factor_bits, "64")) {
+    config.factor.trial_limit = 25000;
+    config.factor.brent_iterations /= 2;
+  } else if (strstr(factor_bits, "256")) {
+    config.factor.trial_limit = 500000;
+    config.factor.brent_iterations *= 2;
+    config.factor.pm1_bound *= 2;
+  }
+
+  g_free(depth);
+  g_free(strategy);
+  g_free(factor_bits);
+  g_free(primality);
+  g_free(threads);
+  g_free(memory);
+  return config;
+}
+
 static gboolean finish_run(gpointer data) {
   RunResult *result = (RunResult *)data;
   AppState *app = result->app;
@@ -626,46 +737,51 @@ static gboolean finish_run(gpointer data) {
 
 static gpointer run_worker(gpointer data) {
   RunJob *job = (RunJob *)data;
-  AppState *app = job->app;
-  XrayFactorConfig factor_config = xray_factor_default_config();
-  factor_config.cancel_flag = &app->cancel_requested;
-  XrayCyclotomicConfig cyclo_config = xray_cyclotomic_default_config();
-
-  XrayFactorReport factor;
-  XrayCyclotomicReport cyclotomic;
-  XrayBenchmarkReport benchmark;
-  xray_factor_solve(job->input, &factor_config, &factor);
-  xray_cyclotomic_scan(job->input, &cyclo_config, &cyclotomic);
-  xray_benchmark_run(&benchmark);
-  char *json = xray_workbench_report_json(&factor, &cyclotomic, &benchmark);
+  XrayWorkbenchReport report;
+  xray_workbench_run(job->input, &job->config, &report);
 
   RunResult *result = (RunResult *)calloc(1, sizeof(*result));
-  result->app = app;
-  result->json = json;
-  snprintf(result->factor_status, sizeof(result->factor_status), "Factor Solver: %s", factor.status);
+  result->app = job->app;
+  result->json = gui_strdup(report.json ? report.json : "{}");
+  snprintf(result->factor_status, sizeof(result->factor_status), "Factor Solver: %s", report.factor.status[0] ? report.factor.status : "invalid");
   snprintf(result->proof_status, sizeof(result->proof_status), "Product proof: %s | factors %zu | unresolved %zu | %lu ms",
-    factor.product_verified ? "verified" : "not verified",
-    factor.factor_count,
-    factor.unresolved_count,
-    factor.elapsed_ms);
+    report.factor.product_verified ? "verified" : "not verified",
+    report.factor.factor_count,
+    report.factor.unresolved_count,
+    report.factor.elapsed_ms);
   snprintf(result->cyclo_status, sizeof(result->cyclo_status), "Scanned %zu candidates | exact %zu | %lu ms",
-    cyclotomic.scanned,
-    cyclotomic.exact_matches,
-    cyclotomic.elapsed_ms);
-  snprintf(result->bench_status, sizeof(result->bench_status), "%zu/%zu passed | %lu ms",
-    benchmark.passed_count,
-    benchmark.result_count,
-    benchmark.elapsed_ms);
+    report.cyclotomic.scanned,
+    report.cyclotomic.exact_matches,
+    report.cyclotomic.elapsed_ms);
+  snprintf(result->bench_status, sizeof(result->bench_status), "Bench %zu/%zu | GNFS %zu stages",
+    report.benchmark.passed_count,
+    report.benchmark.result_count,
+    report.gnfs.stage_count);
   snprintf(result->log_line, sizeof(result->log_line),
-    "Run complete. status=%s | accounting=%s | productVerified=%s | cyclotomicExact=%zu | large composites remain unresolved unless exact factors are product-verified.",
-    factor.status,
-    factor.accounting_verified ? "verified" : "failed",
-    factor.product_verified ? "true" : "false",
-    cyclotomic.exact_matches);
+    "RUN COMPLETE\n"
+    "Expression: %s\n"
+    "Normalized: %s\n"
+    "Run dir: %s\n"
+    "Factor status: %s | accounting=%s | productVerified=%s | factors=%zu | unresolved=%zu\n"
+    "Cyclotomic: scanned=%zu | exact=%zu | timedOut=%s\n"
+    "GNFS stage proof: %s | stages=%zu\n\n"
+    "%s",
+    report.expression.raw ? report.expression.raw : "",
+    report.expression.normalized ? report.expression.normalized : "invalid",
+    report.run_dir ? report.run_dir : "n/a",
+    report.factor.status[0] ? report.factor.status : "invalid",
+    report.factor.accounting_verified ? "verified" : "failed",
+    report.factor.product_verified ? "true" : "false",
+    report.factor.factor_count,
+    report.factor.unresolved_count,
+    report.cyclotomic.scanned,
+    report.cyclotomic.exact_matches,
+    report.cyclotomic.timed_out ? "true" : "false",
+    report.gnfs.status[0] ? report.gnfs.status : "skipped",
+    report.gnfs.stage_count,
+    report.events_jsonl ? report.events_jsonl : "");
 
-  xray_factor_report_clear(&factor);
-  xray_cyclotomic_report_clear(&cyclotomic);
-  xray_benchmark_report_clear(&benchmark);
+  xray_workbench_report_clear(&report);
   free(job->input);
   free(job);
   g_idle_add(finish_run, result);
@@ -685,6 +801,7 @@ static void on_run_clicked(GtkButton *button, gpointer user_data) {
   RunJob *job = (RunJob *)calloc(1, sizeof(*job));
   job->app = app;
   job->input = input;
+  job->config = config_from_ui(app);
   GThread *thread = g_thread_new("xray-proof-worker", run_worker, job);
   g_thread_unref(thread);
 }
@@ -721,17 +838,25 @@ static void on_challenge_clicked(GtkButton *button, gpointer user_data) {
 static void on_fermat12_clicked(GtkButton *button, gpointer user_data) {
   (void)button;
   AppState *app = (AppState *)user_data;
-  mpz_t value;
-  mpz_init_set_ui(value, 1u);
-  mpz_mul_2exp(value, value, 4096u);
-  mpz_add_ui(value, value, 1u);
-  char *decimal = mpz_get_str(NULL, 10, value);
-  set_text_view(app->input_view, decimal);
-  set_text_view(app->log_view, "Loaded Fermat F12 = 2^4096 + 1 = Phi_8192(2). Structure target, not a factorization promise.");
-  void (*free_func)(void *, size_t);
-  mp_get_memory_functions(NULL, NULL, &free_func);
-  free_func(decimal, strlen(decimal) + 1u);
-  mpz_clear(value);
+  set_text_view(app->input_view, "Fermat(12)");
+  set_text_view(app->log_view, "Loaded Fermat(12) = 2^4096 + 1 = Phi(8192, 2). Structure target, not a factorization promise.");
+  if (app->scan_depth_combo) gtk_combo_box_set_active(GTK_COMBO_BOX(app->scan_depth_combo), 2);
+}
+
+static void on_save_clicked(GtkButton *button, gpointer user_data) {
+  (void)button;
+  AppState *app = (AppState *)user_data;
+  set_text_view(app->log_view, "Runs are saved automatically under the runs/ workspace folder when Run Proof completes.");
+}
+
+static void on_reset_clicked(GtkButton *button, gpointer user_data) {
+  (void)button;
+  AppState *app = (AppState *)user_data;
+  set_text_view(app->input_view, "2^12 + 1");
+  set_text_view(app->log_view, "Workspace reset. Paste an exact integer expression, load a sample, then run proof.");
+  if (app->scan_depth_combo) gtk_combo_box_set_active(GTK_COMBO_BOX(app->scan_depth_combo), 1);
+  if (app->proof_strategy_combo) gtk_combo_box_set_active(GTK_COMBO_BOX(app->proof_strategy_combo), 0);
+  if (app->factor_bits_combo) gtk_combo_box_set_active(GTK_COMBO_BOX(app->factor_bits_combo), 1);
 }
 
 static GtkWidget *build_input_rail(AppState *app) {
@@ -743,7 +868,7 @@ static GtkWidget *build_input_rail(AppState *app) {
   gtk_box_append(GTK_BOX(rail), label_with_width("INPUT & CONFIGURATION", "section-title", 30, FALSE));
 
   GtkWidget *input_header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
-  gtk_box_append(GTK_BOX(input_header), label_with_width("Number (integer)", "field-label", 24, FALSE));
+  gtk_box_append(GTK_BOX(input_header), label_with_width("Number / expression", "field-label", 24, FALSE));
   GtkWidget *base = label_with_width("dec  v", "micro", 8, FALSE);
   gtk_widget_set_halign(base, GTK_ALIGN_END);
   gtk_widget_set_hexpand(base, TRUE);
@@ -759,14 +884,12 @@ static GtkWidget *build_input_rail(AppState *app) {
   gtk_widget_set_size_request(input_scroll, rail_width(app) - 70, app->layout == XRAY_LAYOUT_COMPACT ? 190 : 220);
   gtk_box_append(GTK_BOX(editor), input_scroll);
   gtk_box_append(GTK_BOX(rail), editor);
-  char *chunked = chunk_decimal(rsa260_value, 42);
-  set_text_view(app->input_view, chunked ? chunked : rsa260_value);
-  free(chunked);
+  set_text_view(app->input_view, "Phi(8192, 2)");
 
   GtkWidget *meta = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 14);
-  gtk_box_append(GTK_BOX(meta), label_with_width("Digits: 260", "micro", 12, FALSE));
-  gtk_box_append(GTK_BOX(meta), label_with_width("Bits: 860", "micro", 12, FALSE));
-  gtk_box_append(GTK_BOX(meta), label_with_width("Parity: Odd", "micro", 14, FALSE));
+  gtk_box_append(GTK_BOX(meta), label_with_width("Parser: exact DSL", "micro", 18, FALSE));
+  gtk_box_append(GTK_BOX(meta), label_with_width("Artifacts: runs/", "micro", 18, FALSE));
+  gtk_box_append(GTK_BOX(meta), label_with_width("Truth: product proof", "micro", 22, FALSE));
   gtk_box_append(GTK_BOX(rail), meta);
 
   GtkWidget *preset_label = label_with_width("Configuration Preset", "field-label", 28, FALSE);
@@ -775,15 +898,37 @@ static GtkWidget *build_input_rail(AppState *app) {
   gtk_box_append(GTK_BOX(preset), field_face("X-Ray Standard (Default)        v"));
   GtkWidget *save = gtk_button_new_with_label("Save");
   gtk_widget_add_css_class(save, "reset-button");
+  g_signal_connect(save, "clicked", G_CALLBACK(on_save_clicked), app);
   gtk_box_append(GTK_BOX(preset), save);
   gtk_box_append(GTK_BOX(rail), preset);
 
-  gtk_box_append(GTK_BOX(rail), control_row("Scan Depth", "Deep                         v", 1));
-  gtk_box_append(GTK_BOX(rail), control_row("Proof Strategy", "Deterministic (No Heuristics) v", 1));
-  gtk_box_append(GTK_BOX(rail), control_row("Max Factor Bits (Sieve)", "128                          v", 1));
-  gtk_box_append(GTK_BOX(rail), control_row("Primality Proving", "ECPP + APR-CL                v", 1));
-  gtk_box_append(GTK_BOX(rail), control_row("Threads", "Auto (12)                    v", 1));
-  gtk_box_append(GTK_BOX(rail), control_row("Memory Limit", "16 GB                        v", 1));
+  const char *depth_items[] = {"Standard", "Deep", "GNFS Stage Proof", NULL};
+  const char *strategy_items[] = {"Deterministic", "Aggressive local", "GNFS scaffold", NULL};
+  const char *factor_items[] = {"64", "128", "256", NULL};
+  const char *prime_items[] = {"Probable-prime proof", "Strict accounting", "Research witness log", NULL};
+  const char *thread_items[] = {"Auto (12)", "4", "8", "16", NULL};
+  const char *memory_items[] = {"8 GB", "16 GB", "32 GB", NULL};
+  gtk_box_append(GTK_BOX(rail), combo_row("Scan Depth", depth_items, 1, &app->scan_depth_combo));
+  gtk_box_append(GTK_BOX(rail), combo_row("Proof Strategy", strategy_items, 0, &app->proof_strategy_combo));
+  gtk_box_append(GTK_BOX(rail), combo_row("Max Factor Bits", factor_items, 1, &app->factor_bits_combo));
+  gtk_box_append(GTK_BOX(rail), combo_row("Primality Proving", prime_items, 0, &app->primality_combo));
+  gtk_box_append(GTK_BOX(rail), combo_row("Threads", thread_items, 0, &app->threads_combo));
+  gtk_box_append(GTK_BOX(rail), combo_row("Memory Limit", memory_items, 1, &app->memory_combo));
+
+  GtkWidget *samples = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+  app->toy_button = gtk_button_new_with_label("10403");
+  app->challenge_button = gtk_button_new_with_label("RSA-260");
+  app->fermat12_button = gtk_button_new_with_label("F12");
+  gtk_widget_add_css_class(app->toy_button, "reset-button");
+  gtk_widget_add_css_class(app->challenge_button, "reset-button");
+  gtk_widget_add_css_class(app->fermat12_button, "reset-button");
+  g_signal_connect(app->toy_button, "clicked", G_CALLBACK(on_toy_clicked), app);
+  g_signal_connect(app->challenge_button, "clicked", G_CALLBACK(on_challenge_clicked), app);
+  g_signal_connect(app->fermat12_button, "clicked", G_CALLBACK(on_fermat12_clicked), app);
+  gtk_box_append(GTK_BOX(samples), app->toy_button);
+  gtk_box_append(GTK_BOX(samples), app->challenge_button);
+  gtk_box_append(GTK_BOX(samples), app->fermat12_button);
+  gtk_box_append(GTK_BOX(rail), samples);
 
   GtkWidget *actions = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
   app->run_button = gtk_button_new_with_label("RUN PROOF");
@@ -803,11 +948,8 @@ static GtkWidget *build_input_rail(AppState *app) {
   GtkWidget *reset = gtk_button_new_with_label("Reset Workspace");
   gtk_widget_add_css_class(reset, "reset-button");
   gtk_widget_set_hexpand(reset, TRUE);
+  g_signal_connect(reset, "clicked", G_CALLBACK(on_reset_clicked), app);
   gtk_box_append(GTK_BOX(rail), reset);
-
-  app->toy_button = NULL;
-  app->challenge_button = NULL;
-  app->fermat12_button = NULL;
   return rail;
 }
 
@@ -834,6 +976,13 @@ static GtkWidget *tab_button(AppState *app, const char *label, int page) {
   g_signal_connect(button, "clicked", G_CALLBACK(on_tab_clicked), app);
   app->tab_buttons[page] = button;
   return button;
+}
+
+static void on_details_clicked(GtkButton *button, gpointer user_data) {
+  (void)button;
+  AppState *app = (AppState *)user_data;
+  if (app->notebook) gtk_notebook_set_current_page(GTK_NOTEBOOK(app->notebook), 3);
+  update_tab_buttons(app, 3);
 }
 
 static GtkWidget *build_center_tabs(AppState *app) {
@@ -900,6 +1049,7 @@ static GtkWidget *build_inspector(AppState *app, int stacked) {
   GtkWidget *details = gtk_button_new_with_label("Details");
   gtk_widget_add_css_class(details, "reset-button");
   gtk_widget_set_halign(details, GTK_ALIGN_END);
+  g_signal_connect(details, "clicked", G_CALLBACK(on_details_clicked), app);
   gtk_box_append(GTK_BOX(reference), details);
   gtk_box_append(GTK_BOX(box), reference);
   return box;
