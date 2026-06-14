@@ -12,6 +12,23 @@
   const REPORT_LIMIT = 64;
   const SOURCE_NOTE =
     "Credit: Payam. Payam_Idea.pdf is the source paper for this app. Its visible script is cut off after `import sympy as sp`, so this app reconstructs the scanner idea and exposes fragile assumptions.";
+  const RSA_CHECKSUM_MODULUS = 991889n;
+  const RSA_CHALLENGE_SOURCE = "https://www.ontko.com/pub/rayo/primes/rsa_fact.html";
+  const RSA260_VALUE =
+    "22112825529529666435281085255026230927612089502470015394413748319128822941402001986512729726569746599085900330031400051170742204560859276357953757185954298838958709229238491006703034124620545784566413664540684214361293017694020846391065875914794251435144458199";
+  const RSA_CHALLENGES = [
+    {
+      key: "rsa260",
+      label: "RSA-260",
+      value: RSA260_VALUE,
+      digits: 260,
+      checksum: 327430,
+      bits: 862,
+      sourceUrl: RSA_CHALLENGE_SOURCE,
+      sourceNote:
+        "The RSA challenge list defines this as a product of two discarded, similarly sized random primes congruent to 2 modulo 3, suitable for public exponent 3."
+    }
+  ];
 
   function normalizeInputText(raw) {
     return String(raw ?? "")
@@ -163,13 +180,13 @@
   }
 
   function clampConfig(config = {}) {
-    const mode = ["explore", "counterexample", "verify", "deep"].includes(config.mode) ? config.mode : "explore";
+    const mode = ["explore", "counterexample", "verify", "deep", "rsa"].includes(config.mode) ? config.mode : "explore";
     const nCeiling = 8192;
-    const defaultNMax = mode === "deep" ? 8192 : 128;
+    const defaultNMax = mode === "deep" || mode === "rsa" ? 8192 : 128;
     const nMin = clampInt(config.nMin ?? 3, 1, nCeiling);
     const nMax = clampInt(config.nMax ?? defaultNMax, nMin, nCeiling);
-    const defaultBudget = mode === "deep" ? 15000 : 3000;
-    const defaultVerifyLimit = mode === "deep" ? 48 : mode === "verify" ? 64 : 24;
+    const defaultBudget = mode === "deep" || mode === "rsa" ? 15000 : 3000;
+    const defaultVerifyLimit = mode === "deep" ? 48 : mode === "rsa" ? 40 : mode === "verify" ? 64 : 24;
     return {
       nMin,
       nMax,
@@ -178,6 +195,9 @@
       mode,
       k: BigInt(config.k ?? 1),
       verificationLimit: clampInt(config.verificationLimit ?? defaultVerifyLimit, 1, REPORT_LIMIT),
+      rsaSmallPrimeLimit: clampInt(config.rsaSmallPrimeLimit ?? (mode === "rsa" ? 50000 : 10000), 100, 200000),
+      rsaFermatIterations: clampInt(config.rsaFermatIterations ?? (mode === "rsa" ? 2000 : 250), 0, 25000),
+      rsaRhoIterations: clampInt(config.rsaRhoIterations ?? (mode === "rsa" ? 700 : 0), 0, 25000),
       reportLimit: REPORT_LIMIT
     };
   }
@@ -257,13 +277,141 @@
     return "no match";
   }
 
+  function knownChallengeFor(target) {
+    const text = target.toString();
+    return RSA_CHALLENGES.find((challenge) => challenge.value === text) || null;
+  }
+
+  function shouldRunRsaRecon(target, config) {
+    return config.mode === "rsa" || Boolean(knownChallengeFor(target));
+  }
+
+  function checksumResidue(target) {
+    return Number(target % RSA_CHECKSUM_MODULUS);
+  }
+
+  function formatFactorPair(factor, cofactor) {
+    if (!factor || !cofactor) return null;
+    return {
+      factor: factor.toString(),
+      cofactor: cofactor.toString(),
+      factorDigits: factor.toString().length,
+      cofactorDigits: cofactor.toString().length
+    };
+  }
+
+  function serializeSmallSieve(scan) {
+    return {
+      limit: scan.limit,
+      tested: scan.tested,
+      factor: scan.factor ? scan.factor.toString() : null,
+      status: scan.factor ? "factor-found" : "no-factor"
+    };
+  }
+
+  function serializeFermat(scan) {
+    return {
+      found: scan.found,
+      iterations: scan.iterations,
+      offset: scan.offset ?? null,
+      factor: scan.factor ? scan.factor.toString() : null,
+      cofactor: scan.cofactor ? scan.cofactor.toString() : null,
+      status: scan.found ? "factor-found" : "no-square-offset"
+    };
+  }
+
+  function serializeRho(scan) {
+    return {
+      found: scan.found,
+      attempts: scan.attempts || [],
+      factor: scan.factor ? scan.factor.toString() : null,
+      cofactor: scan.cofactor ? scan.cofactor.toString() : null,
+      status: scan.found ? "factor-found" : "no-factor"
+    };
+  }
+
+  function buildRsaRecon(target, config) {
+    const startedAt = Date.now();
+    const challenge = knownChallengeFor(target);
+    const residue = checksumResidue(target);
+    const small = math.smallFactorScan(target, config.rsaSmallPrimeLimit);
+    const primality = math.isProbablePrime(target);
+    const hasSmallFactor = Boolean(small.factor);
+    const fermat = hasSmallFactor
+      ? { found: false, iterations: 0, offset: null, status: "skipped" }
+      : math.fermatFactorScout(target, config.rsaFermatIterations);
+    const hasFermatFactor = Boolean(fermat.factor);
+    const rho = hasSmallFactor || hasFermatFactor || config.rsaRhoIterations === 0
+      ? { found: false, attempts: [], status: hasSmallFactor || hasFermatFactor ? "skipped" : "disabled" }
+      : math.pollardRhoScout(target, { iterations: config.rsaRhoIterations });
+    const factorPair =
+      formatFactorPair(small.factor, small.factor ? target / small.factor : null) ||
+      formatFactorPair(fermat.factor, fermat.cofactor) ||
+      formatFactorPair(rho.factor, rho.cofactor);
+    const notes = [];
+
+    if (challenge) notes.push(`${challenge.label} recognized from the RSA challenge list`);
+    if (challenge && residue === challenge.checksum) notes.push("RSA checksum matches the published residue");
+    if (challenge && target % 3n === 1n) notes.push("Consistent with p ≡ q ≡ 2 (mod 3), so N ≡ 1 (mod 3)");
+    if (!small.factor) notes.push(`No divisor found among primes ≤ ${config.rsaSmallPrimeLimit}`);
+    if (!factorPair && !fermat.found) notes.push(`No Fermat square found in ${config.rsaFermatIterations} offsets`);
+    if (!factorPair && config.rsaRhoIterations > 0) notes.push(`Pollard Rho made bounded attempts without a factor`);
+    if (!primality.probablyPrime) notes.push(`Miller-Rabin composite witness: ${primality.witness}`);
+    if (factorPair) notes.push("A nontrivial factor was found inside the browser budget");
+
+    const verdict = factorPair
+      ? "Factor found"
+      : challenge
+        ? `${challenge.label} recognized; no browser-budget factor found`
+        : primality.probablyPrime
+          ? "Probable prime under tested bases"
+          : "Composite witness found; no browser-budget factor found";
+
+    return {
+      enabled: true,
+      targetLabel: challenge?.label || "Uncatalogued RSA-style target",
+      recognized: Boolean(challenge),
+      sourceUrl: challenge?.sourceUrl || null,
+      sourceNote: challenge?.sourceNote || null,
+      digits: target.toString().length,
+      bitLength: math.bitLength(target),
+      checksum: {
+        modulus: RSA_CHECKSUM_MODULUS.toString(),
+        residue,
+        expected: challenge?.checksum ?? null,
+        pass: challenge ? residue === challenge.checksum : null
+      },
+      rsaShape: {
+        odd: (target & 1n) === 1n,
+        mod3: (target % 3n).toString(),
+        exponent3Compatible: target % 3n === 1n,
+        expectedPrimeDigits: challenge ? "about 130 digits each" : "unknown"
+      },
+      primality,
+      smallPrimeSieve: serializeSmallSieve(small),
+      fermat: serializeFermat(fermat),
+      pollardRho: serializeRho(rho),
+      factorPair,
+      verdict,
+      notes,
+      nextActions: factorPair
+        ? ["Verify the factor pair externally, then divide and run primality tests on each factor."]
+        : [
+            "Treat this as reconnaissance, not a factorization.",
+            "Export JSON and use GNFS-class tools for a real RSA-260 factor attempt.",
+            "Compare the cyclotomic matrix for nonrandom algebraic fingerprints."
+          ],
+      elapsedMs: Date.now() - startedAt
+    };
+  }
+
   function buildProfile(target, config) {
     return {
       digits: target.toString().length,
       bitLength: math.bitLength(target),
       log10Estimate: Number(math.log10Estimate(target).toFixed(4)),
       targetPreview: formatBigInt(target, 34),
-      stageOrder: ["profile", "screen", "hypothesize", "verify"],
+      stageOrder: shouldRunRsaRecon(target, config) ? ["profile", "rsa", "screen", "hypothesize", "verify"] : ["profile", "screen", "hypothesize", "verify"],
       nRange: [config.nMin, config.nMax],
       residuePrimes: SCREEN_PRIMES,
       exactVerificationLimit: config.verificationLimit
@@ -474,6 +622,7 @@
     const target = typeof rawInput === "bigint" ? rawInput : parseIntegerInput(rawInput);
     const profile = buildProfile(target, config);
     const stages = [makeStage("profile", "complete", profile)];
+    let rsaRecon = null;
     const candidates = [];
     const verifiedByN = new Map();
     let timedOut = false;
@@ -487,9 +636,25 @@
 
     emit({ stage: "profile", completed: 1, total: 1, message: "Profiled input magnitude" });
 
+    if (shouldRunRsaRecon(target, config)) {
+      emit({ stage: "rsa", completed: 0, total: 1, message: "Running RSA challenge reconnaissance" });
+      rsaRecon = buildRsaRecon(target, config);
+      stages.push(
+        makeStage("rsa", "complete", {
+          recognized: rsaRecon.recognized,
+          targetLabel: rsaRecon.targetLabel,
+          checksumPass: rsaRecon.checksum.pass,
+          factorFound: Boolean(rsaRecon.factorPair),
+          elapsedMs: rsaRecon.elapsedMs
+        })
+      );
+      emit({ stage: "rsa", completed: 1, total: 1, message: "RSA reconnaissance complete" });
+    }
+
     const total = config.nMax - config.nMin + 1;
     const screenPrimes = SCREEN_PRIMES;
-    const screenBudgetMs = Math.max(80, Math.floor(config.timeBudgetMs * (config.mode === "deep" ? 0.72 : 0.58)));
+    const longRangeMode = config.mode === "deep" || config.mode === "rsa";
+    const screenBudgetMs = Math.max(80, Math.floor(config.timeBudgetMs * (longRangeMode ? 0.72 : 0.58)));
     for (let n = config.nMin; n <= config.nMax; n += 1) {
       if (options.cancelled && options.cancelled()) {
         cancelled = true;
@@ -592,7 +757,10 @@
         timeBudgetMs: config.timeBudgetMs,
         mode: config.mode,
         k: config.k.toString(),
-        verificationLimit: config.verificationLimit
+        verificationLimit: config.verificationLimit,
+        rsaSmallPrimeLimit: config.rsaSmallPrimeLimit,
+        rsaFermatIterations: config.rsaFermatIterations,
+        rsaRhoIterations: config.rsaRhoIterations
       },
       elapsedMs: Date.now() - startedAt,
       timedOut,
@@ -604,7 +772,10 @@
       exactMatches,
       fragileMatches,
       counterexamples,
-      sourceNotes: [SOURCE_NOTE]
+      rsaRecon,
+      sourceNotes: rsaRecon?.recognized
+        ? [SOURCE_NOTE, `RSA source: ${rsaRecon.targetLabel} from ${rsaRecon.sourceUrl}; checksum ${rsaRecon.checksum.residue}.`]
+        : [SOURCE_NOTE]
     };
   }
 
@@ -648,6 +819,8 @@
         return math.powBigInt(3n, 7).toString();
       case "large":
         return "164265132454124777535030081362342972685864000000000000000000000000039";
+      case "rsa260":
+        return RSA260_VALUE;
       default:
         return "111";
     }
@@ -662,6 +835,7 @@
     scanCandidate,
     scanNumber,
     buildCounterexamples,
-    sampleValue
+    sampleValue,
+    buildRsaRecon
   };
 });
