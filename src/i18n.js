@@ -21,11 +21,13 @@
       timeBudget: "Time budget",
       verificationLimit: "Verify limit",
       explore: "Explore",
+      rsa: "RSA Scout",
       deep: "Deep Scan",
       counterMode: "Hunt Counterexamples",
       verify: "Verify Claim",
       samples: "Samples",
       samplePhi21: "Φ21(3)",
+      sampleRSA260: "RSA-260",
       samplePhi3: "Counterexample 111",
       samplePhi3Large: "1k Φ3 Fixture",
       samplePhi5: "Prime 31",
@@ -42,6 +44,8 @@
         "This app turns that idea into an interactive instrument. It searches candidate n, computes φ(n), estimates possible bases, evaluates Φₙ(b), and shows the evidence trail.",
       bridgeP3:
         "The skeptical parts are intentional: the PDF says to recover structure with root tests and symbolic algebra, but the visible script is incomplete. The cabinet therefore also shows counterexamples where a real cyclotomic value fails the shortcut.",
+      bridgeP4:
+        "RSA Scout extends the same X-ray spirit to RSA-260: it does bounded local reconnaissance, then clearly separates “factor found,” “composite evidence,” and “no factor inside this browser budget.”",
       candidates: "Cyclotomic Candidates",
       ready: "Ready. Load a sample or paste an integer.",
       chamber: "Chamber",
@@ -57,6 +61,34 @@
       treasureInitial: "Top regions appear after the first scan.",
       skeletonKey: "Skeleton Key",
       noCandidate: "No candidate selected.",
+      rsaScout: "RSA Scout",
+      rsaInitial: "Load RSA-260 or choose RSA Scout mode to run bounded local reconnaissance.",
+      rsaTarget: "Target",
+      rsaTargetLine: "{target} · {digits} digits · {bits} bits",
+      rsaChecksum: "Checksum",
+      rsaComposite: "Composite test",
+      rsaSmallSieve: "Small-prime sieve",
+      rsaFermat: "Fermat offsets",
+      rsaRho: "Pollard Rho",
+      rsaFactor: "Factor",
+      rsaNoFactor: "No factor found inside this browser budget.",
+      rsaFactorFound: "Nontrivial factor found.",
+      rsaRecognizedNoFactor: "{target}: no factor found inside this browser budget.",
+      rsaCompositeNoFactor: "Composite witness found, but no factor inside this browser budget.",
+      rsaProbablyPrimeLine: "probably prime after {rounds} rounds",
+      rsaCompositeWitnessLine: "composite witness {witness}",
+      rsaSieveLine: "{count} primes ≤ {limit}",
+      rsaFermatLine: "{count} offsets · {status}",
+      rsaRhoLine: "{count} attempts · {status}",
+      rsaStatusNoFactor: "no factor",
+      rsaStatusNoSquare: "no square offset",
+      rsaStatusFactor: "factor found",
+      rsaStatusDisabled: "disabled",
+      rsaStatusSkipped: "skipped",
+      rsaVerified: "verified",
+      rsaUnknown: "unknown",
+      rsaSourceLine: "Recognized from the RSA challenge list.",
+      rsaReconLine: "This is reconnaissance, not a GNFS-class factorization attempt.",
       counterexample: "Counterexample",
       counterInitial: "Counterexamples show when an exact cyclotomic value fails the PDF’s perfect-root shortcut.",
       verdict: "Verdict",
@@ -138,11 +170,13 @@
       timeBudget: "بودجه زمان",
       verificationLimit: "حد راستی‌آزمایی",
       explore: "کاوش",
+      rsa: "دیده‌بان RSA",
       deep: "اسکن عمیق",
       counterMode: "شکار نمونه نقض",
       verify: "راستی‌آزمایی ادعا",
       samples: "نمونه‌ها",
       samplePhi21: "Φ21(3)",
+      sampleRSA260: "RSA-260",
       samplePhi3: "نمونه نقض 111",
       samplePhi3Large: "نمونه Φ3 هزاررقمی",
       samplePhi5: "عدد اول 31",
@@ -159,6 +193,8 @@
         "این برنامه همان ایده را به یک ابزار تعاملی تبدیل می‌کند. نامزدهای n را می‌گردد، φ(n) را حساب می‌کند، پایه‌های ممکن را تخمین می‌زند، Φₙ(b) را ارزیابی می‌کند و ردپای شواهد را نشان می‌دهد.",
       bridgeP3:
         "بخش‌های بدبینانه عمدی‌اند: PDF می‌گوید ساختار با آزمون ریشه و جبر نمادین بازیابی می‌شود، اما اسکریپت قابل‌مشاهده کامل نیست. بنابراین کابینت نمونه‌های نقض را هم نشان می‌دهد؛ جاهایی که یک مقدار سیکلوتومیک واقعی از میان‌بُر ریشه عبور نمی‌کند.",
+      bridgeP4:
+        "دیده‌بان RSA همین روحیهٔ ایکس‌ری را به RSA-260 می‌برد: شناسایی محلی و محدود انجام می‌دهد و بین «عامل پیدا شد»، «شاهد مرکب بودن» و «در این بودجهٔ مرورگر عاملی پیدا نشد» روشن فرق می‌گذارد.",
       candidates: "نامزدهای سیکلوتومیک",
       ready: "آماده است. یک نمونه را بارگذاری کنید یا عددی وارد کنید.",
       chamber: "محفظه",
@@ -174,6 +210,34 @@
       treasureInitial: "ناحیه‌های برتر بعد از اولین اسکن ظاهر می‌شوند.",
       skeletonKey: "کلید استخوانی",
       noCandidate: "هیچ نامزدی انتخاب نشده است.",
+      rsaScout: "دیده‌بان RSA",
+      rsaInitial: "RSA-260 را بارگذاری کنید یا حالت دیده‌بان RSA را برای شناسایی محلی محدود انتخاب کنید.",
+      rsaTarget: "هدف",
+      rsaTargetLine: "{target} · {digits} رقم · {bits} بیت",
+      rsaChecksum: "چک‌سام",
+      rsaComposite: "آزمون مرکب بودن",
+      rsaSmallSieve: "غربال اول‌های کوچک",
+      rsaFermat: "جابجایی‌های فرما",
+      rsaRho: "Pollard Rho",
+      rsaFactor: "عامل",
+      rsaNoFactor: "در این بودجهٔ مرورگر عاملی پیدا نشد.",
+      rsaFactorFound: "عامل غیر بدیهی پیدا شد.",
+      rsaRecognizedNoFactor: "{target}: در این بودجهٔ مرورگر عاملی پیدا نشد.",
+      rsaCompositeNoFactor: "شاهد مرکب بودن پیدا شد، اما در این بودجهٔ مرورگر عاملی پیدا نشد.",
+      rsaProbablyPrimeLine: "پس از {rounds} دور احتمالاً اول است",
+      rsaCompositeWitnessLine: "شاهد مرکب بودن {witness}",
+      rsaSieveLine: "{count} عدد اول ≤ {limit}",
+      rsaFermatLine: "{count} جابجایی · {status}",
+      rsaRhoLine: "{count} تلاش · {status}",
+      rsaStatusNoFactor: "بدون عامل",
+      rsaStatusNoSquare: "بدون مربع",
+      rsaStatusFactor: "عامل پیدا شد",
+      rsaStatusDisabled: "غیرفعال",
+      rsaStatusSkipped: "رد شد",
+      rsaVerified: "راستی‌آزمایی شد",
+      rsaUnknown: "نامعلوم",
+      rsaSourceLine: "از فهرست چالش RSA شناسایی شد.",
+      rsaReconLine: "این شناسایی مقدماتی است، نه تلاش فاکتورگیری در اندازهٔ GNFS.",
       counterexample: "نمونه نقض",
       counterInitial: "نمونه‌های نقض نشان می‌دهند چه زمانی یک مقدار سیکلوتومیک دقیق از آزمون ریشهٔ کاملِ PDF عبور نمی‌کند.",
       verdict: "حکم",
@@ -302,13 +366,15 @@
       profile: "Profile",
       screen: "Screen",
       hypothesize: "Hypothesize",
-      verify: "Verify"
+      verify: "Verify",
+      rsa: "RSA Scout"
     },
     fa: {
       profile: "نمایه",
       screen: "غربال",
       hypothesize: "فرضیه‌سازی",
-      verify: "راستی‌آزمایی"
+      verify: "راستی‌آزمایی",
+      rsa: "دیده‌بان RSA"
     }
   };
 
@@ -464,11 +530,13 @@
     setText('label[for="time-budget"]', "timeBudget");
     setText('label[for="verification-limit"]', "verificationLimit");
     setText('[data-mode="explore"]', "explore");
+    setText('[data-mode="rsa"]', "rsa");
     setText('[data-mode="deep"]', "deep");
     setText('[data-mode="counterexample"]', "counterMode");
     setText('[data-mode="verify"]', "verify");
     setText(".input-rail .rail-section:nth-child(3) h2", "samples");
     setText('[data-sample="phi21"]', "samplePhi21");
+    setText('[data-sample="rsa260"]', "sampleRSA260");
     setText('[data-sample="phi3"]', "samplePhi3");
     setText('[data-sample="phi3large"]', "samplePhi3Large");
     setText('[data-sample="phi5"]', "samplePhi5");
@@ -481,6 +549,7 @@
     setText(".paper-bridge p:nth-of-type(1)", "bridgeP1");
     setText(".paper-bridge p:nth-of-type(2)", "bridgeP2");
     setText(".paper-bridge p:nth-of-type(3)", "bridgeP3");
+    setText(".paper-bridge p:nth-of-type(4)", "bridgeP4");
     setText(".stage-header h2", "candidates");
     setText('[data-view="chamber"]', "chamber");
     setText('[data-view="table"]', "table");
@@ -493,6 +562,8 @@
     setText(".strip-title", "evidence");
     setText(".treasure h2", "treasureMap");
     setText(".inspector-panel:nth-child(2) h2", "skeletonKey");
+    setText(".rsa-scout h2", "rsaScout");
+    setHtml("#rsa-copy", "rsaInitial");
     setText(".counter h2", "counterexample");
     setText(".verdict h2", "verdict");
     setText(".export-button", "exportJson");

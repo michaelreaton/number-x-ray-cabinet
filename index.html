@@ -68,6 +68,7 @@
             </div>
             <div class="segmented" role="group" aria-label="Scan mode">
               <button type="button" class="selected" data-mode="explore">Explore</button>
+              <button type="button" data-mode="rsa">RSA Scout</button>
               <button type="button" data-mode="deep">Deep Scan</button>
               <button type="button" data-mode="counterexample">Hunt Counterexamples</button>
               <button type="button" data-mode="verify">Verify Claim</button>
@@ -78,6 +79,7 @@
             <h2>Samples</h2>
             <div class="sample-grid">
               <button type="button" data-sample="phi21">Φ21(3)</button>
+              <button type="button" data-sample="rsa260" data-sample-mode="rsa">RSA-260</button>
               <button type="button" data-sample="phi3">Counterexample 111</button>
               <button type="button" data-sample="phi3large">1k Φ3 Fixture</button>
               <button type="button" data-sample="phi5">Prime 31</button>
@@ -97,6 +99,7 @@
             <p>Payam’s paper proposes an “X-ray” for large integers: instead of asking only whether a number is prime, it asks whether the number hides a cyclotomic construction.</p>
             <p>This app turns that idea into an interactive instrument. It searches candidate <code>n</code>, computes <code>φ(n)</code>, estimates possible bases, evaluates <code>Φₙ(b)</code>, and shows the evidence trail.</p>
             <p>The skeptical parts are intentional: the PDF says to recover structure with root tests and symbolic algebra, but the visible script is incomplete. The cabinet therefore also shows counterexamples where a real cyclotomic value fails the shortcut.</p>
+            <p>RSA Scout extends the same X-ray spirit to RSA-260: it does bounded local reconnaissance, then clearly separates “factor found,” “composite evidence,” and “no factor inside this browser budget.”</p>
           </div>
         </aside>
 
@@ -157,6 +160,16 @@
             </div>
           </section>
 
+          <section class="inspector-panel rsa-scout">
+            <div class="panel-title">
+              <h2>RSA Scout</h2>
+              <button type="button" title="Focus panel" data-focus="rsa">↗</button>
+            </div>
+            <div id="rsa-copy">
+              <p>Load RSA-260 or choose RSA Scout mode to run bounded local reconnaissance.</p>
+            </div>
+          </section>
+
           <section class="inspector-panel counter">
             <div class="panel-title">
               <h2>Counterexample</h2>
@@ -211,9 +224,9 @@
       </section>
     </main>
 
-    <script src="src/polynomial.js?v=20260614-input"></script>
-    <script src="src/scanner.js?v=20260614-input"></script>
-    <script src="src/i18n.js?v=20260614-input"></script>
-    <script src="src/app.js?v=20260614-input"></script>
+    <script src="src/polynomial.js?v=20260614-rsa"></script>
+    <script src="src/scanner.js?v=20260614-rsa"></script>
+    <script src="src/i18n.js?v=20260614-rsa"></script>
+    <script src="src/app.js?v=20260614-rsa"></script>
   </body>
 </html>

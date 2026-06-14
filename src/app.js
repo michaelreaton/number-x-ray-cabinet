@@ -27,6 +27,7 @@
     scoreChart: document.getElementById("score-chart"),
     treasureCopy: document.getElementById("treasure-copy"),
     skeletonCopy: document.getElementById("skeleton-copy"),
+    rsaCopy: document.getElementById("rsa-copy"),
     counterCopy: document.getElementById("counterexample-copy"),
     verdictCopy: document.getElementById("verdict-copy")
   };
@@ -47,6 +48,7 @@
     document.querySelectorAll("[data-sample]").forEach((button) => {
       button.addEventListener("click", () => {
         el.input.value = scanner.sampleValue(button.dataset.sample);
+        if (button.dataset.sampleMode) setMode(button.dataset.sampleMode);
         updateDigitCount();
         runScan();
       });
@@ -54,9 +56,7 @@
 
     document.querySelectorAll("[data-mode]").forEach((button) => {
       button.addEventListener("click", () => {
-        state.mode = button.dataset.mode;
-        selectInGroup("[data-mode]", button);
-        applyModeDefaults(state.mode);
+        setMode(button.dataset.mode);
         runScan();
       });
     });
@@ -101,6 +101,13 @@
     selected.classList.add("selected");
   }
 
+  function setMode(mode) {
+    state.mode = mode;
+    const button = document.querySelector(`[data-mode="${mode}"]`);
+    if (button) selectInGroup("[data-mode]", button);
+    applyModeDefaults(state.mode);
+  }
+
   function updateDigitCount() {
     const preview = scanner.previewIntegerInput(el.input.value);
     el.digitCount.classList.toggle("bad", !preview.parseable && preview.digits > 0);
@@ -126,11 +133,11 @@
     const baseWindow = document.getElementById("base-window");
     const timeBudget = document.getElementById("time-budget");
     const verificationLimit = document.getElementById("verification-limit");
-    if (mode === "deep") {
+    if (mode === "deep" || mode === "rsa") {
       if (Number(nMax.value) < 8192) nMax.value = "8192";
       if (Number(baseWindow.value) > 1) baseWindow.value = "1";
       timeBudget.value = "15000";
-      verificationLimit.value = "48";
+      verificationLimit.value = mode === "rsa" ? "40" : "48";
       return;
     }
     if (Number(timeBudget.value) >= 15000 && mode === "explore") timeBudget.value = "3000";
@@ -175,7 +182,7 @@
   }
 
   function runWorkerScan(input, config) {
-    const worker = new Worker("src/worker.js?v=20260614-input");
+    const worker = new Worker("src/worker.js?v=20260614-rsa");
     const id = crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
     state.activeWorker = worker;
     worker.onmessage = (event) => {
@@ -432,6 +439,7 @@
     renderScoreChart();
     const selected = selectedCandidate();
     renderSkeleton(selected);
+    renderRsaScout();
     renderCounterexample();
     renderVerdict(selected);
   }
@@ -500,6 +508,60 @@
       <div class="meter"><span style="width:${Math.round(candidate.score * 100)}%"></span></div>`;
   }
 
+  function renderRsaScout() {
+    const recon = state.report?.rsaRecon;
+    if (!recon) {
+      el.rsaCopy.innerHTML = `<p>${i18n.t("rsaInitial")}</p>`;
+      return;
+    }
+
+    const checksumClass = recon.checksum.pass === true ? "good" : recon.checksum.pass === false ? "bad" : "warn";
+    const checksumText = recon.checksum.pass === true
+      ? `${recon.checksum.residue} (${i18n.t("rsaVerified")})`
+      : recon.checksum.expected === null
+        ? `${recon.checksum.residue} (${i18n.t("rsaUnknown")})`
+        : `${recon.checksum.residue} / ${recon.checksum.expected}`;
+    const primalityText = recon.primality.probablyPrime
+      ? i18n.t("rsaProbablyPrimeLine", { rounds: recon.primality.rounds })
+      : i18n.t("rsaCompositeWitnessLine", { witness: recon.primality.witness });
+    const factorText = recon.factorPair
+      ? `${scanner.formatBigInt(recon.factorPair.factor, 18)} × ${scanner.formatBigInt(recon.factorPair.cofactor, 18)}`
+      : i18n.t("rsaNoFactor");
+    const factorClass = recon.factorPair ? "good" : "warn";
+
+    el.rsaCopy.innerHTML = `
+      <p class="verdict-head ${recon.factorPair ? "good" : "warn"}">${displayRsaVerdict(recon)}</p>
+      <dl class="recon-grid">
+        <dt>${i18n.t("rsaTarget")}</dt><dd>${i18n.t("rsaTargetLine", { target: recon.targetLabel, digits: recon.digits, bits: recon.bitLength })}</dd>
+        <dt>${i18n.t("rsaChecksum")}</dt><dd class="${checksumClass}">${checksumText}</dd>
+        <dt>${i18n.t("rsaComposite")}</dt><dd>${primalityText}</dd>
+        <dt>${i18n.t("rsaSmallSieve")}</dt><dd>${i18n.t("rsaSieveLine", { count: recon.smallPrimeSieve.tested, limit: recon.smallPrimeSieve.limit })}</dd>
+        <dt>${i18n.t("rsaFermat")}</dt><dd>${i18n.t("rsaFermatLine", { count: recon.fermat.iterations, status: rsaStatusLabel(recon.fermat.status) })}</dd>
+        <dt>${i18n.t("rsaRho")}</dt><dd>${i18n.t("rsaRhoLine", { count: recon.pollardRho.attempts.length, status: rsaStatusLabel(recon.pollardRho.status) })}</dd>
+        <dt>${i18n.t("rsaFactor")}</dt><dd class="${factorClass}">${factorText}</dd>
+      </dl>
+      <p>${recon.recognized ? i18n.t("rsaSourceLine") : i18n.t("rsaReconLine")}</p>
+      <p>${i18n.t("rsaReconLine")}</p>`;
+  }
+
+  function rsaStatusLabel(status) {
+    const key = {
+      "no-factor": "rsaStatusNoFactor",
+      "no-square-offset": "rsaStatusNoSquare",
+      "factor-found": "rsaStatusFactor",
+      disabled: "rsaStatusDisabled",
+      skipped: "rsaStatusSkipped"
+    }[status];
+    return key ? i18n.t(key) : status || i18n.t("rsaUnknown");
+  }
+
+  function displayRsaVerdict(recon) {
+    if (recon.factorPair) return i18n.t("rsaFactorFound");
+    if (recon.recognized) return i18n.t("rsaRecognizedNoFactor", { target: recon.targetLabel });
+    if (recon.primality.probablyPrime) return i18n.t("rsaProbablyPrimeLine", { rounds: recon.primality.rounds });
+    return i18n.t("rsaCompositeNoFactor");
+  }
+
   function renderCounterexample() {
     const examples = state.report?.counterexamples || scanner.buildCounterexamples();
     const target = state.report?.fragileMatches?.[0] || null;
@@ -542,6 +604,7 @@
       <p class="verdict-head ${tone}">${headline}</p>
       <p>${i18n.t("evidenceLabelLine", { label: displayEvidenceLabel(candidate), status: i18n.verifyStatus(candidate.verificationStatus) })}</p>
       <p>${i18n.t("bestCandidateLine", { n: candidate.n, phi: candidate.phi, base: scanner.formatBigInt(candidate.bestBase, 16) })}</p>
+      ${state.report.rsaRecon ? `<p>${displayRsaVerdict(state.report.rsaRecon)}</p>` : ""}
       <p>${i18n.t("confidenceLine", { score: candidate.score.toFixed(2), exact, fragile })}</p>
       <div class="meter ${tone}"><span style="width:${Math.round(candidate.score * 100)}%"></span></div>`;
   }
