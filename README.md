@@ -1,0 +1,35 @@
+# Number X-Ray Cabinet
+
+A self-contained browser lab inspired by Payam's `Payam_Idea.pdf`.
+
+The app explores Payam's idea of using an "X-ray" process to look for hidden cyclotomic structure inside large integers. It computes candidate `n`, `phi(n)`, estimated bases, `Phi_n(b)` matches, residue checks, and counterexamples where the shortcut logic is fragile.
+
+Open `index.html` directly in a browser, or host the folder as a static site.
+
+## Persian Version
+
+Use the in-app `FA` switch or open the app with:
+
+```text
+index.html?lang=fa
+```
+
+On GitHub Pages, that becomes:
+
+```text
+https://<owner>.github.io/<repo>/?lang=fa
+```
+
+This version is written right-to-left in Persian for Payam while keeping formulas, candidate tables, and exported JSON math fields stable.
+
+## Credit
+
+Concept and source paper: Payam, [`Payam_Idea.pdf`](assets/Payam_Idea.pdf).
+
+The PDF export cuts off the promised Python script after `import sympy as sp`, so this implementation reconstructs the scanner idea and labels reconstructed or skeptical behavior in the UI.
+
+## Deploy
+
+Recommended: GitHub Pages via the included workflow in `.github/workflows/pages.yml`.
+
+Fallback: GCP static hosting. See [`docs/deploy.md`](docs/deploy.md).
