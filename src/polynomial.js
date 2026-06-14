@@ -207,6 +207,190 @@
     return { found: false, attempts };
   }
 
+  function perfectPowerScout(value, maxExponent = 64) {
+    const n = absBigInt(BigInt(value));
+    if (n < 4n) return { found: false };
+    const ceiling = Math.max(2, Math.min(Number(maxExponent) || 64, bitLength(n)));
+    for (let exponent = 2; exponent <= ceiling; exponent += 1) {
+      const root = integerNthRoot(n, exponent);
+      if (root.exact && root.root > 1n) {
+        return { found: true, base: root.root, exponent };
+      }
+    }
+    return { found: false };
+  }
+
+  function compactFactorRecords(factors) {
+    const counts = new Map();
+    for (const factor of factors) {
+      const key = BigInt(factor.value).toString();
+      const current = counts.get(key) || { ...factor, value: key, exponent: 0 };
+      current.exponent += factor.exponent || 1;
+      current.probablePrime = current.probablePrime && factor.probablePrime !== false;
+      current.methods = Array.from(new Set([...(current.methods || []), factor.method].filter(Boolean)));
+      counts.set(key, current);
+    }
+    return Array.from(counts.values()).sort((a, b) => {
+      const left = BigInt(a.value);
+      const right = BigInt(b.value);
+      return left < right ? -1 : left > right ? 1 : 0;
+    });
+  }
+
+  function productFromRecords(records) {
+    let product = 1n;
+    for (const record of records) {
+      product *= powBigInt(BigInt(record.value), record.exponent || 1);
+    }
+    return product;
+  }
+
+  function solveFactorization(value, options = {}) {
+    const startedAt = Date.now();
+    const n = absBigInt(BigInt(value));
+    const config = {
+      smallPrimeLimit: Math.max(2, Number(options.smallPrimeLimit ?? 10000) || 10000),
+      fermatIterations: Math.max(0, Number(options.fermatIterations ?? 1000) || 0),
+      rhoIterations: Math.max(0, Number(options.rhoIterations ?? 1000) || 0),
+      timeBudgetMs: Math.max(25, Number(options.timeBudgetMs ?? 2500) || 2500),
+      maxPasses: Math.max(1, Number(options.maxPasses ?? 48) || 48),
+      maxPerfectPowerExponent: Math.max(2, Number(options.maxPerfectPowerExponent ?? 64) || 64)
+    };
+    const queue = [n];
+    const factors = [];
+    const unresolved = [];
+    const steps = [];
+    let passes = 0;
+    let timedOut = false;
+
+    const timeRemaining = () => Date.now() - startedAt <= config.timeBudgetMs;
+    const pushStep = (method, target, detail = {}) => {
+      steps.push({
+        method,
+        target: target.toString(),
+        targetDigits: target.toString().length,
+        ...detail
+      });
+    };
+
+    while (queue.length && passes < config.maxPasses) {
+      if (!timeRemaining()) {
+        timedOut = true;
+        break;
+      }
+      const current = queue.pop();
+      if (current === 1n) continue;
+      passes += 1;
+
+      const primality = isProbablePrime(current);
+      if (primality.probablyPrime) {
+        factors.push({ value: current.toString(), exponent: 1, probablePrime: true, method: "probable-prime" });
+        pushStep("probable-prime", current, { status: "accepted", rounds: primality.rounds });
+        continue;
+      }
+
+      const small = smallFactorScan(current, config.smallPrimeLimit);
+      if (small.factor) {
+        const cofactor = current / small.factor;
+        pushStep("small-prime-sieve", current, {
+          status: "factor-found",
+          factor: small.factor.toString(),
+          tested: small.tested,
+          limit: small.limit
+        });
+        queue.push(cofactor, small.factor);
+        continue;
+      }
+      pushStep("small-prime-sieve", current, { status: "miss", tested: small.tested, limit: small.limit });
+
+      const perfect = perfectPowerScout(current, config.maxPerfectPowerExponent);
+      if (perfect.found) {
+        pushStep("perfect-power", current, {
+          status: "factor-found",
+          base: perfect.base.toString(),
+          exponent: perfect.exponent
+        });
+        for (let index = 0; index < perfect.exponent; index += 1) queue.push(perfect.base);
+        continue;
+      }
+
+      const fermat = mathSafeFermat(current, config.fermatIterations);
+      if (fermat.factor) {
+        pushStep("fermat", current, {
+          status: "factor-found",
+          factor: fermat.factor.toString(),
+          iterations: fermat.iterations
+        });
+        queue.push(fermat.cofactor, fermat.factor);
+        continue;
+      }
+      pushStep("fermat", current, { status: fermat.status || "miss", iterations: fermat.iterations || 0 });
+
+      const rho = config.rhoIterations > 0 ? pollardRhoScout(current, { iterations: config.rhoIterations }) : { found: false, attempts: [] };
+      if (rho.factor) {
+        pushStep("pollard-rho", current, {
+          status: "factor-found",
+          factor: rho.factor.toString(),
+          attempts: rho.attempts.length
+        });
+        queue.push(rho.cofactor, rho.factor);
+        continue;
+      }
+      pushStep("pollard-rho", current, { status: config.rhoIterations > 0 ? "miss" : "disabled", attempts: rho.attempts.length });
+      unresolved.push({
+        value: current.toString(),
+        digits: current.toString().length,
+        probablePrime: false,
+        compositeWitness: primality.witness || null
+      });
+    }
+
+    while (queue.length) {
+      const current = queue.pop();
+      if (current > 1n) unresolved.push({ value: current.toString(), digits: current.toString().length, probablePrime: false, deferred: true });
+    }
+
+    const compactFactors = compactFactorRecords(factors);
+    const factorProduct = productFromRecords(compactFactors);
+    let unresolvedProduct = 1n;
+    for (const item of unresolved) unresolvedProduct *= BigInt(item.value);
+    const accountingVerified = factorProduct * unresolvedProduct === n;
+    const productVerified = unresolved.length === 0 && factorProduct === n;
+    const fullyFactored = productVerified;
+    const status =
+      fullyFactored && compactFactors.length
+        ? "solved"
+        : compactFactors.length
+          ? "partial"
+          : timedOut
+            ? "timeout"
+            : unresolved.length
+              ? "unsolved"
+              : "unit";
+
+    return {
+      status,
+      input: n.toString(),
+      digits: n.toString().length,
+      bitLength: bitLength(n),
+      factors: compactFactors,
+      unresolved,
+      productVerified,
+      accountingVerified,
+      fullyFactored,
+      passes,
+      timedOut,
+      steps,
+      config,
+      elapsedMs: Date.now() - startedAt
+    };
+  }
+
+  function mathSafeFermat(value, iterations) {
+    if (!iterations) return { found: false, iterations: 0, status: "disabled" };
+    return fermatFactorScout(value, iterations);
+  }
+
   function modInverse(value, modulus) {
     const mod = BigInt(modulus);
     let a = modNormalize(value, mod);
@@ -555,6 +739,8 @@
     isProbablePrime,
     fermatFactorScout,
     pollardRhoScout,
+    perfectPowerScout,
+    solveFactorization,
     modPow,
     modInverse,
     integerNthRoot,
