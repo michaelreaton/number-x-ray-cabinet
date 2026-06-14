@@ -426,6 +426,7 @@
     evaluatePolynomial,
     evaluatePolynomialMod,
     evaluateCyclotomic,
+    evaluateCyclotomicModProduct,
     evaluateCyclotomicMod,
     formatPolynomial,
     bigIntDigitLength,
