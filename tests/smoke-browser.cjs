@@ -154,6 +154,24 @@ async function main() {
     })`);
     assert.equal(exportName, "number-x-ray-report.json");
 
+    await cdp.send("Runtime.evaluate", {
+      expression: `
+        const input = document.querySelector('#integer-input');
+        input.value = 'Payam note: Φ3(10) = 111';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        document.querySelector('#run-button').click();
+      `
+    });
+    await waitForExpression(cdp, "document.querySelector('#scan-status')?.textContent.includes('Scanned')");
+    const messy = await evaluate(cdp, `({
+      digits: document.querySelector('#digit-count')?.textContent,
+      verdict: document.querySelector('#verdict-copy')?.textContent,
+      overflowX: document.documentElement.scrollWidth > document.documentElement.clientWidth
+    })`);
+    assert.match(messy.digits, /3/);
+    assert.match(messy.verdict, /Exact|counterexample|cyclotomic/i);
+    assert.equal(messy.overflowX, false);
+
     await cdp.send("Page.navigate", { url: `${url}?lang=fa` });
     await cdp.waitForEvent("Page.loadEventFired");
     await waitForExpression(cdp, "document.documentElement.lang === 'fa-IR' && document.querySelector('#scan-status')?.textContent.includes('اسکن شد')");
