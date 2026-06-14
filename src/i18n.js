@@ -3,7 +3,8 @@
     en: {
       appTitle: "Number X-Ray Cabinet",
       subtitle: "Detecting hidden cyclotomic structure in large integers.",
-      credit: "Credit: Payam · Paper",
+      credit: "Credit: Payam · MY GFN2",
+      sourceUrl: "https://amathz.com/my_gfn.html",
       engine: "Engine: local BigInt",
       docs: "Docs",
       settings: "Settings",
@@ -38,14 +39,14 @@
       sampleLarge: "150-digit Probe",
       sourceNote: "Source Note",
       sourceNoteHtml:
-        'Built from Payam’s paper, <a href="assets/Payam_Idea.pdf" target="_blank" rel="noopener">Payam_Idea.pdf</a>. The export cuts off the promised Python script after <code>import sympy as sp</code>, so this cabinet reconstructs the idea and marks fragile assumptions directly.',
-      bridgeTitle: "Payam’s Paper → This Lab",
+        'Built from Payam’s live source page, <a href="https://amathz.com/my_gfn.html" target="_blank" rel="noopener">MY GFN2</a>. Payam generalizes Fermat and Shanks-style numbers as cyclotomic families such as <code>Phi(n)(2^p^m)</code>, where <code>n</code> is squarefree and <code>p</code> divides <code>n</code>.',
+      bridgeTitle: "Payam’s MY GFN2 → This Lab",
       bridgeP1:
-        "Payam’s paper proposes an “X-ray” for large integers: instead of asking only whether a number is prime, it asks whether the number hides a cyclotomic construction.",
+        "Payam’s MY GFN2 page starts from Fermat numbers, generalized Fermat numbers, and generalized Mersenne chains, then pulls out principal cyclotomic parts.",
       bridgeP2:
-        "This app turns that idea into an interactive instrument. It searches candidate n, computes φ(n), estimates possible bases, evaluates Φₙ(b), and shows the evidence trail.",
+        "The compact target Payam gives is Phi(n)(2^p^m): n is squarefree, p is a prime divisor of n, and special cases recover Fermat, Shanks, and alternating Shanks numbers.",
       bridgeP3:
-        "The skeptical parts are intentional: the PDF says to recover structure with root tests and symbolic algebra, but the visible script is incomplete. The cabinet therefore also shows counterexamples where a real cyclotomic value fails the shortcut.",
+        "This app turns that source idea into an interactive instrument. It searches candidate n, computes φ(n), estimates possible bases, evaluates Φₙ(b), and labels exact equality separately from suggestive evidence.",
       bridgeP4:
         "Factor Solver extends the same X-ray spirit to composites: it verifies exact factors when local methods solve the input, and keeps large challenge fixtures unresolved unless a product proof exists.",
       candidates: "Cyclotomic Candidates",
@@ -104,7 +105,7 @@
       rsaSourceLine: "Recognized from the RSA challenge list.",
       rsaReconLine: "Local solving stops at the browser budget; larger composites need GNFS-class work.",
       counterexample: "Counterexample",
-      counterInitial: "Counterexamples show when an exact cyclotomic value fails the PDF’s perfect-root shortcut.",
+      counterInitial: "Counterexamples show when an exact cyclotomic value fails a perfect-root shortcut.",
       verdict: "Verdict",
       awaitingScan: "Awaiting scan.",
       exportJson: "Export report (JSON)",
@@ -173,7 +174,8 @@
     fa: {
       appTitle: "کابینت ایکس‌ری اعداد",
       subtitle: "جست‌وجوی ساختار پنهان سیکلوتومیک در عددهای بزرگ.",
-      credit: "اعتبار: پیام · مقاله",
+      credit: "اعتبار: پیام · MY GFN2",
+      sourceUrl: "https://amathz.com/my_gfn.html",
       engine: "موتور: BigInt محلی",
       docs: "یادداشت‌ها",
       settings: "تنظیمات",
@@ -208,14 +210,14 @@
       sampleLarge: "آزمون ۱۵۰ رقمی",
       sourceNote: "یادداشت منبع",
       sourceNoteHtml:
-        'بر پایهٔ مقالهٔ پیام، <a href="assets/Payam_Idea.pdf" target="_blank" rel="noopener">Payam_Idea.pdf</a>. خروجی PDF کد پایتون وعده‌داده‌شده را بعد از <code>import sympy as sp</code> قطع می‌کند؛ بنابراین این کابینت ایده را بازسازی می‌کند و فرض‌های شکننده را آشکار نشان می‌دهد.',
-      bridgeTitle: "از مقالهٔ پیام تا این آزمایشگاه",
+        'بر پایهٔ صفحهٔ زندهٔ پیام، <a href="https://amathz.com/my_gfn.html" target="_blank" rel="noopener">MY GFN2</a>. پیام عددهای فرما و خانواده‌های سبک Shanks را به خانواده‌های سیکلوتومیک مانند <code>Phi(n)(2^p^m)</code> وصل می‌کند؛ در این بیان <code>n</code> بدون مربع است و <code>p</code> مقسوم‌علیه اولِ <code>n</code> است.',
+      bridgeTitle: "از MY GFN2 پیام تا این آزمایشگاه",
       bridgeP1:
-        "مقالهٔ پیام یک «ایکس‌ری» برای عددهای بزرگ پیشنهاد می‌کند: به‌جای این‌که فقط بپرسیم عدد اول است یا نه، می‌پرسیم آیا عدد یک ساختار سیکلوتومیک پنهان دارد.",
+        "صفحهٔ MY GFN2 پیام از عددهای فرما، عددهای فرمات تعمیم‌یافته، و زنجیره‌های مرسن تعمیم‌یافته شروع می‌کند و سپس بخش‌های اصلی سیکلوتومیک را بیرون می‌کشد.",
       bridgeP2:
-        "این برنامه همان ایده را به یک ابزار تعاملی تبدیل می‌کند. نامزدهای n را می‌گردد، φ(n) را حساب می‌کند، پایه‌های ممکن را تخمین می‌زند، Φₙ(b) را ارزیابی می‌کند و ردپای شواهد را نشان می‌دهد.",
+        "هدف فشرده‌ای که پیام می‌دهد Phi(n)(2^p^m) است: n بدون مربع است، p مقسوم‌علیه اول n است، و حالت‌های ویژه به فرما، Shanks، و Shanks متناوب برمی‌گردند.",
       bridgeP3:
-        "بخش‌های بدبینانه عمدی‌اند: PDF می‌گوید ساختار با آزمون ریشه و جبر نمادین بازیابی می‌شود، اما اسکریپت قابل‌مشاهده کامل نیست. بنابراین کابینت نمونه‌های نقض را هم نشان می‌دهد؛ جاهایی که یک مقدار سیکلوتومیک واقعی از میان‌بُر ریشه عبور نمی‌کند.",
+        "این برنامه همان ایدهٔ منبع را به یک ابزار تعاملی تبدیل می‌کند. نامزدهای n را می‌گردد، φ(n) را حساب می‌کند، پایه‌های ممکن را تخمین می‌زند، Φₙ(b) را ارزیابی می‌کند، و برابری دقیق را از شواهد پیشنهادی جدا نگه می‌دارد.",
       bridgeP4:
         "حل‌گر عامل‌ها همین روحیهٔ ایکس‌ری را به عددهای مرکب می‌برد: وقتی روش‌های محلی ورودی را حل کنند عامل‌ها را دقیق راستی‌آزمایی می‌کند، و نمونه‌های چالشی بزرگ را بدون اثبات حاصل‌ضرب حل‌شده اعلام نمی‌کند.",
       candidates: "نامزدهای سیکلوتومیک",
@@ -274,7 +276,7 @@
       rsaSourceLine: "از فهرست چالش RSA شناسایی شد.",
       rsaReconLine: "حل محلی در بودجهٔ مرورگر متوقف می‌شود؛ عددهای مرکب بزرگ به کار در اندازهٔ GNFS نیاز دارند.",
       counterexample: "نمونه نقض",
-      counterInitial: "نمونه‌های نقض نشان می‌دهند چه زمانی یک مقدار سیکلوتومیک دقیق از آزمون ریشهٔ کاملِ PDF عبور نمی‌کند.",
+      counterInitial: "نمونه‌های نقض نشان می‌دهند چه زمانی یک مقدار سیکلوتومیک دقیق از میان‌بُر ریشهٔ کامل عبور نمی‌کند.",
       verdict: "حکم",
       awaitingScan: "در انتظار اسکن.",
       exportJson: "خروجی گزارش (JSON)",
@@ -580,6 +582,7 @@
     setText("h1", "appTitle");
     setText(".brand-block p", "subtitle");
     setText(".paper-credit", "credit");
+    setAttr(".paper-credit", "href", "sourceUrl");
     const engineNode = document.querySelector(".engine-status");
     if (engineNode) engineNode.innerHTML = `<span class="status-dot"></span>${t("engine")}`;
     setIconButton('[data-action="show-docs"]', "docs", "?");

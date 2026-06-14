@@ -136,6 +136,9 @@ async function main() {
       title: document.querySelector('h1')?.textContent,
       status: document.querySelector('#scan-status')?.textContent,
       credit: document.querySelector('.paper-credit')?.textContent,
+      creditHref: document.querySelector('.paper-credit')?.href,
+      sourceNote: document.querySelector('.source-note')?.textContent,
+      bridge: document.querySelector('.paper-bridge')?.textContent,
       matrix: document.querySelector('.matrix-summary')?.textContent,
       deep: document.querySelector('[data-mode="deep"]')?.textContent,
       rsaMode: document.querySelector('[data-mode="rsa"]')?.textContent,
@@ -149,6 +152,9 @@ async function main() {
     assert.equal(english.title, "Number X-Ray Cabinet");
     assert.match(english.status, /Scanned/);
     assert.match(english.credit, /Payam/);
+    assert.match(english.creditHref, /amathz\.com\/my_gfn\.html/);
+    assert.match(english.sourceNote, /MY GFN2/);
+    assert.match(english.bridge, /Phi\(n\)\(2\^p\^m\)|Shanks/);
     assert.match(english.matrix, /Discovery Matrix/);
     assert.match(english.deep, /Deep Scan/);
     assert.match(english.rsaMode, /Factor Solver/);
@@ -259,6 +265,7 @@ async function main() {
       title: document.querySelector('h1')?.textContent,
       dir: document.documentElement.dir,
       credit: document.querySelector('.paper-credit')?.textContent,
+      creditHref: document.querySelector('.paper-credit')?.href,
       bridge: document.querySelector('.paper-bridge')?.textContent,
       matrixButton: document.querySelector('[data-view="table"]')?.textContent,
       deep: document.querySelector('[data-mode="deep"]')?.textContent,
@@ -268,7 +275,8 @@ async function main() {
     assert.match(persian.title, /ایکس/);
     assert.equal(persian.dir, "rtl");
     assert.match(persian.credit, /پیام/);
-    assert.match(persian.bridge, /مقالهٔ پیام/);
+    assert.match(persian.creditHref, /amathz\.com\/my_gfn\.html/);
+    assert.match(persian.bridge, /MY GFN2|Phi\(n\)\(2\^p\^m\)/);
     assert.match(persian.matrixButton, /ماتریس/);
     assert.match(persian.deep, /عمیق/);
     assert.match(persian.rsaMode, /عامل|حل/);

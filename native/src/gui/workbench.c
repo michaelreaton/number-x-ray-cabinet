@@ -46,7 +46,7 @@ typedef struct RunJob {
   char *input;
 } RunJob;
 
-static const char *payam_paper_url = "https://michaelreaton.github.io/number-x-ray-cabinet/assets/Payam_Idea.pdf";
+static const char *payam_paper_url = "https://amathz.com/my_gfn.html";
 static const char *rsa260_value =
   "22112825529529666435281085255026230927612089502470015394413748319128822941402001986512729726569746599085900330031400051170742204560859276357953757185954298838958709229238491006703034124620545784566413664540684214361293017694020846391065875914794251435144458199";
 
@@ -540,7 +540,7 @@ static GtkWidget *build_input_rail(AppState *app) {
   app->language_button = gtk_button_new_with_label("FA");
   g_signal_connect(app->language_button, "clicked", G_CALLBACK(on_language_clicked), app);
   gtk_box_append(GTK_BOX(bottom), app->language_button);
-  GtkWidget *paper = paper_link_button("Payam Paper");
+  GtkWidget *paper = paper_link_button("Payam MY GFN2");
   gtk_widget_set_hexpand(paper, TRUE);
   gtk_box_append(GTK_BOX(bottom), paper);
   gtk_box_append(GTK_BOX(rail), bottom);
@@ -576,8 +576,8 @@ static GtkWidget *build_inspector(AppState *app, int stacked) {
   GtkWidget *payam = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
   gtk_widget_add_css_class(payam, "panel");
   gtk_box_append(GTK_BOX(payam), label_with_class("PAYAM CONNECTION", "section-title"));
-  gtk_box_append(GTK_BOX(payam), label_with_class("Payam's paper asks whether a large integer hides cyclotomic construction. This workbench separates that structure evidence from exact factor proof.", "subtitle"));
-  gtk_box_append(GTK_BOX(payam), paper_link_button("Open Payam's paper"));
+  gtk_box_append(GTK_BOX(payam), label_with_class("Payam's MY GFN2 page links Fermat, Shanks, and alternating Shanks families through Phi(n)(2^p^m). This workbench separates that structure evidence from exact factor proof.", "subtitle"));
+  gtk_box_append(GTK_BOX(payam), paper_link_button("Open Payam's MY GFN2"));
   gtk_box_append(GTK_BOX(box), payam);
 
   GtkWidget *fermat = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
@@ -620,7 +620,7 @@ void xray_workbench_activate(GtkApplication *application, gpointer user_data) {
   if (app->layout != XRAY_LAYOUT_COMPACT) {
     gtk_box_append(GTK_BOX(topbar), label_with_width("GTK4 + GMP", "top-chip", 16, FALSE));
     gtk_box_append(GTK_BOX(topbar), label_with_width("Proof-first", "top-chip", 16, FALSE));
-    gtk_box_append(GTK_BOX(topbar), paper_link_button("Payam Paper"));
+    gtk_box_append(GTK_BOX(topbar), paper_link_button("Payam MY GFN2"));
   }
   gtk_box_append(GTK_BOX(root), topbar);
 
