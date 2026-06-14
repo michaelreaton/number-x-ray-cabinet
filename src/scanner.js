@@ -38,7 +38,7 @@
     const defaultNMax = mode === "deep" ? 8192 : 128;
     const nMin = clampInt(config.nMin ?? 3, 1, nCeiling);
     const nMax = clampInt(config.nMax ?? defaultNMax, nMin, nCeiling);
-    const defaultBudget = mode === "deep" ? 15000 : 1800;
+    const defaultBudget = mode === "deep" ? 15000 : 3000;
     const defaultVerifyLimit = mode === "deep" ? 48 : mode === "verify" ? 64 : 24;
     return {
       nMin,
@@ -135,7 +135,7 @@
       targetPreview: formatBigInt(target, 34),
       stageOrder: ["profile", "screen", "hypothesize", "verify"],
       nRange: [config.nMin, config.nMax],
-      residuePrimes: config.mode === "deep" ? SCREEN_PRIMES : RESIDUE_PRIMES,
+      residuePrimes: SCREEN_PRIMES,
       exactVerificationLimit: config.verificationLimit
     };
   }
@@ -358,7 +358,8 @@
     emit({ stage: "profile", completed: 1, total: 1, message: "Profiled input magnitude" });
 
     const total = config.nMax - config.nMin + 1;
-    const screenPrimes = config.mode === "deep" ? SCREEN_PRIMES : RESIDUE_PRIMES;
+    const screenPrimes = SCREEN_PRIMES;
+    const screenBudgetMs = Math.max(80, Math.floor(config.timeBudgetMs * (config.mode === "deep" ? 0.72 : 0.58)));
     for (let n = config.nMin; n <= config.nMax; n += 1) {
       if (options.cancelled && options.cancelled()) {
         cancelled = true;
@@ -389,6 +390,10 @@
       }
       if ((n - config.nMin + 1) % 64 === 0 || n === config.nMax) {
         emit({ stage: "screen", completed: n - config.nMin + 1, total, message: "Screening residues and roots" });
+      }
+      if (candidates.length >= REPORT_LIMIT && Date.now() - startedAt > screenBudgetMs && n < config.nMax) {
+        timedOut = true;
+        break;
       }
     }
 

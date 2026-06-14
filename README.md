@@ -4,6 +4,8 @@ A self-contained browser lab inspired by Payam's `Payam_Idea.pdf`.
 
 The app explores Payam's idea of using an "X-ray" process to look for hidden cyclotomic structure inside large integers. It computes candidate `n`, `phi(n)`, estimated bases, `Phi_n(b)` matches, residue checks, and counterexamples where the shortcut logic is fragile.
 
+Deep Scan uses a staged pipeline: profile the input, screen many `n` values with fast modular probes, rank hypotheses, then spend the remaining budget on exact `Phi_n(b) = N` verification. Exact matches are only labeled exact after verification; screened hints remain evidence.
+
 Open `index.html` directly in a browser, or host the folder as a static site.
 
 GitHub repository: <https://github.com/michaelreaton/number-x-ray-cabinet>
