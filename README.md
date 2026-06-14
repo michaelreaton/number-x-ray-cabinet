@@ -8,13 +8,13 @@ Deep Scan uses a staged pipeline: profile the input, screen many `n` values with
 
 The sample set includes Fermat F12, `2^4096 + 1 = Phi_8192(2)`, as a large structured cyclotomic target. It is a discovery and stress example, not a promise that the local browser or native workbench can factor F12.
 
-RSA Solver adds a bounded proof track for RSA-260, the 260-digit RSA challenge number:
+Factor Solver adds a bounded proof track for composites, including RSA-260 as a 260-digit regression fixture:
 
-- recognizes the published RSA-260 decimal value
-- verifies the RSA-list checksum modulo `991889`
+- recognizes the published RSA-260 decimal value when that fixture is loaded
+- verifies the RSA-list checksum modulo `991889` for that fixture
 - runs browser-safe small-prime, Miller-Rabin, Fermat-offset, and Pollard Rho probes
 - verifies exact local factors when they are found
-- reports "unsolved locally; GNFS escalation required" instead of implying that RSA-260 was factored
+- reports "unsolved locally; GNFS escalation required" instead of implying that a large challenge number was factored
 - keeps the cyclotomic matrix visible so Payam-style structure evidence and RSA-style factor reconnaissance can be compared side by side
 
 ## Native Proof Workbench
@@ -27,7 +27,7 @@ Measurable native objectives:
 - evaluate known cyclotomic values such as `Phi3(10)=111`, `Phi5(2)=31`, `Phi8(2)=17`, and Fermat F12 as `Phi8192(2)`
 - parse messy integer pastes into exact decimal inputs
 - emit JSON reports with factors, unresolved cofactors, proof status, timings, limits, and source notes
-- keep RSA-260 explicitly unresolved unless exact factors are found and product verification passes
+- keep large challenge fixtures explicitly unresolved unless exact factors are found and product verification passes
 
 See [`native/README.md`](native/README.md) for build instructions. GTK4 is optional at configure time: the math core, CLI, and tests still build when GTK4 development headers are unavailable.
 

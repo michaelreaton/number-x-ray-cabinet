@@ -80,10 +80,11 @@ test("default scan handles one-thousand digit input under the target budget", ()
   assert.ok(report.candidates.length >= 50);
 });
 
-test("deep config reaches the 8192 n ceiling and reports graceful partials", () => {
-  const config = scanner.clampConfig({ mode: "deep", nMax: 20000, timeBudgetMs: 15000 });
-  assert.equal(config.nMax, 8192);
-  assert.equal(config.verificationLimit, 48);
+test("deep config reaches the expanded n ceiling and reports graceful partials", () => {
+  const config = scanner.clampConfig({ mode: "deep", nMax: 50000, timeBudgetMs: 60000, verificationLimit: 200 });
+  assert.equal(config.nMax, 32768);
+  assert.equal(config.timeBudgetMs, 60000);
+  assert.equal(config.verificationLimit, 128);
 
   const report = scanner.scanNumber("111", { mode: "deep", nMin: 3, nMax: 8192, baseWindow: 0, timeBudgetMs: 120 });
   assert.ok(report.elapsedMs < 1000);

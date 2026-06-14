@@ -118,9 +118,18 @@ async function main() {
     await cdp.send("Runtime.enable");
     await cdp.send("Page.navigate", { url });
     await cdp.waitForEvent("Page.loadEventFired");
-    await waitForExpression(cdp, "document.querySelector('#scan-status')?.textContent.includes('Scanned')");
+    await waitForExpression(cdp, "document.querySelector('#scan-status')?.textContent.includes('Ready')");
     await cdp.send("Runtime.evaluate", {
       expression: "document.querySelector('[data-sample=\"phi3\"]').click(); document.querySelector('[data-view=\"table\"]').click();"
+    });
+    const loadedOnly = await evaluate(cdp, `({
+      status: document.querySelector('#scan-status')?.textContent,
+      hasTable: Boolean(document.querySelector('.mini-table'))
+    })`);
+    assert.match(loadedOnly.status, /loaded|Run X-Ray/i);
+    assert.equal(loadedOnly.hasTable, false);
+    await cdp.send("Runtime.evaluate", {
+      expression: "document.querySelector('#run-button').click();"
     });
     await waitForExpression(cdp, "document.querySelector('.mini-table') && document.querySelector('#scan-status')?.textContent.includes('Scanned')");
     const english = await evaluate(cdp, `({
@@ -142,9 +151,9 @@ async function main() {
     assert.match(english.credit, /Payam/);
     assert.match(english.matrix, /Discovery Matrix/);
     assert.match(english.deep, /Deep Scan/);
-    assert.match(english.rsaMode, /RSA Solver/);
+    assert.match(english.rsaMode, /Factor Solver/);
     assert.match(english.semiprimeSample, /10403/);
-    assert.match(english.rsaSample, /RSA-260/);
+    assert.match(english.rsaSample, /260|RSA/);
     assert.match(english.largeSample, /1k/);
     assert.match(english.fermatSample, /F12/);
     assert.equal(english.stageCount, 4);
@@ -165,7 +174,6 @@ async function main() {
     await cdp.send("Runtime.evaluate", {
       expression: `
         document.querySelector('[data-sample="semiprime"]').click();
-        document.querySelector('#cancel-button').click();
         document.querySelector('#n-min').value = '3';
         document.querySelector('#n-max').value = '16';
         document.querySelector('#base-window').value = '0';
@@ -189,7 +197,6 @@ async function main() {
     await cdp.send("Runtime.evaluate", {
       expression: `
         document.querySelector('[data-mode="rsa"]').click();
-        document.querySelector('#cancel-button').click();
         document.querySelector('#n-min').value = '3';
         document.querySelector('#n-max').value = '32';
         document.querySelector('#base-window').value = '0';
@@ -247,7 +254,7 @@ async function main() {
 
     await cdp.send("Page.navigate", { url: `${url}?lang=fa` });
     await cdp.waitForEvent("Page.loadEventFired");
-    await waitForExpression(cdp, "document.documentElement.lang === 'fa-IR' && document.querySelector('#scan-status')?.textContent.includes('اسکن شد')");
+    await waitForExpression(cdp, "document.documentElement.lang === 'fa-IR' && document.querySelector('#scan-status')?.textContent.includes('آماده')");
     const persian = await evaluate(cdp, `({
       title: document.querySelector('h1')?.textContent,
       dir: document.documentElement.dir,
@@ -264,7 +271,7 @@ async function main() {
     assert.match(persian.bridge, /مقالهٔ پیام/);
     assert.match(persian.matrixButton, /ماتریس/);
     assert.match(persian.deep, /عمیق/);
-    assert.match(persian.rsaMode, /RSA|حل/);
+    assert.match(persian.rsaMode, /عامل|حل/);
     assert.equal(persian.overflowX, false);
 
     await cdp.send("Page.navigate", { url: pathToFileURL(path.join(root, "fa", "index.html")).href });
@@ -317,7 +324,10 @@ async function removeWithRetry(targetPath) {
       fs.rmSync(targetPath, { recursive: true, force: true });
       return;
     } catch (error) {
-      if (attempt === 5) throw error;
+      if (attempt === 5) {
+        console.warn(`Could not remove temporary Chrome profile ${targetPath}: ${error.message}`);
+        return;
+      }
       await sleep(250);
     }
   }

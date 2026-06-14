@@ -1,4 +1,4 @@
-importScripts("polynomial.js?v=20260614-solver", "scanner.js?v=20260614-solver");
+importScripts("polynomial.js?v=20260614-workflow", "scanner.js?v=20260614-workflow");
 
 self.onmessage = (event) => {
   const { id, input, config } = event.data;
