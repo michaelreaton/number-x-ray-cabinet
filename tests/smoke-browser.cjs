@@ -121,12 +121,32 @@ async function main() {
       title: document.querySelector('h1')?.textContent,
       status: document.querySelector('#scan-status')?.textContent,
       credit: document.querySelector('.paper-credit')?.textContent,
+      matrix: document.querySelector('.matrix-summary')?.textContent,
+      deep: document.querySelector('[data-mode="deep"]')?.textContent,
+      largeSample: document.querySelector('[data-sample="phi3large"]')?.textContent,
+      stageCount: document.querySelectorAll('.stage-pill').length,
       overflowX: document.documentElement.scrollWidth > document.documentElement.clientWidth
     })`);
     assert.equal(english.title, "Number X-Ray Cabinet");
     assert.match(english.status, /Scanned/);
     assert.match(english.credit, /Payam/);
+    assert.match(english.matrix, /Discovery Matrix/);
+    assert.match(english.deep, /Deep Scan/);
+    assert.match(english.largeSample, /1k/);
+    assert.equal(english.stageCount, 4);
     assert.equal(english.overflowX, false);
+
+    const exportName = await evaluate(cdp, `new Promise((resolve) => {
+      const original = HTMLAnchorElement.prototype.click;
+      HTMLAnchorElement.prototype.click = function () {
+        const name = this.download;
+        HTMLAnchorElement.prototype.click = original;
+        resolve(name);
+      };
+      document.querySelector('[data-action="export-json"]').click();
+      setTimeout(() => resolve(null), 250);
+    })`);
+    assert.equal(exportName, "number-x-ray-report.json");
 
     await cdp.send("Page.navigate", { url: `${url}?lang=fa` });
     await cdp.waitForEvent("Page.loadEventFired");
@@ -136,12 +156,16 @@ async function main() {
       dir: document.documentElement.dir,
       credit: document.querySelector('.paper-credit')?.textContent,
       bridge: document.querySelector('.paper-bridge')?.textContent,
+      matrixButton: document.querySelector('[data-view="table"]')?.textContent,
+      deep: document.querySelector('[data-mode="deep"]')?.textContent,
       overflowX: document.documentElement.scrollWidth > document.documentElement.clientWidth
     })`);
     assert.match(persian.title, /ایکس/);
     assert.equal(persian.dir, "rtl");
     assert.match(persian.credit, /پیام/);
     assert.match(persian.bridge, /مقالهٔ پیام/);
+    assert.match(persian.matrixButton, /ماتریس/);
+    assert.match(persian.deep, /عمیق/);
     assert.equal(persian.overflowX, false);
 
     await cdp.send("Page.navigate", { url: pathToFileURL(path.join(root, "fa", "index.html")).href });
