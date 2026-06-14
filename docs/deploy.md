@@ -4,17 +4,33 @@
 
 This app is static and should work well on GitHub Pages.
 
+Repository: <https://github.com/michaelreaton/number-x-ray-cabinet>
+
+Configured Pages URL:
+
+```text
+https://michaelreaton.github.io/number-x-ray-cabinet/
+```
+
 1. Create a GitHub repository and push this workspace.
 2. In GitHub, open **Settings → Pages**.
 3. Set **Source** to **GitHub Actions**.
 4. Push to `master` or `main`, or run the `Deploy static site to GitHub Pages` workflow manually.
 5. The workflow publishes the repository root, so `index.html` becomes the app entry point and `assets/Payam_Idea.pdf` remains the paper link.
 
-The current local repo has no remote configured yet. Once the remote exists:
+The local repo is configured with:
 
 ```powershell
-git remote add origin https://github.com/<owner>/<repo>.git
-git push -u origin master
+git remote add origin https://github.com/michaelreaton/number-x-ray-cabinet.git
+git push -u origin main
+```
+
+Use pull requests and rebase before pushing updates:
+
+```powershell
+git fetch origin
+git rebase origin/main
+git push
 ```
 
 ## Fallback: GCP Static Hosting

@@ -143,6 +143,10 @@ async function main() {
     assert.match(persian.credit, /پیام/);
     assert.match(persian.bridge, /مقالهٔ پیام/);
     assert.equal(persian.overflowX, false);
+
+    await cdp.send("Page.navigate", { url: pathToFileURL(path.join(root, "fa", "index.html")).href });
+    await cdp.waitForEvent("Page.loadEventFired");
+    await waitForExpression(cdp, "document.documentElement.lang === 'fa-IR'");
     cdp.close();
   } finally {
     chromeProcess.kill();
