@@ -129,6 +129,8 @@ async function main() {
       credit: document.querySelector('.paper-credit')?.textContent,
       matrix: document.querySelector('.matrix-summary')?.textContent,
       deep: document.querySelector('[data-mode="deep"]')?.textContent,
+      rsaMode: document.querySelector('[data-mode="rsa"]')?.textContent,
+      rsaSample: document.querySelector('[data-sample="rsa260"]')?.textContent,
       largeSample: document.querySelector('[data-sample="phi3large"]')?.textContent,
       stageCount: document.querySelectorAll('.stage-pill').length,
       overflowX: document.documentElement.scrollWidth > document.documentElement.clientWidth
@@ -138,6 +140,8 @@ async function main() {
     assert.match(english.credit, /Payam/);
     assert.match(english.matrix, /Discovery Matrix/);
     assert.match(english.deep, /Deep Scan/);
+    assert.match(english.rsaMode, /RSA Scout/);
+    assert.match(english.rsaSample, /RSA-260/);
     assert.match(english.largeSample, /1k/);
     assert.equal(english.stageCount, 4);
     assert.equal(english.overflowX, false);
@@ -153,6 +157,46 @@ async function main() {
       setTimeout(() => resolve(null), 250);
     })`);
     assert.equal(exportName, "number-x-ray-report.json");
+
+    await cdp.send("Runtime.evaluate", {
+      expression: `
+        document.querySelector('[data-mode="rsa"]').click();
+        document.querySelector('#cancel-button').click();
+        document.querySelector('#n-min').value = '3';
+        document.querySelector('#n-max').value = '32';
+        document.querySelector('#base-window').value = '0';
+        document.querySelector('#time-budget').value = '2000';
+        document.querySelector('#verification-limit').value = '2';
+        const rsaInput = document.querySelector('#integer-input');
+        rsaInput.value = window.XRayScanner.sampleValue('rsa260');
+        rsaInput.dispatchEvent(new Event('input', { bubbles: true }));
+        document.querySelector('#run-button').click();
+      `
+    });
+    await waitForExpression(cdp, "document.querySelector('#scan-status')?.textContent.includes('Scanned') && document.querySelector('#rsa-copy')?.textContent.includes('RSA-260')", 12000);
+    const rsa = await evaluate(cdp, `({
+      status: document.querySelector('#scan-status')?.textContent,
+      panel: document.querySelector('#rsa-copy')?.textContent,
+      stageCount: document.querySelectorAll('.stage-pill').length,
+      overflowX: document.documentElement.scrollWidth > document.documentElement.clientWidth
+    })`);
+    assert.match(rsa.status, /Scanned/);
+    assert.match(rsa.panel, /RSA-260/);
+    assert.match(rsa.panel, /327430/);
+    assert.equal(rsa.stageCount, 5);
+    assert.equal(rsa.overflowX, false);
+
+    await cdp.send("Runtime.evaluate", {
+      expression: `
+        document.querySelector('[data-mode="explore"]').click();
+        document.querySelector('#cancel-button').click();
+        document.querySelector('#n-min').value = '3';
+        document.querySelector('#n-max').value = '128';
+        document.querySelector('#base-window').value = '2';
+        document.querySelector('#time-budget').value = '3000';
+        document.querySelector('#verification-limit').value = '24';
+      `
+    });
 
     await cdp.send("Runtime.evaluate", {
       expression: `
@@ -182,6 +226,7 @@ async function main() {
       bridge: document.querySelector('.paper-bridge')?.textContent,
       matrixButton: document.querySelector('[data-view="table"]')?.textContent,
       deep: document.querySelector('[data-mode="deep"]')?.textContent,
+      rsaMode: document.querySelector('[data-mode="rsa"]')?.textContent,
       overflowX: document.documentElement.scrollWidth > document.documentElement.clientWidth
     })`);
     assert.match(persian.title, /ایکس/);
@@ -190,6 +235,7 @@ async function main() {
     assert.match(persian.bridge, /مقالهٔ پیام/);
     assert.match(persian.matrixButton, /ماتریس/);
     assert.match(persian.deep, /عمیق/);
+    assert.match(persian.rsaMode, /RSA|دیده/);
     assert.equal(persian.overflowX, false);
 
     await cdp.send("Page.navigate", { url: pathToFileURL(path.join(root, "fa", "index.html")).href });
