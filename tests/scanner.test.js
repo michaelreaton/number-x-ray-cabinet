@@ -111,7 +111,12 @@ test("RSA-260 sample is recognized and receives a bounded recon dossier", () => 
   assert.equal(report.rsaRecon.checksum.residue, 327430);
   assert.equal(report.rsaRecon.primality.probablyPrime, false);
   assert.equal(report.rsaRecon.factorPair, null);
+  assert.equal(report.rsaRecon.solver.status, "unsolved");
+  assert.equal(report.rsaRecon.solver.productVerified, false);
+  assert.equal(report.rsaRecon.solver.escalation.required, true);
+  assert.equal(report.rsaRecon.solver.escalation.recommendedTool, "CADO-NFS");
   assert.ok(report.discoveryStages.some((stage) => stage.name === "rsa" && stage.status === "complete"));
+  assert.ok(report.discoveryStages.some((stage) => stage.name === "solve" && stage.status === "partial"));
 });
 
 test("known RSA-260 input triggers recon even outside RSA mode", () => {
@@ -127,6 +132,26 @@ test("known RSA-260 input triggers recon even outside RSA mode", () => {
   });
   assert.equal(report.config.mode, "explore");
   assert.equal(report.rsaRecon.recognized, true);
+});
+
+test("RSA solver mode verifies solvable semiprime factors", () => {
+  const report = scanner.scanNumber(scanner.sampleValue("semiprime"), {
+    mode: "rsa",
+    nMin: 3,
+    nMax: 16,
+    baseWindow: 0,
+    timeBudgetMs: 2000,
+    verificationLimit: 2,
+    rsaSmallPrimeLimit: 50,
+    rsaFermatIterations: 20,
+    rsaRhoIterations: 200,
+    rsaSolverTimeBudgetMs: 1000
+  });
+  assert.equal(report.rsaRecon.solver.status, "solved");
+  assert.equal(report.rsaRecon.solver.productVerified, true);
+  assert.deepEqual(report.rsaRecon.solver.factors.map((factor) => factor.value), ["101", "103"]);
+  assert.equal(report.rsaRecon.solver.escalation.required, false);
+  assert.ok(report.discoveryStages.some((stage) => stage.name === "solve" && stage.status === "complete"));
 });
 
 test("planted 1k digit cyclotomic fixture is exactly recovered", () => {

@@ -29,6 +29,7 @@
         "The RSA challenge list defines this as a product of two discarded, similarly sized random primes congruent to 2 modulo 3, suitable for public exponent 3."
     }
   ];
+  const CADO_NFS_SOURCE = "https://cado-nfs.gitlabpages.inria.fr/";
 
   function normalizeInputText(raw) {
     return String(raw ?? "")
@@ -198,6 +199,7 @@
       rsaSmallPrimeLimit: clampInt(config.rsaSmallPrimeLimit ?? (mode === "rsa" ? 50000 : 10000), 100, 200000),
       rsaFermatIterations: clampInt(config.rsaFermatIterations ?? (mode === "rsa" ? 2000 : 250), 0, 25000),
       rsaRhoIterations: clampInt(config.rsaRhoIterations ?? (mode === "rsa" ? 700 : 0), 0, 25000),
+      rsaSolverTimeBudgetMs: clampInt(config.rsaSolverTimeBudgetMs ?? (mode === "rsa" ? 3500 : 1200), 100, 8000),
       reportLimit: REPORT_LIMIT
     };
   }
@@ -300,6 +302,44 @@
     };
   }
 
+  function factorPairFromSolver(target, solver) {
+    if (!solver || !solver.factors?.length) return null;
+    const expanded = [];
+    for (const factor of solver.factors) {
+      for (let index = 0; index < (factor.exponent || 1); index += 1) expanded.push(BigInt(factor.value));
+    }
+    if (expanded.length < 2) return null;
+    const factor = expanded[0];
+    const cofactor = target / factor;
+    if (factor > 1n && cofactor > 1n && factor * cofactor === target) return formatFactorPair(factor, cofactor);
+    return null;
+  }
+
+  function buildEscalationPlan(target, challenge, solver) {
+    const label = challenge?.label || "input";
+    return {
+      required: solver.status !== "solved",
+      reason:
+        solver.status === "solved"
+          ? "Browser-local factorization completed."
+          : `${label} was not factored inside the local browser budget.`,
+      recommendedTool: "CADO-NFS",
+      sourceUrl: CADO_NFS_SOURCE,
+      why: "CADO-NFS is a Number Field Sieve implementation that can run factoring phases in parallel over multiple computers.",
+      commandPack: [
+        "# Operator template for a GNFS-class run outside the browser",
+        "git clone https://gitlab.inria.fr/cado-nfs/cado-nfs.git",
+        "cd cado-nfs && make -j$(nproc)",
+        `./cado-nfs.py -t $(nproc) ${target.toString()}`
+      ],
+      gcpNotes: [
+        "Use preemptible/spot workers only if checkpointing is configured.",
+        "Persist the working directory to durable storage before stopping instances.",
+        "Track relation collection, matrix, square root, and factor verification as separate milestones."
+      ]
+    };
+  }
+
   function serializeSmallSieve(scan) {
     return {
       limit: scan.limit,
@@ -344,7 +384,15 @@
     const rho = hasSmallFactor || hasFermatFactor || config.rsaRhoIterations === 0
       ? { found: false, attempts: [], status: hasSmallFactor || hasFermatFactor ? "skipped" : "disabled" }
       : math.pollardRhoScout(target, { iterations: config.rsaRhoIterations });
+    const solver = math.solveFactorization(target, {
+      smallPrimeLimit: config.rsaSmallPrimeLimit,
+      fermatIterations: config.rsaFermatIterations,
+      rhoIterations: config.rsaRhoIterations,
+      timeBudgetMs: config.rsaSolverTimeBudgetMs,
+      maxPasses: 80
+    });
     const factorPair =
+      factorPairFromSolver(target, solver) ||
       formatFactorPair(small.factor, small.factor ? target / small.factor : null) ||
       formatFactorPair(fermat.factor, fermat.cofactor) ||
       formatFactorPair(rho.factor, rho.cofactor);
@@ -357,15 +405,20 @@
     if (!factorPair && !fermat.found) notes.push(`No Fermat square found in ${config.rsaFermatIterations} offsets`);
     if (!factorPair && config.rsaRhoIterations > 0) notes.push(`Pollard Rho made bounded attempts without a factor`);
     if (!primality.probablyPrime) notes.push(`Miller-Rabin composite witness: ${primality.witness}`);
-    if (factorPair) notes.push("A nontrivial factor was found inside the browser budget");
+    if (solver.status === "solved") notes.push("All factors were found and product verification passed");
+    else if (factorPair) notes.push("A nontrivial factor was found inside the browser budget");
+    else notes.push("Escalate to GNFS-class tooling for a real solve attempt");
 
-    const verdict = factorPair
-      ? "Factor found"
-      : challenge
-        ? `${challenge.label} recognized; no browser-budget factor found`
-        : primality.probablyPrime
-          ? "Probable prime under tested bases"
-          : "Composite witness found; no browser-budget factor found";
+    const verdict =
+      solver.status === "solved"
+        ? "Solved"
+        : factorPair
+          ? "Partial factor found"
+          : challenge
+            ? `${challenge.label} unsolved locally; GNFS escalation required`
+            : primality.probablyPrime
+              ? "Probable prime under tested bases"
+              : "Composite witness found; no browser-budget factor found";
 
     return {
       enabled: true,
@@ -392,12 +445,28 @@
       fermat: serializeFermat(fermat),
       pollardRho: serializeRho(rho),
       factorPair,
+      solver: {
+        status: solver.status,
+        factors: solver.factors,
+        unresolved: solver.unresolved,
+        productVerified: solver.productVerified,
+        accountingVerified: solver.accountingVerified,
+        fullyFactored: solver.fullyFactored,
+        timedOut: solver.timedOut,
+        passes: solver.passes,
+        elapsedMs: solver.elapsedMs,
+        steps: solver.steps.slice(0, 18),
+        stepCount: solver.steps.length,
+        escalation: buildEscalationPlan(target, challenge, solver)
+      },
       verdict,
       notes,
-      nextActions: factorPair
-        ? ["Verify the factor pair externally, then divide and run primality tests on each factor."]
+      nextActions: solver.status === "solved"
+        ? ["Use the verified factor list; product verification passed."]
+        : factorPair
+          ? ["Use the partial factor, then continue factoring the cofactor."]
         : [
-            "Treat this as reconnaissance, not a factorization.",
+            "Treat this as an unsolved local attempt.",
             "Export JSON and use GNFS-class tools for a real RSA-260 factor attempt.",
             "Compare the cyclotomic matrix for nonrandom algebraic fingerprints."
           ],
@@ -411,7 +480,7 @@
       bitLength: math.bitLength(target),
       log10Estimate: Number(math.log10Estimate(target).toFixed(4)),
       targetPreview: formatBigInt(target, 34),
-      stageOrder: shouldRunRsaRecon(target, config) ? ["profile", "rsa", "screen", "hypothesize", "verify"] : ["profile", "screen", "hypothesize", "verify"],
+      stageOrder: shouldRunRsaRecon(target, config) ? ["profile", "rsa", "solve", "screen", "hypothesize", "verify"] : ["profile", "screen", "hypothesize", "verify"],
       nRange: [config.nMin, config.nMax],
       residuePrimes: SCREEN_PRIMES,
       exactVerificationLimit: config.verificationLimit
@@ -648,6 +717,15 @@
           elapsedMs: rsaRecon.elapsedMs
         })
       );
+      stages.push(
+        makeStage("solve", rsaRecon.solver.status === "solved" ? "complete" : "partial", {
+          solverStatus: rsaRecon.solver.status,
+          productVerified: rsaRecon.solver.productVerified,
+          factors: rsaRecon.solver.factors.length,
+          unresolved: rsaRecon.solver.unresolved.length,
+          elapsedMs: rsaRecon.solver.elapsedMs
+        })
+      );
       emit({ stage: "rsa", completed: 1, total: 1, message: "RSA reconnaissance complete" });
     }
 
@@ -760,7 +838,8 @@
         verificationLimit: config.verificationLimit,
         rsaSmallPrimeLimit: config.rsaSmallPrimeLimit,
         rsaFermatIterations: config.rsaFermatIterations,
-        rsaRhoIterations: config.rsaRhoIterations
+        rsaRhoIterations: config.rsaRhoIterations,
+        rsaSolverTimeBudgetMs: config.rsaSolverTimeBudgetMs
       },
       elapsedMs: Date.now() - startedAt,
       timedOut,
@@ -817,6 +896,8 @@
         return "561";
       case "primepower":
         return math.powBigInt(3n, 7).toString();
+      case "semiprime":
+        return "10403";
       case "large":
         return "164265132454124777535030081362342972685864000000000000000000000000039";
       case "rsa260":
