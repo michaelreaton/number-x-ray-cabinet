@@ -215,7 +215,7 @@ char *xray_workbench_report_json(const XrayFactorReport *factor, const XrayCyclo
   jb_append(&buffer, "\"app\":\"Number X-Ray Workbench\",");
   jb_append(&buffer, "\"version\":"); jb_string(&buffer, XRAY_VERSION);
   jb_append(&buffer, ",\"sourceNotes\":[");
-  jb_string(&buffer, "Built from Payam's MY GFN2 page (https://amathz.com/my_gfn.html), which frames the family as Phi(n)(2^p^m) with n squarefree and p dividing n; evidence is labeled unless exact verification passes.");
+  jb_string(&buffer, "Built from Payam's MY GFN2 page (https://amathz.com/my_gfn.html): Payam builds from Fermat-style and generalized Mersenne chains to principal cyclotomic parts, summarized as Phi(n)(2^p^m); Number X-Ray runs the idea backward and labels evidence unless exact verification passes.");
   jb_append(&buffer, ",");
   jb_string(&buffer, "RSA-260 remains unsolved locally unless exact factors are found and product verification passes.");
   jb_append(&buffer, "],");

@@ -39,14 +39,14 @@
       sampleLarge: "150-digit Probe",
       sourceNote: "Source Note",
       sourceNoteHtml:
-        'Built from Payam’s live source page, <a href="https://amathz.com/my_gfn.html" target="_blank" rel="noopener">MY GFN2</a>. Payam generalizes Fermat and Shanks-style numbers as cyclotomic families such as <code>Phi(n)(2^p^m)</code>, where <code>n</code> is squarefree and <code>p</code> divides <code>n</code>.',
+        'Built from Payam’s live source page, <a href="https://amathz.com/my_gfn.html" target="_blank" rel="noopener">MY GFN2</a>. Payam builds a forward path from Fermat-style and generalized Mersenne chains to principal cyclotomic parts; this lab runs the path backward against a pasted integer.',
       bridgeTitle: "Payam’s MY GFN2 → This Lab",
       bridgeP1:
-        "Payam’s MY GFN2 page starts from Fermat numbers, generalized Fermat numbers, and generalized Mersenne chains, then pulls out principal cyclotomic parts.",
+        "Payam’s paper is a construction story. It begins with Fermat-style numbers, follows generalized Mersenne chains, and isolates the principal cyclotomic factor hiding between neighboring chain terms.",
       bridgeP2:
-        "The compact target Payam gives is Phi(n)(2^p^m): n is squarefree, p is a prime divisor of n, and special cases recover Fermat, Shanks, and alternating Shanks numbers.",
+        "That move produces Shanks, alternating Shanks, and mixed-prime families. Payam’s compact forest view is Phi(n)(2^p^m), with n squarefree and p a prime divisor of n.",
       bridgeP3:
-        "This app turns that source idea into an interactive instrument. It searches candidate n, computes φ(n), estimates possible bases, evaluates Φₙ(b), and labels exact equality separately from suggestive evidence.",
+        "This lab is the inverse instrument. Given N, it asks whether any candidate n and base b make N = Φₙ(b), or whether the number only leaves weaker residues, root proximity, or counterexample evidence.",
       bridgeP4:
         "Factor Solver extends the same X-ray spirit to composites: it verifies exact factors when local methods solve the input, and keeps large challenge fixtures unresolved unless a product proof exists.",
       candidates: "Cyclotomic Candidates",
@@ -210,14 +210,14 @@
       sampleLarge: "آزمون ۱۵۰ رقمی",
       sourceNote: "یادداشت منبع",
       sourceNoteHtml:
-        'بر پایهٔ صفحهٔ زندهٔ پیام، <a href="https://amathz.com/my_gfn.html" target="_blank" rel="noopener">MY GFN2</a>. پیام عددهای فرما و خانواده‌های سبک Shanks را به خانواده‌های سیکلوتومیک مانند <code>Phi(n)(2^p^m)</code> وصل می‌کند؛ در این بیان <code>n</code> بدون مربع است و <code>p</code> مقسوم‌علیه اولِ <code>n</code> است.',
+        'بر پایهٔ صفحهٔ زندهٔ پیام، <a href="https://amathz.com/my_gfn.html" target="_blank" rel="noopener">MY GFN2</a>. پیام از زنجیره‌های شبیه فرما و مرسن تعمیم‌یافته به بخش‌های اصلی سیکلوتومیک می‌رسد؛ این آزمایشگاه همان مسیر را برای عدد واردشده برعکس می‌پیماید.',
       bridgeTitle: "از MY GFN2 پیام تا این آزمایشگاه",
       bridgeP1:
-        "صفحهٔ MY GFN2 پیام از عددهای فرما، عددهای فرمات تعمیم‌یافته، و زنجیره‌های مرسن تعمیم‌یافته شروع می‌کند و سپس بخش‌های اصلی سیکلوتومیک را بیرون می‌کشد.",
+        "مقالهٔ پیام یک داستان ساخت است. از عددهای سبک فرما شروع می‌کند، زنجیره‌های مرسن تعمیم‌یافته را دنبال می‌کند، و عامل سیکلوتومیک اصلی را میان جمله‌های پیاپی زنجیره جدا می‌کند.",
       bridgeP2:
-        "هدف فشرده‌ای که پیام می‌دهد Phi(n)(2^p^m) است: n بدون مربع است، p مقسوم‌علیه اول n است، و حالت‌های ویژه به فرما، Shanks، و Shanks متناوب برمی‌گردند.",
+        "همین حرکت خانواده‌های Shanks، Shanks متناوب، و حالت‌های چنداولی را می‌سازد. نگاه فشردهٔ پیام Phi(n)(2^p^m) است؛ n بدون مربع است و p مقسوم‌علیه اول n است.",
       bridgeP3:
-        "این برنامه همان ایدهٔ منبع را به یک ابزار تعاملی تبدیل می‌کند. نامزدهای n را می‌گردد، φ(n) را حساب می‌کند، پایه‌های ممکن را تخمین می‌زند، Φₙ(b) را ارزیابی می‌کند، و برابری دقیق را از شواهد پیشنهادی جدا نگه می‌دارد.",
+        "این آزمایشگاه ابزار وارونهٔ همان ایده است. برای عدد N می‌پرسد آیا نامزد n و پایهٔ bای هست که N = Φₙ(b) شود، یا فقط ردهای ضعیف‌تری مثل باقیمانده‌ها، نزدیکی ریشه، یا نمونهٔ نقض دیده می‌شود.",
       bridgeP4:
         "حل‌گر عامل‌ها همین روحیهٔ ایکس‌ری را به عددهای مرکب می‌برد: وقتی روش‌های محلی ورودی را حل کنند عامل‌ها را دقیق راستی‌آزمایی می‌کند، و نمونه‌های چالشی بزرگ را بدون اثبات حاصل‌ضرب حل‌شده اعلام نمی‌کند.",
       candidates: "نامزدهای سیکلوتومیک",
