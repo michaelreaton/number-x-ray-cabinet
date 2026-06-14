@@ -3,4 +3,5 @@ qa/
 *.log
 *.tmp
 native/build/
+native/build-*/
 native/out/

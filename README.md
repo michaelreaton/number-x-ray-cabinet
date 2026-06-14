@@ -6,6 +6,8 @@ The app explores Payam's idea of using an "X-ray" process to look for hidden cyc
 
 Deep Scan uses a staged pipeline: profile the input, screen many `n` values with fast modular probes, rank hypotheses, then spend the remaining budget on exact `Phi_n(b) = N` verification. Exact matches are only labeled exact after verification; screened hints remain evidence.
 
+The sample set includes Fermat F12, `2^4096 + 1 = Phi_8192(2)`, as a large structured cyclotomic target. It is a discovery and stress example, not a promise that the local browser or native workbench can factor F12.
+
 RSA Solver adds a bounded proof track for RSA-260, the 260-digit RSA challenge number:
 
 - recognizes the published RSA-260 decimal value
@@ -22,7 +24,7 @@ The `native/` folder contains the first C + GTK proof workbench milestone. It is
 Measurable native objectives:
 
 - solve and product-verify benchmark composites such as `10403 = 101 × 103`, `8051 = 83 × 97`, prime powers, and Carmichael numbers
-- evaluate known cyclotomic values such as `Φ3(10)=111`, `Φ5(2)=31`, and `Φ8(2)=17`
+- evaluate known cyclotomic values such as `Phi3(10)=111`, `Phi5(2)=31`, `Phi8(2)=17`, and Fermat F12 as `Phi8192(2)`
 - parse messy integer pastes into exact decimal inputs
 - emit JSON reports with factors, unresolved cofactors, proof status, timings, limits, and source notes
 - keep RSA-260 explicitly unresolved unless exact factors are found and product verification passes

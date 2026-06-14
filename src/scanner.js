@@ -892,6 +892,8 @@
         return math.evaluateCyclotomic(5, 2n).toString();
       case "phi3large":
         return math.evaluateCyclotomic(3, 10n ** 500n).toString();
+      case "fermat12":
+        return (math.powBigInt(2n, 4096) + 1n).toString();
       case "carmichael":
         return "561";
       case "primepower":

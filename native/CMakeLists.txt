@@ -73,6 +73,10 @@ if(XRAY_BUILD_GTK)
       src/gui/main.c
       src/gui/workbench.c
     )
+    if(WIN32)
+      set_target_properties(xray_workbench PROPERTIES WIN32_EXECUTABLE TRUE)
+      target_link_libraries(xray_workbench PRIVATE shell32)
+    endif()
     target_include_directories(xray_workbench PRIVATE ${GTK4_INCLUDE_DIRS})
     target_link_directories(xray_workbench PRIVATE ${GTK4_LIBRARY_DIRS})
     target_link_libraries(xray_workbench PRIVATE xray_core ${GTK4_LIBRARIES})

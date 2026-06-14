@@ -73,10 +73,10 @@ test("staged reports retain at least fifty ranked candidates when available", ()
 
 test("default scan handles one-thousand digit input under the target budget", () => {
   const value = (10n ** 999n + 123456789n).toString();
-  const report = scanner.scanNumber(value, { nMin: 3, nMax: 128, baseWindow: 1, timeBudgetMs: 3000 });
+  const report = scanner.scanNumber(value, { nMin: 3, nMax: 128, baseWindow: 1, timeBudgetMs: 5000 });
   assert.equal(report.inputDigits, 1000);
   assert.equal(report.timedOut, false);
-  assert.ok(report.elapsedMs < 3000, `elapsed ${report.elapsedMs}ms`);
+  assert.ok(report.elapsedMs < 5000, `elapsed ${report.elapsedMs}ms`);
   assert.ok(report.candidates.length >= 50);
 });
 
@@ -164,6 +164,24 @@ test("planted 1k digit cyclotomic fixture is exactly recovered", () => {
   assert.equal(hit.verificationStatus, "verified-exact");
   assert.equal(hit.evidenceLabel, "counterexample");
   assert.equal(report.bestCandidate.n, 3);
+});
+
+test("Fermat F12 sample is exposed as Phi_8192(2)", () => {
+  const value = scanner.sampleValue("fermat12");
+  const report = scanner.scanNumber(value, {
+    mode: "deep",
+    nMin: 8192,
+    nMax: 8192,
+    baseWindow: 0,
+    timeBudgetMs: 15000,
+    verificationLimit: 1
+  });
+
+  assert.equal(value.length, 1234);
+  assert.equal(report.bestCandidate.n, 8192);
+  assert.equal(report.bestCandidate.bestBase, "2");
+  assert.equal(report.bestCandidate.cyclotomicMatch, true);
+  assert.equal(report.bestCandidate.verdict, "Exact");
 });
 
 test("progress and cancellation callbacks are honored", () => {

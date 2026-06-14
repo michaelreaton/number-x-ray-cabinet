@@ -133,6 +133,7 @@ async function main() {
       semiprimeSample: document.querySelector('[data-sample="semiprime"]')?.textContent,
       rsaSample: document.querySelector('[data-sample="rsa260"]')?.textContent,
       largeSample: document.querySelector('[data-sample="phi3large"]')?.textContent,
+      fermatSample: document.querySelector('[data-sample="fermat12"]')?.textContent,
       stageCount: document.querySelectorAll('.stage-pill').length,
       overflowX: document.documentElement.scrollWidth > document.documentElement.clientWidth
     })`);
@@ -145,6 +146,7 @@ async function main() {
     assert.match(english.semiprimeSample, /10403/);
     assert.match(english.rsaSample, /RSA-260/);
     assert.match(english.largeSample, /1k/);
+    assert.match(english.fermatSample, /F12/);
     assert.equal(english.stageCount, 4);
     assert.equal(english.overflowX, false);
 
