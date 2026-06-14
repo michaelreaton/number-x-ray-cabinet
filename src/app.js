@@ -130,7 +130,7 @@
       verificationLimit.value = "48";
       return;
     }
-    if (Number(timeBudget.value) >= 15000 && mode === "explore") timeBudget.value = "1800";
+    if (Number(timeBudget.value) >= 15000 && mode === "explore") timeBudget.value = "3000";
     if (Number(verificationLimit.value) > 24 && mode === "explore") verificationLimit.value = "24";
   }
 
@@ -168,7 +168,7 @@
   }
 
   function runWorkerScan(input, config) {
-    const worker = new Worker("src/worker.js");
+    const worker = new Worker("src/worker.js?v=20260614-deep");
     const id = crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
     state.activeWorker = worker;
     worker.onmessage = (event) => {
@@ -496,7 +496,7 @@
     const target = state.report?.fragileMatches?.[0] || null;
     const example = target
       ? {
-          label: i18n.t("exactHit", { n: target.n, b: target.bestBase }),
+          label: i18n.t("exactHit", { n: target.n, b: scanner.formatBigInt(target.bestBase, 22) }),
           value: target.cyclotomicValue,
           phi: target.phi,
           perfectRoot: target.exactPower,

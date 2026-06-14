@@ -175,7 +175,7 @@ h1 {
 
 .workbench {
   display: grid;
-  grid-template-columns: 340px minmax(680px, 1fr) 420px;
+  grid-template-columns: 320px minmax(0, 1fr) 390px;
   gap: 6px;
   min-height: 690px;
   margin-top: 6px;
@@ -391,7 +391,7 @@ body.lang-fa .input-meta {
 }
 
 body.lang-fa .workbench {
-  grid-template-columns: 420px minmax(680px, 1fr) 340px;
+  grid-template-columns: 390px minmax(0, 1fr) 320px;
 }
 
 body.lang-fa .input-rail {
@@ -797,6 +797,8 @@ code {
 
 .audit-table-wrap {
   overflow: auto;
+  scrollbar-color: var(--line-strong) rgba(7, 13, 12, 0.85);
+  scrollbar-width: thin;
 }
 
 .audit-table,
@@ -843,6 +845,27 @@ code {
 .stage-table-view {
   min-height: 440px;
   padding: 18px;
+  overflow: auto;
+  scrollbar-color: var(--line-strong) rgba(7, 13, 12, 0.85);
+  scrollbar-width: thin;
+}
+
+.stage-table-view::-webkit-scrollbar,
+.audit-table-wrap::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.stage-table-view::-webkit-scrollbar-track,
+.audit-table-wrap::-webkit-scrollbar-track {
+  background: rgba(7, 13, 12, 0.85);
+}
+
+.stage-table-view::-webkit-scrollbar-thumb,
+.audit-table-wrap::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border: 2px solid rgba(7, 13, 12, 0.85);
+  border-radius: 999px;
 }
 
 .matrix-summary {
@@ -897,6 +920,7 @@ code {
 
 .mini-table {
   min-height: 320px;
+  min-width: 760px;
   border: 1px solid var(--line);
 }
 
