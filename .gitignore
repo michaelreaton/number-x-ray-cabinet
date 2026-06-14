@@ -2,3 +2,5 @@ node_modules/
 qa/
 *.log
 *.tmp
+native/build/
+native/out/
