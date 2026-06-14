@@ -2,7 +2,9 @@
 
 A self-contained browser lab inspired by Payam's live [MY GFN2](https://amathz.com/my_gfn.html) page.
 
-The app explores Payam's idea of looking for hidden cyclotomic structure inside large integers. Payam frames generalized Fermat and Shanks-style families through generalized Mersenne chains, then gives the compact form `Phi(n)(2^p^m)`, where `n` is squarefree and `p` is a prime dividing `n`. The scanner turns that idea into bounded evidence: candidate `n`, `phi(n)`, estimated bases, `Phi_n(b)` matches, residue checks, and counterexamples where root-shortcut logic is fragile.
+The app explores Payam's idea of looking for hidden cyclotomic structure inside large integers. In MY GFN2, Payam starts with familiar Fermat-style numbers, shows how generalized Mersenne chains contain "principal" cyclotomic parts, and then expands the pattern through Shanks, alternating Shanks, and mixed-prime families. His compact destination is `Phi(n)(2^p^m)`, where `n` is squarefree and `p` is a prime dividing `n`.
+
+Number X-Ray runs that story backward. Given an arbitrary integer `N`, it asks whether `N` could be an exact value, a near miss, or a misleading shortcut candidate for one of those cyclotomic families. The scanner therefore reports candidate `n`, `phi(n)`, estimated bases, `Phi_n(b)` matches, residue checks, and counterexamples where root-shortcut logic is fragile.
 
 Deep Scan uses a staged pipeline: profile the input, screen many `n` values with fast modular probes, rank hypotheses, then spend the remaining budget on exact `Phi_n(b) = N` verification. Exact matches are only labeled exact after verification; screened hints remain evidence.
 
@@ -62,7 +64,7 @@ This version is written right-to-left in Persian for Payam while keeping formula
 
 Concept and source page: Payam, [MY GFN2](https://amathz.com/my_gfn.html).
 
-Payam's page connects Fermat numbers, generalized Fermat numbers, Shanks numbers, alternating Shanks numbers, and broader cyclotomic families through `Phi(n)(2^p^m)`. This implementation uses that as the public source link and keeps exact matches separate from evidence, partial results, and counterexamples.
+Payam's page builds a forward construction: start with Fermat-style and generalized Mersenne chains, extract principal cyclotomic factors, then describe the broader family as `Phi(n)(2^p^m)`. This implementation is the reverse instrument: paste a large integer, scan for fingerprints of that family, and keep exact matches separate from evidence, partial results, and counterexamples.
 
 RSA-260 metadata and checksum come from the public RSA Challenge List mirror at <https://www.ontko.com/pub/rayo/primes/rsa_fact.html>.
 

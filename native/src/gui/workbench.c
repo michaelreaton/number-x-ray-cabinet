@@ -576,7 +576,7 @@ static GtkWidget *build_inspector(AppState *app, int stacked) {
   GtkWidget *payam = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
   gtk_widget_add_css_class(payam, "panel");
   gtk_box_append(GTK_BOX(payam), label_with_class("PAYAM CONNECTION", "section-title"));
-  gtk_box_append(GTK_BOX(payam), label_with_class("Payam's MY GFN2 page links Fermat, Shanks, and alternating Shanks families through Phi(n)(2^p^m). This workbench separates that structure evidence from exact factor proof.", "subtitle"));
+  gtk_box_append(GTK_BOX(payam), label_with_class("Payam's MY GFN2 page builds forward from Fermat-style chains to principal cyclotomic parts, summarized as Phi(n)(2^p^m). This workbench runs the idea backward while separating structure evidence from exact factor proof.", "subtitle"));
   gtk_box_append(GTK_BOX(payam), paper_link_button("Open Payam's MY GFN2"));
   gtk_box_append(GTK_BOX(box), payam);
 

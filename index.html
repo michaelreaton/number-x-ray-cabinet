@@ -93,14 +93,14 @@
 
           <div class="rail-section source-note" id="source-note">
             <h2>Source Note</h2>
-            <p>Built from Payam’s live source page, <a href="https://amathz.com/my_gfn.html" target="_blank" rel="noopener">MY GFN2</a>. Payam generalizes Fermat and Shanks-style numbers as cyclotomic families such as <code>Phi(n)(2^p^m)</code>, where <code>n</code> is squarefree and <code>p</code> divides <code>n</code>.</p>
+            <p>Built from Payam’s live source page, <a href="https://amathz.com/my_gfn.html" target="_blank" rel="noopener">MY GFN2</a>. Payam builds a forward path from Fermat-style and generalized Mersenne chains to principal cyclotomic parts; this lab runs the path backward against a pasted integer.</p>
           </div>
 
           <div class="rail-section paper-bridge">
             <h2>Payam’s MY GFN2 → This Lab</h2>
-            <p>Payam’s MY GFN2 page starts from Fermat numbers, generalized Fermat numbers, and generalized Mersenne chains, then pulls out principal cyclotomic parts.</p>
-            <p>The compact target Payam gives is <code>Phi(n)(2^p^m)</code>: <code>n</code> is squarefree, <code>p</code> is a prime divisor of <code>n</code>, and special cases recover Fermat, Shanks, and alternating Shanks numbers.</p>
-            <p>This app turns that source idea into an interactive instrument. It searches candidate <code>n</code>, computes <code>φ(n)</code>, estimates possible bases, evaluates <code>Φₙ(b)</code>, and labels exact equality separately from suggestive evidence.</p>
+            <p>Payam’s paper is a construction story. It begins with Fermat-style numbers, follows generalized Mersenne chains, and isolates the principal cyclotomic factor hiding between neighboring chain terms.</p>
+            <p>That move produces Shanks, alternating Shanks, and mixed-prime families. Payam’s compact “forest view” is <code>Phi(n)(2^p^m)</code>, with <code>n</code> squarefree and <code>p</code> a prime divisor of <code>n</code>.</p>
+            <p>This lab is the inverse instrument. Given <code>N</code>, it asks whether any candidate <code>n</code> and base <code>b</code> make <code>N = Φₙ(b)</code>, or whether the number only leaves weaker residues, root proximity, or counterexample evidence.</p>
             <p>Factor Solver extends the same X-ray spirit to composites: it verifies exact factors when local methods solve the input, and keeps large challenge fixtures unresolved unless a product proof exists.</p>
           </div>
         </aside>

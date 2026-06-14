@@ -11,7 +11,7 @@
   const SCREEN_PRIMES = [1000003, 1000033, 1000037, 1000039, 1000081];
   const REPORT_LIMIT = 128;
   const SOURCE_NOTE =
-    "Credit: Payam. MY GFN2 (https://amathz.com/my_gfn.html) is the live source page for this app. Payam frames the target family as Phi(n)(2^p^m), with n squarefree and p a prime divisor of n; exact equality is reported separately from evidence and counterexamples.";
+    "Credit: Payam. MY GFN2 (https://amathz.com/my_gfn.html) builds a forward path from Fermat-style and generalized Mersenne chains to principal cyclotomic parts, summarized as Phi(n)(2^p^m) with n squarefree and p dividing n. Number X-Ray runs that idea backward: exact equality is reported separately from evidence and counterexamples.";
   const RSA_CHECKSUM_MODULUS = 991889n;
   const RSA_CHALLENGE_SOURCE = "https://www.ontko.com/pub/rayo/primes/rsa_fact.html";
   const RSA260_VALUE =
