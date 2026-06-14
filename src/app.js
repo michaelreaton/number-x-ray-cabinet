@@ -485,8 +485,10 @@
       <dl>
         <dt>φ(n)</dt><dd>${candidate.phi}</dd>
         <dt>n</dt><dd>${candidate.n}</dd>
+        <dt>${i18n.t("testedBases")}</dt><dd>${(candidate.testedBases || []).map((base) => scanner.formatBigInt(base, 12)).join(", ")}</dd>
         <dt>${i18n.t("candidatePoly")}</dt><dd>${candidate.polynomialPreview}</dd>
         <dt>${i18n.t("phiMatch")}</dt><dd>${candidate.cyclotomicMatch ? i18n.t("exact") : i18n.t("notExact")}</dd>
+        <dt>${i18n.t("difference")}</dt><dd>${scanner.formatBigInt(candidate.cyclotomicDifference || candidate.difference || "0", 18)}</dd>
         <dt>${i18n.t("verifyStatus")}</dt><dd>${i18n.verifyStatus(candidate.verificationStatus)}</dd>
         <dt>${i18n.t("rootSignal")}</dt><dd>${Math.round((candidate.discoverySignals?.rootProximity || 0) * 100)}%</dd>
         <dt>${i18n.t("residueConfidence")}</dt><dd>${Math.round(candidate.residueRatio * 100)}%</dd>
