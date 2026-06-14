@@ -6,13 +6,28 @@ The app explores Payam's idea of using an "X-ray" process to look for hidden cyc
 
 Deep Scan uses a staged pipeline: profile the input, screen many `n` values with fast modular probes, rank hypotheses, then spend the remaining budget on exact `Phi_n(b) = N` verification. Exact matches are only labeled exact after verification; screened hints remain evidence.
 
-RSA Scout adds a bounded reconnaissance track for RSA-260, the 260-digit RSA challenge number:
+RSA Solver adds a bounded proof track for RSA-260, the 260-digit RSA challenge number:
 
 - recognizes the published RSA-260 decimal value
 - verifies the RSA-list checksum modulo `991889`
 - runs browser-safe small-prime, Miller-Rabin, Fermat-offset, and Pollard Rho probes
-- reports "no browser-budget factor found" instead of implying that RSA-260 was factored
+- verifies exact local factors when they are found
+- reports "unsolved locally; GNFS escalation required" instead of implying that RSA-260 was factored
 - keeps the cyclotomic matrix visible so Payam-style structure evidence and RSA-style factor reconnaissance can be compared side by side
+
+## Native Proof Workbench
+
+The `native/` folder contains the first C + GTK proof workbench milestone. It is separate from the static web app and uses GMP-compatible arbitrary precision arithmetic so integer size is limited by memory rather than JavaScript number types.
+
+Measurable native objectives:
+
+- solve and product-verify benchmark composites such as `10403 = 101 × 103`, `8051 = 83 × 97`, prime powers, and Carmichael numbers
+- evaluate known cyclotomic values such as `Φ3(10)=111`, `Φ5(2)=31`, and `Φ8(2)=17`
+- parse messy integer pastes into exact decimal inputs
+- emit JSON reports with factors, unresolved cofactors, proof status, timings, limits, and source notes
+- keep RSA-260 explicitly unresolved unless exact factors are found and product verification passes
+
+See [`native/README.md`](native/README.md) for build instructions. GTK4 is optional at configure time: the math core, CLI, and tests still build when GTK4 development headers are unavailable.
 
 Open `index.html` directly in a browser, or host the folder as a static site.
 
