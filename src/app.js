@@ -160,11 +160,15 @@
     setBusy(true);
     const input = el.input.value;
     const config = readConfig();
-    if (window.Worker && location.protocol !== "file:") {
-      runWorkerScan(input, config);
-    } else {
-      window.setTimeout(() => runLocalScan(input, config), 25);
+    if (window.Worker) {
+      try {
+        runWorkerScan(input, config);
+        return;
+      } catch (error) {
+        state.activeWorker = null;
+      }
     }
+    window.setTimeout(() => runLocalScan(input, config), 25);
   }
 
   function runWorkerScan(input, config) {
