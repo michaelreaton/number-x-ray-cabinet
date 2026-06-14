@@ -6,6 +6,14 @@ The app explores Payam's idea of using an "X-ray" process to look for hidden cyc
 
 Open `index.html` directly in a browser, or host the folder as a static site.
 
+GitHub repository: <https://github.com/michaelreaton/number-x-ray-cabinet>
+
+After the launch PR is merged, the public site will be:
+
+```text
+https://michaelreaton.github.io/number-x-ray-cabinet/
+```
+
 ## Persian Version
 
 Use the in-app `FA` switch or open the app with:
@@ -14,10 +22,11 @@ Use the in-app `FA` switch or open the app with:
 index.html?lang=fa
 ```
 
-On GitHub Pages, that becomes:
+On GitHub Pages, Payam can use either:
 
 ```text
-https://<owner>.github.io/<repo>/?lang=fa
+https://michaelreaton.github.io/number-x-ray-cabinet/?lang=fa
+https://michaelreaton.github.io/number-x-ray-cabinet/fa/
 ```
 
 This version is written right-to-left in Persian for Payam while keeping formulas, candidate tables, and exported JSON math fields stable.
