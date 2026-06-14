@@ -1,0 +1,43 @@
+name: Native Workbench
+
+on:
+  pull_request:
+    paths:
+      - "native/**"
+      - ".github/workflows/native.yml"
+  push:
+    branches: [main]
+    paths:
+      - "native/**"
+      - ".github/workflows/native.yml"
+
+jobs:
+  native-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install GMP
+        run: sudo apt-get update && sudo apt-get install -y libgmp-dev
+      - name: Configure
+        run: cmake -S native -B native/build -DXRAY_BUILD_GTK=OFF
+      - name: Build
+        run: cmake --build native/build --config Release
+      - name: Test
+        run: ctest --test-dir native/build --output-on-failure
+
+  native-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install MPIR
+        shell: pwsh
+        run: vcpkg install mpir:x64-windows
+      - name: Configure
+        shell: pwsh
+        run: cmake -S native -B native/build -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" -DXRAY_BUILD_GTK=OFF
+      - name: Build
+        shell: pwsh
+        run: cmake --build native/build --config Release
+      - name: Test
+        shell: pwsh
+        run: ctest --test-dir native/build -C Release --output-on-failure
