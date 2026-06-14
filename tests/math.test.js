@@ -56,3 +56,21 @@ test("product-form modular screen agrees when the division path is invertible", 
     }
   }
 });
+
+test("small factor sieve and Miller-Rabin expose composite inputs", () => {
+  assert.deepEqual(math.primeSieve(12), [2, 3, 5, 7, 11]);
+  const small = math.smallFactorScan(10403n, 200);
+  assert.equal(small.factor, 101n);
+  assert.equal(math.isProbablePrime(10403n).probablyPrime, false);
+  assert.equal(math.isProbablePrime(6700417n).probablyPrime, true);
+});
+
+test("bounded Fermat and Pollard Rho scouts can recover toy semiprime factors", () => {
+  const fermat = math.fermatFactorScout(10403n, 20);
+  assert.equal(fermat.found, true);
+  assert.equal(fermat.factor * fermat.cofactor, 10403n);
+
+  const rho = math.pollardRhoScout(8051n, { iterations: 200, seeds: [2n, 3n], constants: [1n, 3n] });
+  assert.equal(rho.found, true);
+  assert.equal(rho.factor * rho.cofactor, 8051n);
+});

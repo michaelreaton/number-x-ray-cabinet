@@ -91,6 +91,44 @@ test("deep config reaches the 8192 n ceiling and reports graceful partials", () 
   assert.ok(report.timedOut || report.discoveryStages.find((stage) => stage.name === "verify").status !== "complete");
 });
 
+test("RSA-260 sample is recognized and receives a bounded recon dossier", () => {
+  const value = scanner.sampleValue("rsa260");
+  const report = scanner.scanNumber(value, {
+    mode: "rsa",
+    nMin: 3,
+    nMax: 32,
+    baseWindow: 0,
+    timeBudgetMs: 2000,
+    verificationLimit: 4,
+    rsaSmallPrimeLimit: 5000,
+    rsaFermatIterations: 50,
+    rsaRhoIterations: 50
+  });
+
+  assert.equal(value.length, 260);
+  assert.equal(report.rsaRecon.targetLabel, "RSA-260");
+  assert.equal(report.rsaRecon.checksum.pass, true);
+  assert.equal(report.rsaRecon.checksum.residue, 327430);
+  assert.equal(report.rsaRecon.primality.probablyPrime, false);
+  assert.equal(report.rsaRecon.factorPair, null);
+  assert.ok(report.discoveryStages.some((stage) => stage.name === "rsa" && stage.status === "complete"));
+});
+
+test("known RSA-260 input triggers recon even outside RSA mode", () => {
+  const report = scanner.scanNumber(scanner.sampleValue("rsa260"), {
+    nMin: 3,
+    nMax: 8,
+    baseWindow: 0,
+    timeBudgetMs: 1200,
+    verificationLimit: 2,
+    rsaSmallPrimeLimit: 1000,
+    rsaFermatIterations: 5,
+    rsaRhoIterations: 0
+  });
+  assert.equal(report.config.mode, "explore");
+  assert.equal(report.rsaRecon.recognized, true);
+});
+
 test("planted 1k digit cyclotomic fixture is exactly recovered", () => {
   const value = math.evaluateCyclotomic(3, 10n ** 500n).toString();
   const report = scanner.scanNumber(value, { mode: "deep", nMin: 3, nMax: 256, baseWindow: 1, timeBudgetMs: 5000 });
