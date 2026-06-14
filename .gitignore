@@ -5,3 +5,4 @@ qa/
 native/build/
 native/build-*/
 native/out/
+artifacts/

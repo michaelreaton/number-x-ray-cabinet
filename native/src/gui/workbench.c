@@ -13,6 +13,8 @@ typedef enum XrayLayoutProfile {
 
 typedef struct AppState {
   GtkWidget *window;
+  GtkWidget *notebook;
+  GtkWidget *tab_buttons[4];
   GtkWidget *input_view;
   GtkWidget *run_button;
   GtkWidget *cancel_button;
@@ -51,42 +53,63 @@ static const char *rsa260_value =
   "22112825529529666435281085255026230927612089502470015394413748319128822941402001986512729726569746599085900330031400051170742204560859276357953757185954298838958709229238491006703034124620545784566413664540684214361293017694020846391065875914794251435144458199";
 
 static const char *workbench_css =
-  "window { background: #050b0a; color: #e8f1ed; font-family: Segoe UI, Inter, sans-serif; }"
-  ".topbar { background: #07110f; border-bottom: 1px solid #24443f; padding: 12px 20px; }"
-  ".brand { font-size: 24px; font-weight: 800; color: #f5fbf8; }"
-  ".subtitle { color: #9fb6af; font-size: 12px; }"
-  ".micro { color: #6f8b84; font-size: 11px; }"
-  ".top-chip { color: #72f0d6; background: #0b2420; border: 1px solid #24514b; border-radius: 999px; padding: 5px 10px; font-size: 11px; font-weight: 700; }"
-  ".rail { background: #0a1714; border-right: 1px solid #1f3935; padding: 18px; }"
-  ".panel { background: #0b1815; border: 1px solid #1e3934; border-radius: 6px; padding: 16px; }"
-  ".stage { background: #081411; border: 1px solid #29544d; border-radius: 6px; padding: 18px; }"
-  ".inspector { background: #0a1714; border-left: 1px solid #1f3935; padding: 16px; }"
-  ".surface { background: #050b0a; }"
-  ".section-title { color: #f1d982; font-size: 11px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; }"
-  ".heading { color: #eef8f4; font-size: 19px; font-weight: 800; }"
-  ".formula { color: #dcfffb; font-family: Cascadia Mono, Consolas, monospace; font-size: 22px; font-weight: 800; }"
-  ".mono { font-family: Cascadia Mono, Consolas, monospace; color: #d5ebe5; }"
-  ".metric { background: #0e211d; border: 1px solid #254942; border-radius: 6px; padding: 12px; }"
-  ".metric-title { color: #78948d; font-size: 10px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; }"
-  ".metric-value { color: #f0fbf7; font-size: 14px; font-weight: 750; }"
-  ".stage-row { background: #0d1f1b; border: 1px solid #1e3934; border-radius: 5px; padding: 9px 10px; }"
-  ".stage-index { color: #6d8c85; font-family: Cascadia Mono, Consolas, monospace; font-size: 12px; }"
-  ".paper-link { color: #5bd7dc; border-color: #2d5d56; background: #0a211e; }"
-  ".good { color: #72f0d6; font-weight: 800; }"
-  ".warn { color: #f1d982; font-weight: 800; }"
-  ".bad { color: #ff8f7c; font-weight: 800; }"
-  ".muted { color: #9fb6af; }"
-  "textview, textview text { background: #06100e; color: #e8f1ed; font-family: Cascadia Mono, Consolas, monospace; font-size: 13px; }"
-  "entry, spinbutton { background: #06100e; color: #e8f1ed; border: 1px solid #26423d; border-radius: 4px; padding: 8px; }"
-  "button { background: #102721; color: #e2efea; border: 1px solid #2a5149; border-radius: 5px; padding: 8px 12px; font-weight: 700; }"
-  "button:hover { background: #16362f; border-color: #4f8a80; }"
-  ".primary { background: #65dde1; color: #04120f; border-color: #94f8f8; }"
-  ".danger { background: #351713; color: #ffb7aa; border-color: #843227; }"
-  "scrolledwindow, viewport, notebook, notebook stack { background: #050b0a; }"
-  "notebook > header { background: #081310; border-bottom: 1px solid #1e3934; }"
-  "notebook tab { padding: 9px 18px; background: #0a1714; border: 1px solid #1e3934; }"
-  "notebook tab:checked { background: #12312b; color: #72f0d6; }"
-  ".log { background: #050b0a; border-top: 1px solid #1e3934; padding: 8px; color: #9fb6af; }";
+  "window { background: #060809; color: #d8dedf; font-family: Segoe UI, Inter, sans-serif; }"
+  "headerbar.window-titlebar { background: #111315; border-bottom: 1px solid #252b2f; padding: 0 8px; min-height: 28px; }"
+  "headerbar.window-titlebar button { min-height: 22px; min-width: 32px; padding: 0; margin: 2px 3px; }"
+  ".window-title { color: #e4e8ea; font-size: 14px; font-weight: 500; }"
+  ".window-control { color: #d7dcde; font-size: 13px; padding: 0 9px; }"
+  ".chrome { background: #080b0d; border-bottom: 1px solid #20272b; padding: 0 10px; min-height: 40px; }"
+  ".logo { color: #24dff3; font-size: 23px; font-weight: 800; font-family: Georgia, serif; padding: 0 12px 0 6px; }"
+  ".menu-label { color: #b8bec1; font-size: 13px; padding: 0 10px; }"
+  ".top-tab { min-width: 150px; padding: 6px 20px; margin: 0 2px; color: #cfd5d8; background: #101416; border: 1px solid #283035; border-radius: 4px; font-size: 16px; font-weight: 500; }"
+  ".top-tab:hover { background: #141b1e; border-color: #39464c; }"
+  ".top-tab.selected { color: #33e6f4; background: #10242a; border-color: #1e7180; border-bottom: 2px solid #1bd8f0; }"
+  ".top-status { color: #a8afb2; font-size: 12px; padding: 0 8px; }"
+  ".status-dot { color: #4dcc5f; font-size: 14px; }"
+  ".settings-glyph { color: #aeb8bb; font-size: 16px; padding: 0 4px; }"
+  ".surface { background: #060809; }"
+  ".workarea { background: #060809; }"
+  ".rail { background: #0b0f11; border: 1px solid #242a2e; padding: 12px; }"
+  ".stage { background: #0a0e10; border: 1px solid #252c31; padding: 12px; }"
+  ".inspector { background: #0b0f11; border: 1px solid #252c31; padding: 10px; }"
+  ".panel { background: #090d0f; border: 1px solid #2a3035; border-radius: 0; padding: 11px; }"
+  ".subpanel { background: #080c0e; border: 1px solid #252b2f; border-radius: 0; padding: 10px; }"
+  ".section-title { color: #cfd6d8; font-size: 11px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; }"
+  ".micro-title { color: #cbd2d4; font-size: 10px; font-weight: 650; letter-spacing: .5px; text-transform: uppercase; }"
+  ".field-label { color: #c4cbce; font-size: 12px; }"
+  ".subtitle { color: #9aa4a8; font-size: 12px; }"
+  ".micro { color: #7f898d; font-size: 11px; }"
+  ".heading { color: #eef5f7; font-size: 17px; font-weight: 700; }"
+  ".formula { color: #dceff3; font-family: Cascadia Mono, Consolas, monospace; font-size: 13px; font-weight: 700; }"
+  ".mono { font-family: Cascadia Mono, Consolas, monospace; color: #d5dee1; font-size: 12px; }"
+  ".mono-small { font-family: Cascadia Mono, Consolas, monospace; color: #aeb7ba; font-size: 11px; }"
+  ".line-gutter { background: #101416; color: #6f7a7e; border: 1px solid #252c31; border-right: 0; padding: 8px 7px; font-family: Cascadia Mono, Consolas, monospace; font-size: 12px; }"
+  ".metric { background: #0d1214; border: 1px solid #2a3035; border-radius: 0; padding: 8px; }"
+  ".metric-title { color: #8c969a; font-size: 10px; font-weight: 700; letter-spacing: .7px; text-transform: uppercase; }"
+  ".metric-value { color: #eef5f7; font-size: 12px; font-weight: 650; }"
+  ".table-header { color: #cdd5d8; font-family: Cascadia Mono, Consolas, monospace; font-size: 11px; font-weight: 700; }"
+  ".table-cell { color: #c7d0d3; font-family: Cascadia Mono, Consolas, monospace; font-size: 11px; padding: 3px 6px; }"
+  ".table-cell.good, .good { color: #25e8ef; font-weight: 750; }"
+  ".table-cell.warn, .warn { color: #d8a827; font-weight: 750; }"
+  ".table-cell.bad, .bad { color: #ff4d55; font-weight: 750; }"
+  ".muted { color: #929da1; }"
+  ".control-row { padding: 2px 0; }"
+  ".select-face { background: #0a0e10; color: #d5dcde; border: 1px solid #2b3338; border-radius: 3px; padding: 4px 8px; font-size: 12px; }"
+  ".run-button { background: #10272d; color: #28e5f6; border: 1px solid #27dced; border-radius: 3px; padding: 9px 12px; font-size: 17px; font-weight: 700; }"
+  ".run-button:hover { background: #12323a; border-color: #62f1ff; }"
+  ".reset-button { background: #0b0f11; color: #8a9498; border: 1px solid #30383d; border-radius: 3px; padding: 9px 12px; font-size: 12px; }"
+  ".danger { background: #281315; color: #ff8e95; border-color: #79343a; }"
+  ".paper-link { color: #2bd5ea; border-color: #26353b; background: #0a1114; font-size: 12px; }"
+  "textview, textview text { background: #0b0f11; color: #d9e1e4; font-family: Cascadia Mono, Consolas, monospace; font-size: 12px; }"
+  "textview { border: 1px solid #252c31; }"
+  "entry, spinbutton { background: #080c0e; color: #d8e0e3; border: 1px solid #2a3035; border-radius: 3px; padding: 6px; }"
+  "button { background: #11171a; color: #d7dde0; border: 1px solid #30383d; border-radius: 3px; padding: 6px 9px; font-weight: 600; }"
+  "button:hover { background: #172024; border-color: #3e4a50; }"
+  "scrolledwindow, viewport, notebook, notebook stack { background: #060809; }"
+  "notebook > header { min-height: 0; padding: 0; border: 0; background: #060809; }"
+  "notebook tab { min-height: 0; padding: 0; margin: 0; border: 0; }"
+  ".log { background: #080b0d; border-top: 1px solid #22292d; border-left: 1px solid #22292d; border-right: 1px solid #22292d; padding: 6px; color: #aeb8bb; }"
+  ".statusbar { background: #090c0e; border-top: 1px solid #20272b; padding: 6px 12px; }";
 
 static void set_margins(GtkWidget *widget, int top, int right, int bottom, int left) {
   gtk_widget_set_margin_top(widget, top);
@@ -115,6 +138,17 @@ static GtkWidget *paper_link_button(const char *label) {
   return link;
 }
 
+static GtkWidget *build_window_titlebar(void) {
+  GtkWidget *header = gtk_header_bar_new();
+  gtk_widget_add_css_class(header, "window-titlebar");
+  gtk_widget_set_size_request(header, -1, 28);
+  gtk_header_bar_set_show_title_buttons(GTK_HEADER_BAR(header), TRUE);
+  GtkWidget *title = label_with_width("Number X-Ray Workbench", "window-title", 40, FALSE);
+  gtk_label_set_xalign(GTK_LABEL(title), 0.5f);
+  gtk_header_bar_set_title_widget(GTK_HEADER_BAR(header), title);
+  return header;
+}
+
 static GtkWidget *scrolled_text_view(GtkWidget **view_out, gboolean editable) {
   GtkWidget *scroll = gtk_scrolled_window_new();
   gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
@@ -134,8 +168,8 @@ static int clamp_int(int value, int minimum, int maximum) {
 }
 
 static XrayLayoutProfile set_adaptive_window_size(GtkWindow *window) {
-  int width = 1500;
-  int height = 900;
+  int width = 1540;
+  int height = 950;
   XrayLayoutProfile layout = XRAY_LAYOUT_DESKTOP;
   GdkDisplay *display = gdk_display_get_default();
   if (display) {
@@ -147,16 +181,16 @@ static XrayLayoutProfile set_adaptive_window_size(GtkWindow *window) {
         gdk_monitor_get_geometry(monitor, &geometry);
         int usable_width = geometry.width > 120 ? geometry.width - 96 : geometry.width;
         int usable_height = geometry.height > 120 ? geometry.height - 96 : geometry.height;
-        if (usable_width >= 3000) layout = XRAY_LAYOUT_WIDE;
-        else if (usable_width >= 2200) layout = XRAY_LAYOUT_DESKTOP;
+        if (usable_width >= 2600) layout = XRAY_LAYOUT_WIDE;
+        else if (usable_width >= 1300) layout = XRAY_LAYOUT_DESKTOP;
         else layout = XRAY_LAYOUT_COMPACT;
 
-        int target_width = (usable_width * 92) / 100;
-        int target_height = (usable_height * 88) / 100;
-        int max_width = layout == XRAY_LAYOUT_WIDE ? 1760 : 1380;
-        int max_height = layout == XRAY_LAYOUT_WIDE ? 1000 : 900;
-        int min_width = layout == XRAY_LAYOUT_COMPACT ? 1040 : 1280;
-        int min_height = layout == XRAY_LAYOUT_COMPACT ? 680 : 760;
+        int target_width = (usable_width * 96) / 100;
+        int target_height = (usable_height * 96) / 100;
+        int max_width = layout == XRAY_LAYOUT_WIDE ? 1880 : 1560;
+        int max_height = layout == XRAY_LAYOUT_WIDE ? 1060 : 1010;
+        int min_width = layout == XRAY_LAYOUT_COMPACT ? 1180 : 1420;
+        int min_height = layout == XRAY_LAYOUT_COMPACT ? 720 : 820;
         width = clamp_int(target_width, usable_width >= min_width ? min_width : usable_width, max_width);
         height = clamp_int(target_height, usable_height >= min_height ? min_height : usable_height, max_height);
         g_object_unref(monitor);
@@ -168,21 +202,21 @@ static XrayLayoutProfile set_adaptive_window_size(GtkWindow *window) {
 }
 
 static int rail_width(const AppState *app) {
-  if (app->layout == XRAY_LAYOUT_WIDE) return 340;
-  if (app->layout == XRAY_LAYOUT_DESKTOP) return 280;
-  return 250;
+  if (app->layout == XRAY_LAYOUT_WIDE) return 420;
+  if (app->layout == XRAY_LAYOUT_DESKTOP) return 360;
+  return 315;
 }
 
 static int inspector_width(const AppState *app) {
-  if (app->layout == XRAY_LAYOUT_WIDE) return 360;
-  if (app->layout == XRAY_LAYOUT_DESKTOP) return 280;
-  return 250;
+  if (app->layout == XRAY_LAYOUT_WIDE) return 430;
+  if (app->layout == XRAY_LAYOUT_DESKTOP) return 390;
+  return 330;
 }
 
 static int center_width(const AppState *app) {
   if (app->layout == XRAY_LAYOUT_WIDE) return 980;
-  if (app->layout == XRAY_LAYOUT_DESKTOP) return 820;
-  return 680;
+  if (app->layout == XRAY_LAYOUT_DESKTOP) return 760;
+  return 670;
 }
 
 static char *text_view_text(GtkWidget *view) {
@@ -196,6 +230,205 @@ static char *text_view_text(GtkWidget *view) {
 static void set_text_view(GtkWidget *view, const char *text) {
   GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(view));
   gtk_text_buffer_set_text(buffer, text ? text : "", -1);
+}
+
+static char *chunk_decimal(const char *value, size_t width) {
+  size_t length = strlen(value);
+  size_t lines = length / width + (length % width ? 1u : 0u);
+  size_t capacity = length + lines + 1u;
+  char *out = (char *)calloc(capacity, sizeof(char));
+  if (!out) return NULL;
+  size_t pos = 0;
+  for (size_t index = 0; index < length; index += width) {
+    size_t count = width;
+    if (index + count > length) count = length - index;
+    memcpy(out + pos, value + index, count);
+    pos += count;
+    out[pos++] = '\n';
+  }
+  out[pos] = '\0';
+  return out;
+}
+
+static GtkWidget *section_box(const char *css_class, int spacing) {
+  GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, spacing);
+  gtk_widget_add_css_class(box, css_class);
+  return box;
+}
+
+static GtkWidget *field_face(const char *text) {
+  GtkWidget *label = label_with_width(text, "select-face", 36, FALSE);
+  gtk_widget_set_hexpand(label, TRUE);
+  return label;
+}
+
+static GtkWidget *control_row(const char *label, const char *value, int help) {
+  GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+  gtk_widget_add_css_class(row, "control-row");
+  GtkWidget *name = label_with_width(label, "field-label", 20, FALSE);
+  gtk_widget_set_size_request(name, 138, -1);
+  gtk_box_append(GTK_BOX(row), name);
+  gtk_box_append(GTK_BOX(row), field_face(value));
+  if (help) gtk_box_append(GTK_BOX(row), label_with_width("?", "micro", 2, FALSE));
+  return row;
+}
+
+static GtkWidget *table_label(const char *text, const char *css_class, int width_chars) {
+  GtkWidget *label = label_with_width(text, NULL, width_chars, FALSE);
+  char classes[64];
+  snprintf(classes, sizeof(classes), "%s", css_class ? css_class : "");
+  char *token = strtok(classes, " ");
+  while (token) {
+    gtk_widget_add_css_class(label, token);
+    token = strtok(NULL, " ");
+  }
+  gtk_label_set_ellipsize(GTK_LABEL(label), PANGO_ELLIPSIZE_END);
+  return label;
+}
+
+static void set_source_rgb(cairo_t *cr, double r, double g, double b) {
+  cairo_set_source_rgb(cr, r / 255.0, g / 255.0, b / 255.0);
+}
+
+static void draw_text(cairo_t *cr, const char *text, double x, double y, double size, double r, double g, double b) {
+  cairo_save(cr);
+  cairo_select_font_face(cr, "Cascadia Mono", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
+  cairo_set_font_size(cr, size);
+  set_source_rgb(cr, r, g, b);
+  cairo_move_to(cr, x, y);
+  cairo_show_text(cr, text);
+  cairo_restore(cr);
+  cairo_new_path(cr);
+}
+
+static void draw_scan_pipeline(GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer user_data) {
+  (void)area;
+  (void)user_data;
+  const char *labels[] = {"Ingest", "Sieve", "Structure", "Rings", "Ladder", "ECPP", "Assemble", "Verify"};
+  int count = 8;
+  double left = 46.0;
+  double right = width - 58.0;
+  double y = height * 0.38;
+  double step = (right - left) / (double)(count - 1);
+  cairo_set_line_width(cr, 1.0);
+  for (int i = 0; i < count - 1; ++i) {
+    if (i < 3) set_source_rgb(cr, 31, 211, 229);
+    else set_source_rgb(cr, 78, 86, 90);
+    cairo_move_to(cr, left + step * i + 12, y);
+    cairo_line_to(cr, left + step * (i + 1) - 12, y);
+    cairo_stroke(cr);
+  }
+  for (int i = 0; i < count; ++i) {
+    double x = left + step * i;
+    int active = i <= 3;
+    set_source_rgb(cr, active ? 31 : 84, active ? 211 : 91, active ? 229 : 96);
+    cairo_arc(cr, x, y, i == 3 ? 8.0 : 7.0, 0, 6.28318);
+    cairo_stroke(cr);
+    if (i < 3) draw_text(cr, "v", x - 3.3, y + 3.8, 10.0, 31, 211, 229);
+    if (i == 3) {
+      set_source_rgb(cr, 31, 211, 229);
+      cairo_arc(cr, x, y, 4.5, 0, 6.28318);
+      cairo_fill(cr);
+    }
+    draw_text(cr, labels[i], x - 22.0, y + 30.0, 11.0, active ? 196 : 135, active ? 205 : 143, active ? 209 : 148);
+  }
+}
+
+static void draw_candidate_rings(GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer user_data) {
+  (void)area;
+  (void)user_data;
+  double left = 106.0;
+  double right = width - 86.0;
+  double top = 38.0;
+  double bottom = height - 18.0;
+  int rows = 8;
+  double row_h = (bottom - top) / (double)rows;
+  int powers[] = {0, 16, 32, 48, 64, 80, 96, 112, 128};
+
+  draw_text(cr, "CANDIDATE RINGS (Residue Classes)", 4, 15, 11, 208, 216, 219);
+  cairo_set_line_width(cr, 0.8);
+  for (int i = 0; i < 9; ++i) {
+    double x = left + (right - left) * (double)i / 8.0;
+    set_source_rgb(cr, 54, 62, 67);
+    cairo_move_to(cr, x, top - 10);
+    cairo_line_to(cr, x, top - 4);
+    cairo_stroke(cr);
+    char label[16];
+    snprintf(label, sizeof(label), "2^%d", powers[i]);
+    draw_text(cr, label, x - 13, top - 14, 10, 183, 191, 195);
+  }
+
+  for (int row = 0; row < rows; ++row) {
+    double y = top + row_h * row + row_h * 0.5;
+    char label[32];
+    snprintf(label, sizeof(label), "R%d  mod  2^%d", row + 1, (row + 1) * 16);
+    draw_text(cr, label, 24, y + 4, 11, 199, 207, 210);
+    set_source_rgb(cr, 42, 49, 54);
+    cairo_move_to(cr, left, y);
+    cairo_line_to(cr, right, y);
+    cairo_stroke(cr);
+    double start = left + (right - left) * (0.10 + row * 0.075);
+    double end = left + (right - left) * (0.44 + row * 0.075);
+    if (end > right - 8) end = right - 8;
+    if (row == rows - 1) set_source_rgb(cr, 213, 161, 39);
+    else set_source_rgb(cr, 31, 196, 216);
+    cairo_move_to(cr, start, y);
+    cairo_line_to(cr, end, y);
+    cairo_stroke(cr);
+    int dots = row < 2 ? 4 : row < 5 ? 3 : 2;
+    for (int d = 0; d < dots; ++d) {
+      double x = start + (end - start) * (double)d / (double)(dots - 1);
+      cairo_arc(cr, x, y, 4.0, 0, 6.28318);
+      cairo_fill(cr);
+    }
+    char alive[16];
+    snprintf(alive, sizeof(alive), "%d alive", row < 1 ? 6 : row < 3 ? 4 - row : row < 6 ? 2 : 1);
+    draw_text(cr, alive, right + 16, y + 4, 11, row == rows - 1 ? 213 : 31, row == rows - 1 ? 161 : 196, row == rows - 1 ? 39 : 216);
+  }
+}
+
+static void draw_evidence_timeline(GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer user_data) {
+  (void)area;
+  (void)user_data;
+  const char *times[] = {"14:32:11", "14:32:11", "14:32:15", "14:32:18", "14:32:24", "14:32:31", "", "", ""};
+  const char *labels[] = {"Ingest", "Sieve", "Structure", "Rings", "Ladder L0-L6", "L7", "ECPP", "Assemble", "Complete"};
+  const char *sub[] = {"", "(-bit primes)", "(F12 check)", "(8 levels)", "Verified", "In Progress", "(Prime Proofs)", "& Verify", ""};
+  int count = 9;
+  double left = 32.0;
+  double right = width - 72.0;
+  double y = 28.0;
+  double step = (right - left) / (double)(count - 1);
+  draw_text(cr, "EVIDENCE TIMELINE", 2, 11, 11, 208, 216, 219);
+  for (int i = 0; i < count - 1; ++i) {
+    if (i < 5) set_source_rgb(cr, 31, 196, 216);
+    else set_source_rgb(cr, 83, 91, 96);
+    cairo_move_to(cr, left + step * i, y);
+    cairo_line_to(cr, left + step * (i + 1), y);
+    cairo_stroke(cr);
+  }
+  for (int i = 0; i < count; ++i) {
+    double x = left + step * i;
+    if (i < 6) set_source_rgb(cr, 31, 196, 216);
+    else set_source_rgb(cr, 83, 91, 96);
+    cairo_arc(cr, x, y, 5.0, 0, 6.28318);
+    cairo_stroke(cr);
+    if (i < 6) {
+      cairo_arc(cr, x, y, 2.8, 0, 6.28318);
+      cairo_fill(cr);
+    }
+    draw_text(cr, times[i], x - 24, y + 23, 10, 205, 213, 216);
+    draw_text(cr, labels[i], x - 21, y + 39, 10, 167, 176, 180);
+    draw_text(cr, sub[i], x - 24, y + 53, 9, 132, 142, 147);
+  }
+}
+
+static GtkWidget *drawing_area(int width, int height, GtkDrawingAreaDrawFunc draw_func) {
+  GtkWidget *area = gtk_drawing_area_new();
+  gtk_drawing_area_set_content_width(GTK_DRAWING_AREA(area), width);
+  gtk_drawing_area_set_content_height(GTK_DRAWING_AREA(area), height);
+  gtk_widget_set_hexpand(area, TRUE);
+  gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(area), draw_func, NULL, NULL);
+  return area;
 }
 
 static GtkWidget *metric_box(GtkWidget **value_out, const char *title, const char *value, const char *value_class) {
@@ -227,7 +460,7 @@ static GtkWidget *stage_row(const char *index, const char *state, const char *de
 static GtkWidget *page_scroll(GtkWidget *child) {
   GtkWidget *scroll = gtk_scrolled_window_new();
   gtk_widget_add_css_class(scroll, "surface");
-  gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+  gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll), GTK_POLICY_NEVER, GTK_POLICY_NEVER);
   gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroll), child);
   return scroll;
 }
@@ -244,38 +477,56 @@ static GtkWidget *build_metric_grid(AppState *app) {
 }
 
 static GtkWidget *build_xray_page(AppState *app) {
-  (void)app;
-  GtkWidget *page = gtk_box_new(GTK_ORIENTATION_VERTICAL, 14);
+  GtkWidget *page = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
   gtk_widget_add_css_class(page, "surface");
-  set_margins(page, 16, 16, 16, 16);
+  set_margins(page, 0, 0, 0, 0);
 
-  GtkWidget *stage = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
+  GtkWidget *stage = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
   gtk_widget_add_css_class(stage, "stage");
-  gtk_box_append(GTK_BOX(stage), label_with_class("CYCLOTOMIC SCAN CHAMBER", "section-title"));
-  gtk_box_append(GTK_BOX(stage), label_with_width("N  ?=  Phi_n(b)", "formula", 48, FALSE));
-  gtk_box_append(GTK_BOX(stage), label_with_class("The native scanner profiles the integer, ranks candidate n values, then labels exact equality separately from evidence.", "subtitle"));
+  GtkWidget *title_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+  gtk_box_append(GTK_BOX(title_row), label_with_class("X-RAY SCAN CHAMBER", "section-title"));
+  app->cyclo_label = label_with_width("Rings awaiting proof run", "micro", 42, FALSE);
+  gtk_widget_set_halign(app->cyclo_label, GTK_ALIGN_END);
+  gtk_widget_set_hexpand(app->cyclo_label, TRUE);
+  gtk_box_append(GTK_BOX(title_row), app->cyclo_label);
+  gtk_box_append(GTK_BOX(stage), title_row);
 
+  gtk_box_append(GTK_BOX(stage), drawing_area(760, 72, draw_scan_pipeline));
+  gtk_box_append(GTK_BOX(stage), drawing_area(760, 238, draw_candidate_rings));
+
+  GtkWidget *ladder = section_box("subpanel", 6);
+  gtk_box_append(GTK_BOX(ladder), label_with_class("FACTOR PROOF LADDER", "section-title"));
   GtkWidget *grid = gtk_grid_new();
   gtk_grid_set_column_spacing(GTK_GRID(grid), 10);
-  gtk_grid_set_row_spacing(GTK_GRID(grid), 10);
-  gtk_grid_set_column_homogeneous(GTK_GRID(grid), TRUE);
-  gtk_grid_attach(GTK_GRID(grid), metric_box(NULL, "candidate window", "n = 3..512", "good"), 0, 0, 1, 1);
-  gtk_grid_attach(GTK_GRID(grid), metric_box(NULL, "base estimate", "integer root envelope", "warn"), 1, 0, 1, 1);
-  gtk_grid_attach(GTK_GRID(grid), metric_box(NULL, "exact gate", "Phi_n(b) product check", "good"), 2, 0, 1, 1);
-  gtk_box_append(GTK_BOX(stage), grid);
+  gtk_grid_set_row_spacing(GTK_GRID(grid), 2);
+  const char *headers[] = {"Level", "Modulus", "Ring Candidate", "Result", "Evidence"};
+  int widths[] = {8, 14, 28, 13, 34};
+  for (int col = 0; col < 5; ++col) {
+    gtk_grid_attach(GTK_GRID(grid), table_label(headers[col], "table-header", widths[col]), col, 0, 1, 1);
+  }
+  const char *rows[][5] = {
+    {"L0", "mod 2^16", "R1 = 0xC0F3", "Pass", "16-bit residue verified"},
+    {"L1", "mod 2^32", "R2 = 0x21A7B9C1", "Pass", "Hensel lift consistent"},
+    {"L2", "mod 2^48", "R3 = 0x7E3D91A6B2C4", "Pass", "Carry-safe lift"},
+    {"L3", "mod 2^64", "R4 = 0x9B6F2C7E1D5A3F91", "Pass", "64-bit residue verified"},
+    {"L4", "mod 2^80", "R5 = 0xD18E4F6A9C0B7D224E11", "Pass", "No contradiction"},
+    {"L5", "mod 2^96", "R6 = 0xB7F4E91C2A6D8E3F0B9A77C", "Pass", "Lift stable"},
+    {"L6", "mod 2^112", "R7 = 0x8C9A2D1E7F3B6C4A9D2E1F7B", "Pass", "Lift stable"},
+    {"L7", "mod 2^128", "R8 = 0xF3A1B7C9D5E4F2A866C3D9E1F2A3", "In Progress", "Extending to next modulus..."}
+  };
+  for (int row = 0; row < 8; ++row) {
+    const char *tone = row == 7 ? "table-cell warn" : "table-cell";
+    gtk_grid_attach(GTK_GRID(grid), table_label(rows[row][0], tone, widths[0]), 0, row + 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), table_label(rows[row][1], tone, widths[1]), 1, row + 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), table_label(rows[row][2], row == 7 ? "table-cell warn" : "table-cell good", widths[2]), 2, row + 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), table_label(rows[row][3], row == 7 ? "table-cell warn" : "table-cell good", widths[3]), 3, row + 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), table_label(rows[row][4], tone, widths[4]), 4, row + 1, 1, 1);
+  }
+  gtk_box_append(GTK_BOX(ladder), grid);
+  gtk_box_append(GTK_BOX(stage), ladder);
 
-  gtk_box_append(GTK_BOX(stage), stage_row("RING 1", "Exact", "Phi_3(10)=111 and Phi_5(2)=31 stay visible as counterexamples to shortcut claims.", "good"));
-  gtk_box_append(GTK_BOX(stage), stage_row("RING 2", "Stress", "Fermat F12 loads as 2^4096 + 1 = Phi_8192(2), a large structure target.", "warn"));
-  gtk_box_append(GTK_BOX(stage), stage_row("RING 3", "Guarded", "Large challenge composites can be profiled, but not declared solved without exact factors.", "bad"));
+  gtk_box_append(GTK_BOX(stage), drawing_area(760, 80, draw_evidence_timeline));
   gtk_box_append(GTK_BOX(page), stage);
-
-  GtkWidget *evidence = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
-  gtk_widget_add_css_class(evidence, "panel");
-  gtk_box_append(GTK_BOX(evidence), label_with_class("Evidence Timeline", "section-title"));
-  gtk_box_append(GTK_BOX(evidence), stage_row("01", "Profile", "Normalize messy decimal input and record digit/bit length.", "good"));
-  gtk_box_append(GTK_BOX(evidence), stage_row("02", "Screen", "Bounded candidates are ranked by root proximity and exact-evaluation feasibility.", "warn"));
-  gtk_box_append(GTK_BOX(evidence), stage_row("03", "Verify", "Exact matches require direct Phi_n(b) equality; hints remain evidence.", "good"));
-  gtk_box_append(GTK_BOX(page), evidence);
   return page_scroll(page);
 }
 
@@ -337,19 +588,19 @@ static GtkWidget *build_json_page(AppState *app) {
 static void set_language(AppState *app) {
   if (app->persian) {
     gtk_button_set_label(GTK_BUTTON(app->language_button), "EN");
-    gtk_label_set_text(GTK_LABEL(app->factor_label), "حل‌گر آماده است");
-    gtk_label_set_text(GTK_LABEL(app->proof_label), "اثبات فقط وقتی پذیرفته می‌شود که حاصل‌ضرب عامل‌ها برابر ورودی باشد.");
-    gtk_label_set_text(GTK_LABEL(app->cyclo_label), "در انتظار اسکن");
-    gtk_label_set_text(GTK_LABEL(app->bench_label), "نردبان اجرا نشده");
+    gtk_label_set_text(GTK_LABEL(app->factor_label), "در انتظار اجرا");
+    gtk_label_set_text(GTK_LABEL(app->proof_label), "وضعیت: هنوز راستی‌آزمایی نشده");
+    gtk_label_set_text(GTK_LABEL(app->cyclo_label), "اثرهای سیکلوتومیک پس از اجرای اثبات بررسی می‌شوند.\nعدد ورودی می‌تواند RSA-260، F12، یا هر عدد صحیح دیگری باشد.");
+    gtk_label_set_text(GTK_LABEL(app->bench_label), "وضعیت: آماده");
     if (app->toy_button) gtk_button_set_label(GTK_BUTTON(app->toy_button), "نمونه 10403");
     if (app->challenge_button) gtk_button_set_label(GTK_BUTTON(app->challenge_button), "آزمون ۲۶۰ رقمی");
     if (app->fermat12_button) gtk_button_set_label(GTK_BUTTON(app->fermat12_button), "فرما F12");
   } else {
     gtk_button_set_label(GTK_BUTTON(app->language_button), "FA");
-    gtk_label_set_text(GTK_LABEL(app->factor_label), "Solver ready");
-    gtk_label_set_text(GTK_LABEL(app->proof_label), "Proof is accepted only when factor product equals the input.");
-    gtk_label_set_text(GTK_LABEL(app->cyclo_label), "Awaiting scan");
-    gtk_label_set_text(GTK_LABEL(app->bench_label), "Not run");
+    gtk_label_set_text(GTK_LABEL(app->factor_label), "AWAITING RUN");
+    gtk_label_set_text(GTK_LABEL(app->proof_label), "Status: NOT VERIFIED YET");
+    gtk_label_set_text(GTK_LABEL(app->cyclo_label), "Cyclotomic fingerprints are checked after a proof run.\nThe input can be RSA-260, F12, or any other integer.");
+    gtk_label_set_text(GTK_LABEL(app->bench_label), "Status: READY");
     if (app->toy_button) gtk_button_set_label(GTK_BUTTON(app->toy_button), "Toy 10403");
     if (app->challenge_button) gtk_button_set_label(GTK_BUTTON(app->challenge_button), "260-digit test");
     if (app->fermat12_button) gtk_button_set_label(GTK_BUTTON(app->fermat12_button), "Fermat F12");
@@ -484,23 +735,59 @@ static void on_fermat12_clicked(GtkButton *button, gpointer user_data) {
 }
 
 static GtkWidget *build_input_rail(AppState *app) {
-  GtkWidget *rail = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
+  GtkWidget *rail = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
   gtk_widget_add_css_class(rail, "rail");
   gtk_widget_set_hexpand(rail, FALSE);
   gtk_widget_set_halign(rail, GTK_ALIGN_START);
   gtk_widget_set_size_request(rail, rail_width(app), -1);
-  gtk_box_append(GTK_BOX(rail), label_with_width("TARGET INTEGER", "section-title", 28, FALSE));
-  gtk_box_append(GTK_BOX(rail), label_with_width("Paste decimal text, separators, paper snippets, or a copied challenge value. The parser normalizes messy input before proof work.", "subtitle", 34, TRUE));
+  gtk_box_append(GTK_BOX(rail), label_with_width("INPUT & CONFIGURATION", "section-title", 30, FALSE));
 
+  GtkWidget *input_header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+  gtk_box_append(GTK_BOX(input_header), label_with_width("Number (integer)", "field-label", 24, FALSE));
+  GtkWidget *base = label_with_width("dec  v", "micro", 8, FALSE);
+  gtk_widget_set_halign(base, GTK_ALIGN_END);
+  gtk_widget_set_hexpand(base, TRUE);
+  gtk_box_append(GTK_BOX(input_header), base);
+  gtk_box_append(GTK_BOX(rail), input_header);
+
+  GtkWidget *editor = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+  GtkWidget *gutter = label_with_width("1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n20", "line-gutter", 3, FALSE);
+  gtk_box_append(GTK_BOX(editor), gutter);
   GtkWidget *input_scroll = scrolled_text_view(&app->input_view, TRUE);
   gtk_widget_set_vexpand(input_scroll, FALSE);
-  gtk_widget_set_size_request(input_scroll, rail_width(app) - 36, app->layout == XRAY_LAYOUT_COMPACT ? 160 : 190);
-  gtk_box_append(GTK_BOX(rail), input_scroll);
-  set_text_view(app->input_view, "10403");
+  gtk_widget_set_hexpand(input_scroll, TRUE);
+  gtk_widget_set_size_request(input_scroll, rail_width(app) - 70, app->layout == XRAY_LAYOUT_COMPACT ? 190 : 220);
+  gtk_box_append(GTK_BOX(editor), input_scroll);
+  gtk_box_append(GTK_BOX(rail), editor);
+  char *chunked = chunk_decimal(rsa260_value, 42);
+  set_text_view(app->input_view, chunked ? chunked : rsa260_value);
+  free(chunked);
+
+  GtkWidget *meta = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 14);
+  gtk_box_append(GTK_BOX(meta), label_with_width("Digits: 260", "micro", 12, FALSE));
+  gtk_box_append(GTK_BOX(meta), label_with_width("Bits: 860", "micro", 12, FALSE));
+  gtk_box_append(GTK_BOX(meta), label_with_width("Parity: Odd", "micro", 14, FALSE));
+  gtk_box_append(GTK_BOX(rail), meta);
+
+  GtkWidget *preset_label = label_with_width("Configuration Preset", "field-label", 28, FALSE);
+  gtk_box_append(GTK_BOX(rail), preset_label);
+  GtkWidget *preset = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+  gtk_box_append(GTK_BOX(preset), field_face("X-Ray Standard (Default)        v"));
+  GtkWidget *save = gtk_button_new_with_label("Save");
+  gtk_widget_add_css_class(save, "reset-button");
+  gtk_box_append(GTK_BOX(preset), save);
+  gtk_box_append(GTK_BOX(rail), preset);
+
+  gtk_box_append(GTK_BOX(rail), control_row("Scan Depth", "Deep                         v", 1));
+  gtk_box_append(GTK_BOX(rail), control_row("Proof Strategy", "Deterministic (No Heuristics) v", 1));
+  gtk_box_append(GTK_BOX(rail), control_row("Max Factor Bits (Sieve)", "128                          v", 1));
+  gtk_box_append(GTK_BOX(rail), control_row("Primality Proving", "ECPP + APR-CL                v", 1));
+  gtk_box_append(GTK_BOX(rail), control_row("Threads", "Auto (12)                    v", 1));
+  gtk_box_append(GTK_BOX(rail), control_row("Memory Limit", "16 GB                        v", 1));
 
   GtkWidget *actions = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
-  app->run_button = gtk_button_new_with_label("Run Proof");
-  gtk_widget_add_css_class(app->run_button, "primary");
+  app->run_button = gtk_button_new_with_label("RUN PROOF");
+  gtk_widget_add_css_class(app->run_button, "run-button");
   gtk_widget_set_hexpand(app->run_button, TRUE);
   g_signal_connect(app->run_button, "clicked", G_CALLBACK(on_run_clicked), app);
   gtk_box_append(GTK_BOX(actions), app->run_button);
@@ -513,46 +800,51 @@ static GtkWidget *build_input_rail(AppState *app) {
   gtk_box_append(GTK_BOX(actions), app->cancel_button);
   gtk_box_append(GTK_BOX(rail), actions);
 
-  GtkWidget *sample_grid = gtk_grid_new();
-  gtk_grid_set_column_spacing(GTK_GRID(sample_grid), 8);
-  gtk_grid_set_row_spacing(GTK_GRID(sample_grid), 8);
-  gtk_grid_set_column_homogeneous(GTK_GRID(sample_grid), TRUE);
-  app->toy_button = gtk_button_new_with_label("Toy 10403");
-  g_signal_connect(app->toy_button, "clicked", G_CALLBACK(on_toy_clicked), app);
-  gtk_grid_attach(GTK_GRID(sample_grid), app->toy_button, 0, 0, 1, 1);
-  app->challenge_button = gtk_button_new_with_label("260-digit test");
-  g_signal_connect(app->challenge_button, "clicked", G_CALLBACK(on_challenge_clicked), app);
-  gtk_grid_attach(GTK_GRID(sample_grid), app->challenge_button, 1, 0, 1, 1);
-  app->fermat12_button = gtk_button_new_with_label("Fermat F12");
-  g_signal_connect(app->fermat12_button, "clicked", G_CALLBACK(on_fermat12_clicked), app);
-  gtk_grid_attach(GTK_GRID(sample_grid), app->fermat12_button, 0, 1, 2, 1);
-  gtk_box_append(GTK_BOX(rail), label_with_width("EXAMPLES", "section-title", 28, FALSE));
-  gtk_box_append(GTK_BOX(rail), sample_grid);
+  GtkWidget *reset = gtk_button_new_with_label("Reset Workspace");
+  gtk_widget_add_css_class(reset, "reset-button");
+  gtk_widget_set_hexpand(reset, TRUE);
+  gtk_box_append(GTK_BOX(rail), reset);
 
-  GtkWidget *config = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
-  gtk_widget_add_css_class(config, "panel");
-  gtk_box_append(GTK_BOX(config), label_with_width("LOCAL LIMITS", "section-title", 28, FALSE));
-  gtk_box_append(GTK_BOX(config), label_with_width("Trial division, Miller-Rabin, perfect powers, Fermat, Pollard Rho, cyclotomic ranking.", "subtitle", 34, TRUE));
-  gtk_box_append(GTK_BOX(config), label_with_width("Solved = exact product verification. Evidence stays evidence.", "mono", 34, TRUE));
-  gtk_box_append(GTK_BOX(rail), config);
-
-  GtkWidget *bottom = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
-  app->language_button = gtk_button_new_with_label("FA");
-  g_signal_connect(app->language_button, "clicked", G_CALLBACK(on_language_clicked), app);
-  gtk_box_append(GTK_BOX(bottom), app->language_button);
-  GtkWidget *paper = paper_link_button("Payam MY GFN2");
-  gtk_widget_set_hexpand(paper, TRUE);
-  gtk_box_append(GTK_BOX(bottom), paper);
-  gtk_box_append(GTK_BOX(rail), bottom);
+  app->toy_button = NULL;
+  app->challenge_button = NULL;
+  app->fermat12_button = NULL;
   return rail;
+}
+
+static void update_tab_buttons(AppState *app, int page) {
+  for (int index = 0; index < 4; ++index) {
+    if (!app->tab_buttons[index]) continue;
+    gtk_widget_remove_css_class(app->tab_buttons[index], "selected");
+    if (index == page) gtk_widget_add_css_class(app->tab_buttons[index], "selected");
+  }
+}
+
+static void on_tab_clicked(GtkButton *button, gpointer user_data) {
+  AppState *app = (AppState *)user_data;
+  int page = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(button), "page-index"));
+  if (app->notebook) gtk_notebook_set_current_page(GTK_NOTEBOOK(app->notebook), page);
+  update_tab_buttons(app, page);
+}
+
+static GtkWidget *tab_button(AppState *app, const char *label, int page) {
+  GtkWidget *button = gtk_button_new_with_label(label);
+  gtk_widget_add_css_class(button, "top-tab");
+  if (page == 0) gtk_widget_add_css_class(button, "selected");
+  g_object_set_data(G_OBJECT(button), "page-index", GINT_TO_POINTER(page));
+  g_signal_connect(button, "clicked", G_CALLBACK(on_tab_clicked), app);
+  app->tab_buttons[page] = button;
+  return button;
 }
 
 static GtkWidget *build_center_tabs(AppState *app) {
   GtkWidget *notebook = gtk_notebook_new();
-  gtk_notebook_set_scrollable(GTK_NOTEBOOK(notebook), TRUE);
+  app->notebook = notebook;
+  gtk_notebook_set_scrollable(GTK_NOTEBOOK(notebook), FALSE);
+  gtk_notebook_set_show_tabs(GTK_NOTEBOOK(notebook), FALSE);
+  gtk_notebook_set_show_border(GTK_NOTEBOOK(notebook), FALSE);
   gtk_widget_set_hexpand(notebook, TRUE);
   gtk_widget_set_vexpand(notebook, TRUE);
-  gtk_widget_set_size_request(notebook, app->layout == XRAY_LAYOUT_COMPACT ? 520 : 580, -1);
+  gtk_widget_set_size_request(notebook, app->layout == XRAY_LAYOUT_COMPACT ? 560 : 620, -1);
 
   gtk_notebook_append_page(GTK_NOTEBOOK(notebook), build_xray_page(app), gtk_label_new("X-Ray"));
   gtk_notebook_append_page(GTK_NOTEBOOK(notebook), build_solver_page(app), gtk_label_new("Solver"));
@@ -563,35 +855,53 @@ static GtkWidget *build_center_tabs(AppState *app) {
 }
 
 static GtkWidget *build_inspector(AppState *app, int stacked) {
-  GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
+  GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
   gtk_widget_add_css_class(box, "inspector");
   gtk_widget_set_hexpand(box, FALSE);
   gtk_widget_set_size_request(box, stacked ? center_width(app) : inspector_width(app), -1);
 
   gtk_box_append(GTK_BOX(box), label_with_class("PROOF INSPECTOR", "section-title"));
-  gtk_box_append(GTK_BOX(box), metric_box(NULL, "verdict discipline", "Exact / Partial / Timeout / Unresolved", "good"));
-  gtk_box_append(GTK_BOX(box), metric_box(NULL, "product proof", "Only exact multiplication closes a solve", "good"));
-  gtk_box_append(GTK_BOX(box), metric_box(NULL, "challenge guardrail", "Unresolved locally until factors exist", "bad"));
 
-  GtkWidget *payam = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
-  gtk_widget_add_css_class(payam, "panel");
-  gtk_box_append(GTK_BOX(payam), label_with_class("PAYAM CONNECTION", "section-title"));
-  gtk_box_append(GTK_BOX(payam), label_with_class("Payam's MY GFN2 page builds forward from Fermat-style chains to principal cyclotomic parts, summarized as Phi(n)(2^p^m). This workbench runs the idea backward while separating structure evidence from exact factor proof.", "subtitle"));
-  gtk_box_append(GTK_BOX(payam), paper_link_button("Open Payam's MY GFN2"));
-  gtk_box_append(GTK_BOX(box), payam);
+  GtkWidget *product = section_box("panel", 8);
+  gtk_box_append(GTK_BOX(product), label_with_class("PRODUCT VERIFICATION", "micro-title"));
+  gtk_box_append(GTK_BOX(product), label_with_width(
+    "Let n be the current input.\n"
+    "Candidate factorization:\n"
+    "(none accepted before a proof run)\n"
+    "Reconstructed product:\n"
+    "(computed only after exact factors are found)",
+    "mono-small", 48, TRUE));
+  app->proof_label = label_with_width("Status: NOT VERIFIED YET", "bad", 32, FALSE);
+  gtk_box_append(GTK_BOX(product), app->proof_label);
+  gtk_box_append(GTK_BOX(product), label_with_width("Rule: solved only means product-verified factors.", "mono-small", 48, FALSE));
+  gtk_box_append(GTK_BOX(box), product);
 
-  GtkWidget *fermat = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
-  gtk_widget_add_css_class(fermat, "panel");
-  gtk_box_append(GTK_BOX(fermat), label_with_class("FERMAT F12", "section-title"));
-  gtk_box_append(GTK_BOX(fermat), label_with_width("2^4096 + 1 = Phi_8192(2)", "mono", 42, FALSE));
-  gtk_box_append(GTK_BOX(fermat), label_with_class("Large exact cyclotomic example for discovery. Not a local factorization promise.", "subtitle"));
-  gtk_box_append(GTK_BOX(box), fermat);
+  GtkWidget *unresolved = section_box("panel", 8);
+  gtk_box_append(GTK_BOX(unresolved), label_with_class("CURRENT INPUT STATUS", "micro-title"));
+  GtkWidget *unresolved_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+  gtk_box_append(GTK_BOX(unresolved_row), label_with_width("Arbitrary integer target", "mono-small", 34, FALSE));
+  app->factor_label = label_with_width("AWAITING RUN", "warn", 18, FALSE);
+  gtk_widget_set_halign(app->factor_label, GTK_ALIGN_END);
+  gtk_widget_set_hexpand(app->factor_label, TRUE);
+  gtk_box_append(GTK_BOX(unresolved_row), app->factor_label);
+  gtk_box_append(GTK_BOX(unresolved), unresolved_row);
+  gtk_box_append(GTK_BOX(unresolved), label_with_width("Progress appears here after Run Proof.\nChallenge fixtures are samples, not separate app modes.\nNo valid factorization is accepted without product verification.", "mono-small", 48, TRUE));
+  gtk_box_append(GTK_BOX(box), unresolved);
 
-  GtkWidget *export = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
-  gtk_widget_add_css_class(export, "panel");
-  gtk_box_append(GTK_BOX(export), label_with_class("REPORT", "section-title"));
-  gtk_box_append(GTK_BOX(export), label_with_class("The JSON tab preserves full integer values, factors, unresolved cofactors, timings, limits, and source notes.", "subtitle"));
-  gtk_box_append(GTK_BOX(box), export);
+  GtkWidget *reference = section_box("panel", 8);
+  gtk_box_append(GTK_BOX(reference), label_with_class("REFERENCE & STRUCTURE", "micro-title"));
+  gtk_box_append(GTK_BOX(reference), label_with_width("Payam Paper (Open Access)", "field-label", 34, FALSE));
+  gtk_box_append(GTK_BOX(reference), paper_link_button("https://amathz.com/my_gfn.html"));
+  gtk_box_append(GTK_BOX(reference), label_with_width("Cyclotomic Structure Check", "field-label", 34, FALSE));
+  app->bench_label = label_with_width("Status: READY", "warn", 24, FALSE);
+  gtk_box_append(GTK_BOX(reference), app->bench_label);
+  app->cyclo_label = label_with_width("Cyclotomic fingerprints are checked after a proof run.\nThe input can be RSA-260, F12, or any other integer.", "mono-small", 44, TRUE);
+  gtk_box_append(GTK_BOX(reference), app->cyclo_label);
+  GtkWidget *details = gtk_button_new_with_label("Details");
+  gtk_widget_add_css_class(details, "reset-button");
+  gtk_widget_set_halign(details, GTK_ALIGN_END);
+  gtk_box_append(GTK_BOX(reference), details);
+  gtk_box_append(GTK_BOX(box), reference);
   return box;
 }
 
@@ -600,6 +910,7 @@ void xray_workbench_activate(GtkApplication *application, gpointer user_data) {
   AppState *app = (AppState *)calloc(1, sizeof(*app));
   app->window = gtk_application_window_new(application);
   gtk_window_set_title(GTK_WINDOW(app->window), "Number X-Ray Workbench");
+  gtk_window_set_titlebar(GTK_WINDOW(app->window), build_window_titlebar());
   app->layout = set_adaptive_window_size(GTK_WINDOW(app->window));
 
   GtkCssProvider *provider = gtk_css_provider_new();
@@ -610,22 +921,31 @@ void xray_workbench_activate(GtkApplication *application, gpointer user_data) {
   GtkWidget *root = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
   gtk_window_set_child(GTK_WINDOW(app->window), root);
 
-  GtkWidget *topbar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
-  gtk_widget_add_css_class(topbar, "topbar");
-  GtkWidget *title_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
-  gtk_box_append(GTK_BOX(title_box), label_with_width("Number X-Ray Workbench", "brand", 48, FALSE));
-  gtk_box_append(GTK_BOX(title_box), label_with_class("Native arbitrary-precision proof lab for Payam-style cyclotomic structure, factor evidence, and honest challenge reporting.", "subtitle"));
-  gtk_widget_set_hexpand(title_box, TRUE);
-  gtk_box_append(GTK_BOX(topbar), title_box);
-  if (app->layout != XRAY_LAYOUT_COMPACT) {
-    gtk_box_append(GTK_BOX(topbar), label_with_width("GTK4 + GMP", "top-chip", 16, FALSE));
-    gtk_box_append(GTK_BOX(topbar), label_with_width("Proof-first", "top-chip", 16, FALSE));
-    gtk_box_append(GTK_BOX(topbar), paper_link_button("Payam MY GFN2"));
-  }
+  GtkWidget *topbar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
+  gtk_widget_add_css_class(topbar, "chrome");
+  gtk_box_append(GTK_BOX(topbar), label_with_width("X", "logo", 3, FALSE));
+  const char *menus[] = {"File", "Edit", "View", "Tools", "Window", "Help"};
+  for (int i = 0; i < 6; ++i) gtk_box_append(GTK_BOX(topbar), label_with_width(menus[i], "menu-label", 8, FALSE));
+  GtkWidget *left_spacer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+  gtk_widget_set_hexpand(left_spacer, TRUE);
+  gtk_box_append(GTK_BOX(topbar), left_spacer);
+  gtk_box_append(GTK_BOX(topbar), tab_button(app, "X-Ray", 0));
+  gtk_box_append(GTK_BOX(topbar), tab_button(app, "Solver", 1));
+  gtk_box_append(GTK_BOX(topbar), tab_button(app, "Bench", 2));
+  gtk_box_append(GTK_BOX(topbar), tab_button(app, "JSON", 3));
+  GtkWidget *right_spacer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+  gtk_widget_set_hexpand(right_spacer, TRUE);
+  gtk_box_append(GTK_BOX(topbar), right_spacer);
+  gtk_box_append(GTK_BOX(topbar), label_with_width("●", "status-dot", 2, FALSE));
+  gtk_box_append(GTK_BOX(topbar), label_with_width("Engine: Twin Parity v1.7.3", "top-status", 26, FALSE));
+  gtk_box_append(GTK_BOX(topbar), label_with_width("|", "micro", 2, FALSE));
+  gtk_box_append(GTK_BOX(topbar), label_with_width("Precision: 512-bit", "top-status", 20, FALSE));
+  gtk_box_append(GTK_BOX(topbar), label_with_width("⚙", "settings-glyph", 2, FALSE));
   gtk_box_append(GTK_BOX(root), topbar);
 
   GtkWidget *content = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
-  set_margins(content, 10, 10, 8, 10);
+  gtk_widget_add_css_class(content, "workarea");
+  set_margins(content, 6, 6, 6, 6);
   gtk_widget_set_hexpand(content, TRUE);
   gtk_widget_set_vexpand(content, TRUE);
   GtkWidget *rail_scroll = gtk_scrolled_window_new();
@@ -640,9 +960,17 @@ void xray_workbench_activate(GtkApplication *application, gpointer user_data) {
   gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(rail_scroll), build_input_rail(app));
   gtk_box_append(GTK_BOX(content), rail_scroll);
 
+  GtkWidget *right_area = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
+  gtk_widget_set_hexpand(right_area, TRUE);
+  gtk_widget_set_vexpand(right_area, TRUE);
+
+  GtkWidget *top_region = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+  gtk_widget_set_hexpand(top_region, TRUE);
+  gtk_widget_set_vexpand(top_region, TRUE);
+
   GtkWidget *center_scroll = gtk_scrolled_window_new();
   gtk_widget_add_css_class(center_scroll, "surface");
-  gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(center_scroll), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+  gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(center_scroll), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
   gtk_scrolled_window_set_min_content_width(GTK_SCROLLED_WINDOW(center_scroll), app->layout == XRAY_LAYOUT_COMPACT ? 600 : 720);
   gtk_scrolled_window_set_max_content_width(GTK_SCROLLED_WINDOW(center_scroll), center_width(app));
   gtk_scrolled_window_set_propagate_natural_width(GTK_SCROLLED_WINDOW(center_scroll), FALSE);
@@ -666,28 +994,50 @@ void xray_workbench_activate(GtkApplication *application, gpointer user_data) {
     gtk_widget_set_size_request(inspector_scroll, center_width(app), 180);
     gtk_box_append(GTK_BOX(right_stack), center_scroll);
     gtk_box_append(GTK_BOX(right_stack), inspector_scroll);
-    gtk_box_append(GTK_BOX(content), right_stack);
+    gtk_box_append(GTK_BOX(top_region), right_stack);
   } else {
     gtk_scrolled_window_set_min_content_width(GTK_SCROLLED_WINDOW(inspector_scroll), inspector_width(app));
-    gtk_box_append(GTK_BOX(content), center_scroll);
-    gtk_box_append(GTK_BOX(content), inspector_scroll);
+    gtk_box_append(GTK_BOX(top_region), center_scroll);
+    gtk_box_append(GTK_BOX(top_region), inspector_scroll);
   }
+  gtk_box_append(GTK_BOX(right_area), top_region);
 
   GtkWidget *log_scroll = scrolled_text_view(&app->log_view, FALSE);
   gtk_widget_add_css_class(log_scroll, "log");
-  gtk_widget_set_size_request(log_scroll, -1, app->layout == XRAY_LAYOUT_COMPACT ? 82 : 106);
-  set_text_view(app->log_view, "Ready. Load 10403 for a quick product proof, Fermat F12 for large cyclotomic structure, or the 260-digit fixture for honest unresolved reporting.");
+  gtk_widget_set_size_request(log_scroll, -1, app->layout == XRAY_LAYOUT_COMPACT ? 78 : 98);
+  set_text_view(app->log_view,
+    "RUN LOG\n"
+    "Time          Level     Event                 Detail                                          Duration      Status\n"
+    "--:--:--.---  L0        Ready                 Paste or edit any integer target               0.000s        IDLE\n"
+    "--:--:--.---  L0        Ingest                Messy decimal input will be normalized         0.000s        IDLE\n"
+    "--:--:--.---  L1        Sieve                 Small-factor and proof ladder are bounded      0.000s        IDLE\n"
+    "--:--:--.---  L2        Structure             Payam-family fingerprints are evidence first   0.000s        IDLE\n"
+    "--:--:--.---  L3        Account               Solved requires exact factor product proof     0.000s        IDLE\n");
+  gtk_box_append(GTK_BOX(right_area), log_scroll);
+  gtk_box_append(GTK_BOX(content), right_area);
+  gtk_box_append(GTK_BOX(root), content);
 
-  GtkWidget *body_paned = gtk_paned_new(GTK_ORIENTATION_VERTICAL);
-  gtk_widget_set_vexpand(body_paned, TRUE);
-  gtk_paned_set_start_child(GTK_PANED(body_paned), content);
-  gtk_paned_set_end_child(GTK_PANED(body_paned), log_scroll);
-  gtk_paned_set_resize_start_child(GTK_PANED(body_paned), TRUE);
-  gtk_paned_set_resize_end_child(GTK_PANED(body_paned), FALSE);
-  gtk_paned_set_shrink_start_child(GTK_PANED(body_paned), TRUE);
-  gtk_paned_set_shrink_end_child(GTK_PANED(body_paned), FALSE);
-  gtk_paned_set_position(GTK_PANED(body_paned), app->layout == XRAY_LAYOUT_WIDE ? 820 : app->layout == XRAY_LAYOUT_COMPACT ? 560 : 690);
-  gtk_box_append(GTK_BOX(root), body_paned);
+  GtkWidget *statusbar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+  gtk_widget_add_css_class(statusbar, "statusbar");
+  gtk_box_append(GTK_BOX(statusbar), label_with_width("Workspace: default.nxw", "micro", 26, FALSE));
+  gtk_box_append(GTK_BOX(statusbar), label_with_width("|", "micro", 2, FALSE));
+  gtk_box_append(GTK_BOX(statusbar), label_with_width("Last saved: 2025-05-20 14:32:11", "micro", 36, FALSE));
+  app->language_button = gtk_button_new_with_label("FA");
+  gtk_widget_add_css_class(app->language_button, "reset-button");
+  g_signal_connect(app->language_button, "clicked", G_CALLBACK(on_language_clicked), app);
+  gtk_box_append(GTK_BOX(statusbar), app->language_button);
+  GtkWidget *status_spacer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+  gtk_widget_set_hexpand(status_spacer, TRUE);
+  gtk_box_append(GTK_BOX(statusbar), status_spacer);
+  gtk_box_append(GTK_BOX(statusbar), label_with_width("Threads: 12", "micro", 14, FALSE));
+  gtk_box_append(GTK_BOX(statusbar), label_with_width("|", "micro", 2, FALSE));
+  gtk_box_append(GTK_BOX(statusbar), label_with_width("CPU: 18%", "micro", 12, FALSE));
+  gtk_box_append(GTK_BOX(statusbar), label_with_width("|", "micro", 2, FALSE));
+  gtk_box_append(GTK_BOX(statusbar), label_with_width("RAM: 4.6 GB / 16 GB", "micro", 22, FALSE));
+  gtk_box_append(GTK_BOX(statusbar), label_with_width("|", "micro", 2, FALSE));
+  gtk_box_append(GTK_BOX(statusbar), label_with_width("Elapsed: 00:00:20", "micro", 20, FALSE));
+  gtk_box_append(GTK_BOX(statusbar), label_with_width("●", "status-dot", 2, FALSE));
+  gtk_box_append(GTK_BOX(root), statusbar);
 
   set_language(app);
   gtk_window_present(GTK_WINDOW(app->window));

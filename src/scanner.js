@@ -422,7 +422,7 @@
 
     return {
       enabled: true,
-      targetLabel: challenge?.label || "Uncatalogued RSA-style target",
+      targetLabel: challenge?.label || "Uncatalogued factor target",
       recognized: Boolean(challenge),
       sourceUrl: challenge?.sourceUrl || null,
       sourceNote: challenge?.sourceNote || null,
@@ -706,7 +706,7 @@
     emit({ stage: "profile", completed: 1, total: 1, message: "Profiled input magnitude" });
 
     if (shouldRunRsaRecon(target, config)) {
-      emit({ stage: "rsa", completed: 0, total: 1, message: "Running RSA challenge reconnaissance" });
+      emit({ stage: "factor", completed: 0, total: 1, message: "Running factor reconnaissance" });
       rsaRecon = buildRsaRecon(target, config);
       stages.push(
         makeStage("rsa", "complete", {
@@ -726,7 +726,7 @@
           elapsedMs: rsaRecon.solver.elapsedMs
         })
       );
-      emit({ stage: "rsa", completed: 1, total: 1, message: "RSA reconnaissance complete" });
+      emit({ stage: "factor", completed: 1, total: 1, message: "Factor reconnaissance complete" });
     }
 
     const total = config.nMax - config.nMin + 1;
@@ -853,7 +853,7 @@
       counterexamples,
       rsaRecon,
       sourceNotes: rsaRecon?.recognized
-        ? [SOURCE_NOTE, `RSA source: ${rsaRecon.targetLabel} from ${rsaRecon.sourceUrl}; checksum ${rsaRecon.checksum.residue}.`]
+        ? [SOURCE_NOTE, `Challenge source: ${rsaRecon.targetLabel} from ${rsaRecon.sourceUrl}; checksum ${rsaRecon.checksum.residue}.`]
         : [SOURCE_NOTE]
     };
   }
