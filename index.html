@@ -54,18 +54,21 @@
             <h2>Scan Controls</h2>
             <div class="control-grid">
               <label for="n-min">n min</label>
-              <input id="n-min" type="number" min="1" max="4096" value="3">
+              <input id="n-min" type="number" min="1" max="8192" value="3">
               <label for="n-max">n max</label>
-              <input id="n-max" type="number" min="1" max="4096" value="128">
+              <input id="n-max" type="number" min="1" max="8192" value="128">
               <label for="base-window">Base window</label>
               <input id="base-window" type="number" min="0" max="12" value="2">
               <label for="time-budget">Time budget</label>
-              <input id="time-budget" type="number" min="100" max="10000" value="1800">
+              <input id="time-budget" type="number" min="100" max="15000" value="1800">
+              <label for="verification-limit">Verify limit</label>
+              <input id="verification-limit" type="number" min="1" max="64" value="24">
               <label for="k-value">k</label>
               <input id="k-value" type="number" min="1" value="1">
             </div>
             <div class="segmented" role="group" aria-label="Scan mode">
               <button type="button" class="selected" data-mode="explore">Explore</button>
+              <button type="button" data-mode="deep">Deep Scan</button>
               <button type="button" data-mode="counterexample">Hunt Counterexamples</button>
               <button type="button" data-mode="verify">Verify Claim</button>
             </div>
@@ -76,6 +79,7 @@
             <div class="sample-grid">
               <button type="button" data-sample="phi21">Φ21(3)</button>
               <button type="button" data-sample="phi3">Counterexample 111</button>
+              <button type="button" data-sample="phi3large">1k Φ3 Fixture</button>
               <button type="button" data-sample="phi5">Prime 31</button>
               <button type="button" data-sample="carmichael">Carmichael 561</button>
               <button type="button" data-sample="primepower">Prime Power 3^7</button>
@@ -104,7 +108,7 @@
             </div>
             <div class="view-switch" role="group" aria-label="Stage view">
               <button type="button" class="selected" data-view="chamber">Chamber</button>
-              <button type="button" data-view="table">Table</button>
+              <button type="button" data-view="table">Matrix</button>
             </div>
           </div>
 
