@@ -311,7 +311,7 @@ button:focus-visible {
 
 .control-grid {
   display: grid;
-  grid-template-columns: 94px 1fr 1fr;
+  grid-template-columns: 108px 1fr;
   gap: 8px;
   align-items: end;
 }
@@ -325,7 +325,7 @@ button:focus-visible {
 .segmented,
 .view-switch {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 0;
   margin-top: 13px;
   border: 1px solid var(--line);
@@ -845,8 +845,58 @@ code {
   padding: 18px;
 }
 
+.matrix-summary {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.matrix-summary h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+.stage-pills {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.stage-pill {
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--muted);
+  background: rgba(7, 13, 12, 0.7);
+  font-size: 12px;
+}
+
+.stage-pill strong {
+  display: block;
+  color: var(--ink);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.stage-pill.complete {
+  border-color: rgba(114, 209, 125, 0.35);
+}
+
+.stage-pill.partial {
+  border-color: rgba(223, 180, 81, 0.55);
+}
+
+.stage-pill.cancelled {
+  border-color: rgba(227, 106, 87, 0.52);
+}
+
 .mini-table {
-  height: 100%;
+  min-height: 320px;
   border: 1px solid var(--line);
 }
 

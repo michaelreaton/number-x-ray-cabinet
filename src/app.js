@@ -6,6 +6,7 @@
     mode: "explore",
     view: "chamber",
     report: null,
+    progress: null,
     selectedN: null,
     activeWorker: null,
     compact: false,
@@ -55,6 +56,7 @@
       button.addEventListener("click", () => {
         state.mode = button.dataset.mode;
         selectInGroup("[data-mode]", button);
+        applyModeDefaults(state.mode);
         runScan();
       });
     });
@@ -110,9 +112,26 @@
       nMax: document.getElementById("n-max").value,
       baseWindow: document.getElementById("base-window").value,
       timeBudgetMs: document.getElementById("time-budget").value,
+      verificationLimit: document.getElementById("verification-limit").value,
       k: document.getElementById("k-value").value || "1",
       mode: state.mode
     };
+  }
+
+  function applyModeDefaults(mode) {
+    const nMax = document.getElementById("n-max");
+    const baseWindow = document.getElementById("base-window");
+    const timeBudget = document.getElementById("time-budget");
+    const verificationLimit = document.getElementById("verification-limit");
+    if (mode === "deep") {
+      if (Number(nMax.value) < 8192) nMax.value = "8192";
+      if (Number(baseWindow.value) > 1) baseWindow.value = "1";
+      timeBudget.value = "15000";
+      verificationLimit.value = "48";
+      return;
+    }
+    if (Number(timeBudget.value) >= 15000 && mode === "explore") timeBudget.value = "1800";
+    if (Number(verificationLimit.value) > 24 && mode === "explore") verificationLimit.value = "24";
   }
 
   function setBusy(isBusy) {
@@ -120,6 +139,7 @@
     el.cancelButton.classList.toggle("hidden", !isBusy);
     if (isBusy) {
       state.lastStatus = "scanning";
+      state.progress = null;
       el.status.textContent = i18n.t("scanning");
     }
   }
@@ -153,6 +173,10 @@
     state.activeWorker = worker;
     worker.onmessage = (event) => {
       if (event.data.id !== id) return;
+      if (event.data.kind === "progress") {
+        acceptProgress(event.data.progress);
+        return;
+      }
       state.activeWorker = null;
       setBusy(false);
       if (!event.data.ok) {
@@ -171,7 +195,7 @@
 
   function runLocalScan(input, config) {
     try {
-      const report = scanner.scanNumber(input, config);
+      const report = scanner.scanNumber(input, config, { onProgress: acceptProgress });
       setBusy(false);
       acceptReport(report);
     } catch (error) {
@@ -182,10 +206,25 @@
 
   function acceptReport(report) {
     state.report = report;
+    state.progress = null;
     state.selectedN = report.bestCandidate?.n || null;
     state.lastStatus = "report";
     refreshStatusText();
     renderAll();
+  }
+
+  function acceptProgress(progress) {
+    state.progress = progress;
+    if (state.lastStatus === "scanning") {
+      const total = Math.max(1, progress.total || 1);
+      const completed = Math.min(total, progress.completed || 0);
+      el.status.textContent = i18n.t("progressStatus", {
+        stage: i18n.stage(progress.stage),
+        count: completed,
+        total,
+        ms: progress.elapsedMs || 0
+      });
+    }
   }
 
   function showError(message) {
@@ -201,7 +240,8 @@
       return;
     }
     if (state.lastStatus === "scanning") {
-      el.status.textContent = i18n.t("scanning");
+      if (state.progress) acceptProgress(state.progress);
+      else el.status.textContent = i18n.t("scanning");
       return;
     }
     if (state.lastStatus === "cancelled") {
@@ -295,26 +335,43 @@
   }
 
   function renderStageTable() {
-    const candidates = topCandidates(10);
+    const candidates = topCandidates(12);
     if (!state.report) {
       el.tableView.innerHTML = `<p class="empty-state">${i18n.t("stageEmpty")}</p>`;
       return;
     }
+    const stageRows = (state.report.discoveryStages || []).map((stage) => `
+      <span class="stage-pill ${stage.status}">
+        <strong>${i18n.stage(stage.name)}</strong>
+        ${i18n.stageStatus(stage.status)}
+      </span>`).join("");
     el.tableView.innerHTML = `
+      <div class="matrix-summary">
+        <h3>${i18n.t("discoveryMatrix")}</h3>
+        <div class="stage-pills">${stageRows}</div>
+      </div>
       <table class="mini-table">
-        <thead><tr><th>n</th><th>φ(n)</th><th>${i18n.t("bestB")}</th><th>${i18n.t("residues")}</th><th>${i18n.t("score")}</th><th>${i18n.t("verdict")}</th></tr></thead>
+        <thead><tr><th>n</th><th>φ(n)</th><th>${i18n.t("bestB")}</th><th>${i18n.t("rootSignal")}</th><th>${i18n.t("residues")}</th><th>${i18n.t("verifyStatus")}</th><th>${i18n.t("label")}</th><th>${i18n.t("nextAction")}</th></tr></thead>
         <tbody>
           ${candidates.map((candidate) => `
             <tr data-n="${candidate.n}">
               <td>${candidate.n}</td>
               <td>${candidate.phi}</td>
               <td>${scanner.formatBigInt(candidate.bestBase, 14)}</td>
+              <td>${Math.round((candidate.discoverySignals?.rootProximity || 0) * 100)}%</td>
               <td>${Math.round(candidate.residueRatio * 100)}%</td>
-              <td>${candidate.score.toFixed(2)}</td>
-              <td class="${verdictClass(candidate)}">${i18n.verdict(candidate.verdict)}</td>
+              <td>${i18n.verifyStatus(candidate.verificationStatus)}</td>
+              <td class="${verdictClass(candidate)}">${displayEvidenceLabel(candidate)}</td>
+              <td>${i18n.action(candidate.nextAction)}</td>
             </tr>`).join("")}
         </tbody>
       </table>`;
+    el.tableView.querySelectorAll("[data-n]").forEach((row) => {
+      row.addEventListener("click", () => {
+        state.selectedN = Number(row.dataset.n);
+        renderAll();
+      });
+    });
   }
 
   function renderTimeline() {
@@ -327,7 +384,7 @@
       <button type="button" class="timeline-node ${candidate.n === state.selectedN ? "selected" : ""}" data-select-n="${candidate.n}">
         <span class="node-ring" style="--node-color:${candidateColor(candidate)}">${candidate.n}</span>
         <strong>${i18n.t("score")} ${candidate.score.toFixed(2)}</strong>
-        <small>${i18n.note(candidate.notes[0]) || i18n.verdict(candidate.verdict)}</small>
+        <small>${displayEvidenceLabel(candidate)} · ${i18n.verifyStatus(candidate.verificationStatus)}</small>
       </button>`).join("");
     el.timeline.querySelectorAll("[data-select-n]").forEach((button) => {
       button.addEventListener("click", () => {
@@ -401,12 +458,16 @@
         <text x="32" y="26" class="chart-label">${i18n.t("scoreLower")}</text>
       </svg>`;
     const top = state.report.bestCandidate;
+    const stages = (state.report.discoveryStages || [])
+      .map((stage) => `${i18n.stage(stage.name)}: ${i18n.stageStatus(stage.status)}`)
+      .join(" · ");
     el.treasureCopy.textContent = top
       ? i18n.t("topRegion", {
           n: top.n,
           base: scanner.formatBigInt(top.bestBase, 12),
           verdict: displayVerdictForSentence(top)
         })
+        + (stages ? ` ${stages}` : "")
       : i18n.t("noSurvivors");
   }
 
@@ -422,8 +483,11 @@
         <dt>n</dt><dd>${candidate.n}</dd>
         <dt>${i18n.t("candidatePoly")}</dt><dd>${candidate.polynomialPreview}</dd>
         <dt>${i18n.t("phiMatch")}</dt><dd>${candidate.cyclotomicMatch ? i18n.t("exact") : i18n.t("notExact")}</dd>
+        <dt>${i18n.t("verifyStatus")}</dt><dd>${i18n.verifyStatus(candidate.verificationStatus)}</dd>
+        <dt>${i18n.t("rootSignal")}</dt><dd>${Math.round((candidate.discoverySignals?.rootProximity || 0) * 100)}%</dd>
         <dt>${i18n.t("residueConfidence")}</dt><dd>${Math.round(candidate.residueRatio * 100)}%</dd>
       </dl>
+      <p>${i18n.action(candidate.nextAction)}</p>
       <div class="meter"><span style="width:${Math.round(candidate.score * 100)}%"></span></div>`;
   }
 
@@ -467,20 +531,25 @@
           : i18n.t("verdictNone");
     el.verdictCopy.innerHTML = `
       <p class="verdict-head ${tone}">${headline}</p>
+      <p>${i18n.t("evidenceLabelLine", { label: displayEvidenceLabel(candidate), status: i18n.verifyStatus(candidate.verificationStatus) })}</p>
       <p>${i18n.t("bestCandidateLine", { n: candidate.n, phi: candidate.phi, base: scanner.formatBigInt(candidate.bestBase, 16) })}</p>
       <p>${i18n.t("confidenceLine", { score: candidate.score.toFixed(2), exact, fragile })}</p>
       <div class="meter ${tone}"><span style="width:${Math.round(candidate.score * 100)}%"></span></div>`;
   }
 
   function displayVerdictForSentence(candidate) {
-    const label = i18n.verdict(candidate.verdict);
+    const label = displayEvidenceLabel(candidate);
     return i18n.currentLanguage() === "en" ? label.toLowerCase() : label;
+  }
+
+  function displayEvidenceLabel(candidate) {
+    return i18n.evidenceLabel(candidate.evidenceLabel || candidate.verdict);
   }
 
   function verdictClass(candidate) {
     if (!candidate) return "";
-    if (candidate.verdict === "Exact" || candidate.verdict === "Strong") return "good";
-    if (candidate.verdict === "Weak") return "warn";
+    if (candidate.verdict === "Exact" || candidate.verdict === "Strong evidence") return "good";
+    if (candidate.verdict === "Weak evidence" || candidate.evidenceLabel === "counterexample") return "warn";
     if (candidate.verdict.includes("Invalid") || candidate.verdict === "Error") return "bad";
     return "";
   }

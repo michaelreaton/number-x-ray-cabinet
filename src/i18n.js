@@ -18,12 +18,15 @@
       nMax: "n max",
       baseWindow: "Base window",
       timeBudget: "Time budget",
+      verificationLimit: "Verify limit",
       explore: "Explore",
+      deep: "Deep Scan",
       counterMode: "Hunt Counterexamples",
       verify: "Verify Claim",
       samples: "Samples",
       samplePhi21: "Φ21(3)",
       samplePhi3: "Counterexample 111",
+      samplePhi3Large: "1k Φ3 Fixture",
       samplePhi5: "Prime 31",
       sampleCarmichael: "Carmichael 561",
       samplePrimePower: "Prime Power 3^7",
@@ -41,7 +44,7 @@
       candidates: "Cyclotomic Candidates",
       ready: "Ready. Load a sample or paste an integer.",
       chamber: "Chamber",
-      table: "Table",
+      table: "Matrix",
       evidenceScore: "Evidence score",
       signalsCombined: "Signals combined",
       signalExact: "Exact Φn(b) equality",
@@ -61,7 +64,8 @@
       auditInitial: "Run a scan to populate the audit log.",
       stageEmpty: "Run a scan to inspect candidate details.",
       timelineEmpty: "Evidence timeline is empty.",
-      scanning: "Scanning candidate roots and residues...",
+      scanning: "Profiling, screening, and verifying candidates...",
+      progressStatus: "{stage}: {count}/{total} in {ms} ms",
       cancelled: "Scan cancelled.",
       scannedStatus: "Scanned {count} candidates in {ms} ms.{timeout}",
       timeout: " Time budget reached; showing partial evidence.",
@@ -71,6 +75,11 @@
       scoreLower: "score",
       bestB: "Best b",
       residues: "Residues",
+      discoveryMatrix: "Discovery Matrix",
+      rootSignal: "Root signal",
+      verifyStatus: "Verify status",
+      label: "Label",
+      nextAction: "Next action",
       rootTest: "Root test",
       notes: "Notes",
       match: "Match",
@@ -96,6 +105,7 @@
       verdictStrong: "Plausible structure detected.",
       verdictWeak: "Weak structure signal.",
       verdictNone: "No convincing structure.",
+      evidenceLabelLine: "Label: {label}. Verification: {status}.",
       bestCandidateLine: "Best candidate: n = {n} with φ(n) = {phi} and b = {base}.",
       confidenceLine: "Confidence {score}; exact matches {exact}; fragile exact hits {fragile}.",
       noDominant: "No dominant signal",
@@ -122,12 +132,15 @@
       nMax: "بیشینه n",
       baseWindow: "بازه پایه",
       timeBudget: "بودجه زمان",
+      verificationLimit: "حد راستی‌آزمایی",
       explore: "کاوش",
+      deep: "اسکن عمیق",
       counterMode: "شکار نمونه نقض",
       verify: "راستی‌آزمایی ادعا",
       samples: "نمونه‌ها",
       samplePhi21: "Φ21(3)",
       samplePhi3: "نمونه نقض 111",
+      samplePhi3Large: "نمونه Φ3 هزاررقمی",
       samplePhi5: "عدد اول 31",
       sampleCarmichael: "کارمایکل 561",
       samplePrimePower: "توان اول 3^7",
@@ -145,7 +158,7 @@
       candidates: "نامزدهای سیکلوتومیک",
       ready: "آماده است. یک نمونه را بارگذاری کنید یا عددی وارد کنید.",
       chamber: "محفظه",
-      table: "جدول",
+      table: "ماتریس",
       evidenceScore: "امتیاز شواهد",
       signalsCombined: "سیگنال‌های ترکیب‌شده",
       signalExact: "برابری دقیق Φn(b)",
@@ -165,7 +178,8 @@
       auditInitial: "برای پر شدن گزارش حسابرسی، یک اسکن اجرا کنید.",
       stageEmpty: "برای دیدن جزئیات نامزدها یک اسکن اجرا کنید.",
       timelineEmpty: "خط زمانی شواهد خالی است.",
-      scanning: "در حال اسکن ریشه‌های نامزد و باقیمانده‌ها...",
+      scanning: "در حال نمایه‌سازی، غربال و راستی‌آزمایی نامزدها...",
+      progressStatus: "{stage}: {count}/{total} در {ms} میلی‌ثانیه",
       cancelled: "اسکن لغو شد.",
       scannedStatus: "{count} نامزد در {ms} میلی‌ثانیه اسکن شد.{timeout}",
       timeout: " بودجه زمان تمام شد؛ شواهد جزئی نمایش داده می‌شود.",
@@ -175,6 +189,11 @@
       scoreLower: "امتیاز",
       bestB: "بهترین b",
       residues: "باقیمانده‌ها",
+      discoveryMatrix: "ماتریس کشف",
+      rootSignal: "سیگنال ریشه",
+      verifyStatus: "وضعیت راستی‌آزمایی",
+      label: "برچسب",
+      nextAction: "گام بعدی",
       rootTest: "آزمون ریشه",
       notes: "یادداشت‌ها",
       match: "تطابق",
@@ -200,6 +219,7 @@
       verdictStrong: "ساختار محتمل پیدا شد.",
       verdictWeak: "سیگنال ساختار ضعیف است.",
       verdictNone: "ساختار قانع‌کننده‌ای دیده نشد.",
+      evidenceLabelLine: "برچسب: {label}. راستی‌آزمایی: {status}.",
       bestCandidateLine: "بهترین نامزد: n = {n} با φ(n) = {phi} و b = {base}.",
       confidenceLine: "اطمینان {score}؛ تطابق‌های دقیق {exact}؛ برخوردهای دقیق شکننده {fragile}.",
       noDominant: "سیگنال غالبی نیست",
@@ -213,6 +233,9 @@
   const verdictLabels = {
     en: {
       Exact: "Exact",
+      "Strong evidence": "Strong evidence",
+      "Weak evidence": "Weak evidence",
+      "No match": "No match",
       Strong: "Strong",
       Weak: "Weak",
       Filtered: "Filtered",
@@ -223,6 +246,9 @@
     },
     fa: {
       Exact: "دقیق",
+      "Strong evidence": "شواهد قوی",
+      "Weak evidence": "شواهد ضعیف",
+      "No match": "بدون تطابق",
       Strong: "قوی",
       Weak: "ضعیف",
       Filtered: "فیلتر شده",
@@ -238,9 +264,83 @@
     fa: {
       "Exact Φn(b) equality": "برابری دقیق Φn(b)",
       "Fails perfect-root shortcut": "از میان‌بُر ریشهٔ کامل عبور نمی‌کند",
+      "Exact Φn(b) verification missed": "راستی‌آزمایی دقیق Φn(b) به تطابق نرسید",
+      "Screened before exact Φn(b) verification": "پیش از راستی‌آزمایی دقیق Φn(b) غربال شده است",
+      "Perfect-root shortcut passes": "میان‌بُر ریشهٔ کامل قبول می‌شود",
+      "Root proximity is high": "نزدیکی ریشه بالاست",
       "gcd(k,n) > 1": "gcd(k,n) بزرگ‌تر از ۱ است",
       "Residues mostly agree": "باقیمانده‌ها بیشتر هم‌خوان‌اند",
       "Low evidence score": "امتیاز شواهد پایین است"
+    }
+  };
+
+  const evidenceLabels = {
+    en: {
+      exact: "exact",
+      "strong evidence": "strong evidence",
+      "weak evidence": "weak evidence",
+      counterexample: "counterexample",
+      "no match": "no match"
+    },
+    fa: {
+      exact: "دقیق",
+      "strong evidence": "شواهد قوی",
+      "weak evidence": "شواهد ضعیف",
+      counterexample: "نمونه نقض",
+      "no match": "بدون تطابق"
+    }
+  };
+
+  const stageLabels = {
+    en: {
+      profile: "Profile",
+      screen: "Screen",
+      hypothesize: "Hypothesize",
+      verify: "Verify"
+    },
+    fa: {
+      profile: "نمایه",
+      screen: "غربال",
+      hypothesize: "فرضیه‌سازی",
+      verify: "راستی‌آزمایی"
+    }
+  };
+
+  const stageStatusLabels = {
+    en: {
+      complete: "complete",
+      partial: "partial",
+      cancelled: "cancelled"
+    },
+    fa: {
+      complete: "کامل",
+      partial: "جزئی",
+      cancelled: "لغو شده"
+    }
+  };
+
+  const verifyStatusLabels = {
+    en: {
+      screened: "screened",
+      "verified-exact": "verified exact",
+      "verified-miss": "verified miss",
+      error: "error"
+    },
+    fa: {
+      screened: "غربال شده",
+      "verified-exact": "دقیق راستی‌آزمایی شد",
+      "verified-miss": "راستی‌آزمایی بی‌تطابق",
+      error: "خطا"
+    }
+  };
+
+  const actionLabels = {
+    en: {},
+    fa: {
+      "Verify exact Φn(b) for the strongest tested bases.": "برای قوی‌ترین پایه‌های آزموده‌شده، Φn(b) را دقیق راستی‌آزمایی کنید.",
+      "Expand n range or change the base window only if this region matters.": "فقط اگر این ناحیه مهم است، بازه n یا بازه پایه را تغییر دهید.",
+      "Treat as exact cyclotomic equality; inspect whether the root shortcut was fragile.": "آن را برابری دقیق سیکلوتومیک بدانید؛ سپس بررسی کنید آیا میان‌بُر ریشه شکننده بوده است.",
+      "Keep as evidence only; exact Φn(b) equality was not found for tested bases.": "فقط به‌عنوان شواهد نگه دارید؛ برای پایه‌های آزموده‌شده برابری دقیق Φn(b) پیدا نشد."
     }
   };
 
@@ -265,6 +365,31 @@
   function verdict(value) {
     const language = currentLanguage();
     return verdictLabels[language][value] || value;
+  }
+
+  function evidenceLabel(value) {
+    const language = currentLanguage();
+    return evidenceLabels[language][value] || verdict(value);
+  }
+
+  function stage(value) {
+    const language = currentLanguage();
+    return stageLabels[language][value] || value;
+  }
+
+  function stageStatus(value) {
+    const language = currentLanguage();
+    return stageStatusLabels[language][value] || value;
+  }
+
+  function verifyStatus(value) {
+    const language = currentLanguage();
+    return verifyStatusLabels[language][value] || value || "n/a";
+  }
+
+  function action(value) {
+    const language = currentLanguage();
+    return actionLabels[language][value] || value || "";
   }
 
   function note(value) {
@@ -331,12 +456,15 @@
     setText('label[for="n-max"]', "nMax");
     setText('label[for="base-window"]', "baseWindow");
     setText('label[for="time-budget"]', "timeBudget");
+    setText('label[for="verification-limit"]', "verificationLimit");
     setText('[data-mode="explore"]', "explore");
+    setText('[data-mode="deep"]', "deep");
     setText('[data-mode="counterexample"]', "counterMode");
     setText('[data-mode="verify"]', "verify");
     setText(".input-rail .rail-section:nth-child(3) h2", "samples");
     setText('[data-sample="phi21"]', "samplePhi21");
     setText('[data-sample="phi3"]', "samplePhi3");
+    setText('[data-sample="phi3large"]', "samplePhi3Large");
     setText('[data-sample="phi5"]', "samplePhi5");
     setText('[data-sample="carmichael"]', "sampleCarmichael");
     setText('[data-sample="primepower"]', "samplePrimePower");
@@ -393,6 +521,11 @@
     applyStatic,
     t,
     verdict,
+    evidenceLabel,
+    stage,
+    stageStatus,
+    verifyStatus,
+    action,
     note
   };
 })(typeof globalThis !== "undefined" ? globalThis : window);
