@@ -12,6 +12,12 @@ static void append_result(XrayBenchmarkReport *report, const XrayBenchmarkResult
   report->results = next;
   report->results[report->result_count++] = *result;
   if (result->passed) report->passed_count++;
+  if (strcmp(result->category, "scratch-vs-gmp") == 0) {
+    report->scratch_count++;
+    if (strcmp(result->adoption, "allowed") == 0) report->replacement_ready_count++;
+    else if (strcmp(result->adoption, "oracle-only") == 0) report->oracle_only_count++;
+    else report->blocked_count++;
+  }
 }
 
 const char *xray_scratch_adoption_for_result(const XrayBenchmarkResult *result) {

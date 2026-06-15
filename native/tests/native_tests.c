@@ -264,6 +264,9 @@ static void test_benchmarks(void) {
   CHECK(report.result_count >= 32);
   CHECK(report.passed_count == report.result_count);
   size_t scratch_rows = 0;
+  size_t replacement_ready_rows = 0;
+  size_t oracle_only_rows = 0;
+  size_t blocked_rows = 0;
   for (size_t index = 0; index < report.result_count; ++index) {
     if (strcmp(report.results[index].category, "scratch-vs-gmp") == 0) {
       scratch_rows++;
@@ -275,15 +278,27 @@ static void test_benchmarks(void) {
       const char *adoption = xray_scratch_adoption_for_result(&report.results[index]);
       CHECK(strcmp(report.results[index].adoption, adoption) == 0);
       CHECK(report.results[index].replacement_ready == (strcmp(adoption, "allowed") == 0));
+      if (strcmp(adoption, "allowed") == 0) replacement_ready_rows++;
+      else if (strcmp(adoption, "oracle-only") == 0) oracle_only_rows++;
+      else blocked_rows++;
     }
   }
   XrayBenchmarkResult mismatch;
   memset(&mismatch, 0, sizeof(mismatch));
   CHECK(strcmp(xray_scratch_adoption_for_result(&mismatch), "blocked-output-mismatch") == 0);
   CHECK(scratch_rows >= 23);
+  CHECK(report.scratch_count == scratch_rows);
+  CHECK(report.replacement_ready_count == replacement_ready_rows);
+  CHECK(report.oracle_only_count == oracle_only_rows);
+  CHECK(report.blocked_count == blocked_rows);
+  CHECK(report.scratch_count == report.replacement_ready_count + report.oracle_only_count + report.blocked_count);
   char *json = xray_benchmark_report_json(&report);
   CHECK(json != NULL);
   CHECK(strstr(json, "\"replacementReady\"") != NULL);
+  CHECK(strstr(json, "\"scratchRows\"") != NULL);
+  CHECK(strstr(json, "\"replacementReadyRows\"") != NULL);
+  CHECK(strstr(json, "\"oracleOnlyRows\"") != NULL);
+  CHECK(strstr(json, "\"blockedRows\"") != NULL);
   CHECK(strstr(json, "\"adoption\"") != NULL);
   CHECK(strstr(json, "\"maxAllowedSpeedRatio\"") != NULL);
   CHECK(strstr(json, "\"scratchUs\"") != NULL);

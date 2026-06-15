@@ -753,9 +753,12 @@ static gpointer run_worker(gpointer data) {
     report.cyclotomic.scanned,
     report.cyclotomic.exact_matches,
     report.cyclotomic.elapsed_ms);
-  snprintf(result->bench_status, sizeof(result->bench_status), "Bench %zu/%zu | GNFS %zu stages",
+  snprintf(result->bench_status, sizeof(result->bench_status), "Bench %zu/%zu | scratch ready %zu/%zu | oracle %zu | GNFS %zu",
     report.benchmark.passed_count,
     report.benchmark.result_count,
+    report.benchmark.replacement_ready_count,
+    report.benchmark.scratch_count,
+    report.benchmark.oracle_only_count,
     report.gnfs.stage_count);
   snprintf(result->log_line, sizeof(result->log_line),
     "RUN COMPLETE\n"

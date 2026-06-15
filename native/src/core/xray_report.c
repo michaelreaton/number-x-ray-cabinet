@@ -170,9 +170,14 @@ static void append_cyclotomic_json(JsonBuffer *buffer, const XrayCyclotomicRepor
 
 static void append_benchmark_json(JsonBuffer *buffer, const XrayBenchmarkReport *report) {
   jb_append(buffer, "\"benchmarkReport\":{");
-  jb_printf(buffer, "\"passed\":%zu,\"total\":%zu,\"elapsedMs\":%lu,\"results\":[",
+  jb_printf(buffer,
+    "\"passed\":%zu,\"total\":%zu,\"scratchRows\":%zu,\"replacementReadyRows\":%zu,\"oracleOnlyRows\":%zu,\"blockedRows\":%zu,\"elapsedMs\":%lu,\"results\":[",
     report->passed_count,
     report->result_count,
+    report->scratch_count,
+    report->replacement_ready_count,
+    report->oracle_only_count,
+    report->blocked_count,
     report->elapsed_ms);
   for (size_t index = 0; index < report->result_count; ++index) {
     if (index) jb_append(buffer, ",");

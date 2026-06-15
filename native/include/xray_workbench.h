@@ -145,6 +145,10 @@ typedef struct XrayBenchmarkReport {
   XrayBenchmarkResult *results;
   size_t result_count;
   size_t passed_count;
+  size_t scratch_count;
+  size_t replacement_ready_count;
+  size_t oracle_only_count;
+  size_t blocked_count;
   unsigned long elapsed_ms;
 } XrayBenchmarkReport;
 
