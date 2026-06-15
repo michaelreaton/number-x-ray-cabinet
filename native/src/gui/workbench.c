@@ -39,6 +39,7 @@ typedef struct AppState {
   GtkWidget *solver_proof_label;
   GtkWidget *json_view;
   GtkWidget *log_view;
+  GtkWidget *benchmark_view;
   guint live_timer_id;
   unsigned long run_started_ms;
   unsigned int run_pulse;
@@ -55,6 +56,7 @@ typedef struct RunResult {
   char proof_status[128];
   char cyclo_status[128];
   char bench_status[128];
+  char *benchmark_text;
   char log_line[2048];
 } RunResult;
 
@@ -74,6 +76,64 @@ static char *gui_strdup(const char *text) {
   if (!copy) return NULL;
   if (length) memcpy(copy, text, length);
   return copy;
+}
+
+static char *format_benchmark_report_text(const XrayBenchmarkReport *report) {
+  if (!report || !report->result_count) {
+    return gui_strdup(
+      "BENCHMARK RESULTS\n"
+      "Run Proof with benchmarks enabled to populate live primitive timings.\n");
+  }
+
+  size_t capacity = 4096 + report->result_count * 220;
+  char *text = (char *)calloc(capacity, 1);
+  if (!text) return NULL;
+  size_t used = 0;
+  used += (size_t)snprintf(text + used, capacity - used,
+    "BENCHMARK RESULTS\n"
+    "Passed: %zu/%zu   Scratch rows: %zu   Replacement-ready: %zu   Oracle-only: %zu   Blocked: %zu   Elapsed: %lums\n\n"
+    "%-30s %-8s %-14s %-7s %10s %10s %7s\n",
+    report->passed_count,
+    report->result_count,
+    report->scratch_count,
+    report->replacement_ready_count,
+    report->oracle_only_count,
+    report->blocked_count,
+    report->elapsed_ms,
+    "Operation",
+    "Digits",
+    "Adoption",
+    "Ready",
+    "ScratchUs",
+    "GmpUs",
+    "Ratio");
+  used += (size_t)snprintf(text + used, capacity - used,
+    "%-30s %-8s %-14s %-7s %10s %10s %7s\n",
+    "------------------------------",
+    "--------",
+    "--------------",
+    "-------",
+    "----------",
+    "----------",
+    "-------");
+
+  for (size_t index = 0; index < report->result_count && used < capacity; ++index) {
+    const XrayBenchmarkResult *row = &report->results[index];
+    if (strcmp(row->category, "scratch-vs-gmp") != 0) continue;
+    used += (size_t)snprintf(text + used, capacity - used,
+      "%-30s %-8zu %-14s %-7s %10llu %10llu %7.2f\n",
+      row->operation,
+      row->digits,
+      row->adoption,
+      row->replacement_ready ? "yes" : "no",
+      row->scratch_us,
+      row->gmp_us,
+      row->speed_ratio);
+  }
+
+  used += (size_t)snprintf(text + used, capacity - used,
+    "\nRule: a scratch primitive is replacement-ready only when outputs match GMP and the local speed ratio is within the configured gate.\n");
+  return text;
 }
 
 static const char *workbench_css =
@@ -252,6 +312,7 @@ static char *text_view_text(GtkWidget *view) {
 }
 
 static void set_text_view(GtkWidget *view, const char *text) {
+  if (!view) return;
   GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(view));
   gtk_text_buffer_set_text(buffer, text ? text : "", -1);
 }
@@ -678,10 +739,20 @@ static GtkWidget *build_solver_page(AppState *app) {
   return page_scroll(page);
 }
 
-static GtkWidget *build_benchmark_page(void) {
+static GtkWidget *build_benchmark_page(AppState *app) {
   GtkWidget *page = gtk_box_new(GTK_ORIENTATION_VERTICAL, 14);
   gtk_widget_add_css_class(page, "surface");
   set_margins(page, 16, 16, 16, 16);
+  gtk_box_append(GTK_BOX(page), label_with_class("LIVE BENCHMARK RESULTS", "section-title"));
+  GtkWidget *benchmark_scroll = scrolled_text_view(&app->benchmark_view, FALSE);
+  gtk_widget_set_vexpand(benchmark_scroll, TRUE);
+  gtk_widget_set_size_request(benchmark_scroll, -1, app->layout == XRAY_LAYOUT_COMPACT ? 260 : 360);
+  gtk_box_append(GTK_BOX(page), benchmark_scroll);
+  set_text_view(app->benchmark_view,
+    "BENCHMARK RESULTS\n"
+    "Run Proof to measure scratch bigint primitives against GMP.\n\n"
+    "The table will show parse/add/sub/mul/mod/div/gcd/powmod timings, adoption status, and replacement-ready gates.\n");
+
   GtkWidget *ladder = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
   gtk_widget_add_css_class(ladder, "panel");
   gtk_box_append(GTK_BOX(ladder), label_with_class("BENCHMARK LADDER", "section-title"));
@@ -824,8 +895,10 @@ static gboolean finish_run(gpointer data) {
   gtk_widget_set_visible(app->cancel_button, FALSE);
   set_run_status(app, result->factor_status, result->proof_status, result->cyclo_status, result->bench_status);
   set_text_view(app->json_view, result->json);
+  set_text_view(app->benchmark_view, result->benchmark_text);
   set_text_view(app->log_view, result->log_line);
   free(result->json);
+  free(result->benchmark_text);
   free(result);
   return G_SOURCE_REMOVE;
 }
@@ -838,6 +911,7 @@ static gpointer run_worker(gpointer data) {
   RunResult *result = (RunResult *)calloc(1, sizeof(*result));
   result->app = job->app;
   result->json = gui_strdup(report.json ? report.json : "{}");
+  result->benchmark_text = format_benchmark_report_text(&report.benchmark);
   snprintf(result->factor_status, sizeof(result->factor_status), "Factor Solver: %s", report.factor.status[0] ? report.factor.status : "invalid");
   snprintf(result->proof_status, sizeof(result->proof_status), "Product proof: %s | factors %zu | unresolved %zu | %lu ms",
     report.factor.product_verified ? "verified" : "not verified",
@@ -908,6 +982,11 @@ static void on_run_clicked(GtkButton *button, gpointer user_data) {
     "  \"status\": \"running\",\n"
     "  \"note\": \"Native proof worker is active. Final JSON replaces this when the verified report is assembled.\"\n"
     "}\n");
+  set_text_view(app->benchmark_view,
+    "BENCHMARK RESULTS\n"
+    "Running native proof worker...\n\n"
+    "The table will populate when the benchmark report is assembled.\n"
+    "You can keep this tab open; the final scratch-vs-GMP rows replace this placeholder automatically.\n");
   set_live_log(app);
   if (!app->live_timer_id) app->live_timer_id = g_timeout_add(250, live_run_tick, app);
 
@@ -1116,7 +1195,7 @@ static GtkWidget *build_center_tabs(AppState *app) {
 
   gtk_notebook_append_page(GTK_NOTEBOOK(notebook), build_xray_page(app), gtk_label_new("X-Ray"));
   gtk_notebook_append_page(GTK_NOTEBOOK(notebook), build_solver_page(app), gtk_label_new("Solver"));
-  gtk_notebook_append_page(GTK_NOTEBOOK(notebook), build_benchmark_page(), gtk_label_new("Bench"));
+  gtk_notebook_append_page(GTK_NOTEBOOK(notebook), build_benchmark_page(app), gtk_label_new("Bench"));
   gtk_notebook_append_page(GTK_NOTEBOOK(notebook), build_json_page(app), gtk_label_new("JSON"));
   gtk_notebook_set_current_page(GTK_NOTEBOOK(notebook), 0);
   return notebook;
