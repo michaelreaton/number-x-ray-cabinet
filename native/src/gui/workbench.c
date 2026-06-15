@@ -273,14 +273,14 @@ static char *format_benchmark_report_text(const XrayBenchmarkReport *report) {
   }
 
   used += (size_t)snprintf(text + used, capacity - used,
-    "\nSCRATCH VS GMP\n"
+    "\nSCRATCH VS GMP/MPIR\n"
     "%-30s %-8s %-14s %-7s %10s %10s %7s %8s\n",
     "Operation",
     "Digits",
     "Adoption",
     "Ready",
     "ScratchUs",
-    "GmpUs",
+    "BackendUs",
     "Ratio",
     "Stable");
   used += (size_t)snprintf(text + used, capacity - used,
@@ -987,7 +987,7 @@ static GtkWidget *build_benchmark_page(AppState *app) {
   gtk_box_append(GTK_BOX(page), benchmark_scroll);
   set_text_view(app->benchmark_view,
     "BENCHMARK FRONTIER\n"
-    "Run Proof to measure scratch bigint primitives against GMP.\n\n"
+    "Run Proof to measure scratch bigint primitives against GMP/MPIR.\n\n"
     "The frontier summary will show replacement-ready rows, near wins, and the largest remaining gaps before the detailed timing tables.\n");
 
   GtkWidget *ladder = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
@@ -1223,7 +1223,7 @@ static void on_run_clicked(GtkButton *button, gpointer user_data) {
     "BENCHMARK FRONTIER\n"
     "Running native proof worker...\n\n"
     "The frontier summary and timing tables will populate when the benchmark report is assembled.\n"
-    "You can keep this tab open; the final scratch-vs-GMP rows replace this placeholder automatically.\n");
+    "You can keep this tab open; the final scratch-vs-GMP/MPIR rows replace this placeholder automatically.\n");
   set_live_log(app);
   if (!app->live_timer_id) app->live_timer_id = g_timeout_add(250, live_run_tick, app);
 
