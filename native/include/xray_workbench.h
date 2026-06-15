@@ -42,6 +42,12 @@ typedef struct XrayBigIntRouteConfig {
   int msvc_uint128_helpers;
 } XrayBigIntRouteConfig;
 
+typedef struct XrayBigIntU32ModContext {
+  uint32_t modulus;
+  uint64_t reciprocal;
+  int use_fermat_65537;
+} XrayBigIntU32ModContext;
+
 /**
  * Return the runtime Number X-Ray version string for the loaded library.
  *
@@ -225,6 +231,38 @@ XRAY_API char *xray_bigint_square_decimal(const char *decimal);
  * comparison pointer.
  */
 XRAY_API int xray_bigint_compare_decimal(const char *left_decimal, const char *right_decimal, int *comparison);
+
+/**
+ * Precompute divisor state for repeated modulo operations by a 32-bit modulus.
+ *
+ * The context is plain caller-owned storage and can be reused across calls as
+ * long as the modulus is unchanged. Returns 1 on success and 0 for a NULL
+ * context or zero modulus.
+ */
+XRAY_API int xray_bigint_u32_mod_context_init(XrayBigIntU32ModContext *context, uint32_t modulus);
+
+/**
+ * Compute value mod context->modulus using precomputed divisor state.
+ *
+ * Returns 0 when value or context is NULL, when context->modulus is zero, or
+ * when the mathematical remainder is zero.
+ */
+XRAY_API uint32_t xray_bigint_mod_u32_precomputed(const XrayScratchBigInt *value, const XrayBigIntU32ModContext *context);
+
+/**
+ * Compute gcd(value, context->modulus) using precomputed modulo state.
+ *
+ * Returns 0 when value or context is NULL or when context->modulus is zero.
+ */
+XRAY_API uint32_t xray_bigint_gcd_u32_precomputed(const XrayScratchBigInt *value, const XrayBigIntU32ModContext *context);
+
+/**
+ * Compute base^exponent mod context->modulus using precomputed reduction state.
+ *
+ * The precompute only applies to reducing the bigint base; the exponentiation
+ * itself is over 32-bit residues. Returns 0 for invalid context or zero modulus.
+ */
+XRAY_API uint32_t xray_bigint_powmod_u32_precomputed(const XrayScratchBigInt *base, uint32_t exponent, const XrayBigIntU32ModContext *context);
 
 /**
  * Compute a square with an explicit Karatsuba threshold for benchmarking.

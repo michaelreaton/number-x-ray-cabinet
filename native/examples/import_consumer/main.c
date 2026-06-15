@@ -11,6 +11,7 @@ int main(void) {
   xray_bigint_init(&one);
   xray_bigint_init(&sum);
   XrayBigIntRouteConfig route = xray_bigint_route_config();
+  XrayBigIntU32ModContext mod_context;
 
   int ok = strcmp(NUMBER_XRAY_VERSION, XRAY_VERSION) == 0 &&
     strcmp(xray_version(), NUMBER_XRAY_VERSION) == 0 &&
@@ -28,7 +29,11 @@ int main(void) {
     (!route.mul_unroll4_route_enabled || route.msvc_uint128_helpers) &&
     xray_bigint_set_decimal(&value, "10,000_000 000,000_000 000") &&
     xray_bigint_set_decimal(&one, "1") &&
-    xray_bigint_add(&sum, &value, &one);
+    xray_bigint_add(&sum, &value, &one) &&
+    xray_bigint_u32_mod_context_init(&mod_context, 1000000007U) &&
+    xray_bigint_mod_u32_precomputed(&value, &mod_context) == xray_bigint_mod_u32(&value, 1000000007U) &&
+    xray_bigint_gcd_u32_precomputed(&value, &mod_context) == xray_bigint_gcd_u32(&value, 1000000007U) &&
+    xray_bigint_powmod_u32_precomputed(&value, 65537U, &mod_context) == xray_bigint_powmod_u32(&value, 65537U, 1000000007U);
 
   char *text = ok ? xray_bigint_get_decimal(&sum) : NULL;
   ok = ok && text && strcmp(text, "10000000000000000001") == 0;
