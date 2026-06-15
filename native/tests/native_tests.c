@@ -625,12 +625,19 @@ static void test_benchmarks(void) {
       CHECK(report->results[index].gmp_us > 0);
       CHECK(report->results[index].speed_ratio > 0.0);
       CHECK(report->results[index].max_allowed_speed_ratio == 1.0);
+      CHECK(report->results[index].sample_count == 5);
+      CHECK(report->results[index].stable_sample_count <= report->results[index].sample_count);
       CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
+      CHECK(strstr(report->results[index].detail, "stablePairs=") != NULL);
+      CHECK(strstr(report->results[index].detail, "worstPairRatio=") != NULL);
       CHECK(strstr(report->results[index].detail, strcmp(report->results[index].operation, "mul") == 0 ? "operandFamilies=2" : "operandFamilies=1") != NULL);
       const char *adoption = xray_scratch_adoption_for_result(&report->results[index]);
       CHECK(strcmp(report->results[index].adoption, adoption) == 0);
       CHECK(report->results[index].replacement_ready == (strcmp(adoption, "allowed") == 0));
-      if (strcmp(adoption, "allowed") == 0) replacement_ready_rows++;
+      if (strcmp(adoption, "allowed") == 0) {
+        CHECK(report->results[index].stable_sample_count >= 4);
+        replacement_ready_rows++;
+      }
       else if (strcmp(adoption, "oracle-only") == 0) oracle_only_rows++;
       else blocked_rows++;
     } else if (strcmp(report->results[index].category, "kernel-probe") == 0) {
@@ -655,6 +662,19 @@ static void test_benchmarks(void) {
   XrayBenchmarkResult mismatch;
   memset(&mismatch, 0, sizeof(mismatch));
   CHECK(strcmp(xray_scratch_adoption_for_result(&mismatch), "blocked-output-mismatch") == 0);
+  XrayBenchmarkResult unstable;
+  memset(&unstable, 0, sizeof(unstable));
+  unstable.parity_verified = 1;
+  unstable.speed_ratio = 0.90;
+  unstable.max_allowed_speed_ratio = 1.0;
+  unstable.sample_count = 5;
+  unstable.stable_sample_count = 3;
+  CHECK(strcmp(xray_scratch_adoption_for_result(&unstable), "oracle-only") == 0);
+  unstable.stable_sample_count = 4;
+  CHECK(strcmp(xray_scratch_adoption_for_result(&unstable), "allowed") == 0);
+  unstable.speed_ratio = 1.01;
+  unstable.stable_sample_count = 5;
+  CHECK(strcmp(xray_scratch_adoption_for_result(&unstable), "oracle-only") == 0);
   CHECK(scratch_rows >= 24);
   CHECK(kernel_rows >= 4);
   CHECK(report->scratch_count == scratch_rows);
@@ -665,6 +685,9 @@ static void test_benchmarks(void) {
   char *json = xray_benchmark_report_json(report);
   CHECK(json != NULL);
   CHECK(strstr(json, "\"replacementReady\"") != NULL);
+  CHECK(strstr(json, "\"stableSampleCount\"") != NULL);
+  CHECK(strstr(json, "\"sampleCount\"") != NULL);
+  CHECK(strstr(json, "\"worstPairRatio\"") != NULL);
   CHECK(strstr(json, "\"cpu\"") != NULL);
   CHECK(strstr(json, "kernel-probe") != NULL);
   CHECK(strstr(json, "\"avx\"") != NULL);
@@ -704,6 +727,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "scratch-vs-gmp") != NULL);
   CHECK(strstr(benchmark_tsv, "kernel-probe") != NULL);
   CHECK(strstr(benchmark_tsv, "speedRatio") != NULL);
+  CHECK(strstr(benchmark_tsv, "stableSampleCount") != NULL);
+  CHECK(strstr(benchmark_tsv, "worstPairRatio") != NULL);
   CHECK(strstr(benchmark_tsv, "ratioMethod=paired-median") != NULL);
   CHECK(strstr(cpu_text, "CPU:") != NULL);
   CHECK(strstr(cpu_text, "flags=") != NULL);

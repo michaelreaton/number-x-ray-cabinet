@@ -85,7 +85,7 @@ static char *format_benchmark_report_text(const XrayBenchmarkReport *report) {
       "Run Proof with benchmarks enabled to populate live primitive timings.\n");
   }
 
-  size_t capacity = 4096 + report->result_count * 220;
+  size_t capacity = 4096 + report->result_count * 260;
   char *text = (char *)calloc(capacity, 1);
   if (!text) return NULL;
   char *cpu_summary = xray_cpu_features_summary(&report->cpu);
@@ -94,7 +94,7 @@ static char *format_benchmark_report_text(const XrayBenchmarkReport *report) {
     "BENCHMARK RESULTS\n"
     "%s\n"
     "Passed: %zu/%zu   Scratch rows: %zu   Replacement-ready: %zu   Oracle-only: %zu   Blocked: %zu   Elapsed: %lums\n\n"
-    "%-30s %-8s %-14s %-7s %10s %10s %7s\n",
+    "%-30s %-8s %-14s %-7s %10s %10s %7s %8s\n",
     cpu_summary ? cpu_summary : "CPU: unavailable",
     report->passed_count,
     report->result_count,
@@ -109,34 +109,38 @@ static char *format_benchmark_report_text(const XrayBenchmarkReport *report) {
     "Ready",
     "ScratchUs",
     "GmpUs",
-    "Ratio");
+    "Ratio",
+    "Stable");
   free(cpu_summary);
   used += (size_t)snprintf(text + used, capacity - used,
-    "%-30s %-8s %-14s %-7s %10s %10s %7s\n",
+    "%-30s %-8s %-14s %-7s %10s %10s %7s %8s\n",
     "------------------------------",
     "--------",
     "--------------",
     "-------",
     "----------",
     "----------",
-    "-------");
+    "-------",
+    "--------");
 
   for (size_t index = 0; index < report->result_count && used < capacity; ++index) {
     const XrayBenchmarkResult *row = &report->results[index];
     if (strcmp(row->category, "scratch-vs-gmp") != 0) continue;
     used += (size_t)snprintf(text + used, capacity - used,
-      "%-30s %-8zu %-14s %-7s %10llu %10llu %7.2f\n",
+      "%-30s %-8zu %-14s %-7s %10llu %10llu %7.2f %3zu/%-4zu\n",
       row->operation,
       row->digits,
       row->adoption,
       row->replacement_ready ? "yes" : "no",
       row->scratch_us,
       row->gmp_us,
-      row->speed_ratio);
+      row->speed_ratio,
+      row->stable_sample_count,
+      row->sample_count);
   }
 
   used += (size_t)snprintf(text + used, capacity - used,
-    "\nRule: a scratch primitive is replacement-ready only when outputs match GMP and the local speed ratio is within the configured gate.\n");
+    "\nRule: a scratch primitive is replacement-ready only when outputs match GMP, the paired median is within the configured gate, and at least 4 of 5 paired samples win locally.\n");
   return text;
 }
 
