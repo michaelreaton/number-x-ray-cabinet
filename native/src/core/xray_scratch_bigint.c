@@ -76,34 +76,16 @@ int xray_bigint_copy(XrayScratchBigInt *out, const XrayScratchBigInt *value) {
   return 1;
 }
 
-static int mul_small_inplace(XrayScratchBigInt *value, uint32_t multiplier) {
-  if (value->count == 0 || multiplier == 1) return 1;
-  if (multiplier == 0) {
-    value->count = 0;
-    return 1;
-  }
+static int mul_add_small_inplace(XrayScratchBigInt *value, uint32_t multiplier, uint32_t addend) {
+  if (value->count == 0 || multiplier == 0) return set_u32(value, addend);
   if (!reserve_limbs(value, value->count + 1)) return 0;
-  uint64_t carry = 0;
+  uint64_t carry = addend;
   for (size_t index = 0; index < value->count; ++index) {
     uint64_t product = (uint64_t)value->limbs[index] * multiplier + carry;
     value->limbs[index] = (uint32_t)product;
     carry = product >> XRAY_BIGINT_WORD_BITS;
   }
   if (carry) value->limbs[value->count++] = (uint32_t)carry;
-  return 1;
-}
-
-static int add_small_inplace(XrayScratchBigInt *value, uint32_t addend) {
-  if (!reserve_limbs(value, value->count + 1)) return 0;
-  uint64_t carry = addend;
-  size_t index = 0;
-  while (carry) {
-    if (index == value->count) value->limbs[value->count++] = 0;
-    uint64_t sum = (uint64_t)value->limbs[index] + carry;
-    value->limbs[index] = (uint32_t)sum;
-    carry = sum >> XRAY_BIGINT_WORD_BITS;
-    index++;
-  }
   return 1;
 }
 
@@ -120,16 +102,14 @@ int xray_bigint_set_decimal(XrayScratchBigInt *value, const char *decimal) {
     chunk = chunk * 10U + (uint32_t)(*p - '0');
     chunk_digits++;
     if (chunk_digits == XRAY_BIGINT_DECIMAL_CHUNK_DIGITS) {
-      if (!mul_small_inplace(value, XRAY_BIGINT_DECIMAL_CHUNK_BASE)) return 0;
-      if (!add_small_inplace(value, chunk)) return 0;
+      if (!mul_add_small_inplace(value, XRAY_BIGINT_DECIMAL_CHUNK_BASE, chunk)) return 0;
       chunk = 0;
       chunk_digits = 0;
     }
   }
   if (!digit_count) return 0;
   if (chunk_digits) {
-    if (!mul_small_inplace(value, decimal_powers[chunk_digits])) return 0;
-    if (!add_small_inplace(value, chunk)) return 0;
+    if (!mul_add_small_inplace(value, decimal_powers[chunk_digits], chunk)) return 0;
   }
   return 1;
 }
