@@ -143,6 +143,12 @@ static void test_runtime_version_contract(void) {
   CHECK(xray_bignum_backend_version()[0] != '\0');
   CHECK(xray_bignum_backend_library() != NULL);
   CHECK(xray_bignum_backend_library()[0] != '\0');
+  XrayBigIntRouteConfig route = xray_bigint_route_config();
+  CHECK(route.word_bits == 64u);
+  CHECK(route.karatsuba_threshold_limbs > 0);
+  CHECK(route.decimal_horner_min_limbs > 0);
+  CHECK(route.mul_unroll4_route_min_limbs <= route.mul_unroll4_route_max_limbs);
+  if (route.mul_unroll4_route_enabled) CHECK(route.msvc_uint128_helpers);
 }
 
 static void test_exact_expression_parser(void) {
@@ -1338,6 +1344,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "\"baselineBackend\"") != NULL);
   CHECK(strstr(json, "\"baselineBackendVersion\"") != NULL);
   CHECK(strstr(json, "\"baselineBackendLibrary\"") != NULL);
+  CHECK(strstr(json, "\"scratchRouteConfig\"") != NULL);
+  CHECK(strstr(json, "\"karatsubaThresholdLimbs\"") != NULL);
+  CHECK(strstr(json, "\"decimalHornerMinLimbs\"") != NULL);
+  CHECK(strstr(json, "\"mulUnroll4RouteEnabled\"") != NULL);
   CHECK(strstr(json, "\"cpu\"") != NULL);
   CHECK(strstr(json, "kernel-probe") != NULL);
   CHECK(strstr(json, "\"avx\"") != NULL);
@@ -1422,6 +1432,9 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_json, "\"baselineBackend\"") != NULL);
   CHECK(strstr(benchmark_json, "\"baselineBackendVersion\"") != NULL);
   CHECK(strstr(benchmark_json, "\"baselineBackendLibrary\"") != NULL);
+  CHECK(strstr(benchmark_json, "\"scratchRouteConfig\"") != NULL);
+  CHECK(strstr(benchmark_json, "\"mulUnroll4RouteMaxLimbs\"") != NULL);
+  CHECK(strstr(benchmark_json, "\"msvcUint128Helpers\"") != NULL);
   CHECK(strstr(benchmark_json, "\"scratchRows\"") != NULL);
   CHECK(strstr(benchmark_tsv, "scratch-vs-gmp") != NULL);
   CHECK(strstr(benchmark_tsv, "kernel-probe") != NULL);
@@ -1446,6 +1459,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "ratioMethod=paired-median") != NULL);
   CHECK(strstr(benchmark_frontier, "BENCHMARK FRONTIER") != NULL);
   CHECK(strstr(benchmark_frontier, "Baseline backend:") != NULL);
+  CHECK(strstr(benchmark_frontier, "Bigint route:") != NULL);
   CHECK(strstr(benchmark_frontier, "FRONTIER SUMMARY") != NULL);
   CHECK(strstr(benchmark_frontier, "Largest scratch gaps") != NULL);
   CHECK(strstr(benchmark_frontier, "SCRATCH VS ") != NULL);

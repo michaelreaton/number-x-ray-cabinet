@@ -212,6 +212,19 @@ static void append_cpu_json(JsonBuffer *buffer, const char *key, const XrayCpuFe
     cpu->adx ? "true" : "false");
 }
 
+static void append_bigint_route_config_json(JsonBuffer *buffer) {
+  XrayBigIntRouteConfig route = xray_bigint_route_config();
+  jb_printf(buffer,
+    "\"scratchRouteConfig\":{\"wordBits\":%u,\"karatsubaThresholdLimbs\":%zu,\"decimalHornerMinLimbs\":%zu,\"mulUnroll4RouteMinLimbs\":%zu,\"mulUnroll4RouteMaxLimbs\":%zu,\"mulUnroll4RouteEnabled\":%s,\"msvcUint128Helpers\":%s}",
+    route.word_bits,
+    route.karatsuba_threshold_limbs,
+    route.decimal_horner_min_limbs,
+    route.mul_unroll4_route_min_limbs,
+    route.mul_unroll4_route_max_limbs,
+    route.mul_unroll4_route_enabled ? "true" : "false",
+    route.msvc_uint128_helpers ? "true" : "false");
+}
+
 static void append_benchmark_json(JsonBuffer *buffer, const XrayBenchmarkReport *report) {
   jb_append(buffer, "\"benchmarkReport\":{");
   append_cpu_json(buffer, "cpu", report ? &report->cpu : NULL);
@@ -221,6 +234,8 @@ static void append_benchmark_json(JsonBuffer *buffer, const XrayBenchmarkReport 
   jb_string(buffer, xray_bignum_backend_version());
   jb_append(buffer, ",\"baselineBackendLibrary\":");
   jb_string(buffer, xray_bignum_backend_library());
+  jb_append(buffer, ",");
+  append_bigint_route_config_json(buffer);
   jb_printf(buffer,
     ",\"passed\":%zu,\"total\":%zu,\"scratchRows\":%zu,\"replacementReadyRows\":%zu,\"oracleOnlyRows\":%zu,\"blockedRows\":%zu,\"elapsedMs\":%lu,\"results\":[",
     report->passed_count,
@@ -484,6 +499,16 @@ char *xray_benchmark_frontier_text(const XrayBenchmarkReport *report) {
     xray_bignum_backend_name(),
     xray_bignum_backend_version(),
     xray_bignum_backend_library());
+  XrayBigIntRouteConfig route = xray_bigint_route_config();
+  jb_printf(&buffer,
+    "Bigint route: word=%ub | karatsuba>=%zu limbs | format-horner>=%zu limbs | mul-unroll4=%s %zu..%zu limbs | msvc128=%s\n",
+    route.word_bits,
+    route.karatsuba_threshold_limbs,
+    route.decimal_horner_min_limbs,
+    route.mul_unroll4_route_enabled ? "on" : "off",
+    route.mul_unroll4_route_min_limbs,
+    route.mul_unroll4_route_max_limbs,
+    route.msvc_uint128_helpers ? "yes" : "no");
   free(cpu_summary);
   jb_printf(&buffer,
     "Passed: %zu/%zu   Scratch rows: %zu   Replacement-ready: %zu   Oracle-only: %zu   Blocked: %zu   Elapsed: %lums\n\n",
