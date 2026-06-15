@@ -323,3 +323,40 @@ The combined candidate is a real improvement over the current scratch path, but
 the stricter GMP gate shows it is not a stable GMP replacement on this laptop.
 Next work should test a more GMP-like handoff ladder, not simply reuse the same
 one-level Toom split with more confidence.
+
+## 2026-06-15: Toom-3 + Unroll4 Handoff Scout
+
+Run: `runs/20260615-072856-c4b04caf`
+
+The benchmark now adds GMP-facing Toom-3+unroll4 scout rows at leaf thresholds
+`24`, `48`, and `96` for 8192 and 16384 digit operands. The goal is to learn
+whether a GMP-like handoff threshold changes the picture before any production
+route is touched. Leaf 96 also gets the nine-sample deep GMP gate because it
+looked promising in local scout rows.
+
+Five-sample GMP rows:
+
+- 8192 digits, leaf 24: ratio `1.239`, stable `0/5`, `observe-only`
+- 8192 digits, leaf 48: ratio `1.004`, stable `1/5`, `observe-only`
+- 8192 digits, leaf 64: ratio `0.998`, stable `0/5`, `observe-only`
+- 8192 digits, leaf 96: ratio `1.048`, stable `2/5`, `observe-only`
+- 16384 digits, leaf 24: ratio `1.389`, stable `0/5`, `observe-only`
+- 16384 digits, leaf 48: ratio `0.954`, stable `3/5`, `observe-only`
+- 16384 digits, leaf 64: ratio `1.184`, stable `0/5`, `observe-only`
+- 16384 digits, leaf 96: ratio `0.859`, stable `3/5`, `observe-only`
+
+Deep GMP rows:
+
+- 8192 digits, leaf 64: ratio `1.016`, stable `3/9`, worst pair ratio
+  `1.622`, `observe-only`
+- 8192 digits, leaf 96: ratio `0.868`, stable `9/9`, worst pair ratio
+  `0.929`, `promote-candidate`
+- 16384 digits, leaf 64: ratio `1.090`, stable `2/9`, worst pair ratio
+  `1.349`, `observe-only`
+- 16384 digits, leaf 96: ratio `0.923`, stable `5/9`, worst pair ratio
+  `1.336`, `observe-only`
+
+Decision: keep leaf 96 as the next bounded route candidate for the 8192 digit
+frontier only. It survived the deep GMP gate at 8192, but not at 16384. The
+next route experiment should be explicitly bounded by size and should keep the
+16384 row as a guardrail, not as an adoption target.
