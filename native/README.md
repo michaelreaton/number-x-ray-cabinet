@@ -74,6 +74,16 @@ pkg-config file on platforms that use pkg-config:
 cc my_tool.c $(pkg-config --cflags --libs number-xray)
 ```
 
+Tools that need package metadata without running CMake or pkg-config can read
+the installed SDK manifest:
+
+```text
+<prefix>/share/number-xray/number-xray-sdk.json
+```
+
+It records the public header, library name, CMake package/target, pkg-config
+name, install-relative include/lib directories, and GMP/MPIR dependency.
+
 Consumers still need GMP or MPIR available at configure/build time; the CMake
 package recreates the `GMP::GMP` dependency target from `GMP_ROOT`, vcpkg, or
 system paths, and the pkg-config metadata records `-lgmp` for static/private

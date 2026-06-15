@@ -8,6 +8,9 @@ endif()
 if(NOT DEFINED XRAY_INSTALL_LIBDIR OR NOT XRAY_INSTALL_LIBDIR)
   set(XRAY_INSTALL_LIBDIR lib)
 endif()
+if(NOT DEFINED XRAY_INSTALL_DATADIR OR NOT XRAY_INSTALL_DATADIR)
+  set(XRAY_INSTALL_DATADIR share)
+endif()
 
 if(WIN32 AND XRAY_GENERATOR MATCHES "Visual Studio")
   # Visual Studio generators select the matching toolset; stale shell state can
@@ -34,6 +37,22 @@ set(pkgconfig_file "${install_prefix}/${XRAY_INSTALL_LIBDIR}/pkgconfig/number-xr
 if(NOT EXISTS "${pkgconfig_file}")
   message(FATAL_ERROR "NumberXRay install smoke did not install pkg-config metadata: ${pkgconfig_file}")
 endif()
+
+set(sdk_manifest_file "${install_prefix}/${XRAY_INSTALL_DATADIR}/number-xray/number-xray-sdk.json")
+if(NOT EXISTS "${sdk_manifest_file}")
+  message(FATAL_ERROR "NumberXRay install smoke did not install SDK manifest: ${sdk_manifest_file}")
+endif()
+file(READ "${sdk_manifest_file}" sdk_manifest)
+foreach(expected
+    "\"public\": \"number_xray.h\""
+    "\"cmakeTarget\": \"NumberXRay::core\""
+    "\"pkgConfig\": \"number-xray\""
+    "\"cmakeTarget\": \"GMP::GMP\"")
+  string(FIND "${sdk_manifest}" "${expected}" expected_index)
+  if(expected_index LESS 0)
+    message(FATAL_ERROR "NumberXRay SDK manifest is missing expected entry: ${expected}")
+  endif()
+endforeach()
 
 set(configure_command
   "${CMAKE_COMMAND}"
