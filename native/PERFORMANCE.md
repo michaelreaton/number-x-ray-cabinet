@@ -850,3 +850,31 @@ it as a replacement route. Scratch time improves on the large rows, especially
 4096 digits, while GMP still wins decisively at the largest output sizes. The
 next formatter frontier is a divide-and-conquer conversion, not another linear
 chunk loop.
+
+## 2026-06-15: Copy Subtraction Tails After Borrow Clears
+
+Runs: `native/build-codex-fresh/native-test-runs/20260615-112350-c4b04caf`
+and `runs/20260615-112502-c4b04caf`
+
+Large subtraction was close to the adoption gate but still unstable at the
+8192-digit row. The subtraction loop now stops using the borrow-chain primitive
+once the right operand is exhausted and no borrow remains, then copies the
+unchanged high limbs from the left operand. The route is covered by a GMP oracle
+test using a large left operand, a small right operand, and aliasing back into
+the left operand.
+
+CTest benchmark:
+
+- summary: `176/176` passed, `40` replacement-ready, `12` oracle-only
+- 4096 digit `sub`: ratio `0.63`, stable `5/5`, `replacement-ready`
+- 8192 digit `sub`: ratio `0.71`, stable `4/5`, `replacement-ready`
+
+CLI benchmark:
+
+- summary: `176/176` passed, `40` replacement-ready, `12` oracle-only
+- 4096 digit `sub`: ratio `0.67`, stable `5/5`, `replacement-ready`
+- 8192 digit `sub`: ratio `0.62`, stable `5/5`, `replacement-ready`
+
+Decision: keep the tail copy. It is a semantics-preserving subtraction fast path
+and moves the 8192-digit subtraction row from evidence-only to locally
+replacement-ready in both local benchmark paths.

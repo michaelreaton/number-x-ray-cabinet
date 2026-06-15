@@ -258,6 +258,22 @@ static void test_scratch_bigint_oracle(void) {
   free(alias_difference);
   free(oracle_alias_difference);
 
+  mpz_ui_pow_ui(ga, 2U, 4096U);
+  mpz_add_ui(ga, ga, 987654321U);
+  mpz_set_ui(gb, 123456789U);
+  mpz_sub(gdifference, ga, gb);
+  char *large_tail_left = mpz_get_str(NULL, 10, ga);
+  char *large_tail_right = mpz_get_str(NULL, 10, gb);
+  CHECK(xray_bigint_set_decimal(&a, large_tail_left));
+  CHECK(xray_bigint_set_decimal(&b, large_tail_right));
+  CHECK(a.count > b.count + 16U);
+  CHECK(xray_bigint_sub(&difference, &a, &b));
+  check_scratch_matches_mpz(&difference, gdifference);
+  CHECK(xray_bigint_sub(&a, &a, &b));
+  check_scratch_matches_mpz(&a, gdifference);
+  free(large_tail_left);
+  free(large_tail_right);
+
   CHECK(xray_bigint_set_decimal(&a, "123456789012345678901234567890"));
   CHECK(xray_bigint_set_decimal(&b, "98765432109876543210"));
   mpz_set_str(ga, "123456789012345678901234567890", 10);
