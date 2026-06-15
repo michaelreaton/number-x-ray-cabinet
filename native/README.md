@@ -76,8 +76,8 @@ point.
 Every exported `XRAY_API` function is documented directly in the installed
 headers with Doxygen-style comments. Use `number_xray.h` as the public entry
 header and `xray_workbench.h` as the full function reference. Returned `char *`
-values are owned by the caller and must be released with `free()` unless the
-function documentation says the pointer is borrowed. Report structs that
+values are owned by the caller and must be released with `xray_free()` unless
+the function documentation says the pointer is borrowed. Report structs that
 receive heap fields have matching `*_clear()` functions, and those clearers are
 part of the documented API contract.
 

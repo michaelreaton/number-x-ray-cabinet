@@ -56,6 +56,7 @@ endif()
 
 set(XRAY_CORE_SOURCES
   src/core/xray_expression.c
+  src/core/xray_memory.c
   src/core/xray_cpu.c
   src/core/xray_scratch_bigint.c
   src/core/xray_factor.c
