@@ -610,13 +610,14 @@ static void test_benchmarks(void) {
   XrayBenchmarkReport *report = &workbench.benchmark;
   CHECK(workbench.cpu.logical_cpus >= 1);
   CHECK(report->cpu.logical_cpus >= 1);
-  CHECK(report->result_count >= 32);
+  CHECK(report->result_count >= 40);
   CHECK(report->passed_count == report->result_count);
   size_t scratch_rows = 0;
   size_t kernel_rows = 0;
   size_t replacement_ready_rows = 0;
   size_t oracle_only_rows = 0;
   size_t blocked_rows = 0;
+  int saw_8192_scratch = 0;
   for (size_t index = 0; index < report->result_count; ++index) {
     if (strcmp(report->results[index].category, "scratch-vs-gmp") == 0) {
       scratch_rows++;
@@ -627,6 +628,7 @@ static void test_benchmarks(void) {
       CHECK(report->results[index].max_allowed_speed_ratio == 1.0);
       CHECK(report->results[index].sample_count == 5);
       CHECK(report->results[index].stable_sample_count <= report->results[index].sample_count);
+      if (report->results[index].digits == 8192) saw_8192_scratch = 1;
       CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
       CHECK(strstr(report->results[index].detail, "stablePairs=") != NULL);
       CHECK(strstr(report->results[index].detail, "worstPairRatio=") != NULL);
@@ -683,7 +685,8 @@ static void test_benchmarks(void) {
   unstable.speed_ratio = 1.01;
   unstable.stable_sample_count = 5;
   CHECK(strcmp(xray_scratch_adoption_for_result(&unstable), "oracle-only") == 0);
-  CHECK(scratch_rows >= 24);
+  CHECK(scratch_rows >= 40);
+  CHECK(saw_8192_scratch);
   CHECK(kernel_rows >= 4);
   CHECK(report->scratch_count == scratch_rows);
   CHECK(report->replacement_ready_count == replacement_ready_rows);
