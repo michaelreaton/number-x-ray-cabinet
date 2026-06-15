@@ -153,6 +153,7 @@ the installed SDK manifest:
 ```text
 <prefix>/share/number-xray/number-xray-sdk.json
 <prefix>/share/number-xray/number-xray-api.json
+<prefix>/share/number-xray/number-xray-api.md
 ```
 
 It records the public header, library name, CMake package/target, pkg-config
@@ -162,8 +163,9 @@ directories, and GMP/MPIR dependency. The generated API catalog lists every
 exported function name, declaration, category, return type, parameter list,
 short summary, full cleaned Doxygen text, and ownership hint. Binding
 generators should read `apiDocumentation.catalog` first, then use
-`apiDocumentation.functionReferenceHeader` as the human reference source when
-they need the original comments and struct definitions.
+`apiDocumentation.referenceMarkdown` for a generated human reference, or
+`apiDocumentation.functionReferenceHeader` when they need the original comments
+and struct definitions.
 
 Consumers still need GMP or MPIR available at configure/build time; the CMake
 package recreates the `GMP::GMP` dependency target from `GMP_ROOT`, vcpkg, or
