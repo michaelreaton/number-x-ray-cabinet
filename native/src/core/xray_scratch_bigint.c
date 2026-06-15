@@ -493,6 +493,56 @@ static int square_schoolbook(XrayScratchBigInt *out, const XrayScratchBigInt *va
   return 1;
 }
 
+static int slice_bigint(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t offset, size_t count);
+static int add_shifted_inplace(XrayScratchBigInt *out, const XrayScratchBigInt *addend, size_t shift);
+static int square_dispatch_threshold(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t threshold);
+
+static int square_karatsuba_threshold(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t threshold) {
+  if (!out || !value) return 0;
+  if (value->count == 0) return set_u32(out, 0);
+  size_t active_threshold = threshold >= 2U ? threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  if (value->count < active_threshold) return square_schoolbook(out, value);
+
+  size_t split = value->count / 2U;
+  XrayScratchBigInt a0, a1, z0, z1, z2, sum;
+  xray_bigint_init(&a0);
+  xray_bigint_init(&a1);
+  xray_bigint_init(&z0);
+  xray_bigint_init(&z1);
+  xray_bigint_init(&z2);
+  xray_bigint_init(&sum);
+
+  int ok = slice_bigint(&a0, value, 0, split) &&
+    slice_bigint(&a1, value, split, value->count - split) &&
+    square_dispatch_threshold(&z0, &a0, active_threshold) &&
+    square_dispatch_threshold(&z2, &a1, active_threshold) &&
+    xray_bigint_add(&sum, &a0, &a1) &&
+    square_dispatch_threshold(&z1, &sum, active_threshold) &&
+    xray_bigint_sub(&z1, &z1, &z0) &&
+    xray_bigint_sub(&z1, &z1, &z2);
+
+  if (ok) {
+    out->count = 0;
+    ok = reserve_limbs(out, value->count * 2U + 2U) &&
+      add_shifted_inplace(out, &z0, 0) &&
+      add_shifted_inplace(out, &z1, split) &&
+      add_shifted_inplace(out, &z2, split * 2U);
+    if (ok) normalize(out);
+  }
+
+  xray_bigint_clear(&a0);
+  xray_bigint_clear(&a1);
+  xray_bigint_clear(&z0);
+  xray_bigint_clear(&z1);
+  xray_bigint_clear(&z2);
+  xray_bigint_clear(&sum);
+  return ok;
+}
+
+static int square_dispatch_threshold(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t threshold) {
+  return square_karatsuba_threshold(out, value, threshold);
+}
+
 static int mul_schoolbook_mode(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, int use_unroll4) {
   if (!out || !left || !right) return 0;
   if (left->count == 0 || right->count == 0) return set_u32(out, 0);
@@ -1084,6 +1134,20 @@ int xray_bigint_square(XrayScratchBigInt *out, const XrayScratchBigInt *value) {
     return ok;
   }
   return square_schoolbook(out, value);
+}
+
+int xray_bigint_square_karatsuba_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t threshold) {
+  if (!out || !value) return 0;
+  size_t active_threshold = threshold >= 2U ? threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  if (out == value) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = square_dispatch_threshold(&temp, value, active_threshold);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return square_dispatch_threshold(out, value, active_threshold);
 }
 
 int xray_bigint_mul_with_threshold(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t threshold) {

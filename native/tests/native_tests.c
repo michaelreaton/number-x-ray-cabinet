@@ -440,6 +440,8 @@ static void test_scratch_bigint_square_oracle(void) {
   CHECK(xray_bigint_set_decimal(&mersenne, mersenne_text));
   CHECK(xray_bigint_square(&mersenne_square, &mersenne));
   check_scratch_matches_mpz(&mersenne_square, gmersenne_square);
+  CHECK(xray_bigint_square_karatsuba_probe(&mersenne_square, &mersenne, 4));
+  check_scratch_matches_mpz(&mersenne_square, gmersenne_square);
   free(mersenne_text);
   mpz_clears(gmersenne, gmersenne_square, NULL);
   xray_bigint_clear(&mersenne);
@@ -457,8 +459,13 @@ static void test_scratch_bigint_square_oracle(void) {
   mpz_mul(gsquare, glarge, glarge);
   CHECK(xray_bigint_square(&square, &large));
   check_scratch_matches_mpz(&square, gsquare);
+  CHECK(xray_bigint_square_karatsuba_probe(&square, &large, 16));
+  check_scratch_matches_mpz(&square, gsquare);
 
   CHECK(xray_bigint_square(&large, &large));
+  check_scratch_matches_mpz(&large, gsquare);
+  CHECK(xray_bigint_set_decimal(&large, large_text));
+  CHECK(xray_bigint_square_karatsuba_probe(&large, &large, 16));
   check_scratch_matches_mpz(&large, gsquare);
 
   mpz_clears(glarge, gsquare, NULL);
@@ -846,6 +853,8 @@ static void test_benchmarks(void) {
   int saw_8192_kernel_probe = 0;
   int saw_16384_kernel_probe = 0;
   int saw_square_vs_mul_probe = 0;
+  int saw_square_karatsuba_vs_mul_probe = 0;
+  int saw_square_karatsuba_vs_gmp_probe = 0;
   int saw_toom3_probe = 0;
   int saw_toom3_vs_scratch_probe = 0;
   int saw_toom3_unroll4_vs_scratch_probe = 0;
@@ -921,6 +930,15 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "candidate=specialized-square") != NULL);
         CHECK(strstr(report->results[index].detail, "baseline=current-scratch-self-mul") != NULL);
         CHECK(strstr(report->results[index].detail, "featureGate=square-basecase-probe") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=1") != NULL);
+      }
+      if (strcmp(report->results[index].operation, "square-karatsuba-vs-mul") == 0 ||
+          strcmp(report->results[index].operation, "square-karatsuba-vs-gmp") == 0) {
+        if (strcmp(report->results[index].operation, "square-karatsuba-vs-mul") == 0) saw_square_karatsuba_vs_mul_probe = 1;
+        else saw_square_karatsuba_vs_gmp_probe = 1;
+        CHECK(strstr(report->results[index].detail, "threshold=64") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=karatsuba-square") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=karatsuba-square-probe") != NULL);
         CHECK(strstr(report->results[index].detail, "operandFamilies=1") != NULL);
       }
       if (strcmp(report->results[index].operation, "mul-toom3") == 0) {
@@ -1063,6 +1081,8 @@ static void test_benchmarks(void) {
   CHECK(saw_8192_kernel_probe);
   CHECK(saw_16384_kernel_probe);
   CHECK(saw_square_vs_mul_probe);
+  CHECK(saw_square_karatsuba_vs_mul_probe);
+  CHECK(saw_square_karatsuba_vs_gmp_probe);
   CHECK(saw_toom3_probe);
   CHECK(saw_toom3_vs_scratch_probe);
 #if defined(_MSC_VER) && defined(_M_X64)
@@ -1108,6 +1128,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "mul-toom3") != NULL);
   CHECK(strstr(json, "\"operation\":\"square\"") != NULL);
   CHECK(strstr(json, "square-vs-mul") != NULL);
+  CHECK(strstr(json, "square-karatsuba-vs-mul") != NULL);
+  CHECK(strstr(json, "square-karatsuba-vs-gmp") != NULL);
   CHECK(strstr(json, "mul-toom3-vs-scratch") != NULL);
 #if defined(_MSC_VER) && defined(_M_X64)
   CHECK(strstr(json, "mul-toom3-unroll4-vs-scratch") != NULL);
@@ -1134,6 +1156,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "mul-toom3") != NULL);
   CHECK(strstr(tsv, "square") != NULL);
   CHECK(strstr(tsv, "square-vs-mul") != NULL);
+  CHECK(strstr(tsv, "square-karatsuba-vs-mul") != NULL);
+  CHECK(strstr(tsv, "square-karatsuba-vs-gmp") != NULL);
   CHECK(strstr(tsv, "mul-toom3-vs-scratch") != NULL);
 #if defined(_MSC_VER) && defined(_M_X64)
   CHECK(strstr(tsv, "mul-toom3-unroll4-vs-scratch") != NULL);
@@ -1169,6 +1193,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "mul-toom3") != NULL);
   CHECK(strstr(benchmark_tsv, "square") != NULL);
   CHECK(strstr(benchmark_tsv, "square-vs-mul") != NULL);
+  CHECK(strstr(benchmark_tsv, "square-karatsuba-vs-mul") != NULL);
+  CHECK(strstr(benchmark_tsv, "square-karatsuba-vs-gmp") != NULL);
 #if defined(_MSC_VER) && defined(_M_X64)
   CHECK(strstr(benchmark_tsv, "mul-toom3-unroll4-vs-scratch") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-toom3-unroll4-vs-gmp") != NULL);

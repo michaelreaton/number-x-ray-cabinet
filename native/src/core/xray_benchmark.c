@@ -920,6 +920,61 @@ static void append_square_vs_mul_probe_result(
   append_result(report, &result);
 }
 
+static void append_square_karatsuba_probe_result(
+  XrayBenchmarkReport *report,
+  const char *operation_name,
+  const char *baseline_name,
+  size_t digits,
+  size_t threshold,
+  int parity,
+  unsigned long long candidate_us,
+  unsigned long long baseline_us,
+  double paired_ratio,
+  size_t stable_sample_count,
+  size_t sample_count,
+  double worst_pair_ratio) {
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "kernel Karatsuba square versus %s threshold %zu limbs %zu digits", baseline_name, threshold, digits);
+  snprintf(result.category, sizeof(result.category), "kernel-probe");
+  snprintf(result.operation, sizeof(result.operation), "%s", operation_name);
+  result.digits = digits;
+  result.scratch_us = candidate_us ? candidate_us : 1;
+  result.gmp_us = baseline_us ? baseline_us : 1;
+  result.speed_ratio = paired_ratio > 0.0 ? paired_ratio : (double)result.scratch_us / (double)result.gmp_us;
+  result.max_allowed_speed_ratio = 0.98;
+  result.stable_sample_count = stable_sample_count;
+  result.sample_count = sample_count;
+  result.worst_pair_ratio = worst_pair_ratio;
+  result.parity_verified = parity;
+  size_t required_stable = kernel_required_stable_samples(sample_count);
+  result.replacement_ready = parity &&
+    result.speed_ratio <= result.max_allowed_speed_ratio &&
+    result.stable_sample_count >= required_stable;
+  snprintf(result.adoption, sizeof(result.adoption), "%s",
+    !parity ? "blocked-output-mismatch" : (result.replacement_ready ? "promote-candidate" : "observe-only"));
+  snprintf(result.status, sizeof(result.status), "%s",
+    !parity ? "mismatch" : (result.replacement_ready ? "candidate-faster" : (result.speed_ratio < 1.0 ? "candidate-no-margin" : "baseline-faster")));
+  result.passed = parity;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  snprintf(result.detail, sizeof(result.detail),
+    "op=%s digits=%zu threshold=%zu operandFamilies=1 samples=%zu stablePairs=%zu/%zu candidateUs=%llu baselineUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median max=%.2f candidate=karatsuba-square baseline=%s featureGate=karatsuba-square-probe gmpClue=sqr_karatsuba adoption=%s",
+    operation_name,
+    digits,
+    threshold,
+    sample_count,
+    stable_sample_count,
+    sample_count,
+    result.scratch_us,
+    result.gmp_us,
+    result.speed_ratio,
+    result.worst_pair_ratio,
+    result.max_allowed_speed_ratio,
+    baseline_name,
+    result.adoption);
+  append_result(report, &result);
+}
+
 static void append_mul_threshold_probe_result(
   XrayBenchmarkReport *report,
   size_t digits,
@@ -2512,6 +2567,82 @@ static void run_square_vs_mul_probe_case(XrayBenchmarkReport *report, size_t dig
   free(text);
 }
 
+static void run_square_karatsuba_probe_case(
+  XrayBenchmarkReport *report,
+  size_t digits,
+  size_t threshold,
+  int baseline_is_gmp) {
+  char *text = benchmark_decimal(digits, 41, 1);
+  if (!text) return;
+  unsigned int iterations = perf_iterations("mul", digits);
+  XrayScratchBigInt a, candidate_out, baseline_out;
+  xray_bigint_init(&a);
+  xray_bigint_init(&candidate_out);
+  xray_bigint_init(&baseline_out);
+  mpz_t ga, gout;
+  mpz_inits(ga, gout, NULL);
+  int ok = xray_bigint_set_decimal(&a, text) && mpz_set_str(ga, text, 10) == 0;
+
+  unsigned long long candidate_samples[XRAY_BENCH_SAMPLES] = {0};
+  unsigned long long baseline_samples[XRAY_BENCH_SAMPLES] = {0};
+  int parity = 1;
+  for (unsigned int sample = 0; sample < XRAY_BENCH_SAMPLES; ++sample) {
+    if ((sample % 2U) == 0U) {
+      unsigned long long candidate_started = xray_now_us();
+      for (unsigned int index = 0; ok && index < iterations; ++index) {
+        ok = xray_bigint_square_karatsuba_probe(&candidate_out, &a, threshold);
+      }
+      candidate_samples[sample] = xray_now_us() - candidate_started;
+
+      unsigned long long baseline_started = xray_now_us();
+      for (unsigned int index = 0; ok && index < iterations; ++index) {
+        if (baseline_is_gmp) mpz_mul(gout, ga, ga);
+        else ok = xray_bigint_mul_with_threshold(&baseline_out, &a, &a, 64);
+      }
+      baseline_samples[sample] = xray_now_us() - baseline_started;
+    } else {
+      unsigned long long baseline_started = xray_now_us();
+      for (unsigned int index = 0; ok && index < iterations; ++index) {
+        if (baseline_is_gmp) mpz_mul(gout, ga, ga);
+        else ok = xray_bigint_mul_with_threshold(&baseline_out, &a, &a, 64);
+      }
+      baseline_samples[sample] = xray_now_us() - baseline_started;
+
+      unsigned long long candidate_started = xray_now_us();
+      for (unsigned int index = 0; ok && index < iterations; ++index) {
+        ok = xray_bigint_square_karatsuba_probe(&candidate_out, &a, threshold);
+      }
+      candidate_samples[sample] = xray_now_us() - candidate_started;
+    }
+
+    char *candidate_text = xray_bigint_get_decimal(&candidate_out);
+    char *baseline_text = baseline_is_gmp ? mpz_get_str(NULL, 10, gout) : xray_bigint_get_decimal(&baseline_out);
+    parity = parity && ok && candidate_text && baseline_text && strcmp(candidate_text, baseline_text) == 0;
+    free(candidate_text);
+    free(baseline_text);
+  }
+
+  append_square_karatsuba_probe_result(
+    report,
+    baseline_is_gmp ? "square-karatsuba-vs-gmp" : "square-karatsuba-vs-mul",
+    baseline_is_gmp ? "mpz_mul" : "current-scratch-self-mul",
+    digits,
+    threshold,
+    parity,
+    median_samples(candidate_samples, XRAY_BENCH_SAMPLES),
+    median_samples(baseline_samples, XRAY_BENCH_SAMPLES),
+    median_paired_ratio(candidate_samples, baseline_samples, XRAY_BENCH_SAMPLES),
+    paired_ratio_wins(candidate_samples, baseline_samples, XRAY_BENCH_SAMPLES, 0.98),
+    XRAY_BENCH_SAMPLES,
+    max_paired_ratio(candidate_samples, baseline_samples, XRAY_BENCH_SAMPLES));
+
+  mpz_clears(ga, gout, NULL);
+  xray_bigint_clear(&a);
+  xray_bigint_clear(&candidate_out);
+  xray_bigint_clear(&baseline_out);
+  free(text);
+}
+
 static void run_scratch_divmod_case(XrayBenchmarkReport *report, size_t digits) {
   char *text = benchmark_decimal(digits, 17, 1);
   if (!text) return;
@@ -2654,6 +2785,11 @@ static void run_scratch_bigint_gates(XrayBenchmarkReport *report) {
   run_scratch_mul_case(report, 16384);
   run_scratch_square_case(report, 16384);
   run_square_vs_mul_probe_case(report, 16384);
+  const size_t square_probe_sizes[] = {1000, 4096, 8192, 16384};
+  for (size_t index = 0; index < sizeof(square_probe_sizes) / sizeof(square_probe_sizes[0]); ++index) {
+    run_square_karatsuba_probe_case(report, square_probe_sizes[index], 64, 0);
+    run_square_karatsuba_probe_case(report, square_probe_sizes[index], 64, 1);
+  }
 }
 
 static void run_kernel_probes(XrayBenchmarkReport *report) {

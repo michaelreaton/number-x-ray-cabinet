@@ -551,3 +551,55 @@ CLI benchmark:
 Decision: reject the production square route for now. The 1000 digit row is
 real, but adjacent and larger tiers do not pass stability, so the improvement is
 not broad enough to apply safely.
+
+## 2026-06-15: Karatsuba Square Probe
+
+Runs: `native-test-runs/20260615-085808-c4b04caf` and
+`runs/20260615-085910-c4b04caf`
+
+The schoolbook square route gate showed that a specialized square primitive is
+not enough at large sizes. This probe adds an unrouted recursive Karatsuba
+square candidate and compares it against both current scratch self-multiply and
+`mpz_mul`.
+
+CTest benchmark:
+
+- `square-karatsuba-vs-mul`, 1000 digits: ratio `0.686`, stable `5/5`,
+  `promote-candidate`
+- `square-karatsuba-vs-gmp`, 1000 digits: ratio `0.887`, stable `5/5`,
+  `promote-candidate`
+- `square-karatsuba-vs-mul`, 4096 digits: ratio `0.715`, stable `4/5`,
+  `promote-candidate`
+- `square-karatsuba-vs-gmp`, 4096 digits: ratio `0.966`, stable `3/5`,
+  `observe-only`
+- `square-karatsuba-vs-mul`, 8192 digits: ratio `1.040`, stable `2/5`,
+  `observe-only`
+- `square-karatsuba-vs-gmp`, 8192 digits: ratio `1.433`, stable `1/5`,
+  `observe-only`
+- `square-karatsuba-vs-mul`, 16384 digits: ratio `0.839`, stable `3/5`,
+  `observe-only`
+- `square-karatsuba-vs-gmp`, 16384 digits: ratio `1.546`, stable `0/5`,
+  `observe-only`
+
+CLI benchmark:
+
+- `square-karatsuba-vs-mul`, 1000 digits: ratio `0.718`, stable `5/5`,
+  `promote-candidate`
+- `square-karatsuba-vs-gmp`, 1000 digits: ratio `0.895`, stable `4/5`,
+  `promote-candidate`
+- `square-karatsuba-vs-mul`, 4096 digits: ratio `0.690`, stable `5/5`,
+  `promote-candidate`
+- `square-karatsuba-vs-gmp`, 4096 digits: ratio `1.036`, stable `1/5`,
+  `observe-only`
+- `square-karatsuba-vs-mul`, 8192 digits: ratio `0.596`, stable `5/5`,
+  `promote-candidate`
+- `square-karatsuba-vs-gmp`, 8192 digits: ratio `1.279`, stable `2/5`,
+  `observe-only`
+- `square-karatsuba-vs-mul`, 16384 digits: ratio `0.737`, stable `5/5`,
+  `promote-candidate`
+- `square-karatsuba-vs-gmp`, 16384 digits: ratio `1.521`, stable `1/5`,
+  `observe-only`
+
+Decision: keep Karatsuba square as an exact, promising probe but do not route it
+yet. It beats current scratch self-multiply in useful bands, but it only beats
+GMP at 1000 digits and remains behind GMP at larger sizes on this laptop.
