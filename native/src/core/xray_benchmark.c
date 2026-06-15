@@ -791,6 +791,12 @@ static unsigned int perf_iterations(const char *operation, size_t digits) {
     if (digits > 4096) return 80;
     return 160;
   }
+  if (strcmp(operation, "format") == 0) {
+    if (digits <= 40) return 4000;
+    if (digits <= 150) return 1200;
+    if (digits > 4096) return 80;
+    return 160;
+  }
   if (strcmp(operation, "mul") == 0) {
     if (digits <= 40) return 2000;
     if (digits <= 150) return 180;
@@ -1456,6 +1462,63 @@ static void run_scratch_parse_case(XrayBenchmarkReport *report, size_t digits) {
   append_perf_result(
     report,
     "parse",
+    digits,
+    1,
+    parity,
+    scratch_us,
+    gmp_us,
+    paired_ratio,
+    paired_ratio_wins(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES, 1.0),
+    XRAY_BENCH_SAMPLES,
+    max_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES));
+
+  mpz_clear(gmp);
+  xray_bigint_clear(&scratch);
+  free(text);
+}
+
+static void run_scratch_format_case(XrayBenchmarkReport *report, size_t digits) {
+  char *text = benchmark_decimal(digits, 13, 1);
+  if (!text) return;
+  unsigned int iterations = perf_iterations("format", digits);
+  XrayScratchBigInt scratch;
+  xray_bigint_init(&scratch);
+  mpz_t gmp;
+  mpz_init(gmp);
+  int ok = xray_bigint_set_decimal(&scratch, text) && mpz_set_str(gmp, text, 10) == 0;
+  unsigned long long scratch_samples[XRAY_BENCH_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_SAMPLES] = {0};
+  int parity = 1;
+
+  for (unsigned int sample = 0; sample < XRAY_BENCH_SAMPLES; ++sample) {
+    unsigned long long scratch_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      char *scratch_text = xray_bigint_get_decimal(&scratch);
+      ok = scratch_text != NULL;
+      free(scratch_text);
+    }
+    scratch_samples[sample] = xray_now_us() - scratch_started;
+
+    unsigned long long gmp_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      char *gmp_text = mpz_get_str(NULL, 10, gmp);
+      ok = gmp_text != NULL;
+      free(gmp_text);
+    }
+    gmp_samples[sample] = xray_now_us() - gmp_started;
+
+    char *scratch_text = xray_bigint_get_decimal(&scratch);
+    char *gmp_text = mpz_get_str(NULL, 10, gmp);
+    parity = parity && ok && scratch_text && gmp_text && strcmp(scratch_text, gmp_text) == 0;
+    free(scratch_text);
+    free(gmp_text);
+  }
+  unsigned long long scratch_us = median_samples(scratch_samples, XRAY_BENCH_SAMPLES);
+  unsigned long long gmp_us = median_samples(gmp_samples, XRAY_BENCH_SAMPLES);
+  double paired_ratio = median_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES);
+  append_perf_result(
+    report,
+    "format",
     digits,
     1,
     parity,
@@ -2772,6 +2835,7 @@ static void run_scratch_bigint_gates(XrayBenchmarkReport *report) {
   const size_t sizes[] = {40, 150, 1000, 4096, 8192};
   for (size_t index = 0; index < sizeof(sizes) / sizeof(sizes[0]); ++index) {
     run_scratch_parse_case(report, sizes[index]);
+    run_scratch_format_case(report, sizes[index]);
     run_scratch_binary_case(report, "add", sizes[index]);
     run_scratch_binary_case(report, "sub", sizes[index]);
     run_scratch_modular_case(report, "mod-u32", sizes[index]);

@@ -60,7 +60,7 @@ Benchmark JSON exposes that rule per operation-size row:
 
 Rows with parity but without `replacementReady` are useful migration evidence, but the production path must remain GMP-backed.
 
-The scratch-vs-GMP ladder currently measures 40, 150, 1000, 4096, and 8192 decimal digit operands so local changes have to keep scaling beyond tiny examples before they earn adoption labels. Multiplication and specialized square rows also have a 16384 digit discovery tier so larger-number arithmetic work can be observed before it is considered for routing. Multiplication rows aggregate two deterministic operand families because threshold-sensitive multiply code can look good on one number shape and lose on another.
+The scratch-vs-GMP ladder currently measures 40, 150, 1000, 4096, and 8192 decimal digit operands so local changes have to keep scaling beyond tiny examples before they earn adoption labels. Parse and format rows are tracked separately because decimal ingestion and decimal serialization have very different bottlenecks. Multiplication and specialized square rows also have a 16384 digit discovery tier so larger-number arithmetic work can be observed before it is considered for routing. Multiplication rows aggregate two deterministic operand families because threshold-sensitive multiply code can look good on one number shape and lose on another.
 
 Add/sub benchmark rows use a higher iteration floor at 1000+ digits because those operations are fast enough that sub-millisecond timing windows can flip adoption labels from scheduler noise rather than real algorithm behavior.
 
