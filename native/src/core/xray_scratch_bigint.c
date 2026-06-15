@@ -1708,6 +1708,14 @@ int xray_bigint_compare_decimal(const char *left_decimal, const char *right_deci
   return ok;
 }
 
+int xray_bigint_u32_mod_context_init(XrayBigIntU32ModContext *context, uint32_t modulus) {
+  if (!context || modulus == 0) return 0;
+  context->modulus = modulus;
+  context->reciprocal = reciprocal_u32(modulus);
+  context->use_fermat_65537 = modulus == XRAY_BIGINT_FERMAT_65537;
+  return 1;
+}
+
 int xray_bigint_square_karatsuba_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t threshold) {
   if (!out || !value) return 0;
   size_t active_threshold = threshold >= 2U ? threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
@@ -1818,17 +1826,26 @@ int xray_bigint_mul_unroll4_probe(XrayScratchBigInt *out, const XrayScratchBigIn
 #endif
 }
 
-uint32_t xray_bigint_mod_u32(const XrayScratchBigInt *value, uint32_t modulus) {
-  if (!value || modulus == 0) return 0;
-  if (modulus == XRAY_BIGINT_FERMAT_65537) return mod_65537_folded(value);
+static uint32_t mod_u32_with_reciprocal(const XrayScratchBigInt *value, uint32_t modulus, uint64_t reciprocal) {
   uint32_t remainder = 0;
-  uint64_t reciprocal = reciprocal_u32(modulus);
   for (size_t remaining = value->count; remaining > 0; --remaining) {
     size_t index = remaining - 1;
     int use_high_half = index + 1 != value->count || (value->limbs[index] >> 32U) != 0;
     divmod_word_u32(remainder, value->limbs[index], modulus, reciprocal, use_high_half, &remainder);
   }
   return remainder;
+}
+
+uint32_t xray_bigint_mod_u32(const XrayScratchBigInt *value, uint32_t modulus) {
+  if (!value || modulus == 0) return 0;
+  if (modulus == XRAY_BIGINT_FERMAT_65537) return mod_65537_folded(value);
+  return mod_u32_with_reciprocal(value, modulus, reciprocal_u32(modulus));
+}
+
+uint32_t xray_bigint_mod_u32_precomputed(const XrayScratchBigInt *value, const XrayBigIntU32ModContext *context) {
+  if (!value || !context || context->modulus == 0) return 0;
+  if (context->use_fermat_65537) return mod_65537_folded(value);
+  return mod_u32_with_reciprocal(value, context->modulus, context->reciprocal);
 }
 
 int xray_bigint_divmod_u32(XrayScratchBigInt *quotient, uint32_t *remainder, const XrayScratchBigInt *value, uint32_t divisor) {
@@ -1907,10 +1924,29 @@ uint32_t xray_bigint_gcd_u32(const XrayScratchBigInt *value, uint32_t other) {
   return gcd_u32(xray_bigint_mod_u32(value, other), other);
 }
 
+uint32_t xray_bigint_gcd_u32_precomputed(const XrayScratchBigInt *value, const XrayBigIntU32ModContext *context) {
+  if (!context || context->modulus == 0) return 0;
+  return gcd_u32(xray_bigint_mod_u32_precomputed(value, context), context->modulus);
+}
+
 uint32_t xray_bigint_powmod_u32(const XrayScratchBigInt *base, uint32_t exponent, uint32_t modulus) {
   if (!base || modulus == 0) return 0;
   uint64_t result = 1 % modulus;
   uint64_t factor = xray_bigint_mod_u32(base, modulus);
+  uint32_t power = exponent;
+  while (power) {
+    if (power & 1U) result = (result * factor) % modulus;
+    factor = (factor * factor) % modulus;
+    power >>= 1;
+  }
+  return (uint32_t)result;
+}
+
+uint32_t xray_bigint_powmod_u32_precomputed(const XrayScratchBigInt *base, uint32_t exponent, const XrayBigIntU32ModContext *context) {
+  if (!base || !context || context->modulus == 0) return 0;
+  uint32_t modulus = context->modulus;
+  uint64_t result = 1 % modulus;
+  uint64_t factor = xray_bigint_mod_u32_precomputed(base, context);
   uint32_t power = exponent;
   while (power) {
     if (power & 1U) result = (result * factor) % modulus;

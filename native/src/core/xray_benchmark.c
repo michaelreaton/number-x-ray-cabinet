@@ -926,6 +926,57 @@ static void append_square_vs_mul_probe_result(
   append_result(report, &result);
 }
 
+static void append_u32_precompute_probe_result(
+  XrayBenchmarkReport *report,
+  const char *operation,
+  size_t digits,
+  int parity,
+  unsigned long long candidate_us,
+  unsigned long long baseline_us,
+  double paired_ratio,
+  size_t stable_sample_count,
+  size_t sample_count,
+  double worst_pair_ratio) {
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "kernel %s precompute context %zu digits", operation, digits);
+  snprintf(result.category, sizeof(result.category), "kernel-probe");
+  snprintf(result.operation, sizeof(result.operation), "%s-precompute", operation);
+  result.digits = digits;
+  result.scratch_us = candidate_us ? candidate_us : 1;
+  result.gmp_us = baseline_us ? baseline_us : 1;
+  result.speed_ratio = paired_ratio > 0.0 ? paired_ratio : (double)result.scratch_us / (double)result.gmp_us;
+  result.max_allowed_speed_ratio = 0.98;
+  result.stable_sample_count = stable_sample_count;
+  result.sample_count = sample_count;
+  result.worst_pair_ratio = worst_pair_ratio;
+  result.parity_verified = parity;
+  size_t required_stable = kernel_required_stable_samples(sample_count);
+  result.replacement_ready = parity &&
+    result.speed_ratio <= result.max_allowed_speed_ratio &&
+    result.stable_sample_count >= required_stable;
+  snprintf(result.adoption, sizeof(result.adoption), "%s",
+    !parity ? "blocked-output-mismatch" : (result.replacement_ready ? "promote-candidate" : "observe-only"));
+  snprintf(result.status, sizeof(result.status), "%s",
+    !parity ? "mismatch" : (result.replacement_ready ? "candidate-faster" : (result.speed_ratio < 1.0 ? "candidate-no-margin" : "baseline-faster")));
+  result.passed = parity;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  snprintf(result.detail, sizeof(result.detail),
+    "op=%s-precompute digits=%zu modulus=1000000007 operandFamilies=1 samples=%zu stablePairs=%zu/%zu candidateUs=%llu baselineUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median max=%.2f candidate=u32-mod-context baseline=one-shot-u32 featureGate=u32-mod-context gmpClue=preinvert-limb-divisor adoption=%s",
+    operation,
+    digits,
+    sample_count,
+    stable_sample_count,
+    sample_count,
+    result.scratch_us,
+    result.gmp_us,
+    result.speed_ratio,
+    result.worst_pair_ratio,
+    result.max_allowed_speed_ratio,
+    result.adoption);
+  append_result(report, &result);
+}
+
 static void append_square_karatsuba_probe_result(
   XrayBenchmarkReport *report,
   const char *operation_name,
@@ -3370,6 +3421,59 @@ static void run_scratch_modular_case(XrayBenchmarkReport *report, const char *op
   free(text);
 }
 
+static void run_u32_precompute_probe_case(XrayBenchmarkReport *report, const char *operation, size_t digits) {
+  char *text = benchmark_decimal(digits, 29, 1);
+  if (!text) return;
+  const uint32_t modulus = 1000000007U;
+  const uint32_t exponent = 65537U;
+  unsigned int iterations = perf_iterations(strstr(operation, "powmod") ? "powmod-u32" : "mod-u32", digits);
+  XrayScratchBigInt a;
+  xray_bigint_init(&a);
+  XrayBigIntU32ModContext context;
+  int ok = xray_bigint_set_decimal(&a, text) &&
+    xray_bigint_u32_mod_context_init(&context, modulus);
+  unsigned long long candidate_samples[XRAY_BENCH_SAMPLES] = {0};
+  unsigned long long baseline_samples[XRAY_BENCH_SAMPLES] = {0};
+  uint32_t candidate_result = 0;
+  uint32_t baseline_result = 0;
+  int parity = 1;
+  int kind = strcmp(operation, "mod-u32") == 0 ? 0 : (strcmp(operation, "gcd-u32") == 0 ? 1 : 2);
+
+  for (unsigned int sample = 0; sample < XRAY_BENCH_SAMPLES; ++sample) {
+    unsigned long long candidate_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      if (kind == 0) candidate_result = xray_bigint_mod_u32_precomputed(&a, &context);
+      else if (kind == 1) candidate_result = xray_bigint_gcd_u32_precomputed(&a, &context);
+      else candidate_result = xray_bigint_powmod_u32_precomputed(&a, exponent, &context);
+    }
+    candidate_samples[sample] = xray_now_us() - candidate_started;
+
+    unsigned long long baseline_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      if (kind == 0) baseline_result = xray_bigint_mod_u32(&a, modulus);
+      else if (kind == 1) baseline_result = xray_bigint_gcd_u32(&a, modulus);
+      else baseline_result = xray_bigint_powmod_u32(&a, exponent, modulus);
+    }
+    baseline_samples[sample] = xray_now_us() - baseline_started;
+    parity = parity && ok && candidate_result == baseline_result;
+  }
+
+  append_u32_precompute_probe_result(
+    report,
+    operation,
+    digits,
+    parity,
+    median_samples(candidate_samples, XRAY_BENCH_SAMPLES),
+    median_samples(baseline_samples, XRAY_BENCH_SAMPLES),
+    median_paired_ratio(candidate_samples, baseline_samples, XRAY_BENCH_SAMPLES),
+    paired_ratio_wins(candidate_samples, baseline_samples, XRAY_BENCH_SAMPLES, 0.98),
+    XRAY_BENCH_SAMPLES,
+    max_paired_ratio(candidate_samples, baseline_samples, XRAY_BENCH_SAMPLES));
+
+  xray_bigint_clear(&a);
+  free(text);
+}
+
 static void run_scratch_bigint_gates(XrayBenchmarkReport *report) {
   const size_t sizes[] = {40, 150, 1000, 4096, 8192};
   for (size_t index = 0; index < sizeof(sizes) / sizeof(sizes[0]); ++index) {
@@ -3417,6 +3521,13 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     run_kernel_probe_muladd_unroll_case(report, bit_sizes[index], 8U);
     run_kernel_probe_muladd_bmi2_adx_case(report, bit_sizes[index]);
 #endif
+  }
+
+  const size_t u32_precompute_digits[] = {40, 1000, 8192};
+  for (size_t digit_index = 0; digit_index < sizeof(u32_precompute_digits) / sizeof(u32_precompute_digits[0]); ++digit_index) {
+    run_u32_precompute_probe_case(report, "mod-u32", u32_precompute_digits[digit_index]);
+    run_u32_precompute_probe_case(report, "gcd-u32", u32_precompute_digits[digit_index]);
+    run_u32_precompute_probe_case(report, "powmod-u32", u32_precompute_digits[digit_index]);
   }
 
   const size_t format_digits[] = {1000, 4096, 8192};

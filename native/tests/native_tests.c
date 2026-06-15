@@ -255,6 +255,19 @@ static void test_scratch_bigint_oracle(void) {
   CHECK(xray_bigint_mod_u32(&a, 65537U) == (uint32_t)oracle_rem);
   CHECK(xray_bigint_gcd_u32(&a, 65537U) == (uint32_t)mpz_get_ui(ggcd));
   CHECK(xray_bigint_powmod_u32(&a, 12345U, 1000000007U) == (uint32_t)mpz_get_ui(gpow));
+  XrayBigIntU32ModContext mod_context;
+  CHECK(!xray_bigint_u32_mod_context_init(NULL, 1000000007U));
+  CHECK(!xray_bigint_u32_mod_context_init(&mod_context, 0U));
+  CHECK(xray_bigint_u32_mod_context_init(&mod_context, 1000000007U));
+  CHECK(mod_context.modulus == 1000000007U);
+  CHECK(!mod_context.use_fermat_65537);
+  CHECK(xray_bigint_mod_u32_precomputed(&a, &mod_context) == xray_bigint_mod_u32(&a, 1000000007U));
+  CHECK(xray_bigint_gcd_u32_precomputed(&a, &mod_context) == xray_bigint_gcd_u32(&a, 1000000007U));
+  CHECK(xray_bigint_powmod_u32_precomputed(&a, 12345U, &mod_context) == xray_bigint_powmod_u32(&a, 12345U, 1000000007U));
+  CHECK(xray_bigint_u32_mod_context_init(&mod_context, 65537U));
+  CHECK(mod_context.use_fermat_65537);
+  CHECK(xray_bigint_mod_u32_precomputed(&a, &mod_context) == xray_bigint_mod_u32(&a, 65537U));
+  CHECK(xray_bigint_gcd_u32_precomputed(&a, &mod_context) == xray_bigint_gcd_u32(&a, 65537U));
   CHECK(!xray_bigint_is_zero(&a));
   free(sum_text);
   free(difference_text);
@@ -1104,6 +1117,13 @@ static void test_benchmarks(void) {
   int saw_muladd_bmi2_adx_probe = 0;
   int saw_muladd_unroll_probe = 0;
   int saw_muladd_unroll8_probe = 0;
+  int saw_u32_precompute_probe = 0;
+  int saw_mod_u32_precompute_probe = 0;
+  int saw_gcd_u32_precompute_probe = 0;
+  int saw_powmod_u32_precompute_probe = 0;
+  int saw_u32_precompute40_probe = 0;
+  int saw_u32_precompute1000_probe = 0;
+  int saw_u32_precompute8192_probe = 0;
   int saw_mul_unroll4_vs_scratch_probe = 0;
   int saw_mul_unroll4_vs_gmp_probe = 0;
   int saw_mul_unroll4_deep_vs_gmp_probe = 0;
@@ -1159,6 +1179,22 @@ static void test_benchmarks(void) {
       CHECK(strstr(report->results[index].detail, "adoption=") != NULL);
       if (strcmp(report->results[index].operation, "mul-threshold") == 0) {
         CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+      }
+      if (strcmp(report->results[index].operation, "mod-u32-precompute") == 0 ||
+          strcmp(report->results[index].operation, "gcd-u32-precompute") == 0 ||
+          strcmp(report->results[index].operation, "powmod-u32-precompute") == 0) {
+        saw_u32_precompute_probe = 1;
+        if (strcmp(report->results[index].operation, "mod-u32-precompute") == 0) saw_mod_u32_precompute_probe = 1;
+        else if (strcmp(report->results[index].operation, "gcd-u32-precompute") == 0) saw_gcd_u32_precompute_probe = 1;
+        else saw_powmod_u32_precompute_probe = 1;
+        if (report->results[index].digits == 40) saw_u32_precompute40_probe = 1;
+        else if (report->results[index].digits == 1000) saw_u32_precompute1000_probe = 1;
+        else if (report->results[index].digits == 8192) saw_u32_precompute8192_probe = 1;
+        else CHECK(0);
+        CHECK(strstr(report->results[index].detail, "candidate=u32-mod-context") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=one-shot-u32") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=u32-mod-context") != NULL);
+        CHECK(strstr(report->results[index].detail, "modulus=1000000007") != NULL);
       }
       if (strcmp(report->results[index].operation, "format-threshold") == 0) {
         saw_format_threshold_probe = 1;
@@ -1419,6 +1455,13 @@ static void test_benchmarks(void) {
   CHECK(saw_square_karatsuba_vs_gmp_probe);
   CHECK(saw_toom3_probe);
   CHECK(saw_toom3_vs_scratch_probe);
+  CHECK(saw_u32_precompute_probe);
+  CHECK(saw_mod_u32_precompute_probe);
+  CHECK(saw_gcd_u32_precompute_probe);
+  CHECK(saw_powmod_u32_precompute_probe);
+  CHECK(saw_u32_precompute40_probe);
+  CHECK(saw_u32_precompute1000_probe);
+  CHECK(saw_u32_precompute8192_probe);
 #if defined(_MSC_VER) && defined(_M_X64)
   CHECK(saw_toom3_unroll4_vs_scratch_probe);
   CHECK(saw_toom3_unroll4_vs_gmp_probe);
@@ -1467,6 +1510,9 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "\"maxAllowedSpeedRatio\"") != NULL);
   CHECK(strstr(json, "\"scratchUs\"") != NULL);
   CHECK(strstr(json, "mul-toom3") != NULL);
+  CHECK(strstr(json, "mod-u32-precompute") != NULL);
+  CHECK(strstr(json, "gcd-u32-precompute") != NULL);
+  CHECK(strstr(json, "powmod-u32-precompute") != NULL);
   CHECK(strstr(json, "\"operation\":\"format\"") != NULL);
   CHECK(strstr(json, "format-threshold") != NULL);
   CHECK(strstr(json, "format-divider") != NULL);
@@ -1501,6 +1547,9 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "kernel-probe") != NULL);
   CHECK(strstr(tsv, "gmpClue=") != NULL);
   CHECK(strstr(tsv, "mul-toom3") != NULL);
+  CHECK(strstr(tsv, "mod-u32-precompute") != NULL);
+  CHECK(strstr(tsv, "gcd-u32-precompute") != NULL);
+  CHECK(strstr(tsv, "powmod-u32-precompute") != NULL);
   CHECK(strstr(tsv, "format") != NULL);
   CHECK(strstr(tsv, "format-threshold") != NULL);
   CHECK(strstr(tsv, "format-divider") != NULL);
@@ -1552,6 +1601,9 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "scratch-vs-gmp") != NULL);
   CHECK(strstr(benchmark_tsv, "kernel-probe") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-toom3") != NULL);
+  CHECK(strstr(benchmark_tsv, "mod-u32-precompute") != NULL);
+  CHECK(strstr(benchmark_tsv, "gcd-u32-precompute") != NULL);
+  CHECK(strstr(benchmark_tsv, "powmod-u32-precompute") != NULL);
   CHECK(strstr(benchmark_tsv, "format") != NULL);
   CHECK(strstr(benchmark_tsv, "format-threshold") != NULL);
   CHECK(strstr(benchmark_tsv, "format-divider") != NULL);
@@ -1580,6 +1632,9 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "Largest scratch gaps") != NULL);
   CHECK(strstr(benchmark_frontier, "SCRATCH VS ") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-threshold thr=") != NULL);
+  CHECK(strstr(benchmark_frontier, "mod-u32-precompute") != NULL);
+  CHECK(strstr(benchmark_frontier, "gcd-u32-precompute") != NULL);
+  CHECK(strstr(benchmark_frontier, "powmod-u32-precompute") != NULL);
   CHECK(strstr(benchmark_frontier, "format-threshold thr=16") != NULL);
   CHECK(strstr(benchmark_frontier, "format-threshold thr=32") != NULL);
   CHECK(strstr(benchmark_frontier, "format-threshold thr=48") != NULL);
