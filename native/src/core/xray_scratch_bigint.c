@@ -16,6 +16,8 @@
 #define XRAY_BIGINT_WORD_BITS 64U
 #define XRAY_BIGINT_DECIMAL_CHUNK_BASE 1000000000U
 #define XRAY_BIGINT_DECIMAL_CHUNK_DIGITS 9U
+/* UINT64_MAX / 1e9, matching reciprocal_u32 for the decimal chunk divisor. */
+#define XRAY_BIGINT_DECIMAL_CHUNK_RECIPROCAL UINT64_C(18446744073)
 #define XRAY_BIGINT_PARSE_CHUNK_BASE UINT64_C(10000000000000000000)
 #define XRAY_BIGINT_PARSE_CHUNK_DIGITS 19U
 #define XRAY_BIGINT_KARATSUBA_THRESHOLD 64U
@@ -246,6 +248,23 @@ static uint64_t divmod_word_u32(uint32_t high, uint64_t low, uint32_t divisor, u
   return ((uint64_t)quotient_high << 32U) | quotient_low;
 }
 
+static uint32_t divmod_decimal_chunk_inplace(XrayScratchBigInt *value) {
+  uint32_t remainder = 0;
+  for (size_t remaining = value->count; remaining > 0; --remaining) {
+    size_t index = remaining - 1;
+    int use_high_half = index + 1 != value->count || (value->limbs[index] >> 32U) != 0;
+    value->limbs[index] = divmod_word_u32(
+      remainder,
+      value->limbs[index],
+      XRAY_BIGINT_DECIMAL_CHUNK_BASE,
+      XRAY_BIGINT_DECIMAL_CHUNK_RECIPROCAL,
+      use_high_half,
+      &remainder);
+  }
+  normalize(value);
+  return remainder;
+}
+
 static uint32_t reduce_65537_signed(int64_t value) {
   while (value < 0) value += XRAY_BIGINT_FERMAT_65537;
   while (value >= XRAY_BIGINT_FERMAT_65537) value -= XRAY_BIGINT_FERMAT_65537;
@@ -350,13 +369,7 @@ char *xray_bigint_get_decimal(const XrayScratchBigInt *value) {
       chunks = next;
       chunk_capacity = next_capacity;
     }
-    uint32_t remainder = 0;
-    if (!xray_bigint_divmod_u32(&copy, &remainder, &copy, XRAY_BIGINT_DECIMAL_CHUNK_BASE)) {
-      free(chunks);
-      xray_bigint_clear(&copy);
-      return NULL;
-    }
-    chunks[chunk_count++] = remainder;
+    chunks[chunk_count++] = divmod_decimal_chunk_inplace(&copy);
   }
   xray_bigint_clear(&copy);
 

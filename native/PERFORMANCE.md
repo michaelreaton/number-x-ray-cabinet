@@ -717,3 +717,34 @@ Decision: keep the manual chunk writer because it improves the measured format
 rows without changing arithmetic or output shape. Formatting remains
 oracle-only; the next meaningful step is an algorithmic conversion change rather
 than more output-copy tuning.
+
+## 2026-06-15: Formatter In-Place Divmod Specialization
+
+Runs: `native-test-runs/20260615-094557-c4b04caf` and
+`runs/20260615-094706-c4b04caf`
+
+The formatter's base-1e9 conversion used the generic `xray_bigint_divmod_u32`
+helper once per output chunk, even though the divisor and output destination are
+fixed. This change keeps the same conversion algorithm but uses a
+formatter-private in-place loop with the precomputed reciprocal for `1e9`.
+
+CTest benchmark:
+
+- 40 digits: ratio `0.853`, stable `5/5`, `replacement-ready`
+- 150 digits: ratio `1.032`, stable `1/5`, `oracle-only`
+- 1000 digits: ratio `2.234`, stable `0/5`, `oracle-only`
+- 4096 digits: ratio `4.890`, stable `0/5`, `oracle-only`
+- 8192 digits: ratio `6.260`, stable `0/5`, `oracle-only`
+
+CLI benchmark:
+
+- 40 digits: ratio `0.851`, stable `5/5`, `replacement-ready`
+- 150 digits: ratio `1.024`, stable `2/5`, `oracle-only`
+- 1000 digits: ratio `2.215`, stable `0/5`, `oracle-only`
+- 4096 digits: ratio `3.223`, stable `0/5`, `oracle-only`
+- 8192 digits: ratio `4.328`, stable `0/5`, `oracle-only`
+
+Decision: keep the specialization. It promotes the 40 digit format row under
+both CTest and CLI, and CLI shows larger rows improving too. Large decimal
+formatting remains far from GMP, so the next frontier is divide-and-conquer or
+larger-base conversion rather than more wrapper trimming.
