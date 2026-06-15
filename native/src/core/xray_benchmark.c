@@ -1321,7 +1321,7 @@ static void append_format_pair_writer_probe_result(
   result.passed = parity;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=format-pair-writer digits=%zu mode=%s chunkDigits=9 operandFamilies=1 samples=%zu stablePairs=%zu/%zu candidateUs=%llu baselineUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median max=%.2f candidate=decimal-pair-writer baseline=current-scratch-format featureGate=decimal-format-pair-writer gmpClue=mpn_get_str-output-emission adoption=%s",
+    "op=format-pair-writer digits=%zu mode=%s chunkDigits=9 operandFamilies=1 samples=%zu stablePairs=%zu/%zu candidateUs=%llu baselineUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median max=%.2f candidate=decimal-pair-writer baseline=legacy-scratch-format featureGate=decimal-format-pair-writer gmpClue=mpn_get_str-output-emission adoption=%s",
     digits,
     mode,
     sample_count,
@@ -2216,6 +2216,7 @@ static void run_format_pair_writer_probe_case(XrayBenchmarkReport *report, size_
   char *text = benchmark_decimal(digits, use_folded_chunks ? 19U : 17U, 1);
   if (!text) return;
   unsigned int iterations = perf_iterations("format", digits);
+  XrayBigIntRouteConfig route = xray_bigint_route_config();
   XrayScratchBigInt scratch;
   xray_bigint_init(&scratch);
   mpz_t gmp;
@@ -2238,7 +2239,7 @@ static void run_format_pair_writer_probe_case(XrayBenchmarkReport *report, size_
 
     unsigned long long baseline_started = xray_now_us();
     for (unsigned int index = 0; ok && index < iterations; ++index) {
-      char *baseline_text = xray_bigint_get_decimal(&scratch);
+      char *baseline_text = xray_bigint_get_decimal_horner_threshold_probe(&scratch, route.decimal_horner_min_limbs);
       ok = baseline_text != NULL;
       free(baseline_text);
     }
@@ -2247,7 +2248,7 @@ static void run_format_pair_writer_probe_case(XrayBenchmarkReport *report, size_
     char *candidate_text = use_folded_chunks ?
       xray_bigint_get_decimal_folded_pair_writer_probe(&scratch) :
       xray_bigint_get_decimal_pair_writer_probe(&scratch);
-    char *baseline_text = xray_bigint_get_decimal(&scratch);
+    char *baseline_text = xray_bigint_get_decimal_horner_threshold_probe(&scratch, route.decimal_horner_min_limbs);
     char *gmp_text = mpz_get_str(NULL, 10, gmp);
     parity = parity && ok && candidate_text && baseline_text && gmp_text &&
       strcmp(candidate_text, baseline_text) == 0 &&
@@ -3523,15 +3524,15 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
 #endif
   }
 
-  const size_t u32_precompute_digits[] = {40, 1000, 8192};
+  const size_t u32_precompute_digits[] = {40, 150, 512, 1000, 2048, 4096, 8192, 16384};
   for (size_t digit_index = 0; digit_index < sizeof(u32_precompute_digits) / sizeof(u32_precompute_digits[0]); ++digit_index) {
     run_u32_precompute_probe_case(report, "mod-u32", u32_precompute_digits[digit_index]);
     run_u32_precompute_probe_case(report, "gcd-u32", u32_precompute_digits[digit_index]);
     run_u32_precompute_probe_case(report, "powmod-u32", u32_precompute_digits[digit_index]);
   }
 
-  const size_t format_digits[] = {1000, 4096, 8192};
-  const size_t format_thresholds[] = {16, 32, 48, 64, 96, 128};
+  const size_t format_digits[] = {256, 512, 1000, 2048, 4096, 8192, 16384};
+  const size_t format_thresholds[] = {8, 16, 24, 32, 48, 64, 96, 128, 192};
   for (size_t digit_index = 0; digit_index < sizeof(format_digits) / sizeof(format_digits[0]); ++digit_index) {
     for (size_t threshold_index = 0; threshold_index < sizeof(format_thresholds) / sizeof(format_thresholds[0]); ++threshold_index) {
       run_format_threshold_probe_case(report, format_digits[digit_index], format_thresholds[threshold_index]);
@@ -3546,15 +3547,14 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
   run_format_folded_probe_case(report, 1000);
   run_format_folded_probe_case(report, 4096);
   run_format_folded_probe_case(report, 8192);
-  run_format_pair_writer_probe_case(report, 1000, 0);
-  run_format_pair_writer_probe_case(report, 4096, 0);
-  run_format_pair_writer_probe_case(report, 8192, 0);
-  run_format_pair_writer_probe_case(report, 1000, 1);
-  run_format_pair_writer_probe_case(report, 4096, 1);
-  run_format_pair_writer_probe_case(report, 8192, 1);
+  const size_t format_pair_digits[] = {40, 150, 256, 512, 1000, 2048, 4096, 8192, 16384};
+  for (size_t digit_index = 0; digit_index < sizeof(format_pair_digits) / sizeof(format_pair_digits[0]); ++digit_index) {
+    run_format_pair_writer_probe_case(report, format_pair_digits[digit_index], 0);
+    run_format_pair_writer_probe_case(report, format_pair_digits[digit_index], 1);
+  }
 
-  const size_t digits[] = {1000, 4096, 8192, 16384};
-  const size_t thresholds[] = {32, 48, 64, 96, 128};
+  const size_t digits[] = {512, 1000, 2048, 4096, 8192, 16384};
+  const size_t thresholds[] = {16, 24, 32, 48, 64, 96, 128, 192};
   for (size_t digit_index = 0; digit_index < sizeof(digits) / sizeof(digits[0]); ++digit_index) {
     for (size_t threshold_index = 0; threshold_index < sizeof(thresholds) / sizeof(thresholds[0]); ++threshold_index) {
       run_mul_threshold_probe_case(report, digits[digit_index], thresholds[threshold_index]);
