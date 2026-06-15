@@ -26,6 +26,7 @@ int xray_bigint_copy(XrayScratchBigInt *out, const XrayScratchBigInt *value);
 int xray_bigint_add(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right);
 int xray_bigint_sub(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right);
 int xray_bigint_mul(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right);
+int xray_bigint_mul_with_threshold(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t threshold);
 int xray_bigint_compare(const XrayScratchBigInt *left, const XrayScratchBigInt *right);
 uint32_t xray_bigint_mod_u32(const XrayScratchBigInt *value, uint32_t modulus);
 int xray_bigint_divmod_u32(XrayScratchBigInt *quotient, uint32_t *remainder, const XrayScratchBigInt *value, uint32_t divisor);
