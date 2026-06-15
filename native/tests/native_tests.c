@@ -591,9 +591,10 @@ static void test_scratch_bigint_large_mul_oracle(void) {
 static void test_scratch_bigint_square_oracle(void) {
   const char *small_cases[] = {"0", "1", "18446744073709551616", "340282366920938463463374607431768211455"};
   for (size_t index = 0; index < sizeof(small_cases) / sizeof(small_cases[0]); ++index) {
-    XrayScratchBigInt value, square;
+    XrayScratchBigInt value, square, product;
     xray_bigint_init(&value);
     xray_bigint_init(&square);
+    xray_bigint_init(&product);
     mpz_t gvalue, gsquare;
     mpz_inits(gvalue, gsquare, NULL);
 
@@ -601,6 +602,8 @@ static void test_scratch_bigint_square_oracle(void) {
     CHECK(mpz_set_str(gvalue, small_cases[index], 10) == 0);
     mpz_mul(gsquare, gvalue, gvalue);
     CHECK(xray_bigint_square(&square, &value));
+    CHECK(xray_bigint_mul(&product, &value, &value));
+    CHECK(xray_bigint_compare(&square, &product) == 0);
     check_scratch_matches_mpz(&square, gsquare);
 
     CHECK(xray_bigint_square(&value, &value));
@@ -609,7 +612,30 @@ static void test_scratch_bigint_square_oracle(void) {
     mpz_clears(gvalue, gsquare, NULL);
     xray_bigint_clear(&value);
     xray_bigint_clear(&square);
+    xray_bigint_clear(&product);
   }
+
+  char *tiny_route_text = make_pattern_decimal(150, "98765432101234567890");
+  XrayScratchBigInt tiny, tiny_square, tiny_product;
+  xray_bigint_init(&tiny);
+  xray_bigint_init(&tiny_square);
+  xray_bigint_init(&tiny_product);
+  mpz_t gtiny, gtiny_square;
+  mpz_inits(gtiny, gtiny_square, NULL);
+  CHECK(xray_bigint_set_decimal(&tiny, tiny_route_text));
+  CHECK(mpz_set_str(gtiny, tiny_route_text, 10) == 0);
+  mpz_mul(gtiny_square, gtiny, gtiny);
+  CHECK(xray_bigint_square(&tiny_square, &tiny));
+  CHECK(xray_bigint_mul(&tiny_product, &tiny, &tiny));
+  CHECK(xray_bigint_compare(&tiny_square, &tiny_product) == 0);
+  check_scratch_matches_mpz(&tiny_square, gtiny_square);
+  CHECK(xray_bigint_square(&tiny, &tiny));
+  check_scratch_matches_mpz(&tiny, gtiny_square);
+  mpz_clears(gtiny, gtiny_square, NULL);
+  xray_bigint_clear(&tiny);
+  xray_bigint_clear(&tiny_square);
+  xray_bigint_clear(&tiny_product);
+  free(tiny_route_text);
 
   XrayScratchBigInt mersenne, mersenne_square;
   xray_bigint_init(&mersenne);
@@ -1571,6 +1597,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "\"baselineBackendLibrary\"") != NULL);
   CHECK(strstr(json, "\"scratchRouteConfig\"") != NULL);
   CHECK(strstr(json, "\"karatsubaThresholdLimbs\"") != NULL);
+  CHECK(strstr(json, "\"squareTinySelfMulPolicy\"") != NULL);
   CHECK(strstr(json, "\"decimalHornerMinLimbs\"") != NULL);
   CHECK(strstr(json, "\"decimalPairWriterPolicy\"") != NULL);
   CHECK(strstr(json, "\"mulUnroll4RouteEnabled\"") != NULL);
@@ -1671,6 +1698,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_json, "\"baselineBackendVersion\"") != NULL);
   CHECK(strstr(benchmark_json, "\"baselineBackendLibrary\"") != NULL);
   CHECK(strstr(benchmark_json, "\"scratchRouteConfig\"") != NULL);
+  CHECK(strstr(benchmark_json, "\"squareTinySelfMulPolicy\"") != NULL);
   CHECK(strstr(benchmark_json, "\"mulUnroll4RouteMaxLimbs\"") != NULL);
   CHECK(strstr(benchmark_json, "\"decimalPairWriterPolicy\"") != NULL);
   CHECK(strstr(benchmark_json, "\"msvcUint128Helpers\"") != NULL);
@@ -1705,6 +1733,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "BENCHMARK FRONTIER") != NULL);
   CHECK(strstr(benchmark_frontier, "Baseline backend:") != NULL);
   CHECK(strstr(benchmark_frontier, "Bigint route:") != NULL);
+  CHECK(strstr(benchmark_frontier, "square-self-mul<=8 limbs") != NULL);
   CHECK(strstr(benchmark_frontier, "format-pair-writer=small<=8 or horner 48..54 limbs") != NULL);
   CHECK(strstr(benchmark_frontier, "FRONTIER SUMMARY") != NULL);
   CHECK(strstr(benchmark_frontier, "Largest scratch gaps") != NULL);
