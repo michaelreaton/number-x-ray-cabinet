@@ -1387,6 +1387,67 @@ static void append_format_pair_writer_probe_result(
   append_result(report, &result);
 }
 
+static void append_format_variant_probe_result(
+  XrayBenchmarkReport *report,
+  const char *operation,
+  const char *label,
+  size_t digits,
+  const char *mode,
+  const char *candidate,
+  const char *baseline,
+  const char *feature_gate,
+  const char *gmp_clue,
+  unsigned int chunk_digits,
+  int parity,
+  unsigned long long candidate_us,
+  unsigned long long baseline_us,
+  double paired_ratio,
+  size_t stable_sample_count,
+  size_t sample_count,
+  double worst_pair_ratio) {
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "kernel %s %s %zu digits", label, mode, digits);
+  snprintf(result.category, sizeof(result.category), "kernel-probe");
+  snprintf(result.operation, sizeof(result.operation), "%s", operation);
+  result.digits = digits;
+  result.scratch_us = candidate_us ? candidate_us : 1;
+  result.gmp_us = baseline_us ? baseline_us : 1;
+  result.speed_ratio = paired_ratio > 0.0 ? paired_ratio : (double)result.scratch_us / (double)result.gmp_us;
+  result.max_allowed_speed_ratio = 0.98;
+  result.stable_sample_count = stable_sample_count;
+  result.sample_count = sample_count;
+  result.worst_pair_ratio = worst_pair_ratio;
+  result.parity_verified = parity;
+  size_t required_stable = kernel_required_stable_samples(sample_count);
+  result.replacement_ready = parity &&
+    result.speed_ratio <= result.max_allowed_speed_ratio &&
+    result.stable_sample_count >= required_stable;
+  snprintf(result.adoption, sizeof(result.adoption), "%s",
+    !parity ? "blocked-output-mismatch" : (result.replacement_ready ? "promote-candidate" : "observe-only"));
+  snprintf(result.status, sizeof(result.status), "%s",
+    !parity ? "mismatch" : (result.replacement_ready ? "candidate-faster" : (result.speed_ratio < 1.0 ? "candidate-no-margin" : "baseline-faster")));
+  result.passed = parity;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  snprintf(result.detail, sizeof(result.detail),
+    "op=%s digits=%zu mode=%s chunkDigits=%u operandFamilies=1 samples=%zu stablePairs=%zu/%zu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median candidate=%s baseline=%s featureGate=%s gmpClue=%s adoption=%s",
+    operation,
+    digits,
+    mode,
+    chunk_digits,
+    sample_count,
+    stable_sample_count,
+    sample_count,
+    result.speed_ratio,
+    result.worst_pair_ratio,
+    candidate,
+    baseline,
+    feature_gate,
+    gmp_clue,
+    result.adoption);
+  append_result(report, &result);
+}
+
 static void append_mul_toom3_probe_result(
   XrayBenchmarkReport *report,
   size_t digits,
@@ -2383,6 +2444,88 @@ static void run_format_pair_writer_probe_case(XrayBenchmarkReport *report, size_
     report,
     digits,
     use_folded_chunks ? "folded-chunks" : "production-chunks",
+    parity,
+    median_samples(candidate_samples, XRAY_BENCH_SAMPLES),
+    median_samples(baseline_samples, XRAY_BENCH_SAMPLES),
+    median_paired_ratio(candidate_samples, baseline_samples, XRAY_BENCH_SAMPLES),
+    paired_ratio_wins(candidate_samples, baseline_samples, XRAY_BENCH_SAMPLES, 0.98),
+    XRAY_BENCH_SAMPLES,
+    max_paired_ratio(candidate_samples, baseline_samples, XRAY_BENCH_SAMPLES));
+
+  mpz_clear(gmp);
+  xray_bigint_clear(&scratch);
+  free(text);
+}
+
+typedef char *(*XrayFormatProbeFn)(const XrayScratchBigInt *value);
+
+static void run_format_variant_probe_case(
+  XrayBenchmarkReport *report,
+  size_t digits,
+  unsigned int seed,
+  const char *operation,
+  const char *label,
+  const char *mode,
+  const char *candidate,
+  const char *baseline,
+  const char *feature_gate,
+  const char *gmp_clue,
+  unsigned int chunk_digits,
+  XrayFormatProbeFn probe) {
+  char *text = benchmark_decimal(digits, seed, 1);
+  if (!text || !probe) {
+    free(text);
+    return;
+  }
+  unsigned int iterations = perf_iterations("format", digits);
+  XrayScratchBigInt scratch;
+  xray_bigint_init(&scratch);
+  mpz_t gmp;
+  mpz_init(gmp);
+  int ok = xray_bigint_set_decimal(&scratch, text) && mpz_set_str(gmp, text, 10) == 0;
+  unsigned long long candidate_samples[XRAY_BENCH_SAMPLES] = {0};
+  unsigned long long baseline_samples[XRAY_BENCH_SAMPLES] = {0};
+  int parity = 1;
+
+  for (unsigned int sample = 0; sample < XRAY_BENCH_SAMPLES; ++sample) {
+    unsigned long long candidate_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      char *candidate_text = probe(&scratch);
+      ok = candidate_text != NULL;
+      free(candidate_text);
+    }
+    candidate_samples[sample] = xray_now_us() - candidate_started;
+
+    unsigned long long baseline_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      char *baseline_text = xray_bigint_get_decimal(&scratch);
+      ok = baseline_text != NULL;
+      free(baseline_text);
+    }
+    baseline_samples[sample] = xray_now_us() - baseline_started;
+
+    char *candidate_text = probe(&scratch);
+    char *baseline_text = xray_bigint_get_decimal(&scratch);
+    char *gmp_text = mpz_get_str(NULL, 10, gmp);
+    parity = parity && ok && candidate_text && baseline_text && gmp_text &&
+      strcmp(candidate_text, baseline_text) == 0 &&
+      strcmp(candidate_text, gmp_text) == 0;
+    free(candidate_text);
+    free(baseline_text);
+    free(gmp_text);
+  }
+
+  append_format_variant_probe_result(
+    report,
+    operation,
+    label,
+    digits,
+    mode,
+    candidate,
+    baseline,
+    feature_gate,
+    gmp_clue,
+    chunk_digits,
     parity,
     median_samples(candidate_samples, XRAY_BENCH_SAMPLES),
     median_samples(baseline_samples, XRAY_BENCH_SAMPLES),
@@ -3675,6 +3818,62 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
   for (size_t digit_index = 0; digit_index < sizeof(format_pair_digits) / sizeof(format_pair_digits[0]); ++digit_index) {
     run_format_pair_writer_probe_case(report, format_pair_digits[digit_index], 0);
     run_format_pair_writer_probe_case(report, format_pair_digits[digit_index], 1);
+  }
+  const size_t format_strategy_digits[] = {1000, 4096, 8192, 16384};
+  for (size_t digit_index = 0; digit_index < sizeof(format_strategy_digits) / sizeof(format_strategy_digits[0]); ++digit_index) {
+    size_t digits = format_strategy_digits[digit_index];
+    run_format_variant_probe_case(
+      report,
+      digits,
+      31U,
+      "format-mixed-writer",
+      "format mixed pair writer",
+      "mixed-production-chunks",
+      "decimal-mixed-pair-writer",
+      "current-scratch-format",
+      "decimal-format-mixed-writer",
+      "mpn_get_str-output-emission",
+      9U,
+      xray_bigint_get_decimal_mixed_pair_writer_probe);
+    run_format_variant_probe_case(
+      report,
+      digits,
+      37U,
+      "format-folded-hwdiv",
+      "format folded hwdiv",
+      "folded-direct128",
+      "decimal-folded-hwdiv",
+      "current-scratch-format",
+      "decimal-format-folded-hwdiv",
+      "mpn_get_str-division",
+      9U,
+      xray_bigint_get_decimal_folded_hwdiv_probe);
+    run_format_variant_probe_case(
+      report,
+      digits,
+      41U,
+      "format-hwdiv-mixed",
+      "format hwdiv mixed",
+      "folded-direct128-mixed",
+      "decimal-folded-hwdiv-mixed",
+      "current-scratch-format",
+      "decimal-format-hwdiv-mixed",
+      "mpn_get_str-division+output-emission",
+      9U,
+      xray_bigint_get_decimal_folded_hwdiv_mixed_pair_probe);
+    run_format_variant_probe_case(
+      report,
+      digits,
+      43U,
+      "format-divide-1e19",
+      "format MPIR basecase",
+      "divide-copy-by-1e19",
+      "decimal-divide-1e19",
+      "current-scratch-format",
+      "decimal-format-divide-1e19",
+      "mpn_sb_get_str-largest-decimal-power",
+      19U,
+      xray_bigint_get_decimal_divide_1e19_probe);
   }
 
   const size_t digits[] = {512, 1000, 2048, 4096, 8192, 16384};

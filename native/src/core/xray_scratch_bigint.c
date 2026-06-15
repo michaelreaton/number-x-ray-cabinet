@@ -440,13 +440,27 @@ static uint64_t divmod_u64_decimal_chunk(uint64_t value, uint32_t *remainder) {
     remainder);
 }
 
+static uint64_t divmod_u64_decimal_chunk_direct(uint64_t value, uint32_t *remainder) {
+  return divmod_word_u32_direct(0, value, XRAY_BIGINT_DECIMAL_CHUNK_BASE, remainder);
+}
+
 static uint64_t divmod_folded_decimal_chunk(uint64_t low, int overflow, uint32_t *remainder) {
   if (!overflow) return divmod_u64_decimal_chunk(low, remainder);
   uint64_t adjusted = low + (uint64_t)XRAY_BIGINT_DECIMAL_CHUNK_2P64_REMAINDER;
   return XRAY_BIGINT_DECIMAL_CHUNK_2P64_QUOTIENT + divmod_u64_decimal_chunk(adjusted, remainder);
 }
 
-static int decimal_chunks_from_limbs_horner_folded(uint32_t **chunks_out, size_t *chunk_count_out, const XrayScratchBigInt *value) {
+static uint64_t divmod_folded_decimal_chunk_direct(uint64_t low, int overflow, uint32_t *remainder) {
+  if (!overflow) return divmod_u64_decimal_chunk_direct(low, remainder);
+  uint64_t adjusted = low + (uint64_t)XRAY_BIGINT_DECIMAL_CHUNK_2P64_REMAINDER;
+  return XRAY_BIGINT_DECIMAL_CHUNK_2P64_QUOTIENT + divmod_u64_decimal_chunk_direct(adjusted, remainder);
+}
+
+static int decimal_chunks_from_limbs_horner_folded_mode(
+  uint32_t **chunks_out,
+  size_t *chunk_count_out,
+  const XrayScratchBigInt *value,
+  int use_direct_divider) {
   uint32_t *chunks = NULL;
   size_t chunk_count = 0;
   size_t chunk_capacity = 0;
@@ -458,13 +472,17 @@ static int decimal_chunks_from_limbs_horner_folded(uint32_t **chunks_out, size_t
       uint64_t scaled = (uint64_t)chunk * (uint64_t)XRAY_BIGINT_DECIMAL_CHUNK_2P64_REMAINDER;
       uint64_t low = scaled + carry;
       uint32_t remainder = 0;
-      uint64_t carry_delta = divmod_folded_decimal_chunk(low, low < scaled, &remainder);
+      uint64_t carry_delta = use_direct_divider ?
+        divmod_folded_decimal_chunk_direct(low, low < scaled, &remainder) :
+        divmod_folded_decimal_chunk(low, low < scaled, &remainder);
       chunks[index] = remainder;
       carry = (uint64_t)chunk * XRAY_BIGINT_DECIMAL_CHUNK_2P64_QUOTIENT + carry_delta;
     }
     while (carry) {
       uint32_t remainder = 0;
-      carry = divmod_u64_decimal_chunk(carry, &remainder);
+      carry = use_direct_divider ?
+        divmod_u64_decimal_chunk_direct(carry, &remainder) :
+        divmod_u64_decimal_chunk(carry, &remainder);
       if (!append_decimal_chunk(&chunks, &chunk_count, &chunk_capacity, remainder)) {
         free(chunks);
         return 0;
@@ -475,6 +493,14 @@ static int decimal_chunks_from_limbs_horner_folded(uint32_t **chunks_out, size_t
   *chunks_out = chunks;
   *chunk_count_out = chunk_count;
   return 1;
+}
+
+static int decimal_chunks_from_limbs_horner_folded(uint32_t **chunks_out, size_t *chunk_count_out, const XrayScratchBigInt *value) {
+  return decimal_chunks_from_limbs_horner_folded_mode(chunks_out, chunk_count_out, value, 0);
+}
+
+static int decimal_chunks_from_limbs_horner_folded_direct(uint32_t **chunks_out, size_t *chunk_count_out, const XrayScratchBigInt *value) {
+  return decimal_chunks_from_limbs_horner_folded_mode(chunks_out, chunk_count_out, value, 1);
 }
 
 static int decimal_wide_chunks_from_limbs_horner(uint64_t **chunks_out, size_t *chunk_count_out, const XrayScratchBigInt *value) {
@@ -505,6 +531,46 @@ static int decimal_wide_chunks_from_limbs_horner(uint64_t **chunks_out, size_t *
         return 0;
       }
     }
+  }
+  while (chunk_count > 0 && chunks[chunk_count - 1U] == 0) chunk_count--;
+  *chunks_out = chunks;
+  *chunk_count_out = chunk_count;
+  return 1;
+}
+
+static uint64_t divmod_decimal_wide_chunk_inplace(XrayScratchBigInt *value) {
+  uint64_t remainder = 0;
+  for (size_t remaining = value->count; remaining > 0; --remaining) {
+    size_t index = remaining - 1;
+    value->limbs[index] = divmod_word_u64_direct(
+      remainder,
+      value->limbs[index],
+      XRAY_BIGINT_DECIMAL_WIDE_CHUNK_BASE,
+      &remainder);
+  }
+  normalize(value);
+  return remainder;
+}
+
+static int decimal_wide_chunks_from_limbs_divide(uint64_t **chunks_out, size_t *chunk_count_out, const XrayScratchBigInt *value) {
+  XrayScratchBigInt copy;
+  xray_bigint_init(&copy);
+  uint64_t *chunks = NULL;
+  size_t chunk_count = 0;
+  size_t chunk_capacity = 0;
+  int ok = xray_bigint_copy(&copy, value) &&
+    reserve_decimal_wide_chunks(&chunks, &chunk_capacity, estimate_decimal_wide_chunk_capacity(value));
+  while (ok && copy.count > 0) {
+    ok = append_decimal_wide_chunk(
+      &chunks,
+      &chunk_count,
+      &chunk_capacity,
+      divmod_decimal_wide_chunk_inplace(&copy));
+  }
+  xray_bigint_clear(&copy);
+  if (!ok) {
+    free(chunks);
+    return 0;
   }
   while (chunk_count > 0 && chunks[chunk_count - 1U] == 0) chunk_count--;
   *chunks_out = chunks;
@@ -640,6 +706,22 @@ static void write_u32_decimal_padded9_pairs(char *out, uint32_t value) {
   copy_decimal_digit_pair(out + 7U, value);
 }
 
+static void write_u32_decimal_padded4_pairs(char *out, uint32_t value) {
+  uint32_t pair = value / 100U;
+  copy_decimal_digit_pair(out, pair);
+  copy_decimal_digit_pair(out + 2U, value - pair * 100U);
+}
+
+static void write_u32_decimal_padded9_mixed_pairs(char *out, uint32_t value) {
+  uint32_t lead = value / 100000000U;
+  uint32_t low8 = value - lead * 100000000U;
+  uint32_t high4 = low8 / 10000U;
+  uint32_t low4 = low8 - high4 * 10000U;
+  out[0] = (char)('0' + lead);
+  write_u32_decimal_padded4_pairs(out + 1U, high4);
+  write_u32_decimal_padded4_pairs(out + 5U, low4);
+}
+
 static void write_u64_decimal_padded19(char *out, uint64_t value) {
   for (size_t index = XRAY_BIGINT_DECIMAL_WIDE_CHUNK_DIGITS; index-- > 0;) {
     out[index] = (char)('0' + (value % 10U));
@@ -647,7 +729,7 @@ static void write_u64_decimal_padded19(char *out, uint64_t value) {
   }
 }
 
-static char *format_decimal_chunks_u32(const uint32_t *chunks, size_t chunk_count, int use_pair_writer) {
+static char *format_decimal_chunks_u32_mode(const uint32_t *chunks, size_t chunk_count, int writer_mode) {
   if (chunk_count == 0) {
     char *zero = (char *)calloc(2, 1);
     if (zero) zero[0] = '0';
@@ -657,16 +739,40 @@ static char *format_decimal_chunks_u32(const uint32_t *chunks, size_t chunk_coun
   size_t capacity = chunk_count * XRAY_BIGINT_DECIMAL_CHUNK_DIGITS + 1U;
   char *text = (char *)calloc(capacity, 1);
   if (!text) return NULL;
-  size_t used = use_pair_writer ?
+  size_t used = writer_mode ?
     write_u32_decimal_pairs(text, chunks[chunk_count - 1]) :
     write_u32_decimal(text, chunks[chunk_count - 1]);
   for (size_t index = chunk_count - 1; index-- > 0;) {
-    if (use_pair_writer) {
+    if (writer_mode == 2) {
+      write_u32_decimal_padded9_mixed_pairs(text + used, chunks[index]);
+    } else if (writer_mode == 1) {
       write_u32_decimal_padded9_pairs(text + used, chunks[index]);
     } else {
       write_u32_decimal_padded9(text + used, chunks[index]);
     }
     used += XRAY_BIGINT_DECIMAL_CHUNK_DIGITS;
+  }
+  return text;
+}
+
+static char *format_decimal_chunks_u32(const uint32_t *chunks, size_t chunk_count, int use_pair_writer) {
+  return format_decimal_chunks_u32_mode(chunks, chunk_count, use_pair_writer ? 1 : 0);
+}
+
+static char *format_decimal_chunks_u64(const uint64_t *chunks, size_t chunk_count) {
+  if (chunk_count == 0) {
+    char *zero = (char *)calloc(2, 1);
+    if (zero) zero[0] = '0';
+    return zero;
+  }
+  if (chunk_count > (SIZE_MAX - 1U) / XRAY_BIGINT_DECIMAL_WIDE_CHUNK_DIGITS) return NULL;
+  size_t capacity = chunk_count * XRAY_BIGINT_DECIMAL_WIDE_CHUNK_DIGITS + 1U;
+  char *text = (char *)calloc(capacity, 1);
+  if (!text) return NULL;
+  size_t used = write_u64_decimal(text, chunks[chunk_count - 1]);
+  for (size_t index = chunk_count - 1; index-- > 0;) {
+    write_u64_decimal_padded19(text + used, chunks[index]);
+    used += XRAY_BIGINT_DECIMAL_WIDE_CHUNK_DIGITS;
   }
   return text;
 }
@@ -815,6 +921,95 @@ char *xray_bigint_get_decimal_folded_pair_writer_probe(const XrayScratchBigInt *
   return text;
 }
 
+char *xray_bigint_get_decimal_mixed_pair_writer_probe(const XrayScratchBigInt *value) {
+  if (!value || value->count == 0) {
+    char *zero = (char *)calloc(2, 1);
+    if (zero) zero[0] = '0';
+    return zero;
+  }
+
+  uint32_t *chunks = NULL;
+  size_t chunk_count = 0;
+  size_t chunk_capacity = 0;
+  if (!decimal_chunks_from_limbs_horner(&chunks, &chunk_count, value)) return NULL;
+  if (chunk_count == 0 && !append_decimal_chunk(&chunks, &chunk_count, &chunk_capacity, 0)) {
+    free(chunks);
+    return NULL;
+  }
+
+  char *text = format_decimal_chunks_u32_mode(chunks, chunk_count, 2);
+  free(chunks);
+  return text;
+}
+
+char *xray_bigint_get_decimal_folded_hwdiv_probe(const XrayScratchBigInt *value) {
+  if (!value || value->count == 0) {
+    char *zero = (char *)calloc(2, 1);
+    if (zero) zero[0] = '0';
+    return zero;
+  }
+
+  uint32_t *chunks = NULL;
+  size_t chunk_count = 0;
+  size_t chunk_capacity = 0;
+  if (!decimal_chunks_from_limbs_horner_folded_direct(&chunks, &chunk_count, value)) return NULL;
+  if (chunk_count == 0 && !append_decimal_chunk(&chunks, &chunk_count, &chunk_capacity, 0)) {
+    free(chunks);
+    return NULL;
+  }
+
+  char *text = format_decimal_chunks_u32(chunks, chunk_count, 0);
+  free(chunks);
+  return text;
+}
+
+char *xray_bigint_get_decimal_folded_hwdiv_mixed_pair_probe(const XrayScratchBigInt *value) {
+  if (!value || value->count == 0) {
+    char *zero = (char *)calloc(2, 1);
+    if (zero) zero[0] = '0';
+    return zero;
+  }
+
+  uint32_t *chunks = NULL;
+  size_t chunk_count = 0;
+  size_t chunk_capacity = 0;
+  if (!decimal_chunks_from_limbs_horner_folded_direct(&chunks, &chunk_count, value)) return NULL;
+  if (chunk_count == 0 && !append_decimal_chunk(&chunks, &chunk_count, &chunk_capacity, 0)) {
+    free(chunks);
+    return NULL;
+  }
+
+  char *text = format_decimal_chunks_u32_mode(chunks, chunk_count, 2);
+  free(chunks);
+  return text;
+}
+
+char *xray_bigint_get_decimal_divide_1e19_probe(const XrayScratchBigInt *value) {
+  if (!value || value->count == 0) {
+    char *zero = (char *)calloc(2, 1);
+    if (zero) zero[0] = '0';
+    return zero;
+  }
+
+  uint64_t *chunks = NULL;
+  size_t chunk_count = 0;
+  if (!decimal_wide_chunks_from_limbs_divide(&chunks, &chunk_count, value)) return NULL;
+  if (chunk_count == 0) {
+    uint64_t *zero_chunk = (uint64_t *)realloc(chunks, sizeof(uint64_t));
+    if (!zero_chunk) {
+      free(chunks);
+      return NULL;
+    }
+    chunks = zero_chunk;
+    chunks[0] = 0;
+    chunk_count = 1;
+  }
+
+  char *text = format_decimal_chunks_u64(chunks, chunk_count);
+  free(chunks);
+  return text;
+}
+
 char *xray_bigint_get_decimal_wide_probe(const XrayScratchBigInt *value) {
   if (!value || value->count == 0) {
     char *zero = (char *)calloc(2, 1);
@@ -835,22 +1030,7 @@ char *xray_bigint_get_decimal_wide_probe(const XrayScratchBigInt *value) {
     chunks[0] = 0;
     chunk_count = 1;
   }
-  if (chunk_count > (SIZE_MAX - 1U) / XRAY_BIGINT_DECIMAL_WIDE_CHUNK_DIGITS) {
-    free(chunks);
-    return NULL;
-  }
-
-  size_t capacity = chunk_count * XRAY_BIGINT_DECIMAL_WIDE_CHUNK_DIGITS + 1U;
-  char *text = (char *)calloc(capacity, 1);
-  if (!text) {
-    free(chunks);
-    return NULL;
-  }
-  size_t used = write_u64_decimal(text, chunks[chunk_count - 1]);
-  for (size_t index = chunk_count - 1; index-- > 0;) {
-    write_u64_decimal_padded19(text + used, chunks[index]);
-    used += XRAY_BIGINT_DECIMAL_WIDE_CHUNK_DIGITS;
-  }
+  char *text = format_decimal_chunks_u64(chunks, chunk_count);
   free(chunks);
   return text;
 }
