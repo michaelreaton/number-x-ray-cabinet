@@ -2536,6 +2536,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
   run_mul_toom3_unroll4_recursive_vs_gmp_probe_case(report, 16384, 64, 2);
   run_mul_toom3_unroll4_recursive_vs_gmp_probe_case(report, 16384, 96, 2);
   run_mul_toom3_unroll4_recursive_deep_vs_gmp_probe_case(report, 16384, 64, 2);
+  run_mul_toom3_unroll4_recursive_deep_vs_gmp_probe_case(report, 16384, 96, 2);
 
   const size_t unroll_digits[] = {40, 150, 1000, 4096, 8192, 16384};
   for (size_t digit_index = 0; digit_index < sizeof(unroll_digits) / sizeof(unroll_digits[0]); ++digit_index) {
