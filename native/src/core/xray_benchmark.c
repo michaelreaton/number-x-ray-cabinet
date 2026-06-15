@@ -14,6 +14,13 @@ static void append_result(XrayBenchmarkReport *report, const XrayBenchmarkResult
   if (result->passed) report->passed_count++;
 }
 
+const char *xray_scratch_adoption_for_result(const XrayBenchmarkResult *result) {
+  if (!result || !result->parity_verified) return "blocked-output-mismatch";
+  double limit = result->max_allowed_speed_ratio > 0.0 ? result->max_allowed_speed_ratio : 1.0;
+  if (result->speed_ratio <= limit) return "allowed";
+  return "oracle-only";
+}
+
 static unsigned long long median3(unsigned long long a, unsigned long long b, unsigned long long c) {
   if (a > b) {
     unsigned long long tmp = a;
@@ -128,9 +135,9 @@ static void append_perf_result(
   result.speed_ratio = (double)result.scratch_us / (double)result.gmp_us;
   result.max_allowed_speed_ratio = 1.0;
   result.parity_verified = parity;
-  result.replacement_ready = parity && result.scratch_us <= result.gmp_us;
-  snprintf(result.adoption, sizeof(result.adoption), "%s",
-    !parity ? "blocked-output-mismatch" : (result.replacement_ready ? "allowed" : "oracle-only"));
+  const char *adoption = xray_scratch_adoption_for_result(&result);
+  result.replacement_ready = strcmp(adoption, "allowed") == 0;
+  snprintf(result.adoption, sizeof(result.adoption), "%s", adoption);
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   result.passed = parity;
   snprintf(result.status, sizeof(result.status), "%s",

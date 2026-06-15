@@ -272,9 +272,14 @@ static void test_benchmarks(void) {
       CHECK(report.results[index].gmp_us > 0);
       CHECK(report.results[index].speed_ratio > 0.0);
       CHECK(report.results[index].max_allowed_speed_ratio == 1.0);
-      CHECK(strcmp(report.results[index].adoption, report.results[index].replacement_ready ? "allowed" : "oracle-only") == 0);
+      const char *adoption = xray_scratch_adoption_for_result(&report.results[index]);
+      CHECK(strcmp(report.results[index].adoption, adoption) == 0);
+      CHECK(report.results[index].replacement_ready == (strcmp(adoption, "allowed") == 0));
     }
   }
+  XrayBenchmarkResult mismatch;
+  memset(&mismatch, 0, sizeof(mismatch));
+  CHECK(strcmp(xray_scratch_adoption_for_result(&mismatch), "blocked-output-mismatch") == 0);
   CHECK(scratch_rows >= 23);
   char *json = xray_benchmark_report_json(&report);
   CHECK(json != NULL);
