@@ -141,7 +141,42 @@ typedef struct XrayBenchmarkResult {
   char detail[256];
 } XrayBenchmarkResult;
 
+typedef struct XrayCpuFeatures {
+  char architecture[24];
+  char vendor[32];
+  char brand[96];
+  unsigned int logical_cpus;
+  int cpuid_supported;
+  int sse2;
+  int sse3;
+  int ssse3;
+  int sse41;
+  int sse42;
+  int pclmulqdq;
+  int popcnt;
+  int aes;
+  int fma;
+  int xsave;
+  int osxsave;
+  unsigned long long xcr0;
+  int avx_os_enabled;
+  int avx512_os_enabled;
+  int avx;
+  int avx2;
+  int avx512f;
+  int avx512dq;
+  int avx512ifma;
+  int avx512bw;
+  int avx512vl;
+  int vaes;
+  int vpclmulqdq;
+  int bmi1;
+  int bmi2;
+  int adx;
+} XrayCpuFeatures;
+
 typedef struct XrayBenchmarkReport {
+  XrayCpuFeatures cpu;
   XrayBenchmarkResult *results;
   size_t result_count;
   size_t passed_count;
@@ -186,6 +221,7 @@ typedef struct XrayRunConfig {
 } XrayRunConfig;
 
 typedef struct XrayWorkbenchReport {
+  XrayCpuFeatures cpu;
   XrayExpressionResult expression;
   XrayFactorReport factor;
   XrayCyclotomicReport cyclotomic;
@@ -207,6 +243,8 @@ void xray_expression_result_clear(XrayExpressionResult *result);
 char *xray_preview_decimal(const mpz_t value, size_t max_chars);
 unsigned long xray_now_ms(void);
 unsigned long long xray_now_us(void);
+void xray_cpu_features_detect(XrayCpuFeatures *features);
+char *xray_cpu_features_summary(const XrayCpuFeatures *features);
 
 int xray_is_probable_prime(const mpz_t value, int rounds);
 int xray_integer_nth_root(mpz_t root, const mpz_t value, unsigned long n);

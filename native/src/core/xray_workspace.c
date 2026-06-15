@@ -101,12 +101,19 @@ static char *events_jsonl(const XrayWorkbenchReport *report) {
   if (!events) return NULL;
   snprintf(events, 4096,
     "{\"stage\":\"expression\",\"status\":\"%s\",\"detail\":\"%s\"}\n"
+    "{\"stage\":\"cpu\",\"status\":\"profiled\",\"detail\":\"logical=%u avx=%s avx2=%s avx512f=%s bmi2=%s adx=%s\"}\n"
     "{\"stage\":\"factor\",\"status\":\"%s\",\"detail\":\"factors=%zu unresolved=%zu productVerified=%s\"}\n"
     "{\"stage\":\"cyclotomic\",\"status\":\"complete\",\"detail\":\"scanned=%zu exact=%zu\"}\n"
     "{\"stage\":\"benchmark\",\"status\":\"%s\",\"detail\":\"passed=%zu/%zu scratch=%zu replacementReady=%zu oracleOnly=%zu blocked=%zu\"}\n"
     "{\"stage\":\"gnfs\",\"status\":\"%s\",\"detail\":\"stages=%zu\"}\n",
     report->expression.ok ? "complete" : "invalid",
     report->expression.ok ? "exact integer expression evaluated" : (report->expression.error ? report->expression.error : "invalid"),
+    report->cpu.logical_cpus,
+    report->cpu.avx ? "true" : "false",
+    report->cpu.avx2 ? "true" : "false",
+    report->cpu.avx512f ? "true" : "false",
+    report->cpu.bmi2 ? "true" : "false",
+    report->cpu.adx ? "true" : "false",
     report->factor.status[0] ? report->factor.status : "skipped",
     report->factor.factor_count,
     report->factor.unresolved_count,
@@ -130,6 +137,7 @@ int xray_workbench_run(const char *raw_input, const XrayRunConfig *config_input,
   memset(report, 0, sizeof(*report));
   XrayRunConfig config = config_input ? *config_input : xray_run_default_config();
   config.factor.cancel_flag = config.cancel_flag;
+  xray_cpu_features_detect(&report->cpu);
 
   mpz_t value;
   mpz_init(value);
@@ -140,6 +148,7 @@ int xray_workbench_run(const char *raw_input, const XrayRunConfig *config_input,
     char *input_path = path_for(report->run_dir, "input.txt");
     char *normalized_path = path_for(report->run_dir, "normalized.txt");
     char *config_path = path_for(report->run_dir, "config.txt");
+    char *cpu_path = path_for(report->run_dir, "cpu_features.txt");
     write_text_file(input_path, raw_input ? raw_input : "");
     write_text_file(normalized_path, expression_ok ? report->expression.normalized : (report->expression.error ? report->expression.error : "invalid"));
     char config_text[512];
@@ -160,9 +169,13 @@ int xray_workbench_run(const char *raw_input, const XrayRunConfig *config_input,
       config.cyclotomic.base_window,
       config.enable_gnfs_stage_proof);
     write_text_file(config_path, config_text);
+    char *cpu_summary = xray_cpu_features_summary(&report->cpu);
+    write_text_file(cpu_path, cpu_summary);
+    free(cpu_summary);
     free(input_path);
     free(normalized_path);
     free(config_path);
+    free(cpu_path);
   }
 
   if (expression_ok && config.enable_factor) {

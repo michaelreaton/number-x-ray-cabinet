@@ -88,11 +88,14 @@ static char *format_benchmark_report_text(const XrayBenchmarkReport *report) {
   size_t capacity = 4096 + report->result_count * 220;
   char *text = (char *)calloc(capacity, 1);
   if (!text) return NULL;
+  char *cpu_summary = xray_cpu_features_summary(&report->cpu);
   size_t used = 0;
   used += (size_t)snprintf(text + used, capacity - used,
     "BENCHMARK RESULTS\n"
+    "%s\n"
     "Passed: %zu/%zu   Scratch rows: %zu   Replacement-ready: %zu   Oracle-only: %zu   Blocked: %zu   Elapsed: %lums\n\n"
     "%-30s %-8s %-14s %-7s %10s %10s %7s\n",
+    cpu_summary ? cpu_summary : "CPU: unavailable",
     report->passed_count,
     report->result_count,
     report->scratch_count,
@@ -107,6 +110,7 @@ static char *format_benchmark_report_text(const XrayBenchmarkReport *report) {
     "ScratchUs",
     "GmpUs",
     "Ratio");
+  free(cpu_summary);
   used += (size_t)snprintf(text + used, capacity - used,
     "%-30s %-8s %-14s %-7s %10s %10s %7s\n",
     "------------------------------",

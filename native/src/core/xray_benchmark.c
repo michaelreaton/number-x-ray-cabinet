@@ -380,6 +380,7 @@ int xray_benchmark_run(XrayBenchmarkReport *report) {
   if (!report) return 0;
   memset(report, 0, sizeof(*report));
   unsigned long started = xray_now_ms();
+  xray_cpu_features_detect(&report->cpu);
 
   run_factor_case(report, "toy semiprime 10403", "10403", "solved", 1000);
   run_factor_case(report, "rho semiprime 8051", "8051", "solved", 1000);

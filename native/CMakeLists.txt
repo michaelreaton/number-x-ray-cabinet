@@ -31,6 +31,7 @@ endif()
 
 add_library(xray_core STATIC
   src/core/xray_expression.c
+  src/core/xray_cpu.c
   src/core/xray_scratch_bigint.c
   src/core/xray_factor.c
   src/core/xray_cyclotomic.c

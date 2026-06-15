@@ -168,10 +168,55 @@ static void append_cyclotomic_json(JsonBuffer *buffer, const XrayCyclotomicRepor
   jb_append(buffer, "]}");
 }
 
+static void append_cpu_json(JsonBuffer *buffer, const char *key, const XrayCpuFeatures *cpu_input) {
+  XrayCpuFeatures empty;
+  memset(&empty, 0, sizeof(empty));
+  const XrayCpuFeatures *cpu = cpu_input ? cpu_input : &empty;
+  jb_append(buffer, "\"");
+  jb_append(buffer, key ? key : "cpu");
+  jb_append(buffer, "\":{");
+  jb_append(buffer, "\"architecture\":"); jb_string(buffer, cpu->architecture);
+  jb_append(buffer, ",\"vendor\":"); jb_string(buffer, cpu->vendor);
+  jb_append(buffer, ",\"brand\":"); jb_string(buffer, cpu->brand);
+  jb_printf(buffer,
+    ",\"logicalCpus\":%u,\"cpuidSupported\":%s,\"xsave\":%s,\"osxsave\":%s,\"xcr0\":\"0x%llx\",\"avxOsEnabled\":%s,\"avx512OsEnabled\":%s",
+    cpu->logical_cpus,
+    cpu->cpuid_supported ? "true" : "false",
+    cpu->xsave ? "true" : "false",
+    cpu->osxsave ? "true" : "false",
+    (unsigned long long)cpu->xcr0,
+    cpu->avx_os_enabled ? "true" : "false",
+    cpu->avx512_os_enabled ? "true" : "false");
+  jb_printf(buffer,
+    ",\"features\":{\"sse2\":%s,\"sse3\":%s,\"ssse3\":%s,\"sse41\":%s,\"sse42\":%s,\"pclmulqdq\":%s,\"popcnt\":%s,\"aes\":%s,\"fma\":%s,\"avx\":%s,\"avx2\":%s,\"avx512f\":%s,\"avx512dq\":%s,\"avx512ifma\":%s,\"avx512bw\":%s,\"avx512vl\":%s,\"vaes\":%s,\"vpclmulqdq\":%s,\"bmi1\":%s,\"bmi2\":%s,\"adx\":%s}}",
+    cpu->sse2 ? "true" : "false",
+    cpu->sse3 ? "true" : "false",
+    cpu->ssse3 ? "true" : "false",
+    cpu->sse41 ? "true" : "false",
+    cpu->sse42 ? "true" : "false",
+    cpu->pclmulqdq ? "true" : "false",
+    cpu->popcnt ? "true" : "false",
+    cpu->aes ? "true" : "false",
+    cpu->fma ? "true" : "false",
+    cpu->avx ? "true" : "false",
+    cpu->avx2 ? "true" : "false",
+    cpu->avx512f ? "true" : "false",
+    cpu->avx512dq ? "true" : "false",
+    cpu->avx512ifma ? "true" : "false",
+    cpu->avx512bw ? "true" : "false",
+    cpu->avx512vl ? "true" : "false",
+    cpu->vaes ? "true" : "false",
+    cpu->vpclmulqdq ? "true" : "false",
+    cpu->bmi1 ? "true" : "false",
+    cpu->bmi2 ? "true" : "false",
+    cpu->adx ? "true" : "false");
+}
+
 static void append_benchmark_json(JsonBuffer *buffer, const XrayBenchmarkReport *report) {
   jb_append(buffer, "\"benchmarkReport\":{");
+  append_cpu_json(buffer, "cpu", report ? &report->cpu : NULL);
   jb_printf(buffer,
-    "\"passed\":%zu,\"total\":%zu,\"scratchRows\":%zu,\"replacementReadyRows\":%zu,\"oracleOnlyRows\":%zu,\"blockedRows\":%zu,\"elapsedMs\":%lu,\"results\":[",
+    ",\"passed\":%zu,\"total\":%zu,\"scratchRows\":%zu,\"replacementReadyRows\":%zu,\"oracleOnlyRows\":%zu,\"blockedRows\":%zu,\"elapsedMs\":%lu,\"results\":[",
     report->passed_count,
     report->result_count,
     report->scratch_count,
@@ -304,6 +349,8 @@ char *xray_workbench_full_report_json(const XrayWorkbenchReport *report) {
   jb_append(&buffer, "\"app\":\"Number X-Ray Workbench\",");
   jb_append(&buffer, "\"version\":"); jb_string(&buffer, XRAY_VERSION);
   jb_append(&buffer, ",\"runDir\":"); jb_string(&buffer, report ? report->run_dir : NULL);
+  jb_append(&buffer, ",");
+  append_cpu_json(&buffer, "cpu", report ? &report->cpu : NULL);
   jb_append(&buffer, ",\"sourceNotes\":[");
   jb_string(&buffer, "Built from Payam's MY GFN2 page (https://amathz.com/my_gfn.html): Number X-Ray runs cyclotomic construction backward and labels evidence unless exact verification passes.");
   jb_append(&buffer, ",");
@@ -330,6 +377,10 @@ char *xray_workbench_report_json(const XrayFactorReport *factor, const XrayCyclo
   jb_append(&buffer, "{");
   jb_append(&buffer, "\"app\":\"Number X-Ray Workbench\",");
   jb_append(&buffer, "\"version\":"); jb_string(&buffer, XRAY_VERSION);
+  jb_append(&buffer, ",");
+  XrayCpuFeatures cpu;
+  xray_cpu_features_detect(&cpu);
+  append_cpu_json(&buffer, "cpu", &cpu);
   jb_append(&buffer, ",\"sourceNotes\":[");
   jb_string(&buffer, "Built from Payam's MY GFN2 page (https://amathz.com/my_gfn.html): Payam builds from Fermat-style and generalized Mersenne chains to principal cyclotomic parts, summarized as Phi(n)(2^p^m); Number X-Ray runs the idea backward and labels evidence unless exact verification passes.");
   jb_append(&buffer, ",");

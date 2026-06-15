@@ -90,6 +90,25 @@ static void test_exact_expression_parser(void) {
   mpz_clears(value, expected, NULL);
 }
 
+static void test_cpu_feature_detection(void) {
+  XrayCpuFeatures cpu;
+  xray_cpu_features_detect(&cpu);
+  CHECK(cpu.architecture[0] != '\0');
+  CHECK(cpu.vendor[0] != '\0');
+  CHECK(cpu.brand[0] != '\0');
+  CHECK(cpu.logical_cpus >= 1);
+  if (cpu.avx) CHECK(cpu.avx_os_enabled);
+  if (cpu.avx2) CHECK(cpu.avx && cpu.avx_os_enabled);
+  if (cpu.avx512f) CHECK(cpu.avx512_os_enabled);
+  if (cpu.avx_os_enabled) CHECK((cpu.xcr0 & 0x6ULL) == 0x6ULL);
+  if (cpu.avx512_os_enabled) CHECK((cpu.xcr0 & 0xe6ULL) == 0xe6ULL);
+  char *summary = xray_cpu_features_summary(&cpu);
+  CHECK(summary != NULL);
+  CHECK(strstr(summary, "CPU:") != NULL);
+  CHECK(strstr(summary, "flags=") != NULL);
+  free(summary);
+}
+
 static void test_scratch_bigint_oracle(void) {
   XrayScratchBigInt a, b, sum, difference, product, quotient;
   xray_bigint_init(&a);
@@ -382,10 +401,14 @@ static void test_workspace_and_gnfs_artifacts(void) {
   CHECK(strcmp(report.expression.normalized, "4097") == 0);
   CHECK(report.run_dir != NULL);
   CHECK(report.json != NULL);
+  CHECK(report.cpu.logical_cpus >= 1);
   CHECK(report.gnfs.stage_count == 7);
   CHECK(strstr(report.json, "\"expression\"") != NULL);
+  CHECK(strstr(report.json, "\"cpu\"") != NULL);
+  CHECK(strstr(report.json, "\"avx\"") != NULL);
   CHECK(strstr(report.json, "\"gnfsReport\"") != NULL);
   CHECK(strstr(report.events_jsonl, "\"stage\":\"benchmark\",\"status\":\"skipped\"") != NULL);
+  CHECK(strstr(report.events_jsonl, "\"stage\":\"cpu\",\"status\":\"profiled\"") != NULL);
   xray_workbench_report_clear(&report);
 }
 
@@ -427,6 +450,8 @@ static void test_benchmarks(void) {
   XrayWorkbenchReport workbench;
   CHECK(xray_workbench_run("10403", &config, &workbench));
   XrayBenchmarkReport *report = &workbench.benchmark;
+  CHECK(workbench.cpu.logical_cpus >= 1);
+  CHECK(report->cpu.logical_cpus >= 1);
   CHECK(report->result_count >= 32);
   CHECK(report->passed_count == report->result_count);
   size_t scratch_rows = 0;
@@ -461,6 +486,9 @@ static void test_benchmarks(void) {
   char *json = xray_benchmark_report_json(report);
   CHECK(json != NULL);
   CHECK(strstr(json, "\"replacementReady\"") != NULL);
+  CHECK(strstr(json, "\"cpu\"") != NULL);
+  CHECK(strstr(json, "\"avx\"") != NULL);
+  CHECK(strstr(json, "\"avx2\"") != NULL);
   CHECK(strstr(json, "\"scratchRows\"") != NULL);
   CHECK(strstr(json, "\"replacementReadyRows\"") != NULL);
   CHECK(strstr(json, "\"oracleOnlyRows\"") != NULL);
@@ -481,24 +509,33 @@ static void test_benchmarks(void) {
   CHECK(workbench.run_dir != NULL);
   CHECK(workbench.events_jsonl != NULL);
   CHECK(strstr(workbench.events_jsonl, "\"stage\":\"benchmark\"") != NULL);
+  CHECK(strstr(workbench.events_jsonl, "\"stage\":\"cpu\"") != NULL);
   char *benchmark_json_path = test_path_join(workbench.run_dir, "benchmark.json");
   char *benchmark_tsv_path = test_path_join(workbench.run_dir, "benchmark.tsv");
+  char *cpu_path = test_path_join(workbench.run_dir, "cpu_features.txt");
   char *benchmark_json = read_text_file(benchmark_json_path);
   char *benchmark_tsv = read_text_file(benchmark_tsv_path);
+  char *cpu_text = read_text_file(cpu_path);
   CHECK(strstr(benchmark_json, "\"benchmarkReport\"") != NULL);
+  CHECK(strstr(benchmark_json, "\"cpu\"") != NULL);
   CHECK(strstr(benchmark_json, "\"scratchRows\"") != NULL);
   CHECK(strstr(benchmark_tsv, "scratch-vs-gmp") != NULL);
   CHECK(strstr(benchmark_tsv, "speedRatio") != NULL);
+  CHECK(strstr(cpu_text, "CPU:") != NULL);
+  CHECK(strstr(cpu_text, "flags=") != NULL);
   free(benchmark_json_path);
   free(benchmark_tsv_path);
+  free(cpu_path);
   free(benchmark_json);
   free(benchmark_tsv);
+  free(cpu_text);
   xray_workbench_report_clear(&workbench);
 }
 
 int main(void) {
   test_parse_messy_input();
   test_exact_expression_parser();
+  test_cpu_feature_detection();
   test_scratch_bigint_oracle();
   test_scratch_bigint_oracle_sweep();
   test_ambiguous_input_rejected();
