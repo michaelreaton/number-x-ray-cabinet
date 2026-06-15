@@ -260,3 +260,32 @@ improves our scalar scratch path but does not catch GMP at this size; GMP is
 winning from higher-level multiplication strategy, not just leaf scheduling.
 The next larger-number multiply work should target algorithm structure above
 the leaf loop.
+
+## 2026-06-15: Toom-3 + Unroll4 Leaf Probe
+
+Run: `runs/20260615-070407-c4b04caf`
+
+The benchmark now combines the one-level Toom-3 split with the bounded MSVC x64
+unroll4 leaf schedule. This is an evidence-only probe for the larger-number
+frontier: the candidate must still pass exact GMP parity, and the production
+route is unchanged unless the same-run stability gate is met.
+
+- 8192 digits, leaf 32 vs scratch: ratio `1.357`, stable `1/5`,
+  `observe-only`
+- 8192 digits, leaf 32 vs GMP: ratio `0.994`, stable `2/5`, `observe-only`
+- 8192 digits, leaf 64 vs scratch: ratio `0.900`, stable `5/5`,
+  `promote-candidate`
+- 8192 digits, leaf 64 vs GMP: ratio `0.973`, stable `3/5`, `observe-only`
+- 16384 digits, leaf 32 vs scratch: ratio `1.007`, stable `2/5`,
+  `observe-only`
+- 16384 digits, leaf 32 vs GMP: ratio `1.303`, stable `0/5`, `observe-only`
+- 16384 digits, leaf 64 vs scratch: ratio `0.851`, stable `5/5`,
+  `promote-candidate`
+- 16384 digits, leaf 64 vs GMP: ratio `1.092`, stable `1/5`, `observe-only`
+
+Decision: keep the probe, but do not route production multiplication through it
+yet. Leaf 64 is a clear improvement over the current scratch path at 8192 and
+16384 digits, which validates combining algorithm structure with leaf
+scheduling. It still does not beat GMP with enough stability, so the next
+larger-number step should explore deeper Toom thresholds or Karatsuba/Toom
+handoff policy before any replacement claim.
