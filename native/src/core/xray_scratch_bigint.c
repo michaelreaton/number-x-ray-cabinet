@@ -1160,12 +1160,12 @@ int xray_bigint_square(XrayScratchBigInt *out, const XrayScratchBigInt *value) {
   if (out == value) {
     XrayScratchBigInt temp;
     xray_bigint_init(&temp);
-    int ok = square_schoolbook(&temp, value);
+    int ok = square_dispatch_threshold(&temp, value, XRAY_BIGINT_KARATSUBA_THRESHOLD);
     if (ok) ok = xray_bigint_copy(out, &temp);
     xray_bigint_clear(&temp);
     return ok;
   }
-  return square_schoolbook(out, value);
+  return square_dispatch_threshold(out, value, XRAY_BIGINT_KARATSUBA_THRESHOLD);
 }
 
 int xray_bigint_square_karatsuba_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t threshold) {

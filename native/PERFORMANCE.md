@@ -748,3 +748,36 @@ Decision: keep the specialization. It promotes the 40 digit format row under
 both CTest and CLI, and CLI shows larger rows improving too. Large decimal
 formatting remains far from GMP, so the next frontier is divide-and-conquer or
 larger-base conversion rather than more wrapper trimming.
+
+## 2026-06-15: Route Karatsuba Square
+
+Runs: `native-test-runs/20260615-095524-c4b04caf` and
+`runs/20260615-095624-c4b04caf`
+
+`xray_bigint_square` was still calling the schoolbook square implementation
+directly even though the Karatsuba square probe was exact and consistently
+faster against the current scratch self-multiply baseline at larger sizes. This
+change routes public square through the existing threshold dispatcher. Small
+operands below the handoff still use schoolbook square.
+
+CTest benchmark:
+
+- 40 digits: ratio `1.190`, stable `0/5`, `oracle-only`
+- 150 digits: ratio `0.744`, stable `5/5`, `replacement-ready`
+- 1000 digits: ratio `0.892`, stable `5/5`, `replacement-ready`
+- 4096 digits: ratio `1.062`, stable `0/5`, `oracle-only`
+- 8192 digits: ratio `1.265`, stable `0/5`, `oracle-only`
+- 16384 digits: ratio `1.564`, stable `0/5`, `oracle-only`
+
+CLI benchmark:
+
+- 40 digits: ratio `1.063`, stable `1/5`, `oracle-only`
+- 150 digits: ratio `0.672`, stable `5/5`, `replacement-ready`
+- 1000 digits: ratio `0.889`, stable `4/5`, `replacement-ready`
+- 4096 digits: ratio `1.021`, stable `0/5`, `oracle-only`
+- 8192 digits: ratio `1.303`, stable `0/5`, `oracle-only`
+- 16384 digits: ratio `1.481`, stable `0/5`, `oracle-only`
+
+Decision: keep the route. It substantially improves large square behavior
+without claiming GMP replacement status. The 40 digit row remains too small and
+noisy for promotion, while 150 and 1000 digit rows stay replacement-ready.
