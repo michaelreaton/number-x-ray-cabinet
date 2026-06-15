@@ -691,6 +691,7 @@ static void test_benchmarks(void) {
   int saw_8192_scratch = 0;
   int saw_8192_kernel_probe = 0;
   int saw_toom3_probe = 0;
+  int saw_toom3_vs_scratch_probe = 0;
   for (size_t index = 0; index < report->result_count; ++index) {
     if (strcmp(report->results[index].category, "scratch-vs-gmp") == 0) {
       scratch_rows++;
@@ -740,6 +741,14 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "featureGate=one-level-toom3") != NULL);
         CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
       }
+      if (strcmp(report->results[index].operation, "mul-toom3-vs-scratch") == 0) {
+        saw_toom3_vs_scratch_probe = 1;
+        CHECK(strstr(report->results[index].detail, "leafThreshold=") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=one-level-toom3") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=current-scratch-mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=internal-promotion") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+      }
       if (strcmp(report->results[index].adoption, "promote-candidate") == 0) {
         CHECK(report->results[index].stable_sample_count >= 4);
         CHECK(report->results[index].speed_ratio <= report->results[index].max_allowed_speed_ratio);
@@ -769,6 +778,7 @@ static void test_benchmarks(void) {
   CHECK(saw_8192_scratch);
   CHECK(saw_8192_kernel_probe);
   CHECK(saw_toom3_probe);
+  CHECK(saw_toom3_vs_scratch_probe);
   CHECK(kernel_rows >= 4);
   CHECK(report->scratch_count == scratch_rows);
   CHECK(report->replacement_ready_count == replacement_ready_rows);
@@ -793,6 +803,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "\"maxAllowedSpeedRatio\"") != NULL);
   CHECK(strstr(json, "\"scratchUs\"") != NULL);
   CHECK(strstr(json, "mul-toom3") != NULL);
+  CHECK(strstr(json, "mul-toom3-vs-scratch") != NULL);
   free(json);
   char *tsv = xray_benchmark_report_tsv(report);
   CHECK(tsv != NULL);
@@ -803,6 +814,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "kernel-probe") != NULL);
   CHECK(strstr(tsv, "gmpClue=") != NULL);
   CHECK(strstr(tsv, "mul-toom3") != NULL);
+  CHECK(strstr(tsv, "mul-toom3-vs-scratch") != NULL);
   CHECK(strstr(tsv, "replacement-ready") != NULL || strstr(tsv, "parity") != NULL);
   free(tsv);
 
