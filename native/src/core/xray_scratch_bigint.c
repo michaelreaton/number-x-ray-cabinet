@@ -412,6 +412,87 @@ int xray_bigint_sub(XrayScratchBigInt *out, const XrayScratchBigInt *left, const
   return borrow == 0;
 }
 
+static void add_two_limb_at(XrayScratchBigInt *out, size_t position, uint64_t low, uint64_t high) {
+  unsigned char carry = add_with_carry_u64(out->limbs[position], low, 0, &out->limbs[position]);
+  position++;
+  uint64_t word = high + (uint64_t)carry;
+  uint64_t extra = word < high ? 1U : 0U;
+  while (word || extra) {
+    carry = add_with_carry_u64(out->limbs[position], word, 0, &out->limbs[position]);
+    word = extra + (uint64_t)carry;
+    extra = 0;
+    position++;
+  }
+}
+
+static void square_add_diagonal_word(XrayScratchBigInt *out, size_t position, uint64_t word) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  unsigned __int64 high = 0;
+  unsigned __int64 low = _umul128(word, word, &high);
+  add_two_limb_at(out, position, (uint64_t)low, (uint64_t)high);
+#else
+  __uint128_t product = (__uint128_t)word * (__uint128_t)word;
+  add_two_limb_at(out, position, (uint64_t)product, (uint64_t)(product >> XRAY_BIGINT_WORD_BITS));
+#endif
+}
+
+static void square_add_doubled_cross_row(XrayScratchBigInt *out, const uint64_t *limbs, size_t count, size_t row) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  uint64_t carry_low = 0;
+  uint64_t carry_high = 0;
+  for (size_t column = row + 1U; column < count; ++column) {
+    unsigned __int64 high = 0;
+    unsigned __int64 low = _umul128(limbs[row], limbs[column], &high);
+    unsigned __int64 doubled_low = low << 1U;
+    uint64_t carry_from_double = (uint64_t)(low >> 63U);
+    unsigned __int64 sum = 0;
+    unsigned char carry1 = _addcarry_u64(0, doubled_low, out->limbs[row + column], &sum);
+    unsigned char carry2 = _addcarry_u64(0, sum, carry_low, &sum);
+    out->limbs[row + column] = (uint64_t)sum;
+
+    uint64_t small = carry_from_double + (uint64_t)carry1 + (uint64_t)carry2 + carry_high;
+    uint64_t next_low = ((uint64_t)high) << 1U;
+    uint64_t next_high = ((uint64_t)high) >> 63U;
+    uint64_t next_sum = next_low + small;
+    if (next_sum < next_low) next_high++;
+    carry_low = next_sum;
+    carry_high = next_high;
+  }
+  if (carry_low || carry_high) add_two_limb_at(out, row + count, carry_low, carry_high);
+#else
+  __uint128_t carry = 0;
+  for (size_t column = row + 1U; column < count; ++column) {
+    __uint128_t product = (__uint128_t)limbs[row] * (__uint128_t)limbs[column];
+    uint64_t low = (uint64_t)product;
+    uint64_t high = (uint64_t)(product >> XRAY_BIGINT_WORD_BITS);
+    __uint128_t sum = ((__uint128_t)low << 1U) +
+      (__uint128_t)out->limbs[row + column] +
+      (uint64_t)carry;
+    out->limbs[row + column] = (uint64_t)sum;
+    carry = ((__uint128_t)high << 1U) + (sum >> XRAY_BIGINT_WORD_BITS) + (carry >> XRAY_BIGINT_WORD_BITS);
+  }
+  if (carry) add_two_limb_at(out, row + count, (uint64_t)carry, (uint64_t)(carry >> XRAY_BIGINT_WORD_BITS));
+#endif
+}
+
+static int square_schoolbook(XrayScratchBigInt *out, const XrayScratchBigInt *value) {
+  if (!out || !value) return 0;
+  if (value->count == 0) return set_u32(out, 0);
+  size_t needed = value->count * 2U;
+  if (!reserve_limbs(out, needed + 2U)) return 0;
+  memset(out->limbs, 0, sizeof(uint64_t) * (needed + 2U));
+  out->count = needed + 2U;
+
+  for (size_t row = 0; row < value->count; ++row) {
+    square_add_doubled_cross_row(out, value->limbs, value->count, row);
+  }
+  for (size_t index = 0; index < value->count; ++index) {
+    square_add_diagonal_word(out, index * 2U, value->limbs[index]);
+  }
+  normalize(out);
+  return 1;
+}
+
 static int mul_schoolbook_mode(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, int use_unroll4) {
   if (!out || !left || !right) return 0;
   if (left->count == 0 || right->count == 0) return set_u32(out, 0);
@@ -990,6 +1071,19 @@ int xray_bigint_mul(XrayScratchBigInt *out, const XrayScratchBigInt *left, const
     return ok;
   }
   return mul_dispatch(out, left, right);
+}
+
+int xray_bigint_square(XrayScratchBigInt *out, const XrayScratchBigInt *value) {
+  if (!out || !value) return 0;
+  if (out == value) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = square_schoolbook(&temp, value);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return square_schoolbook(out, value);
 }
 
 int xray_bigint_mul_with_threshold(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t threshold) {
