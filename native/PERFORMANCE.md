@@ -646,3 +646,43 @@ CLI benchmark:
 Decision: do not route Karatsuba square yet. Threshold tuning confirms the
 candidate is useful against our current self-multiply path, but no large
 threshold is stable or fast enough against GMP.
+
+## 2026-06-15: Decimal Format Benchmark Gate
+
+Runs: `native-test-runs/20260615-092635-c4b04caf` and
+`runs/20260615-092749-c4b04caf`
+
+The parse path already uses 19 digit chunks, so a matching 19 digit decimal
+formatter was tested as a possible serialization improvement. The local run was
+exact but slower than both GMP and the restored 9 digit formatter on the larger
+rows, so the production formatter remains on the existing 9 digit chunk path.
+The benchmark ladder now keeps `format` rows beside `parse` rows so future
+formatter changes have an explicit parity and speed gate.
+
+Rejected 19 digit formatter CTest scout:
+
+- 40 digits: ratio `2.183`, stable `0/5`, `oracle-only`
+- 150 digits: ratio `2.230`, stable `0/5`, `oracle-only`
+- 1000 digits: ratio `4.232`, stable `0/5`, `oracle-only`
+- 4096 digits: ratio `6.833`, stable `0/5`, `oracle-only`
+- 8192 digits: ratio `8.975`, stable `0/5`, `oracle-only`
+
+Restored 9 digit formatter CTest benchmark:
+
+- 40 digits: ratio `2.101`, stable `0/5`, `oracle-only`
+- 150 digits: ratio `2.691`, stable `0/5`, `oracle-only`
+- 1000 digits: ratio `3.091`, stable `0/5`, `oracle-only`
+- 4096 digits: ratio `5.510`, stable `0/5`, `oracle-only`
+- 8192 digits: ratio `6.069`, stable `0/5`, `oracle-only`
+
+Restored 9 digit formatter CLI benchmark:
+
+- 40 digits: ratio `2.087`, stable `0/5`, `oracle-only`
+- 150 digits: ratio `2.585`, stable `0/5`, `oracle-only`
+- 1000 digits: ratio `3.078`, stable `0/5`, `oracle-only`
+- 4096 digits: ratio `4.475`, stable `0/5`, `oracle-only`
+- 8192 digits: ratio `5.269`, stable `0/5`, `oracle-only`
+
+Decision: do not adopt the 19 digit formatter. Keep decimal formatting measured
+as an oracle-only row until a new algorithm beats `mpz_get_str` locally with
+stable same-run ratios.

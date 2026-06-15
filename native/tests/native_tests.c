@@ -850,6 +850,7 @@ static void test_benchmarks(void) {
   int saw_8192_scratch = 0;
   int saw_16384_scratch_mul = 0;
   int saw_scratch_square = 0;
+  int saw_scratch_format = 0;
   int saw_8192_kernel_probe = 0;
   int saw_16384_kernel_probe = 0;
   int saw_square_vs_mul_probe = 0;
@@ -885,6 +886,7 @@ static void test_benchmarks(void) {
       if (report->results[index].digits == 8192) saw_8192_scratch = 1;
       if (report->results[index].digits == 16384 && strcmp(report->results[index].operation, "mul") == 0) saw_16384_scratch_mul = 1;
       if (strcmp(report->results[index].operation, "square") == 0) saw_scratch_square = 1;
+      if (strcmp(report->results[index].operation, "format") == 0) saw_scratch_format = 1;
       CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
       CHECK(strstr(report->results[index].detail, "stablePairs=") != NULL);
       CHECK(strstr(report->results[index].detail, "worstPairRatio=") != NULL);
@@ -1078,6 +1080,7 @@ static void test_benchmarks(void) {
   CHECK(saw_8192_scratch);
   CHECK(saw_16384_scratch_mul);
   CHECK(saw_scratch_square);
+  CHECK(saw_scratch_format);
   CHECK(saw_8192_kernel_probe);
   CHECK(saw_16384_kernel_probe);
   CHECK(saw_square_vs_mul_probe);
@@ -1126,6 +1129,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "\"maxAllowedSpeedRatio\"") != NULL);
   CHECK(strstr(json, "\"scratchUs\"") != NULL);
   CHECK(strstr(json, "mul-toom3") != NULL);
+  CHECK(strstr(json, "\"operation\":\"format\"") != NULL);
   CHECK(strstr(json, "\"operation\":\"square\"") != NULL);
   CHECK(strstr(json, "square-vs-mul") != NULL);
   CHECK(strstr(json, "square-karatsuba-vs-mul") != NULL);
@@ -1154,6 +1158,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "kernel-probe") != NULL);
   CHECK(strstr(tsv, "gmpClue=") != NULL);
   CHECK(strstr(tsv, "mul-toom3") != NULL);
+  CHECK(strstr(tsv, "format") != NULL);
   CHECK(strstr(tsv, "square") != NULL);
   CHECK(strstr(tsv, "square-vs-mul") != NULL);
   CHECK(strstr(tsv, "square-karatsuba-vs-mul") != NULL);
@@ -1191,6 +1196,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "scratch-vs-gmp") != NULL);
   CHECK(strstr(benchmark_tsv, "kernel-probe") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-toom3") != NULL);
+  CHECK(strstr(benchmark_tsv, "format") != NULL);
   CHECK(strstr(benchmark_tsv, "square") != NULL);
   CHECK(strstr(benchmark_tsv, "square-vs-mul") != NULL);
   CHECK(strstr(benchmark_tsv, "square-karatsuba-vs-mul") != NULL);
