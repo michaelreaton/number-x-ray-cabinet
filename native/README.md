@@ -152,14 +152,17 @@ the installed SDK manifest:
 
 ```text
 <prefix>/share/number-xray/number-xray-sdk.json
+<prefix>/share/number-xray/number-xray-api.json
 ```
 
 It records the public header, library name, CMake package/target, pkg-config
 names for installed static/shared libraries, documented header locations,
 ABI/runtime/backend probe functions, install-relative include/lib/bin
-directories, and GMP/MPIR dependency. Tools that generate bindings should read
-`apiDocumentation.functionReferenceHeader` from the manifest and parse the
-`XRAY_API` declarations there.
+directories, and GMP/MPIR dependency. The generated API catalog lists every
+exported function name, declaration, category, return type, and ownership hint.
+Binding generators should read `apiDocumentation.catalog` first, then use
+`apiDocumentation.functionReferenceHeader` as the human reference source for
+the full Doxygen comments.
 
 Consumers still need GMP or MPIR available at configure/build time; the CMake
 package recreates the `GMP::GMP` dependency target from `GMP_ROOT`, vcpkg, or

@@ -57,6 +57,8 @@ file(READ "${sdk_manifest_file}" sdk_manifest)
 foreach(expected
     "\"public\": \"number_xray.h\""
     "\"functionReferenceHeader\": \"xray_workbench.h\""
+    "\"catalog\": \"number-xray-api.json\""
+    "\"catalogSchemaVersion\": 1"
     "\"coverage\": \"all exported XRAY_API functions\""
     "\"versionFunction\": \"xray_version\""
     "\"abiVersionFunction\": \"xray_abi_version\""
@@ -73,6 +75,55 @@ foreach(expected
     message(FATAL_ERROR "NumberXRay SDK manifest is missing expected entry: ${expected}")
   endif()
 endforeach()
+
+set(api_catalog_file "${install_prefix}/${XRAY_INSTALL_DATADIR}/number-xray/number-xray-api.json")
+if(NOT EXISTS "${api_catalog_file}")
+  message(FATAL_ERROR "NumberXRay install smoke did not install API catalog: ${api_catalog_file}")
+endif()
+file(READ "${api_catalog_file}" api_catalog)
+foreach(expected
+    "\"schemaVersion\": 1"
+    "\"generatedFrom\": \"xray_workbench.h\""
+    "\"functionCount\":"
+    "\"name\": \"xray_bigint_add_decimal\""
+    "\"category\": \"scratch-bigint\""
+    "\"ownership\": \"caller-owned:xray_free\""
+    "\"name\": \"xray_bignum_backend_name\""
+    "\"ownership\": \"borrowed\""
+    "\"name\": \"xray_factor_solve_json\""
+    "\"name\": \"xray_benchmark_run\""
+    "\"name\": \"xray_workbench_run_json\"")
+  string(FIND "${api_catalog}" "${expected}" expected_index)
+  if(expected_index LESS 0)
+    message(FATAL_ERROR "NumberXRay API catalog is missing expected entry: ${expected}")
+  endif()
+endforeach()
+file(READ "${XRAY_SOURCE_DIR}/include/xray_workbench.h" source_header)
+string(REPLACE "\r\n" "\n" source_header "${source_header}")
+string(REPLACE "\r" "\n" source_header "${source_header}")
+string(REPLACE ";" "\\;" source_header "${source_header}")
+string(REPLACE "\n" ";" source_header_lines "${source_header}")
+set(api_count 0)
+foreach(line IN LISTS source_header_lines)
+  string(STRIP "${line}" declaration)
+  if(declaration MATCHES "^XRAY_API[ \t].*\\(")
+    string(REGEX REPLACE "^XRAY_API[ \t]+" "" signature "${declaration}")
+    string(REGEX REPLACE "\\(.*$" "" prefix "${signature}")
+    string(REGEX REPLACE ".*[ \t\\*]([A-Za-z_][A-Za-z0-9_]*)$" "\\1" name "${prefix}")
+    if(name STREQUAL prefix)
+      message(FATAL_ERROR "NumberXRay import smoke could not parse API name from: ${declaration}")
+    endif()
+    string(FIND "${api_catalog}" "\"name\": \"${name}\"" name_index)
+    if(name_index LESS 0)
+      message(FATAL_ERROR "NumberXRay API catalog is missing exported function: ${name}")
+    endif()
+    math(EXPR api_count "${api_count} + 1")
+  endif()
+endforeach()
+string(FIND "${api_catalog}" "\"functionCount\": ${api_count}" count_index)
+if(count_index LESS 0)
+  message(FATAL_ERROR "NumberXRay API catalog functionCount does not match source header count: ${api_count}")
+endif()
 
 if(XRAY_EXPECT_SHARED)
   set(shared_pkgconfig_file "${install_prefix}/${XRAY_INSTALL_LIBDIR}/pkgconfig/number-xray-shared.pc")
