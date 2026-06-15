@@ -643,6 +643,9 @@ static void test_benchmarks(void) {
       CHECK(strstr(report->results[index].detail, "featureGate=") != NULL);
       CHECK(strstr(report->results[index].detail, "gmpClue=") != NULL);
       CHECK(strstr(report->results[index].detail, "adoption=") != NULL);
+      if (strcmp(report->results[index].operation, "mul-threshold") == 0) {
+        CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+      }
       CHECK(strstr(report->results[index].adoption, "promote-candidate") != NULL ||
         strstr(report->results[index].adoption, "observe-only") != NULL ||
         strstr(report->results[index].adoption, "blocked-output-mismatch") != NULL);

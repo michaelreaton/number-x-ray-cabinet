@@ -13,6 +13,7 @@
 
 #define XRAY_BENCH_SAMPLES 5
 #define XRAY_KERNEL_SAMPLES 5
+#define XRAY_MUL_THRESHOLD_OPERAND_FAMILIES 2
 
 static volatile unsigned long long kernel_probe_sink = 0;
 
@@ -501,6 +502,7 @@ static void append_mul_threshold_probe_result(
   XrayBenchmarkReport *report,
   size_t digits,
   size_t threshold,
+  size_t operand_families,
   int parity,
   unsigned long long scratch_us,
   unsigned long long gmp_us,
@@ -524,9 +526,10 @@ static void append_mul_threshold_probe_result(
   result.passed = parity;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=mul-threshold digits=%zu threshold=%zu samples=%u scratchUs=%llu gmpUs=%llu ratio=%.3f ratioMethod=paired-median max=%.2f featureGate=runtime-threshold gmpClue=gmp-thresholds adoption=%s",
+    "op=mul-threshold digits=%zu threshold=%zu operandFamilies=%zu samples=%u scratchUs=%llu gmpUs=%llu ratio=%.3f ratioMethod=paired-median max=%.2f featureGate=runtime-threshold gmpClue=gmp-thresholds adoption=%s",
     digits,
     threshold,
+    operand_families,
     XRAY_BENCH_SAMPLES,
     result.scratch_us,
     result.gmp_us,
@@ -638,25 +641,42 @@ static void run_scratch_binary_case(XrayBenchmarkReport *report, const char *ope
 }
 
 static void run_mul_threshold_probe_case(XrayBenchmarkReport *report, size_t digits, size_t threshold) {
-  char *left_text = benchmark_decimal(digits, 5, 1);
-  char *right_text = benchmark_decimal(digits, 11, 0);
-  if (!left_text || !right_text) {
-    free(left_text);
-    free(right_text);
-    return;
-  }
+  const struct {
+    unsigned int left_seed;
+    unsigned int right_seed;
+    int left_high_lead;
+    int right_high_lead;
+  } families[XRAY_MUL_THRESHOLD_OPERAND_FAMILIES] = {
+    {5, 11, 1, 0},
+    {29, 37, 1, 1}
+  };
+
+  char *left_text[XRAY_MUL_THRESHOLD_OPERAND_FAMILIES] = {0};
+  char *right_text[XRAY_MUL_THRESHOLD_OPERAND_FAMILIES] = {0};
+  XrayScratchBigInt a[XRAY_MUL_THRESHOLD_OPERAND_FAMILIES];
+  XrayScratchBigInt b[XRAY_MUL_THRESHOLD_OPERAND_FAMILIES];
+  XrayScratchBigInt scratch_out[XRAY_MUL_THRESHOLD_OPERAND_FAMILIES];
+  mpz_t ga[XRAY_MUL_THRESHOLD_OPERAND_FAMILIES];
+  mpz_t gb[XRAY_MUL_THRESHOLD_OPERAND_FAMILIES];
+  mpz_t gout[XRAY_MUL_THRESHOLD_OPERAND_FAMILIES];
 
   unsigned int iterations = perf_iterations("mul", digits);
-  XrayScratchBigInt a, b, scratch_out;
-  xray_bigint_init(&a);
-  xray_bigint_init(&b);
-  xray_bigint_init(&scratch_out);
-  mpz_t ga, gb, gout;
-  mpz_inits(ga, gb, gout, NULL);
-  int ok = xray_bigint_set_decimal(&a, left_text) &&
-    xray_bigint_set_decimal(&b, right_text) &&
-    mpz_set_str(ga, left_text, 10) == 0 &&
-    mpz_set_str(gb, right_text, 10) == 0;
+  int ok = 1;
+  for (size_t family = 0; family < XRAY_MUL_THRESHOLD_OPERAND_FAMILIES; ++family) {
+    xray_bigint_init(&a[family]);
+    xray_bigint_init(&b[family]);
+    xray_bigint_init(&scratch_out[family]);
+    mpz_inits(ga[family], gb[family], gout[family], NULL);
+    left_text[family] = benchmark_decimal(digits, families[family].left_seed, families[family].left_high_lead);
+    right_text[family] = benchmark_decimal(digits, families[family].right_seed, families[family].right_high_lead);
+    ok = ok &&
+      left_text[family] &&
+      right_text[family] &&
+      xray_bigint_set_decimal(&a[family], left_text[family]) &&
+      xray_bigint_set_decimal(&b[family], right_text[family]) &&
+      mpz_set_str(ga[family], left_text[family], 10) == 0 &&
+      mpz_set_str(gb[family], right_text[family], 10) == 0;
+  }
 
   unsigned long long scratch_samples[XRAY_BENCH_SAMPLES] = {0};
   unsigned long long gmp_samples[XRAY_BENCH_SAMPLES] = {0};
@@ -664,38 +684,47 @@ static void run_mul_threshold_probe_case(XrayBenchmarkReport *report, size_t dig
   for (unsigned int sample = 0; sample < XRAY_BENCH_SAMPLES; ++sample) {
     unsigned long long scratch_started = xray_now_us();
     for (unsigned int index = 0; ok && index < iterations; ++index) {
-      ok = xray_bigint_mul_with_threshold(&scratch_out, &a, &b, threshold);
+      for (size_t family = 0; ok && family < XRAY_MUL_THRESHOLD_OPERAND_FAMILIES; ++family) {
+        ok = xray_bigint_mul_with_threshold(&scratch_out[family], &a[family], &b[family], threshold);
+      }
     }
     scratch_samples[sample] = xray_now_us() - scratch_started;
 
     unsigned long long gmp_started = xray_now_us();
     for (unsigned int index = 0; ok && index < iterations; ++index) {
-      mpz_mul(gout, ga, gb);
+      for (size_t family = 0; family < XRAY_MUL_THRESHOLD_OPERAND_FAMILIES; ++family) {
+        mpz_mul(gout[family], ga[family], gb[family]);
+      }
     }
     gmp_samples[sample] = xray_now_us() - gmp_started;
 
-    char *scratch_text = xray_bigint_get_decimal(&scratch_out);
-    char *gmp_text = mpz_get_str(NULL, 10, gout);
-    parity = parity && ok && scratch_text && gmp_text && strcmp(scratch_text, gmp_text) == 0;
-    free(scratch_text);
-    free(gmp_text);
+    for (size_t family = 0; family < XRAY_MUL_THRESHOLD_OPERAND_FAMILIES; ++family) {
+      char *scratch_text = xray_bigint_get_decimal(&scratch_out[family]);
+      char *gmp_text = mpz_get_str(NULL, 10, gout[family]);
+      parity = parity && ok && scratch_text && gmp_text && strcmp(scratch_text, gmp_text) == 0;
+      free(scratch_text);
+      free(gmp_text);
+    }
   }
 
   append_mul_threshold_probe_result(
     report,
     digits,
     threshold,
+    XRAY_MUL_THRESHOLD_OPERAND_FAMILIES,
     parity,
     median_samples(scratch_samples, XRAY_BENCH_SAMPLES),
     median_samples(gmp_samples, XRAY_BENCH_SAMPLES),
     median_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES));
 
-  mpz_clears(ga, gb, gout, NULL);
-  xray_bigint_clear(&a);
-  xray_bigint_clear(&b);
-  xray_bigint_clear(&scratch_out);
-  free(left_text);
-  free(right_text);
+  for (size_t family = 0; family < XRAY_MUL_THRESHOLD_OPERAND_FAMILIES; ++family) {
+    mpz_clears(ga[family], gb[family], gout[family], NULL);
+    xray_bigint_clear(&a[family]);
+    xray_bigint_clear(&b[family]);
+    xray_bigint_clear(&scratch_out[family]);
+    free(left_text[family]);
+    free(right_text[family]);
+  }
 }
 
 static void run_scratch_divmod_case(XrayBenchmarkReport *report, size_t digits) {
