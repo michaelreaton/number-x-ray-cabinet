@@ -4,7 +4,17 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if defined(_MSC_VER) && (defined(_M_IX86) || defined(_M_X64))
+#include <intrin.h>
+#define XRAY_HAS_MSVC_CARRY_INTRINSICS 1
+#else
+#define XRAY_HAS_MSVC_CARRY_INTRINSICS 0
+#endif
+
 #define XRAY_BENCH_SAMPLES 5
+#define XRAY_KERNEL_SAMPLES 5
+
+static volatile unsigned long long kernel_probe_sink = 0;
 
 static void append_result(XrayBenchmarkReport *report, const XrayBenchmarkResult *result) {
   XrayBenchmarkResult *next = (XrayBenchmarkResult *)realloc(report->results, sizeof(XrayBenchmarkResult) * (report->result_count + 1));
@@ -61,6 +71,310 @@ static double median_paired_ratio(const unsigned long long *numerator, const uns
   }
   return ratios[count / 2];
 }
+
+static void fill_kernel_u32(uint32_t *words, size_t count, uint32_t seed) {
+  uint32_t state = seed ? seed : 1U;
+  for (size_t index = 0; index < count; ++index) {
+    state = state * 1664525U + 1013904223U;
+    words[index] = state ^ (uint32_t)(index * 2654435761U);
+  }
+  if (count > 4) {
+    words[1] = 0xffffffffU;
+    words[2] = 0xffffffffU;
+    words[count / 2] ^= 0x80000000U;
+    words[count - 1] |= 0x40000000U;
+  }
+}
+
+static void pack_kernel_u64(uint64_t *out, const uint32_t *words, size_t word_count) {
+  size_t out_count = word_count / 2;
+  for (size_t index = 0; index < out_count; ++index) {
+    out[index] = (uint64_t)words[index * 2] | ((uint64_t)words[index * 2 + 1] << 32);
+  }
+}
+
+static int compare_u32_to_u64_words(
+  const uint32_t *words32,
+  uint32_t carry32,
+  const uint64_t *words64,
+  uint64_t carry64,
+  size_t word_count32) {
+  if ((carry32 ? 1U : 0U) != (carry64 ? 1U : 0U)) return 0;
+  for (size_t index = 0; index < word_count32 / 2; ++index) {
+    uint32_t low = (uint32_t)words64[index];
+    uint32_t high = (uint32_t)(words64[index] >> 32);
+    if (words32[index * 2] != low || words32[index * 2 + 1] != high) return 0;
+  }
+  return 1;
+}
+
+static uint32_t kernel_add32_scalar(uint32_t *out, const uint32_t *left, const uint32_t *right, size_t count) {
+  uint64_t carry = 0;
+  for (size_t index = 0; index < count; ++index) {
+    uint64_t sum = (uint64_t)left[index] + right[index] + carry;
+    out[index] = (uint32_t)sum;
+    carry = sum >> 32;
+  }
+  return (uint32_t)carry;
+}
+
+static uint32_t kernel_sub32_scalar(uint32_t *out, const uint32_t *left, const uint32_t *right, size_t count) {
+  uint64_t borrow = 0;
+  for (size_t index = 0; index < count; ++index) {
+    uint64_t lhs = left[index];
+    uint64_t rhs = (uint64_t)right[index] + borrow;
+    out[index] = (uint32_t)(lhs - rhs);
+    borrow = lhs < rhs;
+  }
+  return (uint32_t)borrow;
+}
+
+static uint64_t kernel_add64_scalar(uint64_t *out, const uint64_t *left, const uint64_t *right, size_t count) {
+  uint64_t carry = 0;
+  for (size_t index = 0; index < count; ++index) {
+    uint64_t sum = left[index] + right[index];
+    uint64_t carry_from_sum = sum < left[index];
+    uint64_t with_carry = sum + carry;
+    out[index] = with_carry;
+    carry = carry_from_sum || (with_carry < sum);
+  }
+  return carry;
+}
+
+static uint64_t kernel_sub64_scalar(uint64_t *out, const uint64_t *left, const uint64_t *right, size_t count) {
+  uint64_t borrow = 0;
+  for (size_t index = 0; index < count; ++index) {
+    uint64_t subtrahend = right[index] + borrow;
+    uint64_t borrow_from_add = subtrahend < right[index];
+    out[index] = left[index] - subtrahend;
+    borrow = borrow_from_add || (left[index] < subtrahend);
+  }
+  return borrow;
+}
+
+#if XRAY_HAS_MSVC_CARRY_INTRINSICS
+static uint32_t kernel_add32_intrinsic(uint32_t *out, const uint32_t *left, const uint32_t *right, size_t count) {
+  unsigned char carry = 0;
+  for (size_t index = 0; index < count; ++index) {
+    unsigned int word = 0;
+    carry = _addcarry_u32(carry, left[index], right[index], &word);
+    out[index] = (uint32_t)word;
+  }
+  return (uint32_t)carry;
+}
+
+static uint32_t kernel_sub32_intrinsic(uint32_t *out, const uint32_t *left, const uint32_t *right, size_t count) {
+  unsigned char borrow = 0;
+  for (size_t index = 0; index < count; ++index) {
+    unsigned int word = 0;
+    borrow = _subborrow_u32(borrow, left[index], right[index], &word);
+    out[index] = (uint32_t)word;
+  }
+  return (uint32_t)borrow;
+}
+#endif
+
+static unsigned int kernel_iterations(size_t bits) {
+  if (bits <= 2048) return 220000;
+  if (bits <= 16384) return 26000;
+  return 6000;
+}
+
+static void append_kernel_probe_result(
+  XrayBenchmarkReport *report,
+  const char *name,
+  const char *operation,
+  size_t bits,
+  int parity,
+  unsigned long long candidate_us,
+  unsigned long long baseline_us,
+  double paired_ratio,
+  const char *candidate,
+  const char *baseline,
+  const char *feature_gate,
+  const char *gmp_clue) {
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "%s", name);
+  snprintf(result.category, sizeof(result.category), "kernel-probe");
+  snprintf(result.operation, sizeof(result.operation), "%s", operation);
+  result.digits = (bits * 30103U + 99999U) / 100000U;
+  result.scratch_us = candidate_us ? candidate_us : 1;
+  result.gmp_us = baseline_us ? baseline_us : 1;
+  result.speed_ratio = paired_ratio > 0.0 ? paired_ratio : (double)result.scratch_us / (double)result.gmp_us;
+  result.max_allowed_speed_ratio = 0.98;
+  result.parity_verified = parity;
+  result.replacement_ready = parity && result.speed_ratio <= result.max_allowed_speed_ratio;
+  snprintf(result.adoption, sizeof(result.adoption), "%s",
+    !parity ? "blocked-output-mismatch" : (result.replacement_ready ? "promote-candidate" : "observe-only"));
+  snprintf(result.status, sizeof(result.status), "%s",
+    !parity ? "mismatch" : (result.replacement_ready ? "candidate-faster" : (result.speed_ratio < 1.0 ? "candidate-no-margin" : "baseline-faster")));
+  result.passed = 1;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  snprintf(result.detail, sizeof(result.detail),
+    "op=%s bits=%zu samples=%u candidate=%s baseline=%s candUs=%llu baseUs=%llu ratio=%.3f ratioMethod=paired-median max=%.2f featureGate=%s gmpClue=%s adoption=%s",
+    operation,
+    bits,
+    XRAY_KERNEL_SAMPLES,
+    candidate,
+    baseline,
+    result.scratch_us,
+    result.gmp_us,
+    result.speed_ratio,
+    result.max_allowed_speed_ratio,
+    feature_gate,
+    gmp_clue,
+    result.adoption);
+  append_result(report, &result);
+}
+
+static void run_kernel_probe64_case(XrayBenchmarkReport *report, const char *operation, size_t bits) {
+  size_t limbs32 = bits / 32U;
+  size_t limbs64 = bits / 64U;
+  uint32_t *left32 = (uint32_t *)calloc(limbs32, sizeof(uint32_t));
+  uint32_t *right32 = (uint32_t *)calloc(limbs32, sizeof(uint32_t));
+  uint32_t *baseline32 = (uint32_t *)calloc(limbs32, sizeof(uint32_t));
+  uint32_t *check32 = (uint32_t *)calloc(limbs32, sizeof(uint32_t));
+  uint64_t *left64 = (uint64_t *)calloc(limbs64, sizeof(uint64_t));
+  uint64_t *right64 = (uint64_t *)calloc(limbs64, sizeof(uint64_t));
+  uint64_t *candidate64 = (uint64_t *)calloc(limbs64, sizeof(uint64_t));
+  if (!left32 || !right32 || !baseline32 || !check32 || !left64 || !right64 || !candidate64) {
+    free(left32); free(right32); free(baseline32); free(check32); free(left64); free(right64); free(candidate64);
+    return;
+  }
+
+  fill_kernel_u32(left32, limbs32, 0x159a55e5U);
+  fill_kernel_u32(right32, limbs32, 0x5eed1234U);
+  if (strcmp(operation, "sub-carry") == 0) {
+    for (size_t index = 0; index < limbs32; ++index) {
+      left32[index] |= right32[index] & 0x7fffffffU;
+    }
+  }
+  pack_kernel_u64(left64, left32, limbs32);
+  pack_kernel_u64(right64, right32, limbs32);
+
+  uint32_t baseline_carry = 0;
+  uint64_t candidate_carry = 0;
+  if (strcmp(operation, "add-carry") == 0) {
+    baseline_carry = kernel_add32_scalar(baseline32, left32, right32, limbs32);
+    candidate_carry = kernel_add64_scalar(candidate64, left64, right64, limbs64);
+  } else {
+    baseline_carry = kernel_sub32_scalar(baseline32, left32, right32, limbs32);
+    candidate_carry = kernel_sub64_scalar(candidate64, left64, right64, limbs64);
+  }
+  int parity = compare_u32_to_u64_words(baseline32, baseline_carry, candidate64, candidate_carry, limbs32);
+
+  unsigned int iterations = kernel_iterations(bits);
+  unsigned long long candidate_samples[XRAY_KERNEL_SAMPLES] = {0};
+  unsigned long long baseline_samples[XRAY_KERNEL_SAMPLES] = {0};
+  for (unsigned int sample = 0; sample < XRAY_KERNEL_SAMPLES; ++sample) {
+    unsigned long long baseline_started = xray_now_us();
+    for (unsigned int index = 0; index < iterations; ++index) {
+      if (strcmp(operation, "add-carry") == 0) baseline_carry = kernel_add32_scalar(check32, left32, right32, limbs32);
+      else baseline_carry = kernel_sub32_scalar(check32, left32, right32, limbs32);
+      kernel_probe_sink ^= (unsigned long long)check32[(index + sample) % limbs32] ^ baseline_carry;
+    }
+    baseline_samples[sample] = xray_now_us() - baseline_started;
+
+    unsigned long long candidate_started = xray_now_us();
+    for (unsigned int index = 0; index < iterations; ++index) {
+      if (strcmp(operation, "add-carry") == 0) candidate_carry = kernel_add64_scalar(candidate64, left64, right64, limbs64);
+      else candidate_carry = kernel_sub64_scalar(candidate64, left64, right64, limbs64);
+      kernel_probe_sink ^= candidate64[(index + sample) % limbs64] ^ candidate_carry;
+    }
+    candidate_samples[sample] = xray_now_us() - candidate_started;
+  }
+
+  char name[64];
+  snprintf(name, sizeof(name), "kernel %s 64-bit limbs %zu-bit", operation, bits);
+  append_kernel_probe_result(
+    report,
+    name,
+    operation,
+    bits,
+    parity,
+    median_samples(candidate_samples, XRAY_KERNEL_SAMPLES),
+    median_samples(baseline_samples, XRAY_KERNEL_SAMPLES),
+    median_paired_ratio(candidate_samples, baseline_samples, XRAY_KERNEL_SAMPLES),
+    "scalar64-limb",
+    "scalar32-limb",
+    "portable-c",
+    "gmp64limbs");
+
+  free(left32); free(right32); free(baseline32); free(check32); free(left64); free(right64); free(candidate64);
+}
+
+#if XRAY_HAS_MSVC_CARRY_INTRINSICS
+static void run_kernel_probe_intrinsic_case(XrayBenchmarkReport *report, const char *operation, size_t bits) {
+  size_t limbs = bits / 32U;
+  uint32_t *left = (uint32_t *)calloc(limbs, sizeof(uint32_t));
+  uint32_t *right = (uint32_t *)calloc(limbs, sizeof(uint32_t));
+  uint32_t *baseline = (uint32_t *)calloc(limbs, sizeof(uint32_t));
+  uint32_t *candidate = (uint32_t *)calloc(limbs, sizeof(uint32_t));
+  if (!left || !right || !baseline || !candidate) {
+    free(left); free(right); free(baseline); free(candidate);
+    return;
+  }
+
+  fill_kernel_u32(left, limbs, 0x243f6a88U);
+  fill_kernel_u32(right, limbs, 0x85a308d3U);
+  if (strcmp(operation, "sub-carry") == 0) {
+    for (size_t index = 0; index < limbs; ++index) {
+      left[index] |= right[index] & 0x7fffffffU;
+    }
+  }
+
+  uint32_t baseline_carry = 0;
+  uint32_t candidate_carry = 0;
+  if (strcmp(operation, "add-carry") == 0) {
+    baseline_carry = kernel_add32_scalar(baseline, left, right, limbs);
+    candidate_carry = kernel_add32_intrinsic(candidate, left, right, limbs);
+  } else {
+    baseline_carry = kernel_sub32_scalar(baseline, left, right, limbs);
+    candidate_carry = kernel_sub32_intrinsic(candidate, left, right, limbs);
+  }
+  int parity = baseline_carry == candidate_carry && memcmp(baseline, candidate, sizeof(uint32_t) * limbs) == 0;
+
+  unsigned int iterations = kernel_iterations(bits);
+  unsigned long long candidate_samples[XRAY_KERNEL_SAMPLES] = {0};
+  unsigned long long baseline_samples[XRAY_KERNEL_SAMPLES] = {0};
+  for (unsigned int sample = 0; sample < XRAY_KERNEL_SAMPLES; ++sample) {
+    unsigned long long baseline_started = xray_now_us();
+    for (unsigned int index = 0; index < iterations; ++index) {
+      if (strcmp(operation, "add-carry") == 0) baseline_carry = kernel_add32_scalar(baseline, left, right, limbs);
+      else baseline_carry = kernel_sub32_scalar(baseline, left, right, limbs);
+      kernel_probe_sink ^= (unsigned long long)baseline[(index + sample) % limbs] ^ baseline_carry;
+    }
+    baseline_samples[sample] = xray_now_us() - baseline_started;
+
+    unsigned long long candidate_started = xray_now_us();
+    for (unsigned int index = 0; index < iterations; ++index) {
+      if (strcmp(operation, "add-carry") == 0) candidate_carry = kernel_add32_intrinsic(candidate, left, right, limbs);
+      else candidate_carry = kernel_sub32_intrinsic(candidate, left, right, limbs);
+      kernel_probe_sink ^= (unsigned long long)candidate[(index + sample) % limbs] ^ candidate_carry;
+    }
+    candidate_samples[sample] = xray_now_us() - candidate_started;
+  }
+
+  char name[64];
+  snprintf(name, sizeof(name), "kernel %s MSVC carry %zu-bit", operation, bits);
+  append_kernel_probe_result(
+    report,
+    name,
+    operation,
+    bits,
+    parity,
+    median_samples(candidate_samples, XRAY_KERNEL_SAMPLES),
+    median_samples(baseline_samples, XRAY_KERNEL_SAMPLES),
+    median_paired_ratio(candidate_samples, baseline_samples, XRAY_KERNEL_SAMPLES),
+    strcmp(operation, "add-carry") == 0 ? "_addcarry_u32" : "_subborrow_u32",
+    "scalar32-limb",
+    "msvc-x86-intrinsic",
+    "gmpCpuKernelsLocalWin");
+
+  free(left); free(right); free(baseline); free(candidate);
+}
+#endif
 
 static void run_factor_case(XrayBenchmarkReport *report, const char *name, const char *input, const char *expected_status, unsigned long budget_ms) {
   XrayBenchmarkResult result;
@@ -400,6 +714,18 @@ static void run_scratch_bigint_gates(XrayBenchmarkReport *report) {
   }
 }
 
+static void run_kernel_probes(XrayBenchmarkReport *report) {
+  const size_t bit_sizes[] = {2048, 16384};
+  for (size_t index = 0; index < sizeof(bit_sizes) / sizeof(bit_sizes[0]); ++index) {
+    run_kernel_probe64_case(report, "add-carry", bit_sizes[index]);
+    run_kernel_probe64_case(report, "sub-carry", bit_sizes[index]);
+#if XRAY_HAS_MSVC_CARRY_INTRINSICS
+    run_kernel_probe_intrinsic_case(report, "add-carry", bit_sizes[index]);
+    run_kernel_probe_intrinsic_case(report, "sub-carry", bit_sizes[index]);
+#endif
+  }
+}
+
 int xray_benchmark_run(XrayBenchmarkReport *report) {
   if (!report) return 0;
   memset(report, 0, sizeof(*report));
@@ -415,6 +741,7 @@ int xray_benchmark_run(XrayBenchmarkReport *report) {
   run_cyclo_case(report, "Phi_3(10)", 3, "10", "111");
   run_cyclo_case(report, "Phi_5(2)", 5, "2", "31");
   run_cyclo_case(report, "Phi_8(2)", 8, "2", "17");
+  run_kernel_probes(report);
   run_scratch_bigint_gates(report);
 
   report->elapsed_ms = xray_now_ms() - started;

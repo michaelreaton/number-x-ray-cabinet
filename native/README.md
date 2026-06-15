@@ -59,6 +59,8 @@ Benchmark JSON exposes that rule per operation-size row:
 
 Rows with parity but without `replacementReady` are useful migration evidence, but the production path must remain GMP-backed.
 
+The benchmark also emits `kernel-probe` rows. These are not production replacements; they are local proof drills for GMP-inspired primitive choices. A probe row compares a candidate carry-chain kernel to a scalar baseline using the same-run paired median ratio, records the CPU/compiler feature gate, and labels the candidate `promote-candidate`, `observe-only`, or `blocked-output-mismatch`. This is the path for AVX/ADX/BMI2 work: no primitive moves into the scratch bigint layer until the GUI benchmark can show exact parity and a local speed win.
+
 ## GMP Source Clues
 
 GMP is used as an oracle and as a design map, not as copied implementation. Notes from the official GMP 6.3.0 source and manual:
@@ -68,6 +70,8 @@ GMP is used as an oracle and as a design map, not as copied implementation. Note
 - GMP keeps CPU-family-specific `mpn/x86_64` kernels and tuned thresholds for Broadwell/Skylake-class chips.
 - GMP's tuned Skylake/Broadwell thresholds move from basecase multiplication to Toom around 26 limbs, then to larger Toom/FFT stages later.
 - AVX/ADX/BMI2 ideas must be proven on this laptop with local parity tests and paired benchmark ratios before adoption.
+
+Current native probes test that first clue directly by comparing exact 64-bit limb add/sub carry chains against exact 32-bit limb carry chains for the same bit widths. On MSVC/x86 builds they also test `_addcarry_u32` and `_subborrow_u32` against the scalar 32-bit baseline, because previous carry-intrinsic experiments were noisy and must remain evidence-only until they win reproducibly.
 
 Primary references: [GMP multiplication algorithms](https://gmplib.org/manual/Multiplication-Algorithms.html), [GMP FFT multiplication](https://gmplib.org/manual/FFT-Multiplication.html), and the official GMP 6.3.0 source tarball from [gmplib.org](https://gmplib.org/download/gmp/gmp-6.3.0.tar.xz).
 

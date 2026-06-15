@@ -459,6 +459,7 @@ static void test_benchmarks(void) {
   CHECK(report->result_count >= 32);
   CHECK(report->passed_count == report->result_count);
   size_t scratch_rows = 0;
+  size_t kernel_rows = 0;
   size_t replacement_ready_rows = 0;
   size_t oracle_only_rows = 0;
   size_t blocked_rows = 0;
@@ -477,12 +478,26 @@ static void test_benchmarks(void) {
       if (strcmp(adoption, "allowed") == 0) replacement_ready_rows++;
       else if (strcmp(adoption, "oracle-only") == 0) oracle_only_rows++;
       else blocked_rows++;
+    } else if (strcmp(report->results[index].category, "kernel-probe") == 0) {
+      kernel_rows++;
+      CHECK(report->results[index].passed);
+      CHECK(report->results[index].scratch_us > 0);
+      CHECK(report->results[index].gmp_us > 0);
+      CHECK(report->results[index].speed_ratio > 0.0);
+      CHECK(report->results[index].max_allowed_speed_ratio == 0.98);
+      CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
+      CHECK(strstr(report->results[index].detail, "featureGate=") != NULL);
+      CHECK(strstr(report->results[index].detail, "gmpClue=") != NULL);
+      CHECK(strstr(report->results[index].adoption, "promote-candidate") != NULL ||
+        strstr(report->results[index].adoption, "observe-only") != NULL ||
+        strstr(report->results[index].adoption, "blocked-output-mismatch") != NULL);
     }
   }
   XrayBenchmarkResult mismatch;
   memset(&mismatch, 0, sizeof(mismatch));
   CHECK(strcmp(xray_scratch_adoption_for_result(&mismatch), "blocked-output-mismatch") == 0);
   CHECK(scratch_rows >= 24);
+  CHECK(kernel_rows >= 4);
   CHECK(report->scratch_count == scratch_rows);
   CHECK(report->replacement_ready_count == replacement_ready_rows);
   CHECK(report->oracle_only_count == oracle_only_rows);
@@ -492,6 +507,7 @@ static void test_benchmarks(void) {
   CHECK(json != NULL);
   CHECK(strstr(json, "\"replacementReady\"") != NULL);
   CHECK(strstr(json, "\"cpu\"") != NULL);
+  CHECK(strstr(json, "kernel-probe") != NULL);
   CHECK(strstr(json, "\"avx\"") != NULL);
   CHECK(strstr(json, "\"avx2\"") != NULL);
   CHECK(strstr(json, "\"scratchRows\"") != NULL);
@@ -508,6 +524,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "factor-benchmark") != NULL);
   CHECK(strstr(tsv, "cyclotomic-benchmark") != NULL);
   CHECK(strstr(tsv, "scratch-vs-gmp") != NULL);
+  CHECK(strstr(tsv, "kernel-probe") != NULL);
+  CHECK(strstr(tsv, "gmpClue=") != NULL);
   CHECK(strstr(tsv, "replacement-ready") != NULL || strstr(tsv, "parity") != NULL);
   free(tsv);
 
@@ -525,6 +543,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_json, "\"cpu\"") != NULL);
   CHECK(strstr(benchmark_json, "\"scratchRows\"") != NULL);
   CHECK(strstr(benchmark_tsv, "scratch-vs-gmp") != NULL);
+  CHECK(strstr(benchmark_tsv, "kernel-probe") != NULL);
   CHECK(strstr(benchmark_tsv, "speedRatio") != NULL);
   CHECK(strstr(benchmark_tsv, "ratioMethod=paired-median") != NULL);
   CHECK(strstr(cpu_text, "CPU:") != NULL);
