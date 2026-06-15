@@ -676,14 +676,48 @@ static int signed_mul_unsigned_threshold(
 static int add_scaled_unsigned(XrayScratchBigInt *out, const XrayScratchBigInt *value, uint64_t scale) {
   if (!out || !value) return 0;
   if (value->count == 0 || scale == 0) return 1;
-  XrayScratchBigInt scaled, sum;
-  xray_bigint_init(&scaled);
-  xray_bigint_init(&sum);
-  int ok = xray_bigint_copy(&scaled, value) && mul_add_small_inplace(&scaled, scale, 0) && xray_bigint_add(&sum, out, &scaled);
-  if (ok) ok = xray_bigint_copy(out, &sum);
-  xray_bigint_clear(&scaled);
-  xray_bigint_clear(&sum);
-  return ok;
+  size_t needed = out->count > value->count ? out->count : value->count;
+  if (!reserve_limbs(out, needed + 1U)) return 0;
+  if (out->count < value->count) {
+    memset(out->limbs + out->count, 0, sizeof(uint64_t) * (value->count - out->count));
+    out->count = value->count;
+  }
+
+  if (scale == 1) {
+    unsigned char carry = 0;
+    for (size_t index = 0; index < value->count; ++index) {
+      carry = add_with_carry_u64(out->limbs[index], value->limbs[index], carry, &out->limbs[index]);
+    }
+    size_t position = value->count;
+    while (carry) {
+      if (position == out->count) {
+        out->limbs[out->count++] = 1;
+        carry = 0;
+      } else {
+        carry = add_with_carry_u64(out->limbs[position], 0, carry, &out->limbs[position]);
+        position++;
+      }
+    }
+  } else {
+    uint64_t carry = 0;
+    for (size_t index = 0; index < value->count; ++index) {
+      carry = mul_add_word(out->limbs[index], value->limbs[index], scale, carry, &out->limbs[index]);
+    }
+    size_t position = value->count;
+    while (carry) {
+      if (position == out->count) {
+        out->limbs[out->count++] = carry;
+        carry = 0;
+      } else {
+        uint64_t current = out->limbs[position] + carry;
+        out->limbs[position] = current;
+        carry = current < carry;
+        position++;
+      }
+    }
+  }
+  normalize(out);
+  return 1;
 }
 
 static int eval_toom3_positive(
