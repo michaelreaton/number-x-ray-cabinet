@@ -78,6 +78,23 @@ static char *gui_strdup(const char *text) {
   return copy;
 }
 
+static void benchmark_display_operation(const XrayBenchmarkResult *row, char *out, size_t out_size) {
+  if (!row || !out || out_size == 0) return;
+  const char *operation = row->operation[0] ? row->operation : row->name;
+  if (strcmp(row->operation, "mul-threshold") == 0) {
+    const char *threshold = strstr(row->detail, "threshold=");
+    if (threshold) {
+      char *end = NULL;
+      unsigned long limbs = strtoul(threshold + strlen("threshold="), &end, 10);
+      if (end && end != threshold + strlen("threshold=")) {
+        snprintf(out, out_size, "mul threshold %lu limbs", limbs);
+        return;
+      }
+    }
+  }
+  snprintf(out, out_size, "%s", operation);
+}
+
 static char *format_benchmark_report_text(const XrayBenchmarkReport *report) {
   if (!report || !report->result_count) {
     return gui_strdup(
@@ -159,9 +176,11 @@ static char *format_benchmark_report_text(const XrayBenchmarkReport *report) {
   for (size_t index = 0; index < report->result_count && used < capacity; ++index) {
     const XrayBenchmarkResult *row = &report->results[index];
     if (strcmp(row->category, "kernel-probe") != 0) continue;
+    char operation_label[64];
+    benchmark_display_operation(row, operation_label, sizeof(operation_label));
     used += (size_t)snprintf(text + used, capacity - used,
       "%-30s %-8zu %-18s %-20s %7.2f %3zu/%-4zu\n",
-      row->operation,
+      operation_label,
       row->digits,
       row->status,
       row->adoption,
