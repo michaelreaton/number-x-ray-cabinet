@@ -326,6 +326,43 @@ XRAY_API char *xray_bigint_get_decimal_pair_writer_probe(const XrayScratchBigInt
 XRAY_API char *xray_bigint_get_decimal_folded_pair_writer_probe(const XrayScratchBigInt *value);
 
 /**
+ * Format value through the pair-table writer with a mixed 4+4 digit split.
+ *
+ * The caller owns the returned string and must release it with xray_free().
+ * This diagnostic route uses production chunks and changes only text emission
+ * for benchmark comparisons.
+ */
+XRAY_API char *xray_bigint_get_decimal_mixed_pair_writer_probe(const XrayScratchBigInt *value);
+
+/**
+ * Format value through the folded chunk route using plain 64-bit division.
+ *
+ * The caller owns the returned string and must release it with xray_free().
+ * This diagnostic route tests whether constant reciprocal reduction or native
+ * division is faster for folded decimal carry propagation on the local CPU.
+ */
+XRAY_API char *xray_bigint_get_decimal_folded_hwdiv_probe(const XrayScratchBigInt *value);
+
+/**
+ * Format value through folded-hwdiv chunks plus the mixed pair writer.
+ *
+ * The caller owns the returned string and must release it with xray_free().
+ * This diagnostic route combines the folded-hwdiv chunk converter with the
+ * mixed two-pair text emitter so benchmarks can isolate compound effects.
+ */
+XRAY_API char *xray_bigint_get_decimal_folded_hwdiv_mixed_pair_probe(const XrayScratchBigInt *value);
+
+/**
+ * Format value by repeatedly dividing a copy by 10^19.
+ *
+ * The caller owns the returned string and must release it with xray_free().
+ * This diagnostic route mirrors the small/basecase shape used by MPIR/GMP's
+ * mpn_get_str path: divide by the largest decimal power that fits one limb,
+ * collect remainders, then emit padded chunks.
+ */
+XRAY_API char *xray_bigint_get_decimal_divide_1e19_probe(const XrayScratchBigInt *value);
+
+/**
  * Format value through the 19-digit decimal chunk probe route.
  *
  * The caller owns the returned string and must release it with xray_free().

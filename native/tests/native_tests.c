@@ -304,6 +304,10 @@ static void test_scratch_bigint_oracle(void) {
     char *roundtrip_folded = xray_bigint_get_decimal_folded_probe(&a);
     char *roundtrip_pair = xray_bigint_get_decimal_pair_writer_probe(&a);
     char *roundtrip_folded_pair = xray_bigint_get_decimal_folded_pair_writer_probe(&a);
+    char *roundtrip_mixed_pair = xray_bigint_get_decimal_mixed_pair_writer_probe(&a);
+    char *roundtrip_folded_hwdiv = xray_bigint_get_decimal_folded_hwdiv_probe(&a);
+    char *roundtrip_folded_hwdiv_mixed = xray_bigint_get_decimal_folded_hwdiv_mixed_pair_probe(&a);
+    char *roundtrip_divide_1e19 = xray_bigint_get_decimal_divide_1e19_probe(&a);
     char *roundtrip_wide = xray_bigint_get_decimal_wide_probe(&a);
     char *roundtrip_oracle = mpz_get_str(NULL, 10, ga);
     CHECK(roundtrip_text != NULL);
@@ -311,6 +315,10 @@ static void test_scratch_bigint_oracle(void) {
     CHECK(roundtrip_folded != NULL);
     CHECK(roundtrip_pair != NULL);
     CHECK(roundtrip_folded_pair != NULL);
+    CHECK(roundtrip_mixed_pair != NULL);
+    CHECK(roundtrip_folded_hwdiv != NULL);
+    CHECK(roundtrip_folded_hwdiv_mixed != NULL);
+    CHECK(roundtrip_divide_1e19 != NULL);
     CHECK(roundtrip_wide != NULL);
     CHECK(roundtrip_oracle != NULL);
     CHECK(strcmp(roundtrip_text, roundtrip_oracle) == 0);
@@ -318,6 +326,10 @@ static void test_scratch_bigint_oracle(void) {
     CHECK(strcmp(roundtrip_folded, roundtrip_oracle) == 0);
     CHECK(strcmp(roundtrip_pair, roundtrip_oracle) == 0);
     CHECK(strcmp(roundtrip_folded_pair, roundtrip_oracle) == 0);
+    CHECK(strcmp(roundtrip_mixed_pair, roundtrip_oracle) == 0);
+    CHECK(strcmp(roundtrip_folded_hwdiv, roundtrip_oracle) == 0);
+    CHECK(strcmp(roundtrip_folded_hwdiv_mixed, roundtrip_oracle) == 0);
+    CHECK(strcmp(roundtrip_divide_1e19, roundtrip_oracle) == 0);
     CHECK(strcmp(roundtrip_wide, roundtrip_oracle) == 0);
     free(roundtrip_input);
     free(roundtrip_text);
@@ -325,6 +337,10 @@ static void test_scratch_bigint_oracle(void) {
     free(roundtrip_folded);
     free(roundtrip_pair);
     free(roundtrip_folded_pair);
+    free(roundtrip_mixed_pair);
+    free(roundtrip_folded_hwdiv);
+    free(roundtrip_folded_hwdiv_mixed);
+    free(roundtrip_divide_1e19);
     free(roundtrip_wide);
     free(roundtrip_oracle);
   }
@@ -1182,6 +1198,14 @@ static void test_benchmarks(void) {
   int saw_format_wide1000_probe = 0;
   int saw_format_wide4096_probe = 0;
   int saw_format_wide8192_probe = 0;
+  int saw_format_mixed_writer_probe = 0;
+  int saw_format_folded_hwdiv_probe = 0;
+  int saw_format_hwdiv_mixed_probe = 0;
+  int saw_format_divide_1e19_probe = 0;
+  int saw_format_strategy1000_probe = 0;
+  int saw_format_strategy4096_probe = 0;
+  int saw_format_strategy8192_probe = 0;
+  int saw_format_strategy16384_probe = 0;
   int saw_square_karatsuba_vs_mul_probe = 0;
   int saw_square_karatsuba_vs_gmp_probe = 0;
   int saw_toom3_probe = 0;
@@ -1414,6 +1438,44 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "featureGate=decimal-format-wide") != NULL);
         CHECK(strstr(report->results[index].detail, "operandFamilies=1") != NULL);
       }
+      if (strcmp(report->results[index].operation, "format-mixed-writer") == 0 ||
+          strcmp(report->results[index].operation, "format-folded-hwdiv") == 0 ||
+          strcmp(report->results[index].operation, "format-hwdiv-mixed") == 0 ||
+          strcmp(report->results[index].operation, "format-divide-1e19") == 0) {
+        if (report->results[index].digits == 1000) saw_format_strategy1000_probe = 1;
+        else if (report->results[index].digits == 4096) saw_format_strategy4096_probe = 1;
+        else if (report->results[index].digits == 8192) saw_format_strategy8192_probe = 1;
+        else if (report->results[index].digits == 16384) saw_format_strategy16384_probe = 1;
+        else CHECK(0);
+        CHECK(strstr(report->results[index].detail, "baseline=current-scratch-format") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=1") != NULL);
+        if (strcmp(report->results[index].operation, "format-mixed-writer") == 0) {
+          saw_format_mixed_writer_probe = 1;
+          CHECK(strstr(report->results[index].detail, "mode=mixed-production-chunks") != NULL);
+          CHECK(strstr(report->results[index].detail, "chunkDigits=9") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=decimal-mixed-pair-writer") != NULL);
+          CHECK(strstr(report->results[index].detail, "featureGate=decimal-format-mixed-writer") != NULL);
+        } else if (strcmp(report->results[index].operation, "format-folded-hwdiv") == 0) {
+          saw_format_folded_hwdiv_probe = 1;
+          CHECK(strstr(report->results[index].detail, "mode=folded-direct128") != NULL);
+          CHECK(strstr(report->results[index].detail, "chunkDigits=9") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=decimal-folded-hwdiv") != NULL);
+          CHECK(strstr(report->results[index].detail, "featureGate=decimal-format-folded-hwdiv") != NULL);
+        } else if (strcmp(report->results[index].operation, "format-hwdiv-mixed") == 0) {
+          saw_format_hwdiv_mixed_probe = 1;
+          CHECK(strstr(report->results[index].detail, "mode=folded-direct128-mixed") != NULL);
+          CHECK(strstr(report->results[index].detail, "chunkDigits=9") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=decimal-folded-hwdiv-mixed") != NULL);
+          CHECK(strstr(report->results[index].detail, "featureGate=decimal-format-hwdiv-mixed") != NULL);
+        } else {
+          saw_format_divide_1e19_probe = 1;
+          CHECK(strstr(report->results[index].detail, "mode=divide-copy-by-1e19") != NULL);
+          CHECK(strstr(report->results[index].detail, "chunkDigits=19") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19") != NULL);
+          CHECK(strstr(report->results[index].detail, "featureGate=decimal-format-divide-1e19") != NULL);
+          CHECK(strstr(report->results[index].detail, "gmpClue=mpn_sb_get_str-largest-decimal-power") != NULL);
+        }
+      }
       if (strcmp(report->results[index].operation, "square-vs-mul") == 0) {
         saw_square_vs_mul_probe = 1;
         CHECK(strstr(report->results[index].detail, "routeCandidate=unrouted") != NULL);
@@ -1620,6 +1682,14 @@ static void test_benchmarks(void) {
   CHECK(saw_format_wide1000_probe);
   CHECK(saw_format_wide4096_probe);
   CHECK(saw_format_wide8192_probe);
+  CHECK(saw_format_mixed_writer_probe);
+  CHECK(saw_format_folded_hwdiv_probe);
+  CHECK(saw_format_hwdiv_mixed_probe);
+  CHECK(saw_format_divide_1e19_probe);
+  CHECK(saw_format_strategy1000_probe);
+  CHECK(saw_format_strategy4096_probe);
+  CHECK(saw_format_strategy8192_probe);
+  CHECK(saw_format_strategy16384_probe);
   CHECK(saw_square_karatsuba_vs_mul_probe);
   CHECK(saw_square_karatsuba_vs_gmp_probe);
   CHECK(saw_toom3_probe);
@@ -1711,6 +1781,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "format-folded") != NULL);
   CHECK(strstr(json, "format-pair-writer") != NULL);
   CHECK(strstr(json, "format-wide") != NULL);
+  CHECK(strstr(json, "format-mixed-writer") != NULL);
+  CHECK(strstr(json, "format-folded-hwdiv") != NULL);
+  CHECK(strstr(json, "format-hwdiv-mixed") != NULL);
+  CHECK(strstr(json, "format-divide-1e19") != NULL);
   CHECK(strstr(json, "\"operation\":\"square\"") != NULL);
   CHECK(strstr(json, "square-vs-mul") != NULL);
   CHECK(strstr(json, "square-karatsuba-vs-mul") != NULL);
@@ -1749,6 +1823,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "format-folded") != NULL);
   CHECK(strstr(tsv, "format-pair-writer") != NULL);
   CHECK(strstr(tsv, "format-wide") != NULL);
+  CHECK(strstr(tsv, "format-mixed-writer") != NULL);
+  CHECK(strstr(tsv, "format-folded-hwdiv") != NULL);
+  CHECK(strstr(tsv, "format-hwdiv-mixed") != NULL);
+  CHECK(strstr(tsv, "format-divide-1e19") != NULL);
   CHECK(strstr(tsv, "square") != NULL);
   CHECK(strstr(tsv, "square-vs-mul") != NULL);
   CHECK(strstr(tsv, "square-karatsuba-vs-mul") != NULL);
@@ -1806,6 +1884,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "format-folded") != NULL);
   CHECK(strstr(benchmark_tsv, "format-pair-writer") != NULL);
   CHECK(strstr(benchmark_tsv, "format-wide") != NULL);
+  CHECK(strstr(benchmark_tsv, "format-mixed-writer") != NULL);
+  CHECK(strstr(benchmark_tsv, "format-folded-hwdiv") != NULL);
+  CHECK(strstr(benchmark_tsv, "format-hwdiv-mixed") != NULL);
+  CHECK(strstr(benchmark_tsv, "format-divide-1e19") != NULL);
   CHECK(strstr(benchmark_tsv, "square") != NULL);
   CHECK(strstr(benchmark_tsv, "square-vs-mul") != NULL);
   CHECK(strstr(benchmark_tsv, "square-karatsuba-vs-mul") != NULL);
@@ -1851,6 +1933,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "format-folded") != NULL);
   CHECK(strstr(benchmark_frontier, "format-pair-writer") != NULL);
   CHECK(strstr(benchmark_frontier, "format-wide") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-mixed-writer") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-folded-hwdiv") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-hwdiv-mixed") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-divide-1e19") != NULL);
   CHECK(strstr(benchmark_frontier, "leaf=64") != NULL);
   CHECK(strstr(benchmark_frontier, "base=") != NULL);
 #if defined(_MSC_VER) && defined(_M_X64)
