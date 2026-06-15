@@ -795,7 +795,7 @@ static void test_benchmarks(void) {
         saw_mul_unroll4_vs_scratch_probe = 1;
         CHECK(strstr(report->results[index].detail, "leafThreshold=") != NULL);
         CHECK(strstr(report->results[index].detail, "candidate=_umul128+_addcarry_u64-unroll4-full") != NULL);
-        CHECK(strstr(report->results[index].detail, "baseline=current-scratch-mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=scalar-threshold-mul") != NULL);
         CHECK(strstr(report->results[index].detail, "featureGate=msvc-x64-full-mul-schedule") != NULL);
         CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
       }

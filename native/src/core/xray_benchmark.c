@@ -1047,7 +1047,7 @@ static void append_mul_unroll4_vs_scratch_probe_result(
   result.passed = parity;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=mul-unroll4-vs-scratch digits=%zu leafThreshold=%zu operandFamilies=%zu samples=%zu stablePairs=%zu/%zu unroll4Us=%llu currentScratchUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median max=%.2f candidate=_umul128+_addcarry_u64-unroll4-full baseline=current-scratch-mul featureGate=msvc-x64-full-mul-schedule gmpClue=mpn-addmul-loop-scheduling adoption=%s",
+    "op=mul-unroll4-vs-scratch digits=%zu leafThreshold=%zu operandFamilies=%zu samples=%zu stablePairs=%zu/%zu unroll4Us=%llu scalarScratchUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median max=%.2f candidate=_umul128+_addcarry_u64-unroll4-full baseline=scalar-threshold-mul featureGate=msvc-x64-full-mul-schedule gmpClue=mpn-addmul-loop-scheduling adoption=%s",
     digits,
     leaf_threshold,
     operand_families,
@@ -1529,7 +1529,7 @@ static void run_mul_unroll4_vs_scratch_probe_case(XrayBenchmarkReport *report, s
       unsigned long long baseline_started = xray_now_us();
       for (unsigned int index = 0; ok && index < iterations; ++index) {
         for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
-          ok = xray_bigint_mul(&baseline_out[family], &a[family], &b[family]);
+          ok = xray_bigint_mul_with_threshold(&baseline_out[family], &a[family], &b[family], leaf_threshold);
         }
       }
       baseline_samples[sample] = xray_now_us() - baseline_started;
@@ -1537,7 +1537,7 @@ static void run_mul_unroll4_vs_scratch_probe_case(XrayBenchmarkReport *report, s
       unsigned long long baseline_started = xray_now_us();
       for (unsigned int index = 0; ok && index < iterations; ++index) {
         for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
-          ok = xray_bigint_mul(&baseline_out[family], &a[family], &b[family]);
+          ok = xray_bigint_mul_with_threshold(&baseline_out[family], &a[family], &b[family], leaf_threshold);
         }
       }
       baseline_samples[sample] = xray_now_us() - baseline_started;
