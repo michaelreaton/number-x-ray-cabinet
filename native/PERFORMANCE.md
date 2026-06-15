@@ -815,3 +815,38 @@ Decision: keep the 512 limb cap. It targets the 8192-digit band that the deep
 probe supported, avoids routing the still-losing 16384-digit band, and improves
 the 8192 row in all local runs even when one CLI run did not cross the stability
 gate.
+
+## 2026-06-15: Large Decimal Horner Formatter
+
+Runs: `native-test-runs/20260615-103430-c4b04caf`,
+`runs/20260615-102828-c4b04caf`, and `runs/20260615-102935-c4b04caf`
+
+The repeated base-1e9 division formatter still scales poorly on large decimal
+output. This change adds a larger-limb conversion path that builds base-1e9
+decimal chunks directly from binary limbs using `decimal = decimal * 2^64 +
+limb`. Small values remain on the existing division path so the already-proven
+short-format rows are protected.
+
+CTest benchmark:
+
+- 1000 digit `format`: ratio `2.235`, stable `0/5`, `oracle-only`
+- 4096 digit `format`: ratio `2.780`, stable `0/5`, `oracle-only`
+- 8192 digit `format`: ratio `3.617`, stable `0/5`, `oracle-only`
+
+CLI benchmark:
+
+- 1000 digit `format`: ratio `2.281`, stable `0/5`, `oracle-only`
+- 4096 digit `format`: ratio `3.415`, stable `0/5`, `oracle-only`
+- 8192 digit `format`: ratio `3.153`, stable `0/5`, `oracle-only`
+
+CLI repeat benchmark:
+
+- 1000 digit `format`: ratio `1.794`, stable `0/5`, `oracle-only`
+- 4096 digit `format`: ratio `3.893`, stable `0/5`, `oracle-only`
+- 8192 digit `format`: ratio `5.102`, stable `0/5`, `oracle-only`
+
+Decision: keep the Horner path as a large-format improvement, but do not treat
+it as a replacement route. Scratch time improves on the large rows, especially
+4096 digits, while GMP still wins decisively at the largest output sizes. The
+next formatter frontier is a divide-and-conquer conversion, not another linear
+chunk loop.
