@@ -500,6 +500,14 @@ int xray_bigint_sub(XrayScratchBigInt *out, const XrayScratchBigInt *left, const
   for (; index < right->count; ++index) {
     borrow = sub_with_borrow_u64(left->limbs[index], right->limbs[index], borrow, &out->limbs[index]);
   }
+  if (!borrow && index < left->count) {
+    if (out->limbs != left->limbs) {
+      memcpy(out->limbs + index, left->limbs + index, sizeof(uint64_t) * (left->count - index));
+    }
+    out->count = left->count;
+    normalize(out);
+    return 1;
+  }
   for (; index < left->count; ++index) {
     borrow = sub_with_borrow_u64(left->limbs[index], 0, borrow, &out->limbs[index]);
   }
