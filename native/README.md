@@ -96,10 +96,13 @@ Primary references: [GMP multiplication algorithms](https://gmplib.org/manual/Mu
 
 ```powershell
 native\build\Release\xray_cli.exe --bench 10403
+native\build\Release\xray_cli.exe --bench-frontier 10403
 native\build\Release\xray_cli.exe --rsa260
 ```
 
-The CLI emits the same reproducible JSON shape used by the GTK app:
+The CLI emits the same reproducible JSON shape used by the GTK app. Use
+`--bench-frontier` when you want stdout to show the human-readable benchmark
+frontier while still writing the full run artifacts:
 
 - `factorReport`
 - `cyclotomicReport`
