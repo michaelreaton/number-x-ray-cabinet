@@ -260,6 +260,25 @@ XRAY_API char *xray_bigint_get_decimal_divider_probe(const XrayScratchBigInt *va
 XRAY_API char *xray_bigint_get_decimal_folded_probe(const XrayScratchBigInt *value);
 
 /**
+ * Format value through the pair-table decimal writer probe route.
+ *
+ * The caller owns the returned string and must release it with xray_free().
+ * This diagnostic route uses the production chunk generator but emits decimal
+ * text through two-digit lookup pairs for benchmark comparison.
+ */
+XRAY_API char *xray_bigint_get_decimal_pair_writer_probe(const XrayScratchBigInt *value);
+
+/**
+ * Format value through the folded chunk probe plus pair-table writer route.
+ *
+ * The caller owns the returned string and must release it with xray_free().
+ * This diagnostic route combines the folded 2^64-to-1e9 chunk converter with
+ * the two-digit lookup writer so benchmarks can separate arithmetic and text
+ * emission costs.
+ */
+XRAY_API char *xray_bigint_get_decimal_folded_pair_writer_probe(const XrayScratchBigInt *value);
+
+/**
  * Format value through the 19-digit decimal chunk probe route.
  *
  * The caller owns the returned string and must release it with xray_free().

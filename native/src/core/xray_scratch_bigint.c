@@ -53,6 +53,18 @@ static const uint64_t parse_decimal_powers[] = {
   UINT64_C(10000000000000000000)
 };
 
+static const char decimal_digit_pairs[] =
+  "00010203040506070809"
+  "10111213141516171819"
+  "20212223242526272829"
+  "30313233343536373839"
+  "40414243444546474849"
+  "50515253545556575859"
+  "60616263646566676869"
+  "70717273747576777879"
+  "80818283848586878889"
+  "90919293949596979899";
+
 XrayBigIntRouteConfig xray_bigint_route_config(void) {
   XrayBigIntRouteConfig config;
   config.word_bits = XRAY_BIGINT_WORD_BITS;
@@ -581,6 +593,28 @@ static size_t write_u64_decimal(char *out, uint64_t value) {
   return count;
 }
 
+static void copy_decimal_digit_pair(char *out, uint32_t value) {
+  const char *pair = decimal_digit_pairs + ((size_t)value * 2U);
+  out[0] = pair[0];
+  out[1] = pair[1];
+}
+
+static size_t write_u32_decimal_pairs(char *out, uint32_t value) {
+  char digits[10];
+  size_t offset = sizeof(digits);
+  do {
+    uint32_t quotient = value / 100U;
+    uint32_t pair = value - quotient * 100U;
+    offset -= 2U;
+    copy_decimal_digit_pair(digits + offset, pair);
+    value = quotient;
+  } while (value);
+  if (digits[offset] == '0') offset++;
+  size_t count = sizeof(digits) - offset;
+  memcpy(out, digits + offset, count);
+  return count;
+}
+
 static void write_u32_decimal_padded9(char *out, uint32_t value) {
   for (size_t index = XRAY_BIGINT_DECIMAL_CHUNK_DIGITS; index-- > 0;) {
     out[index] = (char)('0' + (value % 10U));
@@ -588,11 +622,51 @@ static void write_u32_decimal_padded9(char *out, uint32_t value) {
   }
 }
 
+static void write_u32_decimal_padded9_pairs(char *out, uint32_t value) {
+  uint32_t lead = value / 100000000U;
+  value -= lead * 100000000U;
+  out[0] = (char)('0' + lead);
+  uint32_t pair = value / 1000000U;
+  value -= pair * 1000000U;
+  copy_decimal_digit_pair(out + 1U, pair);
+  pair = value / 10000U;
+  value -= pair * 10000U;
+  copy_decimal_digit_pair(out + 3U, pair);
+  pair = value / 100U;
+  value -= pair * 100U;
+  copy_decimal_digit_pair(out + 5U, pair);
+  copy_decimal_digit_pair(out + 7U, value);
+}
+
 static void write_u64_decimal_padded19(char *out, uint64_t value) {
   for (size_t index = XRAY_BIGINT_DECIMAL_WIDE_CHUNK_DIGITS; index-- > 0;) {
     out[index] = (char)('0' + (value % 10U));
     value /= 10U;
   }
+}
+
+static char *format_decimal_chunks_u32(const uint32_t *chunks, size_t chunk_count, int use_pair_writer) {
+  if (chunk_count == 0) {
+    char *zero = (char *)calloc(2, 1);
+    if (zero) zero[0] = '0';
+    return zero;
+  }
+  if (chunk_count > (SIZE_MAX - 1U) / XRAY_BIGINT_DECIMAL_CHUNK_DIGITS) return NULL;
+  size_t capacity = chunk_count * XRAY_BIGINT_DECIMAL_CHUNK_DIGITS + 1U;
+  char *text = (char *)calloc(capacity, 1);
+  if (!text) return NULL;
+  size_t used = use_pair_writer ?
+    write_u32_decimal_pairs(text, chunks[chunk_count - 1]) :
+    write_u32_decimal(text, chunks[chunk_count - 1]);
+  for (size_t index = chunk_count - 1; index-- > 0;) {
+    if (use_pair_writer) {
+      write_u32_decimal_padded9_pairs(text + used, chunks[index]);
+    } else {
+      write_u32_decimal_padded9(text + used, chunks[index]);
+    }
+    used += XRAY_BIGINT_DECIMAL_CHUNK_DIGITS;
+  }
+  return text;
 }
 
 int xray_bigint_set_decimal(XrayScratchBigInt *value, const char *decimal) {
@@ -623,7 +697,7 @@ int xray_bigint_set_decimal(XrayScratchBigInt *value, const char *decimal) {
   return 1;
 }
 
-static char *get_decimal_with_options(const XrayScratchBigInt *value, size_t horner_min_limbs, int use_direct_divider) {
+static char *get_decimal_with_options_writer(const XrayScratchBigInt *value, size_t horner_min_limbs, int use_direct_divider, int use_pair_writer) {
   if (!value || value->count == 0) {
     char *zero = (char *)calloc(2, 1);
     if (zero) zero[0] = '0';
@@ -668,23 +742,13 @@ static char *get_decimal_with_options(const XrayScratchBigInt *value, size_t hor
     return NULL;
   }
 
-  if (chunk_count > (SIZE_MAX - 1U) / XRAY_BIGINT_DECIMAL_CHUNK_DIGITS) {
-    free(chunks);
-    return NULL;
-  }
-  size_t capacity = chunk_count * XRAY_BIGINT_DECIMAL_CHUNK_DIGITS + 1U;
-  char *text = (char *)calloc(capacity, 1);
-  if (!text) {
-    free(chunks);
-    return NULL;
-  }
-  size_t used = write_u32_decimal(text, chunks[chunk_count - 1]);
-  for (size_t index = chunk_count - 1; index-- > 0;) {
-    write_u32_decimal_padded9(text + used, chunks[index]);
-    used += XRAY_BIGINT_DECIMAL_CHUNK_DIGITS;
-  }
+  char *text = format_decimal_chunks_u32(chunks, chunk_count, use_pair_writer);
   free(chunks);
   return text;
+}
+
+static char *get_decimal_with_options(const XrayScratchBigInt *value, size_t horner_min_limbs, int use_direct_divider) {
+  return get_decimal_with_options_writer(value, horner_min_limbs, use_direct_divider, 0);
 }
 
 char *xray_bigint_get_decimal_folded_probe(const XrayScratchBigInt *value) {
@@ -703,21 +767,32 @@ char *xray_bigint_get_decimal_folded_probe(const XrayScratchBigInt *value) {
     return NULL;
   }
 
-  if (chunk_count > (SIZE_MAX - 1U) / XRAY_BIGINT_DECIMAL_CHUNK_DIGITS) {
+  char *text = format_decimal_chunks_u32(chunks, chunk_count, 0);
+  free(chunks);
+  return text;
+}
+
+char *xray_bigint_get_decimal_pair_writer_probe(const XrayScratchBigInt *value) {
+  return get_decimal_with_options_writer(value, XRAY_BIGINT_DECIMAL_HORNER_MIN_LIMBS, 0, 1);
+}
+
+char *xray_bigint_get_decimal_folded_pair_writer_probe(const XrayScratchBigInt *value) {
+  if (!value || value->count == 0) {
+    char *zero = (char *)calloc(2, 1);
+    if (zero) zero[0] = '0';
+    return zero;
+  }
+
+  uint32_t *chunks = NULL;
+  size_t chunk_count = 0;
+  size_t chunk_capacity = 0;
+  if (!decimal_chunks_from_limbs_horner_folded(&chunks, &chunk_count, value)) return NULL;
+  if (chunk_count == 0 && !append_decimal_chunk(&chunks, &chunk_count, &chunk_capacity, 0)) {
     free(chunks);
     return NULL;
   }
-  size_t capacity = chunk_count * XRAY_BIGINT_DECIMAL_CHUNK_DIGITS + 1U;
-  char *text = (char *)calloc(capacity, 1);
-  if (!text) {
-    free(chunks);
-    return NULL;
-  }
-  size_t used = write_u32_decimal(text, chunks[chunk_count - 1]);
-  for (size_t index = chunk_count - 1; index-- > 0;) {
-    write_u32_decimal_padded9(text + used, chunks[index]);
-    used += XRAY_BIGINT_DECIMAL_CHUNK_DIGITS;
-  }
+
+  char *text = format_decimal_chunks_u32(chunks, chunk_count, 1);
   free(chunks);
   return text;
 }
