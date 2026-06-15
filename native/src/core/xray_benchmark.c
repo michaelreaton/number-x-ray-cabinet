@@ -1061,7 +1061,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
 #endif
   }
 
-  const size_t digits[] = {1000, 4096};
+  const size_t digits[] = {1000, 4096, 8192};
   const size_t thresholds[] = {32, 48, 64, 96, 128};
   for (size_t digit_index = 0; digit_index < sizeof(digits) / sizeof(digits[0]); ++digit_index) {
     for (size_t threshold_index = 0; threshold_index < sizeof(thresholds) / sizeof(thresholds[0]); ++threshold_index) {
