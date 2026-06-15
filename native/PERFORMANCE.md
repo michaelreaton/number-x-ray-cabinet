@@ -1,0 +1,69 @@
+# Native Performance Decision Log
+
+This file records measured bigint performance decisions for the native workbench.
+Benchmarks are local and noisy, so a result is actionable only when it has exact
+parity plus a stable same-run paired win.
+
+## Current Rules
+
+- `replacementReady` requires exact parity, paired-median speed within the row
+  limit, and at least 4 of 5 stable paired samples.
+- `kernel-probe` rows are evidence only. They do not change production routing.
+- A primitive-level win is not enough. The candidate must also survive the full
+  operation shape before it can replace the current path.
+
+## 2026-06-15: Toom-3 Full-Shape Gate
+
+Run: `runs/20260615-041302-c4b04caf`
+
+`mul-toom3-vs-scratch` compared one-level Toom-3 against current scratch multiply:
+
+- 4096 digits, leaf 32: ratio `1.207`, stable `0/5`, `observe-only`
+- 4096 digits, leaf 64: ratio `1.011`, stable `1/5`, `observe-only`
+- 8192 digits, leaf 32: ratio `1.113`, stable `0/5`, `observe-only`
+- 8192 digits, leaf 64: ratio `0.955`, stable `3/5`, `observe-only`
+
+Decision: do not route Toom-3 into production multiply yet. The 8192 digit leaf
+64 median was interesting, but it did not clear the 4 of 5 stability gate.
+
+## 2026-06-15: Karatsuba Threshold Scout
+
+Run: `runs/20260615-042112-c4b04caf`
+
+A guarded dynamic threshold tried 32-limb Karatsuba leaves only for large inputs.
+Production multiply stayed oracle-only:
+
+- 4096 digits: ratio `1.03`
+- 8192 digits: ratio `1.11`
+
+Decision: rejected. The change did not improve the large rows and made the 4096
+row noisier.
+
+## 2026-06-15: BMI2/ADX Primitive Probe
+
+Run: `runs/20260615-042614-c4b04caf`
+
+`muladd-bmi2-adx` compared `_mulx_u64`/`_addcarryx_u64` with the existing
+`_umul128`/`_addcarry_u64` multiply-accumulate primitive on this laptop:
+
+- 617 digits: ratio `0.87`, stable `5/5`, `candidate-faster`
+- 4933 digits: ratio `0.84`, stable `4/5`, `candidate-faster`
+
+Decision: keep the probe. BMI2/ADX is locally real enough to investigate, and it
+is a better bigint lead than a broad AVX2 build flag.
+
+## 2026-06-15: BMI2/ADX Full-Route Scout
+
+Run: `runs/20260615-044154-c4b04caf`
+
+An unmerged scout threaded the single-chain BMI2/ADX primitive through the full
+scratch multiply shape and compared it directly with current scratch multiply:
+
+- 1000 digits: ratio `1.06`, baseline faster
+- 4096 digits: ratio `1.16`, baseline faster
+- 8192 digits: ratio `1.03`, baseline faster
+
+Decision: rejected and not merged. The primitive win did not survive the current
+Karatsuba/schoolbook operation shape. Future BMI2/ADX work should not be a simple
+single-chain replacement; it should test a GMP-style addmul design with better
+carry scheduling before touching production routing.
