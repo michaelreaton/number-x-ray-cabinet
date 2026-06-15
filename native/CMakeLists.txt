@@ -188,6 +188,21 @@ if(XRAY_INSTALL)
   if(TARGET xray_core_shared)
     set(XRAY_INSTALL_EXPECT_SHARED ON)
   endif()
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/xray_workbench.h"
+  )
+  set(XRAY_API_CATALOG_FILE "number-xray-api.json")
+  set(XRAY_API_CATALOG_PATH "${CMAKE_CURRENT_BINARY_DIR}/${XRAY_API_CATALOG_FILE}")
+  execute_process(
+    COMMAND ${CMAKE_COMMAND}
+      -DXRAY_HEADER=${CMAKE_CURRENT_SOURCE_DIR}/include/xray_workbench.h
+      -DXRAY_OUTPUT=${XRAY_API_CATALOG_PATH}
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/generate_api_catalog.cmake
+    RESULT_VARIABLE XRAY_API_CATALOG_RESULT
+  )
+  if(NOT XRAY_API_CATALOG_RESULT EQUAL 0)
+    message(FATAL_ERROR "Number X-Ray API catalog generation failed: ${XRAY_API_CATALOG_RESULT}")
+  endif()
 
   install(TARGETS ${XRAY_INSTALL_TARGETS}
     EXPORT NumberXRayTargets
@@ -270,6 +285,7 @@ if(XRAY_INSTALL)
 
   install(FILES
     "${CMAKE_CURRENT_BINARY_DIR}/number-xray-sdk.json"
+    "${XRAY_API_CATALOG_PATH}"
     DESTINATION "${CMAKE_INSTALL_DATADIR}/number-xray"
   )
 endif()
