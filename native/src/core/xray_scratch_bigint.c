@@ -18,7 +18,7 @@
 #define XRAY_BIGINT_DECIMAL_CHUNK_DIGITS 9U
 /* UINT64_MAX / 1e9, matching reciprocal_u32 for the decimal chunk divisor. */
 #define XRAY_BIGINT_DECIMAL_CHUNK_RECIPROCAL UINT64_C(18446744073)
-#define XRAY_BIGINT_DECIMAL_HORNER_MIN_LIMBS 64U
+#define XRAY_BIGINT_DECIMAL_HORNER_MIN_LIMBS 48U
 #define XRAY_BIGINT_PARSE_CHUNK_BASE UINT64_C(10000000000000000000)
 #define XRAY_BIGINT_PARSE_CHUNK_DIGITS 19U
 #define XRAY_BIGINT_KARATSUBA_THRESHOLD 64U
@@ -453,7 +453,11 @@ char *xray_bigint_get_decimal(const XrayScratchBigInt *value) {
     return NULL;
   }
 
-  size_t capacity = chunk_count * XRAY_BIGINT_DECIMAL_CHUNK_DIGITS + 1;
+  if (chunk_count > (SIZE_MAX - 1U) / XRAY_BIGINT_DECIMAL_CHUNK_DIGITS) {
+    free(chunks);
+    return NULL;
+  }
+  size_t capacity = chunk_count * XRAY_BIGINT_DECIMAL_CHUNK_DIGITS + 1U;
   char *text = (char *)calloc(capacity, 1);
   if (!text) {
     free(chunks);
