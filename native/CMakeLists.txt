@@ -8,6 +8,7 @@ set(CMAKE_C_EXTENSIONS OFF)
 
 option(XRAY_BUILD_GTK "Build the GTK4 desktop workbench when GTK4 headers are available" ON)
 option(XRAY_BUILD_CLI "Build the command-line native workbench runner" ON)
+option(XRAY_BUILD_SHARED "Build the shared Number X-Ray core library for language bindings and plugin-style consumers" ON)
 option(XRAY_INSTALL "Install the reusable Number X-Ray C library package" ON)
 
 include(GNUInstallDirs)
@@ -46,7 +47,14 @@ if(NOT TARGET GMP::GMP)
   )
 endif()
 
-add_library(xray_core STATIC
+set(XRAY_GMP_RUNTIME_DIR "")
+if(WIN32)
+  get_filename_component(XRAY_GMP_LIBRARY_DIR "${XRAY_GMP_LIBRARY}" DIRECTORY)
+  get_filename_component(XRAY_GMP_PREFIX_DIR "${XRAY_GMP_LIBRARY_DIR}" DIRECTORY)
+  set(XRAY_GMP_RUNTIME_DIR "${XRAY_GMP_PREFIX_DIR}/bin")
+endif()
+
+set(XRAY_CORE_SOURCES
   src/core/xray_expression.c
   src/core/xray_cpu.c
   src/core/xray_scratch_bigint.c
@@ -58,6 +66,7 @@ add_library(xray_core STATIC
   src/core/xray_workspace.c
 )
 
+add_library(xray_core STATIC ${XRAY_CORE_SOURCES})
 add_library(NumberXRay::core ALIAS xray_core)
 
 set_target_properties(xray_core PROPERTIES
@@ -65,24 +74,52 @@ set_target_properties(xray_core PROPERTIES
   OUTPUT_NAME xray_core
 )
 
-target_include_directories(xray_core
-  PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-)
+function(xray_configure_core_target target_name)
+  target_include_directories(${target_name}
+    PUBLIC
+      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+      $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+  )
 
-target_link_libraries(xray_core PUBLIC GMP::GMP)
+  target_link_libraries(${target_name} PUBLIC GMP::GMP)
 
-if(MSVC)
-  target_compile_options(xray_core PRIVATE /W4)
-else()
-  target_compile_options(xray_core PRIVATE -Wall -Wextra -Wpedantic)
+  if(MSVC)
+    target_compile_options(${target_name} PRIVATE /W4)
+  else()
+    target_compile_options(${target_name} PRIVATE -Wall -Wextra -Wpedantic)
+  endif()
+endfunction()
+
+xray_configure_core_target(xray_core)
+
+if(XRAY_BUILD_SHARED)
+  add_library(xray_core_shared SHARED ${XRAY_CORE_SOURCES})
+  add_library(NumberXRay::core_shared ALIAS xray_core_shared)
+  set_target_properties(xray_core_shared PROPERTIES
+    EXPORT_NAME core_shared
+    OUTPUT_NAME number_xray
+    C_VISIBILITY_PRESET hidden
+  )
+  target_compile_definitions(xray_core_shared
+    PRIVATE XRAY_BUILDING_LIBRARY=1
+    PUBLIC XRAY_SHARED=1
+  )
+  xray_configure_core_target(xray_core_shared)
 endif()
 
 if(XRAY_INSTALL)
   include(CMakePackageConfigHelpers)
 
-  install(TARGETS xray_core
+  set(XRAY_INSTALL_TARGETS xray_core)
+  if(TARGET xray_core_shared)
+    list(APPEND XRAY_INSTALL_TARGETS xray_core_shared)
+  endif()
+  set(XRAY_INSTALL_EXPECT_SHARED OFF)
+  if(TARGET xray_core_shared)
+    set(XRAY_INSTALL_EXPECT_SHARED ON)
+  endif()
+
+  install(TARGETS ${XRAY_INSTALL_TARGETS}
     EXPORT NumberXRayTargets
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -107,6 +144,18 @@ if(XRAY_INSTALL)
     "${CMAKE_CURRENT_BINARY_DIR}/number-xray.pc"
     @ONLY
   )
+
+  set(XRAY_SDK_SHARED_LIBRARY_JSON "")
+  if(TARGET xray_core_shared)
+    set(XRAY_SDK_SHARED_LIBRARY_JSON ",
+    \"coreShared\": {
+      \"name\": \"number_xray\",
+      \"kind\": \"shared\",
+      \"libDir\": \"${CMAKE_INSTALL_LIBDIR}\",
+      \"binDir\": \"${CMAKE_INSTALL_BINDIR}\",
+      \"cmakeTarget\": \"NumberXRay::core_shared\"
+    }")
+  endif()
 
   configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/number-xray-sdk.json.in"
@@ -167,6 +216,9 @@ if(BUILD_TESTING)
         -DXRAY_GENERATOR=${CMAKE_GENERATOR}
         -DXRAY_GENERATOR_PLATFORM=${CMAKE_GENERATOR_PLATFORM}
         -DXRAY_GENERATOR_TOOLSET=${CMAKE_GENERATOR_TOOLSET}
+        -DXRAY_EXPECT_SHARED=${XRAY_INSTALL_EXPECT_SHARED}
+        -DXRAY_GMP_RUNTIME_DIR=${XRAY_GMP_RUNTIME_DIR}
+        -DXRAY_INSTALL_BINDIR=${CMAKE_INSTALL_BINDIR}
         -DXRAY_INSTALL_LIBDIR=${CMAKE_INSTALL_LIBDIR}
         -DXRAY_INSTALL_DATADIR=${CMAKE_INSTALL_DATADIR}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/import_smoke.cmake

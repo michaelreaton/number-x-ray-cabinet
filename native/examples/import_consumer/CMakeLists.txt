@@ -10,3 +10,8 @@ find_package(NumberXRay CONFIG REQUIRED)
 
 add_executable(number_xray_import_consumer main.c)
 target_link_libraries(number_xray_import_consumer PRIVATE NumberXRay::core)
+
+if(TARGET NumberXRay::core_shared)
+  add_executable(number_xray_import_consumer_shared main.c)
+  target_link_libraries(number_xray_import_consumer_shared PRIVATE NumberXRay::core_shared)
+endif()

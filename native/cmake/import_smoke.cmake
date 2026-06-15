@@ -5,8 +5,14 @@ endif()
 if(NOT XRAY_CONFIG)
   set(XRAY_CONFIG Release)
 endif()
+if(NOT DEFINED XRAY_EXPECT_SHARED)
+  set(XRAY_EXPECT_SHARED ON)
+endif()
 if(NOT DEFINED XRAY_INSTALL_LIBDIR OR NOT XRAY_INSTALL_LIBDIR)
   set(XRAY_INSTALL_LIBDIR lib)
+endif()
+if(NOT DEFINED XRAY_INSTALL_BINDIR OR NOT XRAY_INSTALL_BINDIR)
+  set(XRAY_INSTALL_BINDIR bin)
 endif()
 if(NOT DEFINED XRAY_INSTALL_DATADIR OR NOT XRAY_INSTALL_DATADIR)
   set(XRAY_INSTALL_DATADIR share)
@@ -45,6 +51,8 @@ endif()
 file(READ "${sdk_manifest_file}" sdk_manifest)
 foreach(expected
     "\"public\": \"number_xray.h\""
+    "\"functionReferenceHeader\": \"xray_workbench.h\""
+    "\"coverage\": \"all exported XRAY_API functions\""
     "\"cmakeTarget\": \"NumberXRay::core\""
     "\"pkgConfig\": \"number-xray\""
     "\"cmakeTarget\": \"GMP::GMP\"")
@@ -53,6 +61,18 @@ foreach(expected
     message(FATAL_ERROR "NumberXRay SDK manifest is missing expected entry: ${expected}")
   endif()
 endforeach()
+
+if(XRAY_EXPECT_SHARED)
+  foreach(expected
+      "\"cmakeTarget\": \"NumberXRay::core_shared\""
+      "\"libDir\": \"${XRAY_INSTALL_LIBDIR}\""
+      "\"binDir\": \"${XRAY_INSTALL_BINDIR}\"")
+    string(FIND "${sdk_manifest}" "${expected}" expected_index)
+    if(expected_index LESS 0)
+      message(FATAL_ERROR "NumberXRay SDK manifest is missing expected shared entry: ${expected}")
+    endif()
+  endforeach()
+endif()
 
 set(configure_command
   "${CMAKE_COMMAND}"
@@ -88,33 +108,53 @@ if(NOT build_result EQUAL 0)
   message(FATAL_ERROR "NumberXRay import smoke failed during build step: ${build_result}")
 endif()
 
-if(WIN32)
-  set(consumer_exe_candidates
-    "${consumer_build}/${XRAY_CONFIG}/number_xray_import_consumer.exe"
-    "${consumer_build}/number_xray_import_consumer.exe"
-  )
-else()
-  set(consumer_exe_candidates
-    "${consumer_build}/number_xray_import_consumer"
-  )
-endif()
-
-set(consumer_exe "")
-foreach(candidate IN LISTS consumer_exe_candidates)
-  if(EXISTS "${candidate}")
-    set(consumer_exe "${candidate}")
-    break()
+function(xray_run_consumer executable_name)
+  if(WIN32)
+    set(consumer_exe_candidates
+      "${consumer_build}/${XRAY_CONFIG}/${executable_name}.exe"
+      "${consumer_build}/${executable_name}.exe"
+    )
+  else()
+    set(consumer_exe_candidates
+      "${consumer_build}/${executable_name}"
+    )
   endif()
-endforeach()
 
-if(NOT consumer_exe)
-  message(FATAL_ERROR "NumberXRay import smoke could not find the consumer executable.")
-endif()
+  set(consumer_exe "")
+  foreach(candidate IN LISTS consumer_exe_candidates)
+    if(EXISTS "${candidate}")
+      set(consumer_exe "${candidate}")
+      break()
+    endif()
+  endforeach()
 
-execute_process(
-  COMMAND "${consumer_exe}"
-  RESULT_VARIABLE run_result
-)
-if(NOT run_result EQUAL 0)
-  message(FATAL_ERROR "NumberXRay import smoke failed during run step: ${run_result}")
+  if(NOT consumer_exe)
+    message(FATAL_ERROR "NumberXRay import smoke could not find ${executable_name}.")
+  endif()
+
+  if(WIN32)
+    set(consumer_path "${install_prefix}/${XRAY_INSTALL_BINDIR}")
+    if(DEFINED XRAY_GMP_RUNTIME_DIR AND XRAY_GMP_RUNTIME_DIR)
+      set(consumer_path "${consumer_path};${XRAY_GMP_RUNTIME_DIR}")
+    endif()
+    set(consumer_path "${consumer_path};$ENV{PATH}")
+    execute_process(
+      COMMAND "${CMAKE_COMMAND}" -E env "PATH=${consumer_path}" "${consumer_exe}"
+      RESULT_VARIABLE run_result
+    )
+  else()
+    execute_process(
+      COMMAND "${consumer_exe}"
+      RESULT_VARIABLE run_result
+    )
+  endif()
+
+  if(NOT run_result EQUAL 0)
+    message(FATAL_ERROR "NumberXRay import smoke failed while running ${executable_name}: ${run_result}")
+  endif()
+endfunction()
+
+xray_run_consumer(number_xray_import_consumer)
+if(XRAY_EXPECT_SHARED)
+  xray_run_consumer(number_xray_import_consumer_shared)
 endif()
