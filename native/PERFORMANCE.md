@@ -781,3 +781,37 @@ CLI benchmark:
 Decision: keep the route. It substantially improves large square behavior
 without claiming GMP replacement status. The 40 digit row remains too small and
 noisy for promotion, while 150 and 1000 digit rows stay replacement-ready.
+
+## 2026-06-15: Widen Unroll4 Multiply Window To 512 Limbs
+
+Runs: `native-test-runs/20260615-100414-c4b04caf`,
+`runs/20260615-100513-c4b04caf`, and `runs/20260615-100626-c4b04caf`
+
+The production unroll4 multiply route was capped at `256` limbs, so the
+8192-digit benchmark stayed on the scalar leaf even though the deep unroll4
+probe showed a stable 8192-digit win. This change widens the balanced MSVC x64
+window to `512` limbs. The 16384-digit row remains outside the route because its
+probe still loses to GMP.
+
+CTest benchmark:
+
+- 4096 digit `mul`: ratio `0.882`, stable `4/5`, `replacement-ready`
+- 8192 digit `mul`: ratio `0.957`, stable `4/5`, `replacement-ready`
+- 16384 digit `mul`: ratio `1.202`, stable `2/5`, `oracle-only`
+
+CLI benchmark:
+
+- 4096 digit `mul`: ratio `0.906`, stable `3/5`, `oracle-only`
+- 8192 digit `mul`: ratio `0.939`, stable `3/5`, `oracle-only`
+- 16384 digit `mul`: ratio `1.313`, stable `1/5`, `oracle-only`
+
+CLI repeat benchmark:
+
+- 4096 digit `mul`: ratio `0.873`, stable `4/5`, `replacement-ready`
+- 8192 digit `mul`: ratio `0.925`, stable `5/5`, `replacement-ready`
+- 16384 digit `mul`: ratio `1.155`, stable `1/5`, `oracle-only`
+
+Decision: keep the 512 limb cap. It targets the 8192-digit band that the deep
+probe supported, avoids routing the still-losing 16384-digit band, and improves
+the 8192 row in all local runs even when one CLI run did not cross the stability
+gate.
