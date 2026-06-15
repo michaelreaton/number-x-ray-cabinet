@@ -32,6 +32,11 @@ typedef struct AppState {
   GtkWidget *proof_label;
   GtkWidget *cyclo_label;
   GtkWidget *bench_label;
+  GtkWidget *metric_factor_label;
+  GtkWidget *metric_cyclo_label;
+  GtkWidget *metric_bench_label;
+  GtkWidget *xray_cyclo_label;
+  GtkWidget *solver_proof_label;
   GtkWidget *json_view;
   GtkWidget *log_view;
   volatile int cancel_requested;
@@ -245,6 +250,10 @@ static char *text_view_text(GtkWidget *view) {
 static void set_text_view(GtkWidget *view, const char *text) {
   GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(view));
   gtk_text_buffer_set_text(buffer, text ? text : "", -1);
+}
+
+static void set_label_if(GtkWidget *label, const char *text) {
+  if (label) gtk_label_set_text(GTK_LABEL(label), text ? text : "");
 }
 
 static char *chunk_decimal(const char *value, size_t width) {
@@ -509,9 +518,9 @@ static GtkWidget *build_metric_grid(AppState *app) {
   gtk_grid_set_column_spacing(GTK_GRID(grid), 10);
   gtk_grid_set_row_spacing(GTK_GRID(grid), 10);
   gtk_grid_set_column_homogeneous(GTK_GRID(grid), TRUE);
-  gtk_grid_attach(GTK_GRID(grid), metric_box(&app->factor_label, "factor status", "Solver ready", "good"), 0, 0, 1, 1);
-  gtk_grid_attach(GTK_GRID(grid), metric_box(&app->cyclo_label, "x-ray candidates", "Awaiting scan", "warn"), 1, 0, 1, 1);
-  gtk_grid_attach(GTK_GRID(grid), metric_box(&app->bench_label, "benchmark ladder", "Not run", "warn"), 2, 0, 1, 1);
+  gtk_grid_attach(GTK_GRID(grid), metric_box(&app->metric_factor_label, "factor status", "Solver ready", "good"), 0, 0, 1, 1);
+  gtk_grid_attach(GTK_GRID(grid), metric_box(&app->metric_cyclo_label, "x-ray candidates", "Awaiting scan", "warn"), 1, 0, 1, 1);
+  gtk_grid_attach(GTK_GRID(grid), metric_box(&app->metric_bench_label, "benchmark ladder", "Not run", "warn"), 2, 0, 1, 1);
   return grid;
 }
 
@@ -524,10 +533,10 @@ static GtkWidget *build_xray_page(AppState *app) {
   gtk_widget_add_css_class(stage, "stage");
   GtkWidget *title_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
   gtk_box_append(GTK_BOX(title_row), label_with_class("X-RAY SCAN CHAMBER", "section-title"));
-  app->cyclo_label = label_with_width("Rings awaiting proof run", "micro", 42, FALSE);
-  gtk_widget_set_halign(app->cyclo_label, GTK_ALIGN_END);
-  gtk_widget_set_hexpand(app->cyclo_label, TRUE);
-  gtk_box_append(GTK_BOX(title_row), app->cyclo_label);
+  app->xray_cyclo_label = label_with_width("Rings awaiting proof run", "micro", 42, FALSE);
+  gtk_widget_set_halign(app->xray_cyclo_label, GTK_ALIGN_END);
+  gtk_widget_set_hexpand(app->xray_cyclo_label, TRUE);
+  gtk_box_append(GTK_BOX(title_row), app->xray_cyclo_label);
   gtk_box_append(GTK_BOX(stage), title_row);
 
   gtk_box_append(GTK_BOX(stage), drawing_area(760, 72, draw_scan_pipeline));
@@ -578,8 +587,8 @@ static GtkWidget *build_solver_page(AppState *app) {
   GtkWidget *proof = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
   gtk_widget_add_css_class(proof, "panel");
   gtk_box_append(GTK_BOX(proof), label_with_class("PROOF LADDER", "section-title"));
-  app->proof_label = label_with_class("Proof is accepted only when factor product equals the input.", "subtitle");
-  gtk_box_append(GTK_BOX(proof), app->proof_label);
+  app->solver_proof_label = label_with_class("Proof is accepted only when factor product equals the input.", "subtitle");
+  gtk_box_append(GTK_BOX(proof), app->solver_proof_label);
   gtk_box_append(GTK_BOX(proof), stage_row("A", "Parse", "Messy paste normalization preserves the exact decimal integer.", "good"));
   gtk_box_append(GTK_BOX(proof), stage_row("B", "Trial", "Small-factor sweep removes cheap composites before heavier work.", "good"));
   gtk_box_append(GTK_BOX(proof), stage_row("C", "Prime", "Miller-Rabin probable-prime checks classify resolved cofactors.", "warn"));
@@ -627,19 +636,29 @@ static GtkWidget *build_json_page(AppState *app) {
 static void set_language(AppState *app) {
   if (app->persian) {
     gtk_button_set_label(GTK_BUTTON(app->language_button), "EN");
-    gtk_label_set_text(GTK_LABEL(app->factor_label), "در انتظار اجرا");
-    gtk_label_set_text(GTK_LABEL(app->proof_label), "وضعیت: هنوز راستی‌آزمایی نشده");
-    gtk_label_set_text(GTK_LABEL(app->cyclo_label), "اثرهای سیکلوتومیک پس از اجرای اثبات بررسی می‌شوند.\nعدد ورودی می‌تواند RSA-260، F12، یا هر عدد صحیح دیگری باشد.");
-    gtk_label_set_text(GTK_LABEL(app->bench_label), "وضعیت: آماده");
+    set_label_if(app->metric_factor_label, "در انتظار اجرا");
+    set_label_if(app->metric_cyclo_label, "در انتظار اسکن");
+    set_label_if(app->metric_bench_label, "اجرا نشده");
+    set_label_if(app->xray_cyclo_label, "حلقه‌ها در انتظار اجرای اثبات");
+    set_label_if(app->solver_proof_label, "اثبات فقط وقتی پذیرفته می‌شود که حاصل‌ضرب عامل‌ها برابر ورودی باشد.");
+    set_label_if(app->factor_label, "در انتظار اجرا");
+    set_label_if(app->proof_label, "وضعیت: هنوز راستی‌آزمایی نشده");
+    set_label_if(app->cyclo_label, "اثرهای سیکلوتومیک پس از اجرای اثبات بررسی می‌شوند.\nعدد ورودی می‌تواند RSA-260، F12، یا هر عدد صحیح دیگری باشد.");
+    set_label_if(app->bench_label, "وضعیت: آماده");
     if (app->toy_button) gtk_button_set_label(GTK_BUTTON(app->toy_button), "نمونه 10403");
     if (app->challenge_button) gtk_button_set_label(GTK_BUTTON(app->challenge_button), "آزمون ۲۶۰ رقمی");
     if (app->fermat12_button) gtk_button_set_label(GTK_BUTTON(app->fermat12_button), "فرما F12");
   } else {
     gtk_button_set_label(GTK_BUTTON(app->language_button), "FA");
-    gtk_label_set_text(GTK_LABEL(app->factor_label), "AWAITING RUN");
-    gtk_label_set_text(GTK_LABEL(app->proof_label), "Status: NOT VERIFIED YET");
-    gtk_label_set_text(GTK_LABEL(app->cyclo_label), "Cyclotomic fingerprints are checked after a proof run.\nThe input can be RSA-260, F12, or any other integer.");
-    gtk_label_set_text(GTK_LABEL(app->bench_label), "Status: READY");
+    set_label_if(app->metric_factor_label, "Solver ready");
+    set_label_if(app->metric_cyclo_label, "Awaiting scan");
+    set_label_if(app->metric_bench_label, "Not run");
+    set_label_if(app->xray_cyclo_label, "Rings awaiting proof run");
+    set_label_if(app->solver_proof_label, "Proof is accepted only when factor product equals the input.");
+    set_label_if(app->factor_label, "AWAITING RUN");
+    set_label_if(app->proof_label, "Status: NOT VERIFIED YET");
+    set_label_if(app->cyclo_label, "Cyclotomic fingerprints are checked after a proof run.\nThe input can be RSA-260, F12, or any other integer.");
+    set_label_if(app->bench_label, "Status: READY");
     if (app->toy_button) gtk_button_set_label(GTK_BUTTON(app->toy_button), "Toy 10403");
     if (app->challenge_button) gtk_button_set_label(GTK_BUTTON(app->challenge_button), "260-digit test");
     if (app->fermat12_button) gtk_button_set_label(GTK_BUTTON(app->fermat12_button), "Fermat F12");
@@ -724,10 +743,15 @@ static gboolean finish_run(gpointer data) {
   gtk_widget_set_sensitive(app->run_button, TRUE);
   gtk_widget_set_sensitive(app->cancel_button, FALSE);
   gtk_widget_set_visible(app->cancel_button, FALSE);
-  gtk_label_set_text(GTK_LABEL(app->factor_label), result->factor_status);
-  gtk_label_set_text(GTK_LABEL(app->proof_label), result->proof_status);
-  gtk_label_set_text(GTK_LABEL(app->cyclo_label), result->cyclo_status);
-  gtk_label_set_text(GTK_LABEL(app->bench_label), result->bench_status);
+  set_label_if(app->metric_factor_label, result->factor_status);
+  set_label_if(app->metric_cyclo_label, result->cyclo_status);
+  set_label_if(app->metric_bench_label, result->bench_status);
+  set_label_if(app->xray_cyclo_label, result->cyclo_status);
+  set_label_if(app->solver_proof_label, result->proof_status);
+  set_label_if(app->factor_label, result->factor_status);
+  set_label_if(app->proof_label, result->proof_status);
+  set_label_if(app->cyclo_label, result->cyclo_status);
+  set_label_if(app->bench_label, result->bench_status);
   set_text_view(app->json_view, result->json);
   set_text_view(app->log_view, result->log_line);
   free(result->json);
