@@ -66,6 +66,14 @@ const char *xray_scratch_adoption_for_result(const XrayBenchmarkResult *result) 
   return "oracle-only";
 }
 
+static size_t kernel_required_stable_samples(size_t sample_count) {
+  if (sample_count == 0) return 0;
+  if (sample_count > XRAY_BENCH_SAMPLES) return sample_count - 1U;
+  return sample_count < XRAY_KERNEL_REQUIRED_STABLE_SAMPLES ?
+    sample_count :
+    XRAY_KERNEL_REQUIRED_STABLE_SAMPLES;
+}
+
 static unsigned long long median_samples(const unsigned long long *samples, size_t count) {
   unsigned long long sorted[XRAY_BENCH_MAX_SAMPLES] = {0};
   if (!samples || count == 0 || count > XRAY_BENCH_MAX_SAMPLES) return 0;
@@ -279,9 +287,10 @@ static void append_kernel_probe_result(
   result.sample_count = sample_count;
   result.worst_pair_ratio = worst_pair_ratio;
   result.parity_verified = parity;
+  size_t required_stable = kernel_required_stable_samples(sample_count);
   result.replacement_ready = parity &&
     result.speed_ratio <= result.max_allowed_speed_ratio &&
-    result.stable_sample_count >= XRAY_KERNEL_REQUIRED_STABLE_SAMPLES;
+    result.stable_sample_count >= required_stable;
   snprintf(result.adoption, sizeof(result.adoption), "%s",
     !parity ? "blocked-output-mismatch" : (result.replacement_ready ? "promote-candidate" : "observe-only"));
   snprintf(result.status, sizeof(result.status), "%s",
@@ -883,9 +892,10 @@ static void append_mul_threshold_probe_result(
   result.sample_count = sample_count;
   result.worst_pair_ratio = worst_pair_ratio;
   result.parity_verified = parity;
+  size_t required_stable = kernel_required_stable_samples(sample_count);
   result.replacement_ready = parity &&
     result.speed_ratio <= result.max_allowed_speed_ratio &&
-    result.stable_sample_count >= XRAY_KERNEL_REQUIRED_STABLE_SAMPLES;
+    result.stable_sample_count >= required_stable;
   snprintf(result.adoption, sizeof(result.adoption), "%s",
     !parity ? "blocked-output-mismatch" : (result.replacement_ready ? "promote-candidate" : "observe-only"));
   snprintf(result.status, sizeof(result.status), "%s",
@@ -935,9 +945,10 @@ static void append_mul_toom3_probe_result(
   result.sample_count = sample_count;
   result.worst_pair_ratio = worst_pair_ratio;
   result.parity_verified = parity;
+  size_t required_stable = kernel_required_stable_samples(sample_count);
   result.replacement_ready = parity &&
     result.speed_ratio <= result.max_allowed_speed_ratio &&
-    result.stable_sample_count >= XRAY_KERNEL_REQUIRED_STABLE_SAMPLES;
+    result.stable_sample_count >= required_stable;
   snprintf(result.adoption, sizeof(result.adoption), "%s",
     !parity ? "blocked-output-mismatch" : (result.replacement_ready ? "promote-candidate" : "observe-only"));
   snprintf(result.status, sizeof(result.status), "%s",
@@ -987,9 +998,10 @@ static void append_mul_toom3_vs_scratch_probe_result(
   result.sample_count = sample_count;
   result.worst_pair_ratio = worst_pair_ratio;
   result.parity_verified = parity;
+  size_t required_stable = kernel_required_stable_samples(sample_count);
   result.replacement_ready = parity &&
     result.speed_ratio <= result.max_allowed_speed_ratio &&
-    result.stable_sample_count >= XRAY_KERNEL_REQUIRED_STABLE_SAMPLES;
+    result.stable_sample_count >= required_stable;
   snprintf(result.adoption, sizeof(result.adoption), "%s",
     !parity ? "blocked-output-mismatch" : (result.replacement_ready ? "promote-candidate" : "observe-only"));
   snprintf(result.status, sizeof(result.status), "%s",
@@ -1039,9 +1051,10 @@ static void append_mul_unroll4_vs_scratch_probe_result(
   result.sample_count = sample_count;
   result.worst_pair_ratio = worst_pair_ratio;
   result.parity_verified = parity;
+  size_t required_stable = kernel_required_stable_samples(sample_count);
   result.replacement_ready = parity &&
     result.speed_ratio <= result.max_allowed_speed_ratio &&
-    result.stable_sample_count >= XRAY_KERNEL_REQUIRED_STABLE_SAMPLES;
+    result.stable_sample_count >= required_stable;
   snprintf(result.adoption, sizeof(result.adoption), "%s",
     !parity ? "blocked-output-mismatch" : (result.replacement_ready ? "promote-candidate" : "observe-only"));
   snprintf(result.status, sizeof(result.status), "%s",
@@ -1095,9 +1108,10 @@ static void append_mul_unroll4_vs_gmp_probe_result(
   result.sample_count = sample_count;
   result.worst_pair_ratio = worst_pair_ratio;
   result.parity_verified = parity;
+  size_t required_stable = kernel_required_stable_samples(sample_count);
   result.replacement_ready = parity &&
     result.speed_ratio <= result.max_allowed_speed_ratio &&
-    result.stable_sample_count >= XRAY_KERNEL_REQUIRED_STABLE_SAMPLES;
+    result.stable_sample_count >= required_stable;
   snprintf(result.adoption, sizeof(result.adoption), "%s",
     !parity ? "blocked-output-mismatch" : (result.replacement_ready ? "promote-candidate" : "observe-only"));
   snprintf(result.status, sizeof(result.status), "%s",

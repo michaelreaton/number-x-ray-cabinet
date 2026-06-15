@@ -189,18 +189,29 @@ non-routed path.
 
 ## 2026-06-15: Unroll4 Deep GMP Gate
 
-Run: `runs/20260615-060503-c4b04caf`
+Runs: `runs/20260615-060503-c4b04caf`, `runs/20260615-061507-c4b04caf`
 
 The 8192 digit unroll4 rows were noisy across five-sample runs, so the
 benchmark now emits a stricter `mul-unroll4-deep-vs-gmp` gate for the 4096 and
-8192 digit rows using nine paired samples.
+8192 digit rows using nine paired samples. Deep rows require 8 of 9 paired
+samples inside the speed gate before they can be marked `promote-candidate`.
+
+Initial gate run:
 
 - 4096 digits: ratio `0.791`, stable `9/9`, worst pair ratio `0.925`,
   `candidate-faster`
 - 8192 digits: ratio `1.017`, stable `3/9`, worst pair ratio `1.328`,
   `gmp-faster`
 
+Strict-threshold confirmation run:
+
+- 4096 digits: ratio `0.905`, stable `7/9`, worst pair ratio `1.063`,
+  `observe-only`
+- 8192 digits: ratio `1.012`, stable `3/9`, worst pair ratio `1.263`,
+  `observe-only`
+
 Decision: keep the production route bounded below the 8192 digit row. The deep
-gate confirms that the 4096 digit route is solid on this laptop, but the 8192
-digit result is still too noisy and sometimes slower than GMP. A future 8192+
-route needs a different algorithmic primitive, not just a wider unroll4 switch.
+gate supports the existing 4096 production window, but it is not stable enough
+to justify widening the route, and the 8192 digit result is still too noisy and
+sometimes slower than GMP. A future 8192+ route needs a different algorithmic
+primitive, not just a wider unroll4 switch.

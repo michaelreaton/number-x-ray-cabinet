@@ -254,7 +254,7 @@ static char *format_benchmark_report_text(const XrayBenchmarkReport *report) {
   }
 
   used += (size_t)snprintf(text + used, capacity - used,
-    "\nRule: scratch replacements and kernel promote-candidates require exact parity, a paired median inside the configured gate, and at least 4 of 5 paired samples winning locally.\n");
+    "\nRule: scratch replacements and kernel promote-candidates require exact parity, a paired median inside the configured gate, and enough paired-sample wins for that row. Five-sample kernel rows require 4 wins; deep nine-sample rows require 8.\n");
   return text;
 }
 

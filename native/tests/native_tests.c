@@ -840,7 +840,10 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "featureGate=msvc-x64-loop-schedule") != NULL);
       }
       if (strcmp(report->results[index].adoption, "promote-candidate") == 0) {
-        CHECK(report->results[index].stable_sample_count >= 4);
+        size_t required_stable = report->results[index].sample_count > 5 ?
+          report->results[index].sample_count - 1 :
+          (report->results[index].sample_count < 4 ? report->results[index].sample_count : 4);
+        CHECK(report->results[index].stable_sample_count >= required_stable);
         CHECK(report->results[index].speed_ratio <= report->results[index].max_allowed_speed_ratio);
       }
       CHECK(strstr(report->results[index].adoption, "promote-candidate") != NULL ||
