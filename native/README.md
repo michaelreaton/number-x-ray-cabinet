@@ -91,10 +91,19 @@ fails the build if a new exported `XRAY_API` function is added without a
 preceding Doxygen block.
 
 Non-CMake tools can discover compiler and linker flags from the installed
-pkg-config file on platforms that use pkg-config:
+pkg-config files on platforms that use pkg-config. `number-xray` links the
+static core library:
 
 ```bash
 cc my_tool.c $(pkg-config --cflags --libs number-xray)
+```
+
+When the SDK was installed with `XRAY_BUILD_SHARED=ON`, `number-xray-shared`
+links the shared library for plugin loaders, FFI bindings, and tools that want
+the runtime ABI probes from a DLL/shared object:
+
+```bash
+cc my_tool.c $(pkg-config --cflags --libs number-xray-shared)
 ```
 
 Tools that need package metadata without running CMake or pkg-config can read
@@ -105,10 +114,11 @@ the installed SDK manifest:
 ```
 
 It records the public header, library name, CMake package/target, pkg-config
-name, documented header locations, ABI/runtime probe functions,
-install-relative include/lib/bin directories, and GMP/MPIR dependency. Tools
-that generate bindings should read `apiDocumentation.functionReferenceHeader`
-from the manifest and parse the `XRAY_API` declarations there.
+names for installed static/shared libraries, documented header locations,
+ABI/runtime probe functions, install-relative include/lib/bin directories, and
+GMP/MPIR dependency. Tools that generate bindings should read
+`apiDocumentation.functionReferenceHeader` from the manifest and parse the
+`XRAY_API` declarations there.
 
 Consumers still need GMP or MPIR available at configure/build time; the CMake
 package recreates the `GMP::GMP` dependency target from `GMP_ROOT`, vcpkg, or
