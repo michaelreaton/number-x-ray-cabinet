@@ -603,3 +603,46 @@ CLI benchmark:
 Decision: keep Karatsuba square as an exact, promising probe but do not route it
 yet. It beats current scratch self-multiply in useful bands, but it only beats
 GMP at 1000 digits and remains behind GMP at larger sizes on this laptop.
+
+## 2026-06-15: Karatsuba Square Threshold Scout
+
+Runs: `native-test-runs/20260615-090857-c4b04caf` and
+`runs/20260615-091005-c4b04caf`
+
+The threshold scout adds 32, 96, and 128 limb handoff rows for the large
+Karatsuba-square candidate. The goal is to see whether the 64 limb handoff was
+masking a GMP-competitive route.
+
+CTest benchmark:
+
+- Best 4096 digit `square-karatsuba-vs-gmp`: threshold `96`, ratio `1.054`,
+  stable `1/5`, `observe-only`
+- Best 8192 digit `square-karatsuba-vs-gmp`: threshold `64`, ratio `1.237`,
+  stable `0/5`, `observe-only`
+- Best 16384 digit `square-karatsuba-vs-gmp`: threshold `128`, ratio `1.302`,
+  stable `0/5`, `observe-only`
+- Best 4096 digit `square-karatsuba-vs-mul`: threshold `96`, ratio `0.737`,
+  stable `5/5`, `promote-candidate`
+- Best 8192 digit `square-karatsuba-vs-mul`: threshold `64`, ratio `0.658`,
+  stable `4/5`, `promote-candidate`
+- Best 16384 digit `square-karatsuba-vs-mul`: threshold `128`, ratio `0.689`,
+  stable `5/5`, `promote-candidate`
+
+CLI benchmark:
+
+- Best 4096 digit `square-karatsuba-vs-gmp`: threshold `96`, ratio `0.994`,
+  stable `2/5`, `observe-only`
+- Best 8192 digit `square-karatsuba-vs-gmp`: threshold `96`, ratio `1.207`,
+  stable `1/5`, `observe-only`
+- Best 16384 digit `square-karatsuba-vs-gmp`: threshold `64`, ratio `1.370`,
+  stable `0/5`, `observe-only`
+- Best 4096 digit `square-karatsuba-vs-mul`: threshold `32`, ratio `0.633`,
+  stable `4/5`, `promote-candidate`
+- Best 8192 digit `square-karatsuba-vs-mul`: threshold `96`, ratio `0.717`,
+  stable `5/5`, `promote-candidate`
+- Best 16384 digit `square-karatsuba-vs-mul`: threshold `64`, ratio `0.709`,
+  stable `5/5`, `promote-candidate`
+
+Decision: do not route Karatsuba square yet. Threshold tuning confirms the
+candidate is useful against our current self-multiply path, but no large
+threshold is stable or fast enough against GMP.

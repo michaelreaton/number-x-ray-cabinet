@@ -936,7 +936,7 @@ static void test_benchmarks(void) {
           strcmp(report->results[index].operation, "square-karatsuba-vs-gmp") == 0) {
         if (strcmp(report->results[index].operation, "square-karatsuba-vs-mul") == 0) saw_square_karatsuba_vs_mul_probe = 1;
         else saw_square_karatsuba_vs_gmp_probe = 1;
-        CHECK(strstr(report->results[index].detail, "threshold=64") != NULL);
+        CHECK(strstr(report->results[index].detail, "threshold=") != NULL);
         CHECK(strstr(report->results[index].detail, "candidate=karatsuba-square") != NULL);
         CHECK(strstr(report->results[index].detail, "featureGate=karatsuba-square-probe") != NULL);
         CHECK(strstr(report->results[index].detail, "operandFamilies=1") != NULL);
