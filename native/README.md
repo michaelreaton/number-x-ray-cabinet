@@ -95,6 +95,7 @@ Primary references: [GMP multiplication algorithms](https://gmplib.org/manual/Mu
 ## CLI
 
 ```powershell
+native\build\Release\xray_cli.exe --help
 native\build\Release\xray_cli.exe --bench 10403
 native\build\Release\xray_cli.exe --bench-frontier 10403
 native\build\Release\xray_cli.exe --rsa260

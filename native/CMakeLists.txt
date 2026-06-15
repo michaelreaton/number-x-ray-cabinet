@@ -65,6 +65,12 @@ if(BUILD_TESTING)
   add_executable(xray_native_tests tests/native_tests.c)
   target_link_libraries(xray_native_tests PRIVATE xray_core)
   add_test(NAME xray_native_tests COMMAND xray_native_tests)
+  if(TARGET xray_cli)
+    add_test(NAME xray_cli_help COMMAND xray_cli --help)
+    set_tests_properties(xray_cli_help PROPERTIES
+      PASS_REGULAR_EXPRESSION "--bench-frontier"
+    )
+  endif()
 endif()
 
 if(XRAY_BUILD_GTK)
