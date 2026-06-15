@@ -54,9 +54,22 @@ Benchmark JSON exposes that rule per operation-size row:
 
 - `parityVerified`: scratch output exactly matched the GMP/MPIR oracle
 - `replacementReady`: parity passed and scratch timing was less than or equal to the GMP/MPIR timing for that row
-- `scratchUs`, `gmpUs`, and `speedRatio`: local timing evidence from the current machine; a ratio below `1.0` means scratch was faster for that row
+- `scratchUs` and `gmpUs`: median local timings from the current machine
+- `speedRatio`: median of paired scratch/GMP sample ratios, not a cherry-picked independent best-time division; a ratio below `1.0` means scratch was faster for that row
 
 Rows with parity but without `replacementReady` are useful migration evidence, but the production path must remain GMP-backed.
+
+## GMP Source Clues
+
+GMP is used as an oracle and as a design map, not as copied implementation. Notes from the official GMP 6.3.0 source and manual:
+
+- x86_64 GMP uses 64-bit limbs (`GMP_LIMB_BITS 64`), while the current scratch layer still uses 32-bit limbs.
+- GMP's `mpn_mul_basecase` starts with `mul_1` and accumulates with `addmul_1`/multi-limb variants, avoiding an initial zeroing loop.
+- GMP keeps CPU-family-specific `mpn/x86_64` kernels and tuned thresholds for Broadwell/Skylake-class chips.
+- GMP's tuned Skylake/Broadwell thresholds move from basecase multiplication to Toom around 26 limbs, then to larger Toom/FFT stages later.
+- AVX/ADX/BMI2 ideas must be proven on this laptop with local parity tests and paired benchmark ratios before adoption.
+
+Primary references: [GMP multiplication algorithms](https://gmplib.org/manual/Multiplication-Algorithms.html), [GMP FFT multiplication](https://gmplib.org/manual/FFT-Multiplication.html), and the official GMP 6.3.0 source tarball from [gmplib.org](https://gmplib.org/download/gmp/gmp-6.3.0.tar.xz).
 
 ## CLI
 

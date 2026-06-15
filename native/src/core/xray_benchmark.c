@@ -43,6 +43,25 @@ static unsigned long long median_samples(const unsigned long long *samples, size
   return sorted[count / 2];
 }
 
+static double median_paired_ratio(const unsigned long long *numerator, const unsigned long long *denominator, size_t count) {
+  double ratios[XRAY_BENCH_SAMPLES] = {0.0};
+  if (!numerator || !denominator || count == 0 || count > XRAY_BENCH_SAMPLES) return 0.0;
+  for (size_t index = 0; index < count; ++index) {
+    ratios[index] = (double)(numerator[index] ? numerator[index] : 1ULL) /
+      (double)(denominator[index] ? denominator[index] : 1ULL);
+  }
+  for (size_t index = 1; index < count; ++index) {
+    double value = ratios[index];
+    size_t pos = index;
+    while (pos > 0 && ratios[pos - 1] > value) {
+      ratios[pos] = ratios[pos - 1];
+      pos--;
+    }
+    ratios[pos] = value;
+  }
+  return ratios[count / 2];
+}
+
 static void run_factor_case(XrayBenchmarkReport *report, const char *name, const char *input, const char *expected_status, unsigned long budget_ms) {
   XrayBenchmarkResult result;
   memset(&result, 0, sizeof(result));
@@ -130,7 +149,8 @@ static void append_perf_result(
   size_t digits,
   int parity,
   unsigned long long scratch_us,
-  unsigned long long gmp_us) {
+  unsigned long long gmp_us,
+  double paired_ratio) {
   XrayBenchmarkResult result;
   memset(&result, 0, sizeof(result));
   snprintf(result.name, sizeof(result.name), "scratch %s %zu digits", operation, digits);
@@ -139,7 +159,7 @@ static void append_perf_result(
   result.digits = digits;
   result.scratch_us = scratch_us ? scratch_us : 1;
   result.gmp_us = gmp_us ? gmp_us : 1;
-  result.speed_ratio = (double)result.scratch_us / (double)result.gmp_us;
+  result.speed_ratio = paired_ratio > 0.0 ? paired_ratio : (double)result.scratch_us / (double)result.gmp_us;
   result.max_allowed_speed_ratio = 1.0;
   result.parity_verified = parity;
   const char *adoption = xray_scratch_adoption_for_result(&result);
@@ -150,7 +170,7 @@ static void append_perf_result(
   snprintf(result.status, sizeof(result.status), "%s",
     !parity ? "failed" : (result.replacement_ready ? "replacement-ready" : "parity"));
   snprintf(result.detail, sizeof(result.detail),
-    "operation=%s digits=%zu samples=%u scratchUs=%llu gmpUs=%llu ratio=%.3f maxAllowedRatio=%.1f adoption=%s",
+    "operation=%s digits=%zu samples=%u scratchUs=%llu gmpUs=%llu ratio=%.3f ratioMethod=paired-median maxAllowedRatio=%.1f adoption=%s",
     operation,
     digits,
     XRAY_BENCH_SAMPLES,
@@ -196,7 +216,8 @@ static void run_scratch_parse_case(XrayBenchmarkReport *report, size_t digits) {
   }
   unsigned long long scratch_us = median_samples(scratch_samples, XRAY_BENCH_SAMPLES);
   unsigned long long gmp_us = median_samples(gmp_samples, XRAY_BENCH_SAMPLES);
-  append_perf_result(report, "parse", digits, parity, scratch_us, gmp_us);
+  double paired_ratio = median_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES);
+  append_perf_result(report, "parse", digits, parity, scratch_us, gmp_us, paired_ratio);
 
   mpz_clear(gmp);
   xray_bigint_clear(&scratch);
@@ -251,7 +272,8 @@ static void run_scratch_binary_case(XrayBenchmarkReport *report, const char *ope
   }
   unsigned long long scratch_us = median_samples(scratch_samples, XRAY_BENCH_SAMPLES);
   unsigned long long gmp_us = median_samples(gmp_samples, XRAY_BENCH_SAMPLES);
-  append_perf_result(report, operation, digits, parity, scratch_us, gmp_us);
+  double paired_ratio = median_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES);
+  append_perf_result(report, operation, digits, parity, scratch_us, gmp_us, paired_ratio);
 
   mpz_clears(ga, gb, gout, NULL);
   xray_bigint_clear(&a);
@@ -301,7 +323,8 @@ static void run_scratch_divmod_case(XrayBenchmarkReport *report, size_t digits) 
   }
   unsigned long long scratch_us = median_samples(scratch_samples, XRAY_BENCH_SAMPLES);
   unsigned long long gmp_us = median_samples(gmp_samples, XRAY_BENCH_SAMPLES);
-  append_perf_result(report, "divmod-u32", digits, parity, scratch_us, gmp_us);
+  double paired_ratio = median_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES);
+  append_perf_result(report, "divmod-u32", digits, parity, scratch_us, gmp_us, paired_ratio);
 
   mpz_clears(ga, gquot, NULL);
   xray_bigint_clear(&a);
@@ -355,7 +378,8 @@ static void run_scratch_modular_case(XrayBenchmarkReport *report, const char *op
   }
   unsigned long long scratch_us = median_samples(scratch_samples, XRAY_BENCH_SAMPLES);
   unsigned long long gmp_us = median_samples(gmp_samples, XRAY_BENCH_SAMPLES);
-  append_perf_result(report, operation, digits, parity, scratch_us, gmp_us);
+  double paired_ratio = median_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES);
+  append_perf_result(report, operation, digits, parity, scratch_us, gmp_us, paired_ratio);
 
   mpz_clears(ga, gmodulus, gout, NULL);
   xray_bigint_clear(&a);

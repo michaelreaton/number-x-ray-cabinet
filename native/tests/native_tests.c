@@ -232,6 +232,10 @@ static void test_scratch_bigint_oracle_sweep(void) {
   const char *values[] = {
     "0",
     "1",
+    "4294967295",
+    "4294967296",
+    "18446744073709551615",
+    "18446744073709551616",
     "999999999",
     "1000000000",
     "1000000000000000000000000000000",
@@ -466,6 +470,7 @@ static void test_benchmarks(void) {
       CHECK(report->results[index].gmp_us > 0);
       CHECK(report->results[index].speed_ratio > 0.0);
       CHECK(report->results[index].max_allowed_speed_ratio == 1.0);
+      CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
       const char *adoption = xray_scratch_adoption_for_result(&report->results[index]);
       CHECK(strcmp(report->results[index].adoption, adoption) == 0);
       CHECK(report->results[index].replacement_ready == (strcmp(adoption, "allowed") == 0));
@@ -521,6 +526,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_json, "\"scratchRows\"") != NULL);
   CHECK(strstr(benchmark_tsv, "scratch-vs-gmp") != NULL);
   CHECK(strstr(benchmark_tsv, "speedRatio") != NULL);
+  CHECK(strstr(benchmark_tsv, "ratioMethod=paired-median") != NULL);
   CHECK(strstr(cpu_text, "CPU:") != NULL);
   CHECK(strstr(cpu_text, "flags=") != NULL);
   free(benchmark_json_path);
