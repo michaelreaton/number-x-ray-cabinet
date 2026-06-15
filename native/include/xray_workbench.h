@@ -12,7 +12,7 @@ extern "C" {
 #define XRAY_VERSION "0.1.0-native-proof"
 
 typedef struct XrayScratchBigInt {
-  uint32_t *limbs;
+  uint64_t *limbs;
   size_t count;
   size_t capacity;
 } XrayScratchBigInt;

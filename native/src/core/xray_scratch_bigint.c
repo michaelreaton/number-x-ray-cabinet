@@ -5,7 +5,16 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define XRAY_BIGINT_WORD_BITS 32U
+#if defined(_MSC_VER) && defined(_M_X64)
+#include <intrin.h>
+#define XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS 1
+#elif defined(__SIZEOF_INT128__)
+#define XRAY_BIGINT_HAS_UINT128 1
+#else
+#error "The 64-bit scratch bigint core requires __uint128 or MSVC x64 128-bit intrinsics."
+#endif
+
+#define XRAY_BIGINT_WORD_BITS 64U
 #define XRAY_BIGINT_DECIMAL_CHUNK_BASE 1000000000U
 #define XRAY_BIGINT_DECIMAL_CHUNK_DIGITS 9U
 
@@ -41,7 +50,7 @@ static int reserve_limbs(XrayScratchBigInt *value, size_t capacity) {
   if (value->capacity >= capacity) return 1;
   size_t next_capacity = value->capacity ? value->capacity * 2 : 4;
   while (next_capacity < capacity) next_capacity *= 2;
-  uint32_t *next = (uint32_t *)realloc(value->limbs, sizeof(uint32_t) * next_capacity);
+  uint64_t *next = (uint64_t *)realloc(value->limbs, sizeof(uint64_t) * next_capacity);
   if (!next) return 0;
   value->limbs = next;
   value->capacity = next_capacity;
@@ -54,7 +63,7 @@ static void normalize(XrayScratchBigInt *value) {
 
 static int set_u32(XrayScratchBigInt *value, uint32_t small) {
   if (!reserve_limbs(value, 1)) return 0;
-  value->limbs[0] = small;
+  value->limbs[0] = (uint64_t)small;
   value->count = small ? 1 : 0;
   return 1;
 }
@@ -71,9 +80,57 @@ int xray_bigint_copy(XrayScratchBigInt *out, const XrayScratchBigInt *value) {
     return 1;
   }
   if (!reserve_limbs(out, value->count ? value->count : 1)) return 0;
-  if (value->count) memcpy(out->limbs, value->limbs, sizeof(uint32_t) * value->count);
+  if (value->count) memcpy(out->limbs, value->limbs, sizeof(uint64_t) * value->count);
   out->count = value->count;
   return 1;
+}
+
+static uint64_t mul_add_small_word(uint64_t word, uint32_t multiplier, uint64_t carry, uint64_t *out) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  unsigned __int64 high = 0;
+  unsigned __int64 low = _umul128(word, (uint64_t)multiplier, &high);
+  unsigned __int64 sum = low + carry;
+  if (sum < low) high++;
+  *out = (uint64_t)sum;
+  return (uint64_t)high;
+#else
+  __uint128_t product = (__uint128_t)word * (__uint128_t)multiplier + (__uint128_t)carry;
+  *out = (uint64_t)product;
+  return (uint64_t)(product >> XRAY_BIGINT_WORD_BITS);
+#endif
+}
+
+static uint64_t mul_add_word(uint64_t existing, uint64_t left, uint64_t right, uint64_t carry, uint64_t *out) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  unsigned __int64 high = 0;
+  unsigned __int64 low = _umul128(left, right, &high);
+  unsigned __int64 sum = 0;
+  unsigned char carry_out = _addcarry_u64(0, low, existing, &sum);
+  high += carry_out;
+  carry_out = _addcarry_u64(0, sum, carry, &sum);
+  high += carry_out;
+  *out = (uint64_t)sum;
+  return (uint64_t)high;
+#else
+  __uint128_t product = (__uint128_t)left * (__uint128_t)right + (__uint128_t)existing + (__uint128_t)carry;
+  *out = (uint64_t)product;
+  return (uint64_t)(product >> XRAY_BIGINT_WORD_BITS);
+#endif
+}
+
+static uint64_t divmod_word_u32(uint32_t high, uint64_t low, uint32_t divisor, int use_high_half, uint32_t *remainder) {
+  uint32_t quotient_high = 0;
+  uint32_t rem = high;
+  if (use_high_half) {
+    uint64_t current = ((uint64_t)high << 32U) | (uint32_t)(low >> 32U);
+    quotient_high = (uint32_t)(current / divisor);
+    rem = (uint32_t)(current % divisor);
+  }
+  uint64_t current = ((uint64_t)rem << 32U) | (uint32_t)low;
+  uint32_t quotient_low = (uint32_t)(current / divisor);
+  rem = (uint32_t)(current % divisor);
+  if (remainder) *remainder = rem;
+  return ((uint64_t)quotient_high << 32U) | quotient_low;
 }
 
 static int mul_add_small_inplace(XrayScratchBigInt *value, uint32_t multiplier, uint32_t addend) {
@@ -81,11 +138,9 @@ static int mul_add_small_inplace(XrayScratchBigInt *value, uint32_t multiplier, 
   if (!reserve_limbs(value, value->count + 1)) return 0;
   uint64_t carry = addend;
   for (size_t index = 0; index < value->count; ++index) {
-    uint64_t product = (uint64_t)value->limbs[index] * multiplier + carry;
-    value->limbs[index] = (uint32_t)product;
-    carry = product >> XRAY_BIGINT_WORD_BITS;
+    carry = mul_add_small_word(value->limbs[index], multiplier, carry, &value->limbs[index]);
   }
-  if (carry) value->limbs[value->count++] = (uint32_t)carry;
+  if (carry) value->limbs[value->count++] = carry;
   return 1;
 }
 
@@ -192,17 +247,19 @@ int xray_bigint_add(XrayScratchBigInt *out, const XrayScratchBigInt *left, const
   uint64_t carry = 0;
   size_t index = 0;
   for (; index < shorter->count; ++index) {
-    uint64_t sum = (uint64_t)left->limbs[index] + right->limbs[index] + carry;
-    out->limbs[index] = (uint32_t)sum;
-    carry = sum >> XRAY_BIGINT_WORD_BITS;
+    uint64_t sum = left->limbs[index] + right->limbs[index];
+    uint64_t carry_from_sum = sum < left->limbs[index];
+    uint64_t with_carry = sum + carry;
+    out->limbs[index] = with_carry;
+    carry = carry_from_sum || (with_carry < sum);
   }
   for (; index < longer->count; ++index) {
-    uint64_t sum = (uint64_t)longer->limbs[index] + carry;
-    out->limbs[index] = (uint32_t)sum;
-    carry = sum >> XRAY_BIGINT_WORD_BITS;
+    uint64_t sum = longer->limbs[index] + carry;
+    out->limbs[index] = sum;
+    carry = sum < longer->limbs[index];
   }
   out->count = longer->count;
-  if (carry) out->limbs[out->count++] = (uint32_t)carry;
+  if (carry) out->limbs[out->count++] = carry;
   return 1;
 }
 
@@ -217,13 +274,14 @@ int xray_bigint_sub(XrayScratchBigInt *out, const XrayScratchBigInt *left, const
   size_t index = 0;
   for (; index < right->count; ++index) {
     uint64_t lhs = left->limbs[index];
-    uint64_t rhs = (uint64_t)right->limbs[index] + borrow;
-    out->limbs[index] = (uint32_t)(lhs - rhs);
-    borrow = lhs < rhs;
+    uint64_t rhs = right->limbs[index] + borrow;
+    uint64_t borrow_from_add = rhs < right->limbs[index];
+    out->limbs[index] = lhs - rhs;
+    borrow = borrow_from_add || (lhs < rhs);
   }
   for (; index < left->count; ++index) {
     uint64_t lhs = left->limbs[index];
-    out->limbs[index] = (uint32_t)(lhs - borrow);
+    out->limbs[index] = lhs - borrow;
     borrow = lhs < borrow;
   }
   out->count = left->count;
@@ -236,20 +294,18 @@ static int mul_schoolbook(XrayScratchBigInt *out, const XrayScratchBigInt *left,
   if (left->count == 0 || right->count == 0) return set_u32(out, 0);
   size_t needed = left->count + right->count;
   if (!reserve_limbs(out, needed)) return 0;
-  memset(out->limbs, 0, sizeof(uint32_t) * needed);
+  memset(out->limbs, 0, sizeof(uint64_t) * needed);
   out->count = needed;
   for (size_t i = 0; i < left->count; ++i) {
     uint64_t carry = 0;
     for (size_t j = 0; j < right->count; ++j) {
-      uint64_t current = out->limbs[i + j] + (uint64_t)left->limbs[i] * right->limbs[j] + carry;
-      out->limbs[i + j] = (uint32_t)current;
-      carry = current >> XRAY_BIGINT_WORD_BITS;
+      carry = mul_add_word(out->limbs[i + j], left->limbs[i], right->limbs[j], carry, &out->limbs[i + j]);
     }
     size_t pos = i + right->count;
     while (carry) {
       uint64_t current = out->limbs[pos] + carry;
-      out->limbs[pos] = (uint32_t)current;
-      carry = current >> XRAY_BIGINT_WORD_BITS;
+      out->limbs[pos] = current;
+      carry = current < carry;
       pos++;
     }
   }
@@ -272,25 +328,27 @@ int xray_bigint_mul(XrayScratchBigInt *out, const XrayScratchBigInt *left, const
 
 uint32_t xray_bigint_mod_u32(const XrayScratchBigInt *value, uint32_t modulus) {
   if (!value || modulus == 0) return 0;
-  uint64_t remainder = 0;
-  for (size_t index = value->count; index-- > 0;) {
-    remainder = ((remainder << XRAY_BIGINT_WORD_BITS) | value->limbs[index]) % modulus;
+  uint32_t remainder = 0;
+  for (size_t remaining = value->count; remaining > 0; --remaining) {
+    size_t index = remaining - 1;
+    int use_high_half = index + 1 != value->count || (value->limbs[index] >> 32U) != 0;
+    divmod_word_u32(remainder, value->limbs[index], modulus, use_high_half, &remainder);
   }
-  return (uint32_t)remainder;
+  return remainder;
 }
 
 int xray_bigint_divmod_u32(XrayScratchBigInt *quotient, uint32_t *remainder, const XrayScratchBigInt *value, uint32_t divisor) {
   if (!quotient || !value || divisor == 0) return 0;
   if (!reserve_limbs(quotient, value->count ? value->count : 1)) return 0;
-  uint64_t rem = 0;
-  for (size_t index = value->count; index-- > 0;) {
-    uint64_t current = (rem << XRAY_BIGINT_WORD_BITS) | value->limbs[index];
-    quotient->limbs[index] = (uint32_t)(current / divisor);
-    rem = current % divisor;
+  uint32_t rem = 0;
+  for (size_t remaining = value->count; remaining > 0; --remaining) {
+    size_t index = remaining - 1;
+    int use_high_half = index + 1 != value->count || (value->limbs[index] >> 32U) != 0;
+    quotient->limbs[index] = divmod_word_u32(rem, value->limbs[index], divisor, use_high_half, &rem);
   }
   quotient->count = value->count;
   normalize(quotient);
-  if (remainder) *remainder = (uint32_t)rem;
+  if (remainder) *remainder = rem;
   return 1;
 }
 

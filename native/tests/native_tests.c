@@ -117,6 +117,7 @@ static void test_scratch_bigint_oracle(void) {
   xray_bigint_init(&difference);
   xray_bigint_init(&product);
   xray_bigint_init(&quotient);
+  CHECK(sizeof(*a.limbs) == sizeof(uint64_t));
   CHECK(xray_bigint_set_decimal(&a, "123456789012345678901234567890"));
   CHECK(xray_bigint_set_decimal(&b, "98765432109876543210"));
   CHECK(xray_bigint_set_decimal(&quotient, "000,123_456 789"));

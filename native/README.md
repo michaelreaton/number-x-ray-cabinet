@@ -65,13 +65,15 @@ The benchmark also emits `kernel-probe` rows. These are not production replaceme
 
 GMP is used as an oracle and as a design map, not as copied implementation. Notes from the official GMP 6.3.0 source and manual:
 
-- x86_64 GMP uses 64-bit limbs (`GMP_LIMB_BITS 64`), while the current scratch layer still uses 32-bit limbs.
+- x86_64 GMP uses 64-bit limbs (`GMP_LIMB_BITS 64`), and the scratch layer now uses 64-bit limbs too.
 - GMP's `mpn_mul_basecase` starts with `mul_1` and accumulates with `addmul_1`/multi-limb variants, avoiding an initial zeroing loop.
 - GMP keeps CPU-family-specific `mpn/x86_64` kernels and tuned thresholds for Broadwell/Skylake-class chips.
 - GMP's tuned Skylake/Broadwell thresholds move from basecase multiplication to Toom around 26 limbs, then to larger Toom/FFT stages later.
 - AVX/ADX/BMI2 ideas must be proven on this laptop with local parity tests and paired benchmark ratios before adoption.
 
 Current native probes test that first clue directly by comparing exact 64-bit limb add/sub carry chains against exact 32-bit limb carry chains for the same bit widths. On MSVC/x86 builds they also test `_addcarry_u32` and `_subborrow_u32` against the scalar 32-bit baseline, because previous carry-intrinsic experiments were noisy and must remain evidence-only until they win reproducibly.
+
+The 64-bit scratch migration is intentionally partial: add/sub/mul can become replacement-ready where the benchmark proves it, while larger `mod-u32`, `gcd-u32`, `divmod-u32`, and `powmod-u32` rows may remain `oracle-only`. That is acceptable evidence, not permission to route production solver accounting away from GMP for those rows.
 
 Primary references: [GMP multiplication algorithms](https://gmplib.org/manual/Multiplication-Algorithms.html), [GMP FFT multiplication](https://gmplib.org/manual/FFT-Multiplication.html), and the official GMP 6.3.0 source tarball from [gmplib.org](https://gmplib.org/download/gmp/gmp-6.3.0.tar.xz).
 
