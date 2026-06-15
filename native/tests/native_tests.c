@@ -693,6 +693,7 @@ static void test_benchmarks(void) {
   int saw_toom3_probe = 0;
   int saw_toom3_vs_scratch_probe = 0;
   int saw_muladd_bmi2_adx_probe = 0;
+  int saw_muladd_unroll_probe = 0;
   for (size_t index = 0; index < report->result_count; ++index) {
     if (strcmp(report->results[index].category, "scratch-vs-gmp") == 0) {
       scratch_rows++;
@@ -756,6 +757,12 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "baseline=_umul128+_addcarry_u64") != NULL);
         CHECK(strstr(report->results[index].detail, "featureGate=msvc-x64-bmi2-adx") != NULL);
       }
+      if (strcmp(report->results[index].operation, "muladd-unroll4") == 0) {
+        saw_muladd_unroll_probe = 1;
+        CHECK(strstr(report->results[index].detail, "candidate=_umul128+_addcarry_u64-unroll4") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=_umul128+_addcarry_u64") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=msvc-x64-loop-schedule") != NULL);
+      }
       if (strcmp(report->results[index].adoption, "promote-candidate") == 0) {
         CHECK(report->results[index].stable_sample_count >= 4);
         CHECK(report->results[index].speed_ratio <= report->results[index].max_allowed_speed_ratio);
@@ -787,6 +794,7 @@ static void test_benchmarks(void) {
   CHECK(saw_toom3_probe);
   CHECK(saw_toom3_vs_scratch_probe);
 #if defined(_MSC_VER) && defined(_M_X64)
+  CHECK(saw_muladd_unroll_probe);
   if (report->cpu.bmi2 && report->cpu.adx) CHECK(saw_muladd_bmi2_adx_probe);
 #endif
   CHECK(kernel_rows >= 4);
@@ -815,6 +823,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "mul-toom3") != NULL);
   CHECK(strstr(json, "mul-toom3-vs-scratch") != NULL);
 #if defined(_MSC_VER) && defined(_M_X64)
+  CHECK(strstr(json, "muladd-unroll4") != NULL);
   if (report->cpu.bmi2 && report->cpu.adx) CHECK(strstr(json, "muladd-bmi2-adx") != NULL);
 #endif
   free(json);
@@ -829,6 +838,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "mul-toom3") != NULL);
   CHECK(strstr(tsv, "mul-toom3-vs-scratch") != NULL);
 #if defined(_MSC_VER) && defined(_M_X64)
+  CHECK(strstr(tsv, "muladd-unroll4") != NULL);
   if (report->cpu.bmi2 && report->cpu.adx) CHECK(strstr(tsv, "muladd-bmi2-adx") != NULL);
 #endif
   CHECK(strstr(tsv, "replacement-ready") != NULL || strstr(tsv, "parity") != NULL);
