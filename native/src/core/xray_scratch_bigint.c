@@ -441,12 +441,58 @@ int xray_bigint_divmod_u32(XrayScratchBigInt *quotient, uint32_t *remainder, con
 }
 
 static uint32_t gcd_u32(uint32_t a, uint32_t b) {
-  while (b) {
-    uint32_t next = a % b;
-    a = b;
-    b = next;
+  if (a == 0) return b;
+  if (b == 0) return a;
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  unsigned long shift = 0;
+  unsigned long a_shift = 0;
+  unsigned long b_shift = 0;
+  _BitScanForward(&shift, a | b);
+  _BitScanForward(&a_shift, a);
+  a >>= a_shift;
+  do {
+    _BitScanForward(&b_shift, b);
+    b >>= b_shift;
+    if (a > b) {
+      uint32_t swap = a;
+      a = b;
+      b = swap;
+    }
+    b -= a;
+  } while (b);
+  return a << shift;
+#elif defined(__GNUC__) || defined(__clang__)
+  unsigned int shift = (unsigned int)__builtin_ctz(a | b);
+  a >>= (unsigned int)__builtin_ctz(a);
+  do {
+    b >>= (unsigned int)__builtin_ctz(b);
+    if (a > b) {
+      uint32_t swap = a;
+      a = b;
+      b = swap;
+    }
+    b -= a;
+  } while (b);
+  return a << shift;
+#else
+  unsigned int shift = 0;
+  while (((a | b) & 1U) == 0) {
+    a >>= 1U;
+    b >>= 1U;
+    shift++;
   }
-  return a;
+  while ((a & 1U) == 0) a >>= 1U;
+  do {
+    while ((b & 1U) == 0) b >>= 1U;
+    if (a > b) {
+      uint32_t swap = a;
+      a = b;
+      b = swap;
+    }
+    b -= a;
+  } while (b);
+  return a << shift;
+#endif
 }
 
 uint32_t xray_bigint_gcd_u32(const XrayScratchBigInt *value, uint32_t other) {
