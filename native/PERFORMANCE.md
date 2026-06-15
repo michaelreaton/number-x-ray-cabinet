@@ -360,3 +360,34 @@ Decision: keep leaf 96 as the next bounded route candidate for the 8192 digit
 frontier only. It survived the deep GMP gate at 8192, but not at 16384. The
 next route experiment should be explicitly bounded by size and should keep the
 16384 row as a guardrail, not as an adoption target.
+
+## 2026-06-15: Bounded Toom-3 + Unroll4 Route Rejected
+
+Runs: `native/build-codex-fresh/native-test-runs/20260615-073725-c4b04caf`,
+`runs/20260615-073822-c4b04caf`
+
+A temporary production scratch route sent balanced `384..512` limb operands
+through Toom-3+unroll4 with a 96-limb leaf. The intended adoption target was
+the 8192 digit multiply row, while 16384 digits remained the guardrail.
+
+CTest benchmark with the route:
+
+- 8192 digit scratch `mul`: ratio `1.314`, stable `2/5`, worst pair ratio
+  `1.693`, `oracle-only`
+- 16384 digit scratch `mul`: ratio `1.326`, stable `0/5`, worst pair ratio
+  `1.479`, `oracle-only`
+- 8192 digit deep leaf 96 vs GMP: ratio `1.006`, stable `4/9`,
+  `observe-only`
+
+CLI benchmark with the same route:
+
+- 8192 digit scratch `mul`: ratio `0.903`, stable `4/5`, worst pair ratio
+  `1.006`, `replacement-ready`
+- 16384 digit scratch `mul`: ratio `1.240`, stable `2/5`, worst pair ratio
+  `1.352`, `oracle-only`
+- 8192 digit deep leaf 96 vs GMP: ratio `1.005`, stable `4/9`,
+  `observe-only`
+
+Decision: reject the route and leave production multiplication unchanged. The
+ordinary scratch row was too run-sensitive, and the deep GMP gate did not
+confirm the candidate. This is useful evidence, but not permission to route.
