@@ -411,7 +411,7 @@ int xray_bigint_set_decimal(XrayScratchBigInt *value, const char *decimal) {
   return 1;
 }
 
-char *xray_bigint_get_decimal(const XrayScratchBigInt *value) {
+static char *get_decimal_with_horner_min(const XrayScratchBigInt *value, size_t horner_min_limbs) {
   if (!value || value->count == 0) {
     char *zero = (char *)calloc(2, 1);
     if (zero) zero[0] = '0';
@@ -424,7 +424,7 @@ char *xray_bigint_get_decimal(const XrayScratchBigInt *value) {
   uint32_t *chunks = NULL;
   size_t chunk_count = 0;
   size_t chunk_capacity = 0;
-  if (value->count >= XRAY_BIGINT_DECIMAL_HORNER_MIN_LIMBS) {
+  if (value->count >= horner_min_limbs) {
     if (!decimal_chunks_from_limbs_horner(&chunks, &chunk_count, value)) {
       xray_bigint_clear(&copy);
       return NULL;
@@ -470,6 +470,14 @@ char *xray_bigint_get_decimal(const XrayScratchBigInt *value) {
   }
   free(chunks);
   return text;
+}
+
+char *xray_bigint_get_decimal(const XrayScratchBigInt *value) {
+  return get_decimal_with_horner_min(value, XRAY_BIGINT_DECIMAL_HORNER_MIN_LIMBS);
+}
+
+char *xray_bigint_get_decimal_horner_threshold_probe(const XrayScratchBigInt *value, size_t horner_min_limbs) {
+  return get_decimal_with_horner_min(value, horner_min_limbs ? horner_min_limbs : 1U);
 }
 
 int xray_bigint_compare(const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
