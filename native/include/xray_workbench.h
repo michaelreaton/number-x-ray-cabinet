@@ -10,6 +10,7 @@ extern "C" {
 #endif
 
 #define XRAY_VERSION "0.1.0-native-proof"
+#define XRAY_ABI_VERSION 1u
 
 #ifndef XRAY_API
 #if defined(_WIN32) && defined(XRAY_SHARED)
@@ -30,6 +31,21 @@ typedef struct XrayScratchBigInt {
   size_t count;
   size_t capacity;
 } XrayScratchBigInt;
+
+/**
+ * Return the runtime Number X-Ray version string for the loaded library.
+ *
+ * The returned pointer is borrowed static storage and must not be freed.
+ */
+XRAY_API const char *xray_version(void);
+
+/**
+ * Return the runtime C ABI version for the loaded library.
+ *
+ * The ABI version changes when the exported C layout or calling contract makes
+ * a backward-incompatible change. The current ABI is 1.
+ */
+XRAY_API unsigned int xray_abi_version(void);
 
 /**
  * Release memory returned by Number X-Ray allocation-returning API calls.

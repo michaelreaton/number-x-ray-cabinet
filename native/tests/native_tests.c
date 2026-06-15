@@ -133,6 +133,12 @@ static void test_public_allocator_contract(void) {
   mpz_clear(parsed);
 }
 
+static void test_runtime_version_contract(void) {
+  CHECK(strcmp(xray_version(), XRAY_VERSION) == 0);
+  CHECK(xray_abi_version() == XRAY_ABI_VERSION);
+  CHECK(xray_abi_version() >= 1u);
+}
+
 static void test_exact_expression_parser(void) {
   mpz_t value, expected;
   mpz_inits(value, expected, NULL);
@@ -1340,6 +1346,7 @@ static void test_benchmarks(void) {
 int main(void) {
   test_parse_messy_input();
   test_public_allocator_contract();
+  test_runtime_version_contract();
   test_exact_expression_parser();
   test_cpu_feature_detection();
   test_scratch_bigint_oracle();

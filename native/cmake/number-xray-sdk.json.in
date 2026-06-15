@@ -15,6 +15,11 @@
     "functionReferenceHeader": "xray_workbench.h",
     "coverage": "all exported XRAY_API functions"
   },
+  "abi": {
+    "version": 1,
+    "versionFunction": "xray_version",
+    "abiVersionFunction": "xray_abi_version"
+  },
   "libraries": {
     "core": {
       "name": "xray_core",

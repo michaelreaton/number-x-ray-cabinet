@@ -12,6 +12,8 @@ int main(void) {
   xray_bigint_init(&sum);
 
   int ok = strcmp(NUMBER_XRAY_VERSION, XRAY_VERSION) == 0 &&
+    strcmp(xray_version(), NUMBER_XRAY_VERSION) == 0 &&
+    xray_abi_version() == NUMBER_XRAY_ABI_VERSION &&
     xray_bigint_set_decimal(&value, "10,000_000 000,000_000 000") &&
     xray_bigint_set_decimal(&one, "1") &&
     xray_bigint_add(&sum, &value, &one);
