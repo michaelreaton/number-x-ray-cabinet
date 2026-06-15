@@ -15,6 +15,7 @@
 #define XRAY_KERNEL_SAMPLES 5
 #define XRAY_MUL_OPERAND_FAMILIES 2
 #define XRAY_SCRATCH_REQUIRED_STABLE_SAMPLES 4
+#define XRAY_KERNEL_REQUIRED_STABLE_SAMPLES 4
 
 static volatile unsigned long long kernel_probe_sink = 0;
 
@@ -234,6 +235,9 @@ static void append_kernel_probe_result(
   unsigned long long candidate_us,
   unsigned long long baseline_us,
   double paired_ratio,
+  size_t stable_sample_count,
+  size_t sample_count,
+  double worst_pair_ratio,
   const char *candidate,
   const char *baseline,
   const char *feature_gate,
@@ -248,8 +252,13 @@ static void append_kernel_probe_result(
   result.gmp_us = baseline_us ? baseline_us : 1;
   result.speed_ratio = paired_ratio > 0.0 ? paired_ratio : (double)result.scratch_us / (double)result.gmp_us;
   result.max_allowed_speed_ratio = 0.98;
+  result.stable_sample_count = stable_sample_count;
+  result.sample_count = sample_count;
+  result.worst_pair_ratio = worst_pair_ratio;
   result.parity_verified = parity;
-  result.replacement_ready = parity && result.speed_ratio <= result.max_allowed_speed_ratio;
+  result.replacement_ready = parity &&
+    result.speed_ratio <= result.max_allowed_speed_ratio &&
+    result.stable_sample_count >= XRAY_KERNEL_REQUIRED_STABLE_SAMPLES;
   snprintf(result.adoption, sizeof(result.adoption), "%s",
     !parity ? "blocked-output-mismatch" : (result.replacement_ready ? "promote-candidate" : "observe-only"));
   snprintf(result.status, sizeof(result.status), "%s",
@@ -257,15 +266,18 @@ static void append_kernel_probe_result(
   result.passed = 1;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=%s bits=%zu samples=%u candidate=%s baseline=%s candUs=%llu baseUs=%llu ratio=%.3f ratioMethod=paired-median max=%.2f featureGate=%s gmpClue=%s adoption=%s",
+    "op=%s bits=%zu samples=%zu stablePairs=%zu/%zu candidate=%s baseline=%s candUs=%llu baseUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median max=%.2f featureGate=%s gmpClue=%s adoption=%s",
     operation,
     bits,
-    XRAY_KERNEL_SAMPLES,
+    sample_count,
+    stable_sample_count,
+    sample_count,
     candidate,
     baseline,
     result.scratch_us,
     result.gmp_us,
     result.speed_ratio,
+    result.worst_pair_ratio,
     result.max_allowed_speed_ratio,
     feature_gate,
     gmp_clue,
@@ -341,6 +353,9 @@ static void run_kernel_probe64_case(XrayBenchmarkReport *report, const char *ope
     median_samples(candidate_samples, XRAY_KERNEL_SAMPLES),
     median_samples(baseline_samples, XRAY_KERNEL_SAMPLES),
     median_paired_ratio(candidate_samples, baseline_samples, XRAY_KERNEL_SAMPLES),
+    paired_ratio_wins(candidate_samples, baseline_samples, XRAY_KERNEL_SAMPLES, 0.98),
+    XRAY_KERNEL_SAMPLES,
+    max_paired_ratio(candidate_samples, baseline_samples, XRAY_KERNEL_SAMPLES),
     "scalar64-limb",
     "scalar32-limb",
     "portable-c",
@@ -412,6 +427,9 @@ static void run_kernel_probe_intrinsic_case(XrayBenchmarkReport *report, const c
     median_samples(candidate_samples, XRAY_KERNEL_SAMPLES),
     median_samples(baseline_samples, XRAY_KERNEL_SAMPLES),
     median_paired_ratio(candidate_samples, baseline_samples, XRAY_KERNEL_SAMPLES),
+    paired_ratio_wins(candidate_samples, baseline_samples, XRAY_KERNEL_SAMPLES, 0.98),
+    XRAY_KERNEL_SAMPLES,
+    max_paired_ratio(candidate_samples, baseline_samples, XRAY_KERNEL_SAMPLES),
     strcmp(operation, "add-carry") == 0 ? "_addcarry_u32" : "_subborrow_u32",
     "scalar32-limb",
     "msvc-x86-intrinsic",
@@ -561,7 +579,10 @@ static void append_mul_threshold_probe_result(
   int parity,
   unsigned long long scratch_us,
   unsigned long long gmp_us,
-  double paired_ratio) {
+  double paired_ratio,
+  size_t stable_sample_count,
+  size_t sample_count,
+  double worst_pair_ratio) {
   XrayBenchmarkResult result;
   memset(&result, 0, sizeof(result));
   snprintf(result.name, sizeof(result.name), "kernel mul threshold %zu limbs %zu digits", threshold, digits);
@@ -572,8 +593,13 @@ static void append_mul_threshold_probe_result(
   result.gmp_us = gmp_us ? gmp_us : 1;
   result.speed_ratio = paired_ratio > 0.0 ? paired_ratio : (double)result.scratch_us / (double)result.gmp_us;
   result.max_allowed_speed_ratio = 0.98;
+  result.stable_sample_count = stable_sample_count;
+  result.sample_count = sample_count;
+  result.worst_pair_ratio = worst_pair_ratio;
   result.parity_verified = parity;
-  result.replacement_ready = parity && result.speed_ratio <= result.max_allowed_speed_ratio;
+  result.replacement_ready = parity &&
+    result.speed_ratio <= result.max_allowed_speed_ratio &&
+    result.stable_sample_count >= XRAY_KERNEL_REQUIRED_STABLE_SAMPLES;
   snprintf(result.adoption, sizeof(result.adoption), "%s",
     !parity ? "blocked-output-mismatch" : (result.replacement_ready ? "promote-candidate" : "observe-only"));
   snprintf(result.status, sizeof(result.status), "%s",
@@ -581,14 +607,17 @@ static void append_mul_threshold_probe_result(
   result.passed = parity;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=mul-threshold digits=%zu threshold=%zu operandFamilies=%zu samples=%u scratchUs=%llu gmpUs=%llu ratio=%.3f ratioMethod=paired-median max=%.2f featureGate=runtime-threshold gmpClue=gmp-thresholds adoption=%s",
+    "op=mul-threshold digits=%zu threshold=%zu operandFamilies=%zu samples=%zu stablePairs=%zu/%zu scratchUs=%llu gmpUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median max=%.2f featureGate=runtime-threshold gmpClue=gmp-thresholds adoption=%s",
     digits,
     threshold,
     operand_families,
-    XRAY_BENCH_SAMPLES,
+    sample_count,
+    stable_sample_count,
+    sample_count,
     result.scratch_us,
     result.gmp_us,
     result.speed_ratio,
+    result.worst_pair_ratio,
     result.max_allowed_speed_ratio,
     result.adoption);
   append_result(report, &result);
@@ -782,7 +811,10 @@ static void run_mul_threshold_probe_case(XrayBenchmarkReport *report, size_t dig
     parity,
     median_samples(scratch_samples, XRAY_BENCH_SAMPLES),
     median_samples(gmp_samples, XRAY_BENCH_SAMPLES),
-    median_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES));
+    median_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES),
+    paired_ratio_wins(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES, 0.98),
+    XRAY_BENCH_SAMPLES,
+    max_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES));
 
   for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
     mpz_clears(ga[family], gb[family], gout[family], NULL);

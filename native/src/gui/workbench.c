@@ -85,7 +85,7 @@ static char *format_benchmark_report_text(const XrayBenchmarkReport *report) {
       "Run Proof with benchmarks enabled to populate live primitive timings.\n");
   }
 
-  size_t capacity = 4096 + report->result_count * 260;
+  size_t capacity = 4096 + report->result_count * 360;
   char *text = (char *)calloc(capacity, 1);
   if (!text) return NULL;
   char *cpu_summary = xray_cpu_features_summary(&report->cpu);
@@ -140,7 +140,38 @@ static char *format_benchmark_report_text(const XrayBenchmarkReport *report) {
   }
 
   used += (size_t)snprintf(text + used, capacity - used,
-    "\nRule: a scratch primitive is replacement-ready only when outputs match GMP, the paired median is within the configured gate, and at least 4 of 5 paired samples win locally.\n");
+    "\nKERNEL PROBES\n"
+    "%-30s %-8s %-18s %-20s %7s %8s\n"
+    "%-30s %-8s %-18s %-20s %7s %8s\n",
+    "Operation",
+    "Digits",
+    "Status",
+    "Adoption",
+    "Ratio",
+    "Stable",
+    "------------------------------",
+    "--------",
+    "------------------",
+    "--------------------",
+    "-------",
+    "--------");
+
+  for (size_t index = 0; index < report->result_count && used < capacity; ++index) {
+    const XrayBenchmarkResult *row = &report->results[index];
+    if (strcmp(row->category, "kernel-probe") != 0) continue;
+    used += (size_t)snprintf(text + used, capacity - used,
+      "%-30s %-8zu %-18s %-20s %7.2f %3zu/%-4zu\n",
+      row->operation,
+      row->digits,
+      row->status,
+      row->adoption,
+      row->speed_ratio,
+      row->stable_sample_count,
+      row->sample_count);
+  }
+
+  used += (size_t)snprintf(text + used, capacity - used,
+    "\nRule: scratch replacements and kernel promote-candidates require exact parity, a paired median inside the configured gate, and at least 4 of 5 paired samples winning locally.\n");
   return text;
 }
 
