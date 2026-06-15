@@ -396,7 +396,7 @@ static int mul_schoolbook(XrayScratchBigInt *out, const XrayScratchBigInt *left,
 
   uint64_t carry = 0;
   for (size_t j = 0; j < inner->count; ++j) {
-    carry = mul_add_word(0, outer->limbs[0], inner->limbs[j], carry, &out->limbs[j]);
+    carry = mul_add_small_word(inner->limbs[j], outer->limbs[0], carry, &out->limbs[j]);
   }
   out->limbs[inner->count] = carry;
   if (needed > inner->count + 1) {
