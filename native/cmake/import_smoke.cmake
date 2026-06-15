@@ -58,7 +58,7 @@ foreach(expected
     "\"public\": \"number_xray.h\""
     "\"functionReferenceHeader\": \"xray_workbench.h\""
     "\"catalog\": \"number-xray-api.json\""
-    "\"catalogSchemaVersion\": 1"
+    "\"catalogSchemaVersion\": 2"
     "\"coverage\": \"all exported XRAY_API functions\""
     "\"versionFunction\": \"xray_version\""
     "\"abiVersionFunction\": \"xray_abi_version\""
@@ -82,14 +82,18 @@ if(NOT EXISTS "${api_catalog_file}")
 endif()
 file(READ "${api_catalog_file}" api_catalog)
 foreach(expected
-    "\"schemaVersion\": 1"
+    "\"schemaVersion\": 2"
     "\"generatedFrom\": \"xray_workbench.h\""
     "\"functionCount\":"
     "\"name\": \"xray_bigint_add_decimal\""
     "\"category\": \"scratch-bigint\""
+    "\"summary\": \"Add two non-negative decimal integers and return a decimal string.\""
+    "\"documentation\": \"Add two non-negative decimal integers and return a decimal string."
+    "\"parameters\": [{\"name\": \"left_decimal\", \"type\": \"const char *\"}, {\"name\": \"right_decimal\", \"type\": \"const char *\"}]"
     "\"ownership\": \"caller-owned:xray_free\""
     "\"name\": \"xray_bignum_backend_name\""
     "\"ownership\": \"borrowed\""
+    "\"parameters\": []"
     "\"name\": \"xray_factor_solve_json\""
     "\"name\": \"xray_benchmark_run\""
     "\"name\": \"xray_workbench_run_json\"")

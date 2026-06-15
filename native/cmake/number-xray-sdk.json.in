@@ -14,7 +14,7 @@
     "entryHeader": "number_xray.h",
     "functionReferenceHeader": "xray_workbench.h",
     "catalog": "@XRAY_API_CATALOG_FILE@",
-    "catalogSchemaVersion": 1,
+    "catalogSchemaVersion": 2,
     "coverage": "all exported XRAY_API functions"
   },
   "abi": {
