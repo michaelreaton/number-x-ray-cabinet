@@ -11,6 +11,13 @@
 #define XRAY_HAS_MSVC_CARRY_INTRINSICS 0
 #endif
 
+#if defined(_MSC_VER) && defined(_M_X64)
+#include <immintrin.h>
+#define XRAY_HAS_MSVC_BMI2_ADX_INTRINSICS 1
+#else
+#define XRAY_HAS_MSVC_BMI2_ADX_INTRINSICS 0
+#endif
+
 #define XRAY_BENCH_SAMPLES 5
 #define XRAY_KERNEL_SAMPLES 5
 #define XRAY_MUL_OPERAND_FAMILIES 2
@@ -129,6 +136,20 @@ static void fill_kernel_u32(uint32_t *words, size_t count, uint32_t seed) {
     words[2] = 0xffffffffU;
     words[count / 2] ^= 0x80000000U;
     words[count - 1] |= 0x40000000U;
+  }
+}
+
+static void fill_kernel_u64(uint64_t *words, size_t count, uint64_t seed) {
+  uint64_t state = seed ? seed : UINT64_C(0x9e3779b97f4a7c15);
+  for (size_t index = 0; index < count; ++index) {
+    state = state * UINT64_C(2862933555777941757) + UINT64_C(3037000493);
+    words[index] = state ^ (UINT64_C(0xbf58476d1ce4e5b9) * (uint64_t)(index + 1));
+  }
+  if (count > 4) {
+    words[1] = UINT64_MAX;
+    words[2] ^= UINT64_C(0x8000000000000000);
+    words[count / 2] |= UINT64_C(0x4000000000000000);
+    words[count - 1] |= UINT64_C(0x2000000000000000);
   }
 }
 
@@ -436,6 +457,100 @@ static void run_kernel_probe_intrinsic_case(XrayBenchmarkReport *report, const c
     "gmpCpuKernelsLocalWin");
 
   free(left); free(right); free(baseline); free(candidate);
+}
+#endif
+
+#if XRAY_HAS_MSVC_BMI2_ADX_INTRINSICS
+static uint64_t kernel_muladd_u64_msvc_carry(uint64_t *out, const uint64_t *existing, const uint64_t *right, uint64_t multiplier, size_t limbs) {
+  uint64_t carry = 0;
+  for (size_t index = 0; index < limbs; ++index) {
+    unsigned __int64 high = 0;
+    unsigned __int64 low = _umul128(right[index], multiplier, &high);
+    unsigned __int64 sum = 0;
+    unsigned char carry_out = _addcarry_u64(0, low, existing[index], &sum);
+    high += carry_out;
+    carry_out = _addcarry_u64(0, sum, carry, &sum);
+    high += carry_out;
+    out[index] = (uint64_t)sum;
+    carry = (uint64_t)high;
+  }
+  return carry;
+}
+
+static uint64_t kernel_muladd_u64_bmi2_adx(uint64_t *out, const uint64_t *existing, const uint64_t *right, uint64_t multiplier, size_t limbs) {
+  uint64_t carry = 0;
+  for (size_t index = 0; index < limbs; ++index) {
+    unsigned __int64 high = 0;
+    unsigned __int64 low = _mulx_u64(right[index], multiplier, &high);
+    unsigned __int64 sum = 0;
+    unsigned char carry_out = _addcarryx_u64(0, low, existing[index], &sum);
+    high += carry_out;
+    carry_out = _addcarryx_u64(0, sum, carry, &sum);
+    high += carry_out;
+    out[index] = (uint64_t)sum;
+    carry = (uint64_t)high;
+  }
+  return carry;
+}
+
+static void run_kernel_probe_muladd_bmi2_adx_case(XrayBenchmarkReport *report, size_t bits) {
+  if (!report || !report->cpu.bmi2 || !report->cpu.adx) return;
+  size_t limbs = bits / 64U;
+  uint64_t *existing = (uint64_t *)calloc(limbs, sizeof(uint64_t));
+  uint64_t *right = (uint64_t *)calloc(limbs, sizeof(uint64_t));
+  uint64_t *baseline = (uint64_t *)calloc(limbs, sizeof(uint64_t));
+  uint64_t *candidate = (uint64_t *)calloc(limbs, sizeof(uint64_t));
+  if (!existing || !right || !baseline || !candidate) {
+    free(existing); free(right); free(baseline); free(candidate);
+    return;
+  }
+
+  fill_kernel_u64(existing, limbs, UINT64_C(0xd1b54a32d192ed03));
+  fill_kernel_u64(right, limbs, UINT64_C(0xabc98388fb8fac03));
+  uint64_t multiplier = UINT64_C(0xfedcba9876543211);
+  uint64_t baseline_carry = kernel_muladd_u64_msvc_carry(baseline, existing, right, multiplier, limbs);
+  uint64_t candidate_carry = kernel_muladd_u64_bmi2_adx(candidate, existing, right, multiplier, limbs);
+  int parity = baseline_carry == candidate_carry && memcmp(baseline, candidate, sizeof(uint64_t) * limbs) == 0;
+
+  unsigned int iterations = kernel_iterations(bits);
+  unsigned long long candidate_samples[XRAY_KERNEL_SAMPLES] = {0};
+  unsigned long long baseline_samples[XRAY_KERNEL_SAMPLES] = {0};
+  for (unsigned int sample = 0; sample < XRAY_KERNEL_SAMPLES; ++sample) {
+    unsigned long long baseline_started = xray_now_us();
+    for (unsigned int index = 0; index < iterations; ++index) {
+      baseline_carry = kernel_muladd_u64_msvc_carry(baseline, existing, right, multiplier + index + sample, limbs);
+      kernel_probe_sink ^= baseline[(index + sample) % limbs] ^ baseline_carry;
+    }
+    baseline_samples[sample] = xray_now_us() - baseline_started;
+
+    unsigned long long candidate_started = xray_now_us();
+    for (unsigned int index = 0; index < iterations; ++index) {
+      candidate_carry = kernel_muladd_u64_bmi2_adx(candidate, existing, right, multiplier + index + sample, limbs);
+      kernel_probe_sink ^= candidate[(index + sample) % limbs] ^ candidate_carry;
+    }
+    candidate_samples[sample] = xray_now_us() - candidate_started;
+  }
+
+  char name[72];
+  snprintf(name, sizeof(name), "kernel muladd BMI2 ADX %zu-bit", bits);
+  append_kernel_probe_result(
+    report,
+    name,
+    "muladd-bmi2-adx",
+    bits,
+    parity,
+    median_samples(candidate_samples, XRAY_KERNEL_SAMPLES),
+    median_samples(baseline_samples, XRAY_KERNEL_SAMPLES),
+    median_paired_ratio(candidate_samples, baseline_samples, XRAY_KERNEL_SAMPLES),
+    paired_ratio_wins(candidate_samples, baseline_samples, XRAY_KERNEL_SAMPLES, 0.98),
+    XRAY_KERNEL_SAMPLES,
+    max_paired_ratio(candidate_samples, baseline_samples, XRAY_KERNEL_SAMPLES),
+    "_mulx_u64+_addcarryx_u64",
+    "_umul128+_addcarry_u64",
+    "msvc-x64-bmi2-adx",
+    "gmpAddmulKernels");
+
+  free(existing); free(right); free(baseline); free(candidate);
 }
 #endif
 
@@ -1332,6 +1447,9 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
 #if XRAY_HAS_MSVC_CARRY_INTRINSICS
     run_kernel_probe_intrinsic_case(report, "add-carry", bit_sizes[index]);
     run_kernel_probe_intrinsic_case(report, "sub-carry", bit_sizes[index]);
+#endif
+#if XRAY_HAS_MSVC_BMI2_ADX_INTRINSICS
+    run_kernel_probe_muladd_bmi2_adx_case(report, bit_sizes[index]);
 #endif
   }
 
