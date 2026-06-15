@@ -100,6 +100,10 @@ static void benchmark_display_operation(const XrayBenchmarkResult *row, char *ou
     snprintf(out, out_size, "muladd unroll4");
     return;
   }
+  if (strcmp(row->operation, "muladd-unroll8") == 0) {
+    snprintf(out, out_size, "muladd unroll8");
+    return;
+  }
   if (strcmp(row->operation, "mul-toom3") == 0 || strcmp(row->operation, "mul-toom3-vs-scratch") == 0) {
     const char *threshold = strstr(row->detail, "leafThreshold=");
     if (threshold) {

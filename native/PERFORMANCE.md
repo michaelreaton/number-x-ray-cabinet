@@ -82,3 +82,19 @@ Decision: keep the probe. The larger row suggests loop scheduling can matter
 more than swapping to BMI2/ADX alone. Production multiply should still remain
 unchanged until a full multiply route proves exact parity and a stable same-run
 win.
+
+## 2026-06-15: Muladd Unroll Width Probe
+
+Run: `runs/20260615-050656-c4b04caf`
+
+`muladd-unroll8` was added beside `muladd-unroll4` to check whether wider loop
+scheduling helps:
+
+- unroll4, 617 digits: ratio `0.79`, stable `5/5`, `candidate-faster`
+- unroll8, 617 digits: ratio `0.90`, stable `3/5`, `observe-only`
+- unroll4, 4933 digits: ratio `0.79`, stable `5/5`, `candidate-faster`
+- unroll8, 4933 digits: ratio `0.87`, stable `5/5`, `candidate-faster`
+
+Decision: keep the width probe, but prefer unroll4 as the current scheduling
+candidate. Wider unroll did not improve the small row and lost to unroll4 on
+both measured sizes in this run.
