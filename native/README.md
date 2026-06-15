@@ -60,7 +60,7 @@ Benchmark JSON exposes that rule per operation-size row:
 
 Rows with parity but without `replacementReady` are useful migration evidence, but the production path must remain GMP-backed.
 
-The scratch-vs-GMP ladder currently measures 40, 150, 1000, and 4096 decimal digit operands so local changes have to keep scaling beyond tiny examples before they earn adoption labels. Multiplication rows aggregate two deterministic operand families because threshold-sensitive multiply code can look good on one number shape and lose on another.
+The scratch-vs-GMP ladder currently measures 40, 150, 1000, 4096, and 8192 decimal digit operands so local changes have to keep scaling beyond tiny examples before they earn adoption labels. Multiplication rows aggregate two deterministic operand families because threshold-sensitive multiply code can look good on one number shape and lose on another.
 
 The benchmark also emits `kernel-probe` rows. These are not production replacements; they are local proof drills for GMP-inspired primitive choices. A probe row compares a candidate carry-chain kernel or multi-operand Karatsuba threshold to a baseline using the same-run paired median ratio, records the CPU/compiler feature gate, and labels the candidate `promote-candidate`, `observe-only`, or `blocked-output-mismatch`. A promotion candidate must also win at least 4 of 5 paired samples under the probe gate. This is the path for AVX/ADX/BMI2 work and threshold tuning: no primitive moves into the scratch bigint layer until the GUI benchmark can show exact parity and a stable local speed win.
 

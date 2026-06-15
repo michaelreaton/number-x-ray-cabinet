@@ -498,26 +498,31 @@ static unsigned int perf_iterations(const char *operation, size_t digits) {
   if (strcmp(operation, "parse") == 0) {
     if (digits <= 40) return 4000;
     if (digits <= 150) return 1200;
+    if (digits > 4096) return 80;
     return 160;
   }
   if (strcmp(operation, "mul") == 0) {
     if (digits <= 40) return 2000;
     if (digits <= 150) return 180;
     if (digits <= 1000) return 240;
+    if (digits > 4096) return 32;
     return 80;
   }
   if (strcmp(operation, "powmod-u32") == 0) {
     if (digits <= 40) return 12000;
     if (digits <= 150) return 8000;
+    if (digits > 4096) return 1200;
     return 2200;
   }
   if (strcmp(operation, "mod-u32") == 0 || strcmp(operation, "gcd-u32") == 0) {
     if (digits <= 40) return 30000;
     if (digits <= 150) return 10000;
+    if (digits > 4096) return 1200;
     return 2200;
   }
   if (digits <= 40) return 20000;
   if (digits <= 150) return 8000;
+  if (digits > 4096) return 800;
   return 1600;
 }
 
@@ -1032,7 +1037,7 @@ static void run_scratch_modular_case(XrayBenchmarkReport *report, const char *op
 }
 
 static void run_scratch_bigint_gates(XrayBenchmarkReport *report) {
-  const size_t sizes[] = {40, 150, 1000, 4096};
+  const size_t sizes[] = {40, 150, 1000, 4096, 8192};
   for (size_t index = 0; index < sizeof(sizes) / sizeof(sizes[0]); ++index) {
     run_scratch_parse_case(report, sizes[index]);
     run_scratch_binary_case(report, "add", sizes[index]);
