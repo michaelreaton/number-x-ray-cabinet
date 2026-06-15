@@ -19,6 +19,7 @@
 #define XRAY_BIGINT_PARSE_CHUNK_BASE UINT64_C(10000000000000000000)
 #define XRAY_BIGINT_PARSE_CHUNK_DIGITS 19U
 #define XRAY_BIGINT_KARATSUBA_THRESHOLD 64U
+#define XRAY_BIGINT_FERMAT_65537 65537U
 
 static const uint64_t parse_decimal_powers[] = {
   UINT64_C(1),
@@ -212,6 +213,25 @@ static uint64_t divmod_word_u32(uint32_t high, uint64_t low, uint32_t divisor, u
   uint32_t quotient_low = divmod_half_u32(rem, (uint32_t)low, divisor, reciprocal, &rem);
   if (remainder) *remainder = rem;
   return ((uint64_t)quotient_high << 32U) | quotient_low;
+}
+
+static uint32_t reduce_65537_signed(int64_t value) {
+  while (value < 0) value += XRAY_BIGINT_FERMAT_65537;
+  while (value >= XRAY_BIGINT_FERMAT_65537) value -= XRAY_BIGINT_FERMAT_65537;
+  return (uint32_t)value;
+}
+
+static uint32_t mod_65537_folded(const XrayScratchBigInt *value) {
+  uint32_t remainder = 0;
+  for (size_t index = 0; index < value->count; ++index) {
+    uint64_t word = value->limbs[index];
+    int64_t folded = (int64_t)(word & 0xffffU) -
+      (int64_t)((word >> 16U) & 0xffffU) +
+      (int64_t)((word >> 32U) & 0xffffU) -
+      (int64_t)((word >> 48U) & 0xffffU);
+    remainder = reduce_65537_signed((int64_t)remainder + folded);
+  }
+  return remainder;
 }
 
 static int mul_add_small_inplace(XrayScratchBigInt *value, uint64_t multiplier, uint64_t addend) {
@@ -531,6 +551,7 @@ int xray_bigint_mul(XrayScratchBigInt *out, const XrayScratchBigInt *left, const
 
 uint32_t xray_bigint_mod_u32(const XrayScratchBigInt *value, uint32_t modulus) {
   if (!value || modulus == 0) return 0;
+  if (modulus == XRAY_BIGINT_FERMAT_65537) return mod_65537_folded(value);
   uint32_t remainder = 0;
   uint64_t reciprocal = reciprocal_u32(modulus);
   for (size_t remaining = value->count; remaining > 0; --remaining) {

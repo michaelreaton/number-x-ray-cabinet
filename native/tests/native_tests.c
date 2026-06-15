@@ -239,11 +239,15 @@ static void test_scratch_bigint_oracle(void) {
 
   CHECK(xray_bigint_set_decimal(&a, "18446744073709551615"));
   CHECK(xray_bigint_set_decimal(&b, "1"));
+  CHECK(xray_bigint_mod_u32(&a, 65537U) == 0);
+  CHECK(xray_bigint_gcd_u32(&a, 65537U) == 65537U);
   CHECK(xray_bigint_add(&sum, &a, &b));
   mpz_set_str(ga, "18446744073709551615", 10);
   mpz_set_ui(gb, 1);
   mpz_add(gsum, ga, gb);
   check_scratch_matches_mpz(&sum, gsum);
+  CHECK(xray_bigint_mod_u32(&sum, 65537U) == 1);
+  CHECK(xray_bigint_gcd_u32(&sum, 65537U) == 1);
 
   CHECK(xray_bigint_sub(&difference, &sum, &b));
   mpz_sub(gdifference, gsum, gb);
@@ -266,6 +270,7 @@ static void test_scratch_bigint_oracle_sweep(void) {
     "4294967296",
     "18446744073709551615",
     "18446744073709551616",
+    "18446744073709551617",
     "999999999",
     "1000000000",
     "1000000000000000000000000000000",
