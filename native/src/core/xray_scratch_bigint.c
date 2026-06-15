@@ -268,13 +268,24 @@ static uint32_t divmod_decimal_chunk_inplace(XrayScratchBigInt *value) {
 
 static int reserve_decimal_chunks(uint32_t **chunks, size_t *capacity, size_t needed) {
   if (*capacity >= needed) return 1;
+  if (needed > SIZE_MAX / sizeof(uint32_t)) return 0;
   size_t next_capacity = *capacity ? *capacity * 2U : 8U;
-  while (next_capacity < needed) next_capacity *= 2U;
+  while (next_capacity < needed) {
+    if (next_capacity > SIZE_MAX / 2U) return 0;
+    next_capacity *= 2U;
+  }
+  if (next_capacity > SIZE_MAX / sizeof(uint32_t)) return 0;
   uint32_t *next = (uint32_t *)realloc(*chunks, sizeof(uint32_t) * next_capacity);
   if (!next) return 0;
   *chunks = next;
   *capacity = next_capacity;
   return 1;
+}
+
+static size_t estimate_decimal_chunk_capacity(const XrayScratchBigInt *value) {
+  if (!value || value->count == 0) return 1U;
+  if (value->count > (SIZE_MAX - 8U) / 20U) return SIZE_MAX;
+  return (value->count * 20U + 8U) / XRAY_BIGINT_DECIMAL_CHUNK_DIGITS;
 }
 
 static int append_decimal_chunk(uint32_t **chunks, size_t *count, size_t *capacity, uint32_t chunk) {
@@ -287,6 +298,7 @@ static int decimal_chunks_from_limbs_horner(uint32_t **chunks_out, size_t *chunk
   uint32_t *chunks = NULL;
   size_t chunk_count = 0;
   size_t chunk_capacity = 0;
+  if (!reserve_decimal_chunks(&chunks, &chunk_capacity, estimate_decimal_chunk_capacity(value))) return 0;
   for (size_t remaining = value->count; remaining > 0; --remaining) {
     uint64_t carry = value->limbs[remaining - 1U];
     for (size_t index = 0; index < chunk_count; ++index) {
@@ -419,6 +431,10 @@ char *xray_bigint_get_decimal(const XrayScratchBigInt *value) {
     }
   } else {
     if (!xray_bigint_copy(&copy, value)) {
+      xray_bigint_clear(&copy);
+      return NULL;
+    }
+    if (!reserve_decimal_chunks(&chunks, &chunk_capacity, estimate_decimal_chunk_capacity(value))) {
       xray_bigint_clear(&copy);
       return NULL;
     }
