@@ -1,4 +1,4 @@
-#include "xray_workbench.h"
+#include "number_xray.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,7 +12,8 @@ int main(void) {
   xray_bigint_init(&one);
   xray_bigint_init(&sum);
 
-  int ok = xray_bigint_set_decimal(&value, "10,000_000 000,000_000 000") &&
+  int ok = strcmp(NUMBER_XRAY_VERSION, XRAY_VERSION) == 0 &&
+    xray_bigint_set_decimal(&value, "10,000_000 000,000_000 000") &&
     xray_bigint_set_decimal(&one, "1") &&
     xray_bigint_add(&sum, &value, &one);
 

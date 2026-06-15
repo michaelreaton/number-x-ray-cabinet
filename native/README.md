@@ -63,9 +63,21 @@ find_package(NumberXRay CONFIG REQUIRED)
 target_link_libraries(my_tool PRIVATE NumberXRay::core)
 ```
 
-Include `xray_workbench.h` for the public API. Consumers still need GMP or MPIR
-available at configure/build time; the exported package recreates the
-`GMP::GMP` dependency target from `GMP_ROOT`, vcpkg, or system paths.
+Include `number_xray.h` for the public API. The older `xray_workbench.h`
+header remains installed, but `number_xray.h` is the stable tool-facing entry
+point.
+
+Non-CMake tools can discover compiler and linker flags from the installed
+pkg-config file on platforms that use pkg-config:
+
+```bash
+cc my_tool.c $(pkg-config --cflags --libs number-xray)
+```
+
+Consumers still need GMP or MPIR available at configure/build time; the CMake
+package recreates the `GMP::GMP` dependency target from `GMP_ROOT`, vcpkg, or
+system paths, and the pkg-config metadata records `-lgmp` for static/private
+linking.
 
 The app includes Fermat F12, `2^4096 + 1 = Phi_8192(2)`, as a large exact cyclotomic example. It is meant to test discovery, reporting, and UI handling for much larger structured numbers; it must not be reported as factored unless exact factors are found and product verification passes.
 
