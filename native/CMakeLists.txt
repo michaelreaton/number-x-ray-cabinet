@@ -112,6 +112,7 @@ endif()
 
 set(XRAY_GMP_BACKEND_NAME "GMP")
 get_filename_component(XRAY_GMP_LIBRARY_BASENAME "${XRAY_GMP_LIBRARY_RELEASE}" NAME_WE)
+get_filename_component(XRAY_GMP_LIBRARY_NAME "${XRAY_GMP_LIBRARY_RELEASE}" NAME)
 string(TOLOWER "${XRAY_GMP_LIBRARY_BASENAME}" XRAY_GMP_LIBRARY_BASENAME_LOWER)
 if(XRAY_GMP_LIBRARY_BASENAME_LOWER MATCHES "mpir")
   set(XRAY_GMP_BACKEND_NAME "MPIR")
@@ -147,7 +148,10 @@ function(xray_configure_core_target target_name)
   )
 
   target_link_libraries(${target_name} PUBLIC GMP::GMP)
-  target_compile_definitions(${target_name} PRIVATE "XRAY_GMP_BACKEND_NAME=\"${XRAY_GMP_BACKEND_NAME}\"")
+  target_compile_definitions(${target_name} PRIVATE
+    "XRAY_GMP_BACKEND_NAME=\"${XRAY_GMP_BACKEND_NAME}\""
+    "XRAY_GMP_BACKEND_LIBRARY=\"${XRAY_GMP_LIBRARY_NAME}\""
+  )
 
   if(MSVC)
     target_compile_options(${target_name} PRIVATE /W4)

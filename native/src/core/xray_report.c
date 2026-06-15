@@ -5,10 +5,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifndef XRAY_GMP_BACKEND_NAME
-#define XRAY_GMP_BACKEND_NAME "GMP/MPIR"
-#endif
-
 typedef struct JsonBuffer {
   char *data;
   size_t length;
@@ -220,7 +216,11 @@ static void append_benchmark_json(JsonBuffer *buffer, const XrayBenchmarkReport 
   jb_append(buffer, "\"benchmarkReport\":{");
   append_cpu_json(buffer, "cpu", report ? &report->cpu : NULL);
   jb_append(buffer, ",\"baselineBackend\":");
-  jb_string(buffer, XRAY_GMP_BACKEND_NAME);
+  jb_string(buffer, xray_bignum_backend_name());
+  jb_append(buffer, ",\"baselineBackendVersion\":");
+  jb_string(buffer, xray_bignum_backend_version());
+  jb_append(buffer, ",\"baselineBackendLibrary\":");
+  jb_string(buffer, xray_bignum_backend_library());
   jb_printf(buffer,
     ",\"passed\":%zu,\"total\":%zu,\"scratchRows\":%zu,\"replacementReadyRows\":%zu,\"oracleOnlyRows\":%zu,\"blockedRows\":%zu,\"elapsedMs\":%lu,\"results\":[",
     report->passed_count,
@@ -480,7 +480,10 @@ char *xray_benchmark_frontier_text(const XrayBenchmarkReport *report) {
   char *cpu_summary = xray_cpu_features_summary(&report->cpu);
   jb_append(&buffer, "BENCHMARK FRONTIER\n");
   jb_printf(&buffer, "%s\n", cpu_summary ? cpu_summary : "CPU: unavailable");
-  jb_printf(&buffer, "Baseline backend: %s\n", XRAY_GMP_BACKEND_NAME);
+  jb_printf(&buffer, "Baseline backend: %s %s (%s)\n",
+    xray_bignum_backend_name(),
+    xray_bignum_backend_version(),
+    xray_bignum_backend_library());
   free(cpu_summary);
   jb_printf(&buffer,
     "Passed: %zu/%zu   Scratch rows: %zu   Replacement-ready: %zu   Oracle-only: %zu   Blocked: %zu   Elapsed: %lums\n\n",
@@ -531,7 +534,7 @@ char *xray_benchmark_frontier_text(const XrayBenchmarkReport *report) {
 
   jb_append(&buffer,
     "\nSCRATCH VS ");
-  jb_append(&buffer, XRAY_GMP_BACKEND_NAME);
+  jb_append(&buffer, xray_bignum_backend_name());
   jb_append(&buffer,
     "\nOperation                  Digits   Adoption       Ready    ScratchUs   BackendUs   Ratio   Stable\n"
     "------------------------   ------   ------------   -----   ----------   --------   -----   ------\n");
