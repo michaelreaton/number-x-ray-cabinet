@@ -198,20 +198,25 @@ int xray_workbench_run(const char *raw_input, const XrayRunConfig *config_input,
     char *report_path = path_for(report->run_dir, "report.json");
     char *benchmark_json_path = path_for(report->run_dir, "benchmark.json");
     char *benchmark_tsv_path = path_for(report->run_dir, "benchmark.tsv");
+    char *benchmark_frontier_path = path_for(report->run_dir, "benchmark_frontier.txt");
     write_text_file(events_path, report->events_jsonl);
     write_text_file(report_path, report->json);
     if (config.enable_benchmark) {
       char *benchmark_json = xray_benchmark_report_json(&report->benchmark);
       char *benchmark_tsv = xray_benchmark_report_tsv(&report->benchmark);
+      char *benchmark_frontier = xray_benchmark_frontier_text(&report->benchmark);
       write_text_file(benchmark_json_path, benchmark_json);
       write_text_file(benchmark_tsv_path, benchmark_tsv);
+      write_text_file(benchmark_frontier_path, benchmark_frontier);
       free(benchmark_json);
       free(benchmark_tsv);
+      free(benchmark_frontier);
     }
     free(events_path);
     free(report_path);
     free(benchmark_json_path);
     free(benchmark_tsv_path);
+    free(benchmark_frontier_path);
   }
   mpz_clear(value);
   return expression_ok;
