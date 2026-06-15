@@ -790,6 +790,7 @@ static void test_benchmarks(void) {
   int saw_toom3_unroll4_deep_leaf64_probe = 0;
   int saw_toom3_unroll4_deep_leaf96_probe = 0;
   int saw_toom3_unroll4_recursive_vs_gmp_probe = 0;
+  int saw_toom3_unroll4_recursive_deep_vs_gmp_probe = 0;
   int saw_muladd_bmi2_adx_probe = 0;
   int saw_muladd_unroll_probe = 0;
   int saw_muladd_unroll8_probe = 0;
@@ -831,7 +832,8 @@ static void test_benchmarks(void) {
       CHECK(report->results[index].speed_ratio > 0.0);
       CHECK(report->results[index].max_allowed_speed_ratio == 0.98);
       if (strcmp(report->results[index].operation, "mul-unroll4-deep-vs-gmp") == 0 ||
-          strcmp(report->results[index].operation, "mul-toom3-unroll4-deep-vs-gmp") == 0) {
+          strcmp(report->results[index].operation, "mul-toom3-unroll4-deep-vs-gmp") == 0 ||
+          strcmp(report->results[index].operation, "mul-toom3-u4-rec-deep-vs-gmp") == 0) {
         CHECK(report->results[index].sample_count == 9);
       } else {
         CHECK(report->results[index].sample_count == 5);
@@ -890,6 +892,16 @@ static void test_benchmarks(void) {
       if (strcmp(report->results[index].operation, "mul-toom3-u4-rec-vs-gmp") == 0) {
         saw_toom3_unroll4_recursive_vs_gmp_probe = 1;
         CHECK(strstr(report->results[index].detail, "leafThreshold=") != NULL);
+        CHECK(strstr(report->results[index].detail, "depthLimit=2") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=recursive-toom3+unroll4") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=mpz_mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=msvc-x64-recursive-toom3") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+      }
+      if (strcmp(report->results[index].operation, "mul-toom3-u4-rec-deep-vs-gmp") == 0) {
+        saw_toom3_unroll4_recursive_deep_vs_gmp_probe = 1;
+        CHECK(strstr(report->results[index].detail, "samples=9") != NULL);
+        CHECK(strstr(report->results[index].detail, "leafThreshold=64") != NULL);
         CHECK(strstr(report->results[index].detail, "depthLimit=2") != NULL);
         CHECK(strstr(report->results[index].detail, "candidate=recursive-toom3+unroll4") != NULL);
         CHECK(strstr(report->results[index].detail, "baseline=mpz_mul") != NULL);
@@ -981,6 +993,7 @@ static void test_benchmarks(void) {
   CHECK(saw_toom3_unroll4_deep_leaf64_probe);
   CHECK(saw_toom3_unroll4_deep_leaf96_probe);
   CHECK(saw_toom3_unroll4_recursive_vs_gmp_probe);
+  CHECK(saw_toom3_unroll4_recursive_deep_vs_gmp_probe);
   CHECK(saw_muladd_unroll_probe);
   CHECK(saw_muladd_unroll8_probe);
   CHECK(saw_mul_unroll4_vs_scratch_probe);
@@ -1018,6 +1031,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "mul-toom3-unroll4-vs-gmp") != NULL);
   CHECK(strstr(json, "mul-toom3-unroll4-deep-vs-gmp") != NULL);
   CHECK(strstr(json, "mul-toom3-u4-rec-vs-gmp") != NULL);
+  CHECK(strstr(json, "mul-toom3-u4-rec-deep-vs-gmp") != NULL);
   CHECK(strstr(json, "muladd-unroll4") != NULL);
   CHECK(strstr(json, "muladd-unroll8") != NULL);
   CHECK(strstr(json, "mul-unroll4-vs-scratch") != NULL);
@@ -1041,6 +1055,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "mul-toom3-unroll4-vs-gmp") != NULL);
   CHECK(strstr(tsv, "mul-toom3-unroll4-deep-vs-gmp") != NULL);
   CHECK(strstr(tsv, "mul-toom3-u4-rec-vs-gmp") != NULL);
+  CHECK(strstr(tsv, "mul-toom3-u4-rec-deep-vs-gmp") != NULL);
   CHECK(strstr(tsv, "muladd-unroll4") != NULL);
   CHECK(strstr(tsv, "muladd-unroll8") != NULL);
   CHECK(strstr(tsv, "mul-unroll4-vs-scratch") != NULL);
@@ -1072,6 +1087,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "mul-toom3-unroll4-vs-gmp") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-toom3-unroll4-deep-vs-gmp") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-toom3-u4-rec-vs-gmp") != NULL);
+  CHECK(strstr(benchmark_tsv, "mul-toom3-u4-rec-deep-vs-gmp") != NULL);
 #endif
   CHECK(strstr(benchmark_tsv, "speedRatio") != NULL);
   CHECK(strstr(benchmark_tsv, "stableSampleCount") != NULL);
