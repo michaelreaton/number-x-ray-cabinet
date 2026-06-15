@@ -133,3 +133,26 @@ candidate is locally safe-looking through 4096 digits in this run, but 8192
 digits still fails the GMP gate. A future production route must be bounded to
 the proven size window or collect stronger 8192+ evidence before replacing the
 current path.
+
+## 2026-06-15: Unroll4 Full Ladder Gate
+
+Run: `runs/20260615-053942-c4b04caf`
+
+The direct unroll4 GMP gate was expanded to the full scratch multiply ladder:
+
+- 40 digits: vs scratch ratio `1.154`, vs GMP ratio `0.941`, stable `3/5`,
+  `observe-only`
+- 150 digits: vs scratch ratio `1.020`, vs GMP ratio `0.654`, stable `5/5`,
+  `candidate-faster`
+- 1000 digits: vs scratch ratio `0.833`, vs GMP ratio `0.658`, stable `5/5`,
+  `candidate-faster`
+- 4096 digits: vs scratch ratio `0.820`, vs GMP ratio `0.688`, stable `5/5`,
+  `candidate-faster`
+- 8192 digits: vs scratch ratio `0.921`, vs GMP ratio `1.185`, stable `1/5`,
+  `observe-only`
+
+Decision: do not use unroll4 globally. The locally safe-looking window starts
+above tiny inputs and ends before the 8192 digit row. A later route scout may
+try an MSVC-only bounded path for approximately 150 to 4096 digit operands, but
+40 digit and 8192+ operands must stay on the current production path unless new
+evidence changes those rows.
