@@ -292,16 +292,31 @@ int xray_bigint_sub(XrayScratchBigInt *out, const XrayScratchBigInt *left, const
 static int mul_schoolbook(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
   if (!out || !left || !right) return 0;
   if (left->count == 0 || right->count == 0) return set_u32(out, 0);
-  size_t needed = left->count + right->count;
+  const XrayScratchBigInt *outer = left;
+  const XrayScratchBigInt *inner = right;
+  if (outer->count > inner->count) {
+    outer = right;
+    inner = left;
+  }
+  size_t needed = outer->count + inner->count;
   if (!reserve_limbs(out, needed)) return 0;
-  memset(out->limbs, 0, sizeof(uint64_t) * needed);
   out->count = needed;
-  for (size_t i = 0; i < left->count; ++i) {
-    uint64_t carry = 0;
-    for (size_t j = 0; j < right->count; ++j) {
-      carry = mul_add_word(out->limbs[i + j], left->limbs[i], right->limbs[j], carry, &out->limbs[i + j]);
+
+  uint64_t carry = 0;
+  for (size_t j = 0; j < inner->count; ++j) {
+    carry = mul_add_word(0, outer->limbs[0], inner->limbs[j], carry, &out->limbs[j]);
+  }
+  out->limbs[inner->count] = carry;
+  if (needed > inner->count + 1) {
+    memset(out->limbs + inner->count + 1, 0, sizeof(uint64_t) * (needed - inner->count - 1));
+  }
+
+  for (size_t i = 1; i < outer->count; ++i) {
+    carry = 0;
+    for (size_t j = 0; j < inner->count; ++j) {
+      carry = mul_add_word(out->limbs[i + j], outer->limbs[i], inner->limbs[j], carry, &out->limbs[i + j]);
     }
-    size_t pos = i + right->count;
+    size_t pos = i + inner->count;
     while (carry) {
       uint64_t current = out->limbs[pos] + carry;
       out->limbs[pos] = current;
