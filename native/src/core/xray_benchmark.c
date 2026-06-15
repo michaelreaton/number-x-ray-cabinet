@@ -2327,7 +2327,12 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
       run_mul_toom3_unroll4_vs_scratch_probe_case(report, toom_unroll_digits[digit_index], toom_leaf_thresholds[threshold_index]);
       run_mul_toom3_unroll4_vs_gmp_probe_case(report, toom_unroll_digits[digit_index], toom_leaf_thresholds[threshold_index]);
     }
+    const size_t toom_unroll_handoff_leaf_thresholds[] = {24, 48, 96};
+    for (size_t threshold_index = 0; threshold_index < sizeof(toom_unroll_handoff_leaf_thresholds) / sizeof(toom_unroll_handoff_leaf_thresholds[0]); ++threshold_index) {
+      run_mul_toom3_unroll4_vs_gmp_probe_case(report, toom_unroll_digits[digit_index], toom_unroll_handoff_leaf_thresholds[threshold_index]);
+    }
     run_mul_toom3_unroll4_deep_vs_gmp_probe_case(report, toom_unroll_digits[digit_index], 64);
+    run_mul_toom3_unroll4_deep_vs_gmp_probe_case(report, toom_unroll_digits[digit_index], 96);
   }
 
   const size_t unroll_digits[] = {40, 150, 1000, 4096, 8192, 16384};
