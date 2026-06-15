@@ -494,14 +494,15 @@ static void clear_many_bigints(
   xray_bigint_clear(sum_b);
 }
 
-static int mul_dispatch(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right);
+static int mul_dispatch_threshold(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t threshold);
 
-static int mul_karatsuba(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
+static int mul_karatsuba_threshold(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t threshold) {
   size_t left_count = left ? left->count : 0;
   size_t right_count = right ? right->count : 0;
   size_t max_count = left_count > right_count ? left_count : right_count;
   size_t min_count = left_count < right_count ? left_count : right_count;
-  if (max_count < XRAY_BIGINT_KARATSUBA_THRESHOLD || min_count * 2U < max_count) {
+  size_t active_threshold = threshold >= 2U ? threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  if (max_count < active_threshold || min_count * 2U < max_count) {
     return mul_schoolbook(out, left, right);
   }
 
@@ -523,11 +524,11 @@ static int mul_karatsuba(XrayScratchBigInt *out, const XrayScratchBigInt *left, 
     slice_bigint(&a1, left, split, left_count > split ? left_count - split : 0) &&
     slice_bigint(&b0, right, 0, split) &&
     slice_bigint(&b1, right, split, right_count > split ? right_count - split : 0) &&
-    mul_dispatch(&z0, &a0, &b0) &&
-    mul_dispatch(&z2, &a1, &b1) &&
+    mul_dispatch_threshold(&z0, &a0, &b0, active_threshold) &&
+    mul_dispatch_threshold(&z2, &a1, &b1, active_threshold) &&
     abs_diff_bigint(&sum_a, &a1, &a0, &a_order) &&
     abs_diff_bigint(&sum_b, &b1, &b0, &b_order) &&
-    mul_dispatch(&z1, &sum_a, &sum_b) &&
+    mul_dispatch_threshold(&z1, &sum_a, &sum_b, active_threshold) &&
     xray_bigint_add(&sum_a, &z0, &z2) &&
     (((a_order >= 0) == (b_order >= 0)) ? xray_bigint_sub(&z1, &sum_a, &z1) : xray_bigint_add(&z1, &sum_a, &z1));
 
@@ -544,8 +545,12 @@ static int mul_karatsuba(XrayScratchBigInt *out, const XrayScratchBigInt *left, 
   return ok;
 }
 
+static int mul_dispatch_threshold(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t threshold) {
+  return mul_karatsuba_threshold(out, left, right, threshold);
+}
+
 static int mul_dispatch(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
-  return mul_karatsuba(out, left, right);
+  return mul_dispatch_threshold(out, left, right, XRAY_BIGINT_KARATSUBA_THRESHOLD);
 }
 
 int xray_bigint_mul(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
@@ -559,6 +564,20 @@ int xray_bigint_mul(XrayScratchBigInt *out, const XrayScratchBigInt *left, const
     return ok;
   }
   return mul_dispatch(out, left, right);
+}
+
+int xray_bigint_mul_with_threshold(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t threshold) {
+  if (!out || !left || !right) return 0;
+  size_t active_threshold = threshold >= 2U ? threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  if (out == left || out == right) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = mul_dispatch_threshold(&temp, left, right, active_threshold);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return mul_dispatch_threshold(out, left, right, active_threshold);
 }
 
 uint32_t xray_bigint_mod_u32(const XrayScratchBigInt *value, uint32_t modulus) {

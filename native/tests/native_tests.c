@@ -422,6 +422,42 @@ static void test_scratch_bigint_karatsuba_middle_signs(void) {
   }
 }
 
+static void test_scratch_bigint_mul_thresholds(void) {
+  const size_t thresholds[] = {0, 16, 32, 48, 64, 96, 128};
+  char *left_text = make_pattern_decimal(1800, "80852963074185296307");
+  char *right_text = make_pattern_decimal(1800, "27182818284590452353");
+  XrayScratchBigInt a, b, product, alias;
+  xray_bigint_init(&a);
+  xray_bigint_init(&b);
+  xray_bigint_init(&product);
+  xray_bigint_init(&alias);
+  mpz_t ga, gb, gproduct;
+  mpz_inits(ga, gb, gproduct, NULL);
+
+  CHECK(xray_bigint_set_decimal(&a, left_text));
+  CHECK(xray_bigint_set_decimal(&b, right_text));
+  CHECK(mpz_set_str(ga, left_text, 10) == 0);
+  CHECK(mpz_set_str(gb, right_text, 10) == 0);
+  mpz_mul(gproduct, ga, gb);
+
+  for (size_t index = 0; index < sizeof(thresholds) / sizeof(thresholds[0]); ++index) {
+    CHECK(xray_bigint_mul_with_threshold(&product, &a, &b, thresholds[index]));
+    check_scratch_matches_mpz(&product, gproduct);
+  }
+
+  CHECK(xray_bigint_copy(&alias, &a));
+  CHECK(xray_bigint_mul_with_threshold(&alias, &alias, &b, 48));
+  check_scratch_matches_mpz(&alias, gproduct);
+
+  xray_bigint_clear(&a);
+  xray_bigint_clear(&b);
+  xray_bigint_clear(&product);
+  xray_bigint_clear(&alias);
+  mpz_clears(ga, gb, gproduct, NULL);
+  free(left_text);
+  free(right_text);
+}
+
 static void test_ambiguous_input_rejected(void) {
   mpz_t value;
   mpz_init(value);
@@ -606,6 +642,7 @@ static void test_benchmarks(void) {
       CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
       CHECK(strstr(report->results[index].detail, "featureGate=") != NULL);
       CHECK(strstr(report->results[index].detail, "gmpClue=") != NULL);
+      CHECK(strstr(report->results[index].detail, "adoption=") != NULL);
       CHECK(strstr(report->results[index].adoption, "promote-candidate") != NULL ||
         strstr(report->results[index].adoption, "observe-only") != NULL ||
         strstr(report->results[index].adoption, "blocked-output-mismatch") != NULL);
@@ -683,6 +720,7 @@ int main(void) {
   test_scratch_bigint_oracle_sweep();
   test_scratch_bigint_large_mul_oracle();
   test_scratch_bigint_karatsuba_middle_signs();
+  test_scratch_bigint_mul_thresholds();
   test_ambiguous_input_rejected();
   test_factor_solver_exact();
   test_factor_solver_unresolved_budget();

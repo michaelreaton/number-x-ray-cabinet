@@ -497,6 +497,45 @@ static void append_perf_result(
   append_result(report, &result);
 }
 
+static void append_mul_threshold_probe_result(
+  XrayBenchmarkReport *report,
+  size_t digits,
+  size_t threshold,
+  int parity,
+  unsigned long long scratch_us,
+  unsigned long long gmp_us,
+  double paired_ratio) {
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "kernel mul threshold %zu limbs %zu digits", threshold, digits);
+  snprintf(result.category, sizeof(result.category), "kernel-probe");
+  snprintf(result.operation, sizeof(result.operation), "mul-threshold");
+  result.digits = digits;
+  result.scratch_us = scratch_us ? scratch_us : 1;
+  result.gmp_us = gmp_us ? gmp_us : 1;
+  result.speed_ratio = paired_ratio > 0.0 ? paired_ratio : (double)result.scratch_us / (double)result.gmp_us;
+  result.max_allowed_speed_ratio = 0.98;
+  result.parity_verified = parity;
+  result.replacement_ready = parity && result.speed_ratio <= result.max_allowed_speed_ratio;
+  snprintf(result.adoption, sizeof(result.adoption), "%s",
+    !parity ? "blocked-output-mismatch" : (result.replacement_ready ? "promote-candidate" : "observe-only"));
+  snprintf(result.status, sizeof(result.status), "%s",
+    !parity ? "mismatch" : (result.replacement_ready ? "candidate-faster" : (result.speed_ratio < 1.0 ? "candidate-no-margin" : "baseline-faster")));
+  result.passed = parity;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  snprintf(result.detail, sizeof(result.detail),
+    "op=mul-threshold digits=%zu threshold=%zu samples=%u scratchUs=%llu gmpUs=%llu ratio=%.3f ratioMethod=paired-median max=%.2f featureGate=runtime-threshold gmpClue=gmp-thresholds adoption=%s",
+    digits,
+    threshold,
+    XRAY_BENCH_SAMPLES,
+    result.scratch_us,
+    result.gmp_us,
+    result.speed_ratio,
+    result.max_allowed_speed_ratio,
+    result.adoption);
+  append_result(report, &result);
+}
+
 static void run_scratch_parse_case(XrayBenchmarkReport *report, size_t digits) {
   char *text = benchmark_decimal(digits, 3, 1);
   if (!text) return;
@@ -589,6 +628,67 @@ static void run_scratch_binary_case(XrayBenchmarkReport *report, const char *ope
   unsigned long long gmp_us = median_samples(gmp_samples, XRAY_BENCH_SAMPLES);
   double paired_ratio = median_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES);
   append_perf_result(report, operation, digits, parity, scratch_us, gmp_us, paired_ratio);
+
+  mpz_clears(ga, gb, gout, NULL);
+  xray_bigint_clear(&a);
+  xray_bigint_clear(&b);
+  xray_bigint_clear(&scratch_out);
+  free(left_text);
+  free(right_text);
+}
+
+static void run_mul_threshold_probe_case(XrayBenchmarkReport *report, size_t digits, size_t threshold) {
+  char *left_text = benchmark_decimal(digits, 5, 1);
+  char *right_text = benchmark_decimal(digits, 11, 0);
+  if (!left_text || !right_text) {
+    free(left_text);
+    free(right_text);
+    return;
+  }
+
+  unsigned int iterations = perf_iterations("mul", digits);
+  XrayScratchBigInt a, b, scratch_out;
+  xray_bigint_init(&a);
+  xray_bigint_init(&b);
+  xray_bigint_init(&scratch_out);
+  mpz_t ga, gb, gout;
+  mpz_inits(ga, gb, gout, NULL);
+  int ok = xray_bigint_set_decimal(&a, left_text) &&
+    xray_bigint_set_decimal(&b, right_text) &&
+    mpz_set_str(ga, left_text, 10) == 0 &&
+    mpz_set_str(gb, right_text, 10) == 0;
+
+  unsigned long long scratch_samples[XRAY_BENCH_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_SAMPLES] = {0};
+  int parity = 1;
+  for (unsigned int sample = 0; sample < XRAY_BENCH_SAMPLES; ++sample) {
+    unsigned long long scratch_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      ok = xray_bigint_mul_with_threshold(&scratch_out, &a, &b, threshold);
+    }
+    scratch_samples[sample] = xray_now_us() - scratch_started;
+
+    unsigned long long gmp_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      mpz_mul(gout, ga, gb);
+    }
+    gmp_samples[sample] = xray_now_us() - gmp_started;
+
+    char *scratch_text = xray_bigint_get_decimal(&scratch_out);
+    char *gmp_text = mpz_get_str(NULL, 10, gout);
+    parity = parity && ok && scratch_text && gmp_text && strcmp(scratch_text, gmp_text) == 0;
+    free(scratch_text);
+    free(gmp_text);
+  }
+
+  append_mul_threshold_probe_result(
+    report,
+    digits,
+    threshold,
+    parity,
+    median_samples(scratch_samples, XRAY_BENCH_SAMPLES),
+    median_samples(gmp_samples, XRAY_BENCH_SAMPLES),
+    median_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES));
 
   mpz_clears(ga, gb, gout, NULL);
   xray_bigint_clear(&a);
@@ -724,6 +824,14 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     run_kernel_probe_intrinsic_case(report, "add-carry", bit_sizes[index]);
     run_kernel_probe_intrinsic_case(report, "sub-carry", bit_sizes[index]);
 #endif
+  }
+
+  const size_t digits[] = {1000, 4096};
+  const size_t thresholds[] = {32, 48, 64, 96, 128};
+  for (size_t digit_index = 0; digit_index < sizeof(digits) / sizeof(digits[0]); ++digit_index) {
+    for (size_t threshold_index = 0; threshold_index < sizeof(thresholds) / sizeof(thresholds[0]); ++threshold_index) {
+      run_mul_threshold_probe_case(report, digits[digit_index], thresholds[threshold_index]);
+    }
   }
 }
 
