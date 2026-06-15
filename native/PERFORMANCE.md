@@ -878,3 +878,37 @@ CLI benchmark:
 Decision: keep the tail copy. It is a semantics-preserving subtraction fast path
 and moves the 8192-digit subtraction row from evidence-only to locally
 replacement-ready in both local benchmark paths.
+
+## 2026-06-15: Pre-Reserve Decimal Formatter Chunks
+
+Runs: `native/build-codex-fresh/native-test-runs/20260615-114431-c4b04caf`
+and `runs/20260615-114528-c4b04caf`
+
+The decimal formatter now reserves a conservative decimal-chunk capacity from
+the binary limb count before conversion starts. This avoids repeated chunk-array
+growth in both the small repeated-division formatter and the larger Horner limb
+formatter. The reserve helper also rejects impossible allocation sizes before
+`realloc` size multiplication can overflow.
+
+CTest benchmark:
+
+- summary: `176/176` passed, `41` replacement-ready, `11` oracle-only
+- 40 digit `format`: ratio `0.85`, stable `4/5`, `replacement-ready`
+- 150 digit `format`: ratio `0.84`, stable `5/5`, `replacement-ready`
+- 1000 digit `format`: ratio `2.21`, stable `0/5`, `oracle-only`
+- 4096 digit `format`: ratio `4.05`, stable `0/5`, `oracle-only`
+- 8192 digit `format`: ratio `4.47`, stable `0/5`, `oracle-only`
+
+CLI benchmark:
+
+- summary: `176/176` passed, `40` replacement-ready, `12` oracle-only
+- 40 digit `format`: ratio `0.82`, stable `5/5`, `replacement-ready`
+- 150 digit `format`: ratio `0.84`, stable `4/5`, `replacement-ready`
+- 1000 digit `format`: ratio `2.20`, stable `0/5`, `oracle-only`
+- 4096 digit `format`: ratio `4.23`, stable `0/5`, `oracle-only`
+- 8192 digit `format`: ratio `4.03`, stable `0/5`, `oracle-only`
+
+Decision: keep the pre-reserve path as a small formatter safety and stability
+improvement. It promotes the 150-digit format row in both local runs, but it
+does not change the large-number conclusion: 1000+ digit formatting still needs
+a divide-and-conquer conversion rather than more linear chunk-loop tuning.
