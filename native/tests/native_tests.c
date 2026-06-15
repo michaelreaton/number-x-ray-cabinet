@@ -63,6 +63,25 @@ static char *make_pattern_decimal(size_t digits, const char *pattern) {
   return text;
 }
 
+static void set_karatsuba_halves(XrayScratchBigInt *value, uint64_t low_top, uint64_t high_top, uint64_t salt) {
+  const size_t half = 40;
+  const size_t count = half * 2;
+  value->limbs = (uint64_t *)calloc(count, sizeof(uint64_t));
+  CHECK(value->limbs != NULL);
+  value->capacity = count;
+  value->count = count;
+  for (size_t index = 0; index < half; ++index) {
+    value->limbs[index] = salt + index + 1;
+    value->limbs[half + index] = salt + half + index + 1;
+  }
+  value->limbs[half - 1] = low_top;
+  value->limbs[count - 1] = high_top;
+}
+
+static void mpz_set_from_scratch_limbs(mpz_t out, const XrayScratchBigInt *value) {
+  mpz_import(out, value->count, -1, sizeof(uint64_t), 0, 0, value->limbs);
+}
+
 static void test_parse_messy_input(void) {
   mpz_t value;
   mpz_init(value);
@@ -371,6 +390,38 @@ static void test_scratch_bigint_large_mul_oracle(void) {
   free(right_text);
 }
 
+static void test_scratch_bigint_karatsuba_middle_signs(void) {
+  const uint64_t cases[][4] = {
+    {3, 9, 5, 11},
+    {3, 9, 11, 5},
+    {9, 3, 5, 11},
+    {9, 3, 11, 5}
+  };
+
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    XrayScratchBigInt a, b, product;
+    xray_bigint_init(&a);
+    xray_bigint_init(&b);
+    xray_bigint_init(&product);
+    set_karatsuba_halves(&a, cases[index][0], cases[index][1], 100 + (uint64_t)index * 10);
+    set_karatsuba_halves(&b, cases[index][2], cases[index][3], 300 + (uint64_t)index * 10);
+
+    mpz_t ga, gb, gproduct;
+    mpz_inits(ga, gb, gproduct, NULL);
+    mpz_set_from_scratch_limbs(ga, &a);
+    mpz_set_from_scratch_limbs(gb, &b);
+    mpz_mul(gproduct, ga, gb);
+
+    CHECK(xray_bigint_mul(&product, &a, &b));
+    check_scratch_matches_mpz(&product, gproduct);
+
+    mpz_clears(ga, gb, gproduct, NULL);
+    xray_bigint_clear(&a);
+    xray_bigint_clear(&b);
+    xray_bigint_clear(&product);
+  }
+}
+
 static void test_ambiguous_input_rejected(void) {
   mpz_t value;
   mpz_init(value);
@@ -631,6 +682,7 @@ int main(void) {
   test_scratch_bigint_oracle();
   test_scratch_bigint_oracle_sweep();
   test_scratch_bigint_large_mul_oracle();
+  test_scratch_bigint_karatsuba_middle_signs();
   test_ambiguous_input_rejected();
   test_factor_solver_exact();
   test_factor_solver_unresolved_budget();
