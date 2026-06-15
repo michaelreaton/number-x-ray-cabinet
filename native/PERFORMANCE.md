@@ -519,3 +519,35 @@ CLI benchmark:
 Decision: keep square as a proved primitive and benchmark row, but do not route
 large multiplication through it. It only wins in the bounded schoolbook-size
 middle and loses badly once Karatsuba/Toom-style multiplication should dominate.
+
+## 2026-06-15: Specialized Square Route Gate
+
+Runs: `native-test-runs/20260615-084310-c4b04caf` and
+`runs/20260615-084419-c4b04caf`
+
+The first square probe compared specialized square to GMP. This gate compares
+the same primitive to the current scratch self-multiply path using
+`square-vs-mul`, so a production route must beat the code it would replace, not
+just the GMP baseline.
+
+CTest benchmark:
+
+- 40 digits: ratio `1.231`, stable `0/5`, `observe-only`
+- 150 digits: ratio `1.000`, stable `2/5`, `observe-only`
+- 1000 digits: ratio `0.724`, stable `5/5`, `promote-candidate`
+- 4096 digits: ratio `0.933`, stable `3/5`, `observe-only`
+- 8192 digits: ratio `1.170`, stable `0/5`, `observe-only`
+- 16384 digits: ratio `1.470`, stable `0/5`, `observe-only`
+
+CLI benchmark:
+
+- 40 digits: ratio `1.231`, stable `0/5`, `observe-only`
+- 150 digits: ratio `1.000`, stable `1/5`, `observe-only`
+- 1000 digits: ratio `0.707`, stable `5/5`, `promote-candidate`
+- 4096 digits: ratio `0.903`, stable `3/5`, `observe-only`
+- 8192 digits: ratio `0.948`, stable `3/5`, `observe-only`
+- 16384 digits: ratio `1.589`, stable `0/5`, `observe-only`
+
+Decision: reject the production square route for now. The 1000 digit row is
+real, but adjacent and larger tiers do not pass stability, so the improvement is
+not broad enough to apply safely.

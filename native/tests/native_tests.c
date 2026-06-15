@@ -845,6 +845,7 @@ static void test_benchmarks(void) {
   int saw_scratch_square = 0;
   int saw_8192_kernel_probe = 0;
   int saw_16384_kernel_probe = 0;
+  int saw_square_vs_mul_probe = 0;
   int saw_toom3_probe = 0;
   int saw_toom3_vs_scratch_probe = 0;
   int saw_toom3_unroll4_vs_scratch_probe = 0;
@@ -913,6 +914,14 @@ static void test_benchmarks(void) {
       CHECK(strstr(report->results[index].detail, "adoption=") != NULL);
       if (strcmp(report->results[index].operation, "mul-threshold") == 0) {
         CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+      }
+      if (strcmp(report->results[index].operation, "square-vs-mul") == 0) {
+        saw_square_vs_mul_probe = 1;
+        CHECK(strstr(report->results[index].detail, "routeCandidate=unrouted") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=specialized-square") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=current-scratch-self-mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=square-basecase-probe") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=1") != NULL);
       }
       if (strcmp(report->results[index].operation, "mul-toom3") == 0) {
         saw_toom3_probe = 1;
@@ -1053,6 +1062,7 @@ static void test_benchmarks(void) {
   CHECK(saw_scratch_square);
   CHECK(saw_8192_kernel_probe);
   CHECK(saw_16384_kernel_probe);
+  CHECK(saw_square_vs_mul_probe);
   CHECK(saw_toom3_probe);
   CHECK(saw_toom3_vs_scratch_probe);
 #if defined(_MSC_VER) && defined(_M_X64)
@@ -1097,6 +1107,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "\"scratchUs\"") != NULL);
   CHECK(strstr(json, "mul-toom3") != NULL);
   CHECK(strstr(json, "\"operation\":\"square\"") != NULL);
+  CHECK(strstr(json, "square-vs-mul") != NULL);
   CHECK(strstr(json, "mul-toom3-vs-scratch") != NULL);
 #if defined(_MSC_VER) && defined(_M_X64)
   CHECK(strstr(json, "mul-toom3-unroll4-vs-scratch") != NULL);
@@ -1122,6 +1133,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "gmpClue=") != NULL);
   CHECK(strstr(tsv, "mul-toom3") != NULL);
   CHECK(strstr(tsv, "square") != NULL);
+  CHECK(strstr(tsv, "square-vs-mul") != NULL);
   CHECK(strstr(tsv, "mul-toom3-vs-scratch") != NULL);
 #if defined(_MSC_VER) && defined(_M_X64)
   CHECK(strstr(tsv, "mul-toom3-unroll4-vs-scratch") != NULL);
@@ -1156,6 +1168,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "kernel-probe") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-toom3") != NULL);
   CHECK(strstr(benchmark_tsv, "square") != NULL);
+  CHECK(strstr(benchmark_tsv, "square-vs-mul") != NULL);
 #if defined(_MSC_VER) && defined(_M_X64)
   CHECK(strstr(benchmark_tsv, "mul-toom3-unroll4-vs-scratch") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-toom3-unroll4-vs-gmp") != NULL);
