@@ -12,6 +12,16 @@
   } \
 } while (0)
 
+static void check_scratch_matches_mpz(const XrayScratchBigInt *actual, const mpz_t expected) {
+  char *actual_text = xray_bigint_get_decimal(actual);
+  char *expected_text = mpz_get_str(NULL, 10, expected);
+  CHECK(actual_text != NULL);
+  CHECK(expected_text != NULL);
+  CHECK(strcmp(actual_text, expected_text) == 0);
+  free(actual_text);
+  free(expected_text);
+}
+
 static void test_parse_messy_input(void) {
   mpz_t value;
   mpz_init(value);
@@ -155,6 +165,78 @@ static void test_scratch_bigint_oracle(void) {
   xray_bigint_clear(&sum);
   xray_bigint_clear(&difference);
   xray_bigint_clear(&product);
+  xray_bigint_clear(&quotient);
+}
+
+static void test_scratch_bigint_oracle_sweep(void) {
+  const char *values[] = {
+    "0",
+    "1",
+    "999999999",
+    "1000000000",
+    "1000000000000000000000000000000",
+    "1234567890123456789012345678901234567890",
+    "80852963074185296307418529630741852963074185296307418529630741852963074185296307418529630741852963074185296307418529630741852963074185296307418529630741852963074185296307",
+    NULL
+  };
+  const uint32_t divisors[] = {1U, 2U, 3U, 65537U, 1000000007U};
+
+  XrayScratchBigInt a, b, out, quotient;
+  xray_bigint_init(&a);
+  xray_bigint_init(&b);
+  xray_bigint_init(&out);
+  xray_bigint_init(&quotient);
+  mpz_t ga, gb, gout, gquotient, gdivisor, ggcd, gpow;
+  mpz_inits(ga, gb, gout, gquotient, gdivisor, ggcd, gpow, NULL);
+
+  for (size_t i = 0; values[i]; ++i) {
+    CHECK(xray_bigint_set_decimal(&a, values[i]));
+    CHECK(mpz_set_str(ga, values[i], 10) == 0);
+    check_scratch_matches_mpz(&a, ga);
+
+    for (size_t d = 0; d < sizeof(divisors) / sizeof(divisors[0]); ++d) {
+      uint32_t rem = 0;
+      CHECK(xray_bigint_divmod_u32(&quotient, &rem, &a, divisors[d]));
+      unsigned long oracle_rem = mpz_tdiv_q_ui(gquotient, ga, divisors[d]);
+      check_scratch_matches_mpz(&quotient, gquotient);
+      CHECK(rem == (uint32_t)oracle_rem);
+      CHECK(xray_bigint_mod_u32(&a, divisors[d]) == (uint32_t)mpz_tdiv_ui(ga, divisors[d]));
+
+      mpz_set_ui(gdivisor, divisors[d]);
+      mpz_gcd(ggcd, ga, gdivisor);
+      CHECK(xray_bigint_gcd_u32(&a, divisors[d]) == (uint32_t)mpz_get_ui(ggcd));
+    }
+
+    mpz_set_ui(gdivisor, 1000000007U);
+    mpz_powm_ui(gpow, ga, 65537U, gdivisor);
+    CHECK(xray_bigint_powmod_u32(&a, 65537U, 1000000007U) == (uint32_t)mpz_get_ui(gpow));
+
+    for (size_t j = 0; values[j]; ++j) {
+      CHECK(xray_bigint_set_decimal(&b, values[j]));
+      CHECK(mpz_set_str(gb, values[j], 10) == 0);
+
+      CHECK(xray_bigint_add(&out, &a, &b));
+      mpz_add(gout, ga, gb);
+      check_scratch_matches_mpz(&out, gout);
+
+      CHECK(xray_bigint_mul(&out, &a, &b));
+      mpz_mul(gout, ga, gb);
+      check_scratch_matches_mpz(&out, gout);
+
+      if (mpz_cmp(ga, gb) >= 0) {
+        CHECK(xray_bigint_sub(&out, &a, &b));
+        mpz_sub(gout, ga, gb);
+        check_scratch_matches_mpz(&out, gout);
+      } else {
+        CHECK(!xray_bigint_sub(&out, &a, &b));
+      }
+    }
+  }
+
+  mpz_clears(ga, gb, gout, gquotient, gdivisor, ggcd, gpow, NULL);
+  xray_bigint_clear(&a);
+  xray_bigint_clear(&b);
+  xray_bigint_clear(&out);
   xray_bigint_clear(&quotient);
 }
 
@@ -345,6 +427,7 @@ int main(void) {
   test_parse_messy_input();
   test_exact_expression_parser();
   test_scratch_bigint_oracle();
+  test_scratch_bigint_oracle_sweep();
   test_ambiguous_input_rejected();
   test_factor_solver_exact();
   test_factor_solver_unresolved_budget();
