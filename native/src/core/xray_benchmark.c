@@ -628,6 +628,58 @@ static void append_mul_threshold_probe_result(
   append_result(report, &result);
 }
 
+static void append_mul_toom3_probe_result(
+  XrayBenchmarkReport *report,
+  size_t digits,
+  size_t leaf_threshold,
+  size_t operand_families,
+  int parity,
+  unsigned long long scratch_us,
+  unsigned long long gmp_us,
+  double paired_ratio,
+  size_t stable_sample_count,
+  size_t sample_count,
+  double worst_pair_ratio) {
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "kernel mul Toom-3 leaf %zu limbs %zu digits", leaf_threshold, digits);
+  snprintf(result.category, sizeof(result.category), "kernel-probe");
+  snprintf(result.operation, sizeof(result.operation), "mul-toom3");
+  result.digits = digits;
+  result.scratch_us = scratch_us ? scratch_us : 1;
+  result.gmp_us = gmp_us ? gmp_us : 1;
+  result.speed_ratio = paired_ratio > 0.0 ? paired_ratio : (double)result.scratch_us / (double)result.gmp_us;
+  result.max_allowed_speed_ratio = 0.98;
+  result.stable_sample_count = stable_sample_count;
+  result.sample_count = sample_count;
+  result.worst_pair_ratio = worst_pair_ratio;
+  result.parity_verified = parity;
+  result.replacement_ready = parity &&
+    result.speed_ratio <= result.max_allowed_speed_ratio &&
+    result.stable_sample_count >= XRAY_KERNEL_REQUIRED_STABLE_SAMPLES;
+  snprintf(result.adoption, sizeof(result.adoption), "%s",
+    !parity ? "blocked-output-mismatch" : (result.replacement_ready ? "promote-candidate" : "observe-only"));
+  snprintf(result.status, sizeof(result.status), "%s",
+    !parity ? "mismatch" : (result.replacement_ready ? "candidate-faster" : (result.speed_ratio < 1.0 ? "candidate-no-margin" : "baseline-faster")));
+  result.passed = parity;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  snprintf(result.detail, sizeof(result.detail),
+    "op=mul-toom3 digits=%zu leafThreshold=%zu operandFamilies=%zu samples=%zu stablePairs=%zu/%zu scratchUs=%llu gmpUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median max=%.2f featureGate=one-level-toom3 gmpClue=toom33-thresholds adoption=%s",
+    digits,
+    leaf_threshold,
+    operand_families,
+    sample_count,
+    stable_sample_count,
+    sample_count,
+    result.scratch_us,
+    result.gmp_us,
+    result.speed_ratio,
+    result.worst_pair_ratio,
+    result.max_allowed_speed_ratio,
+    result.adoption);
+  append_result(report, &result);
+}
+
 static void run_scratch_parse_case(XrayBenchmarkReport *report, size_t digits) {
   char *text = benchmark_decimal(digits, 3, 1);
   if (!text) return;
@@ -812,6 +864,86 @@ static void run_mul_threshold_probe_case(XrayBenchmarkReport *report, size_t dig
     report,
     digits,
     threshold,
+    XRAY_MUL_OPERAND_FAMILIES,
+    parity,
+    median_samples(scratch_samples, XRAY_BENCH_SAMPLES),
+    median_samples(gmp_samples, XRAY_BENCH_SAMPLES),
+    median_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES),
+    paired_ratio_wins(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES, 0.98),
+    XRAY_BENCH_SAMPLES,
+    max_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES));
+
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    mpz_clears(ga[family], gb[family], gout[family], NULL);
+    xray_bigint_clear(&a[family]);
+    xray_bigint_clear(&b[family]);
+    xray_bigint_clear(&scratch_out[family]);
+    free(left_text[family]);
+    free(right_text[family]);
+  }
+}
+
+static void run_mul_toom3_probe_case(XrayBenchmarkReport *report, size_t digits, size_t leaf_threshold) {
+  char *left_text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  char *right_text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  XrayScratchBigInt a[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt b[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt scratch_out[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t ga[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gb[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gout[XRAY_MUL_OPERAND_FAMILIES];
+
+  unsigned int iterations = perf_iterations("mul", digits);
+  int ok = 1;
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    xray_bigint_init(&a[family]);
+    xray_bigint_init(&b[family]);
+    xray_bigint_init(&scratch_out[family]);
+    mpz_inits(ga[family], gb[family], gout[family], NULL);
+    left_text[family] = benchmark_decimal(digits, mul_operand_families[family].left_seed, mul_operand_families[family].left_high_lead);
+    right_text[family] = benchmark_decimal(digits, mul_operand_families[family].right_seed, mul_operand_families[family].right_high_lead);
+    ok = ok &&
+      left_text[family] &&
+      right_text[family] &&
+      xray_bigint_set_decimal(&a[family], left_text[family]) &&
+      xray_bigint_set_decimal(&b[family], right_text[family]) &&
+      mpz_set_str(ga[family], left_text[family], 10) == 0 &&
+      mpz_set_str(gb[family], right_text[family], 10) == 0;
+  }
+
+  unsigned long long scratch_samples[XRAY_BENCH_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_SAMPLES] = {0};
+  int parity = 1;
+  for (unsigned int sample = 0; sample < XRAY_BENCH_SAMPLES; ++sample) {
+    unsigned long long scratch_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+        ok = xray_bigint_mul_toom3_probe(&scratch_out[family], &a[family], &b[family], leaf_threshold);
+      }
+    }
+    scratch_samples[sample] = xray_now_us() - scratch_started;
+
+    unsigned long long gmp_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+        mpz_mul(gout[family], ga[family], gb[family]);
+      }
+    }
+    gmp_samples[sample] = xray_now_us() - gmp_started;
+
+    for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+      char *scratch_text = xray_bigint_get_decimal(&scratch_out[family]);
+      char *gmp_text = mpz_get_str(NULL, 10, gout[family]);
+      parity = parity && ok && scratch_text && gmp_text && strcmp(scratch_text, gmp_text) == 0;
+      free(scratch_text);
+      free(gmp_text);
+    }
+  }
+
+  append_mul_toom3_probe_result(
+    report,
+    digits,
+    leaf_threshold,
     XRAY_MUL_OPERAND_FAMILIES,
     parity,
     median_samples(scratch_samples, XRAY_BENCH_SAMPLES),
@@ -1066,6 +1198,14 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
   for (size_t digit_index = 0; digit_index < sizeof(digits) / sizeof(digits[0]); ++digit_index) {
     for (size_t threshold_index = 0; threshold_index < sizeof(thresholds) / sizeof(thresholds[0]); ++threshold_index) {
       run_mul_threshold_probe_case(report, digits[digit_index], thresholds[threshold_index]);
+    }
+  }
+
+  const size_t toom_digits[] = {4096, 8192};
+  const size_t toom_leaf_thresholds[] = {32, 64};
+  for (size_t digit_index = 0; digit_index < sizeof(toom_digits) / sizeof(toom_digits[0]); ++digit_index) {
+    for (size_t threshold_index = 0; threshold_index < sizeof(toom_leaf_thresholds) / sizeof(toom_leaf_thresholds[0]); ++threshold_index) {
+      run_mul_toom3_probe_case(report, toom_digits[digit_index], toom_leaf_thresholds[threshold_index]);
     }
   }
 }

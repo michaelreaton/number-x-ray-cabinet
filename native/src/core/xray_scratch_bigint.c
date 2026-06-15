@@ -549,6 +549,313 @@ static int mul_dispatch_threshold(XrayScratchBigInt *out, const XrayScratchBigIn
   return mul_karatsuba_threshold(out, left, right, threshold);
 }
 
+typedef struct XraySignedScratchBigInt {
+  int sign;
+  XrayScratchBigInt mag;
+} XraySignedScratchBigInt;
+
+static void signed_init(XraySignedScratchBigInt *value) {
+  if (!value) return;
+  value->sign = 0;
+  xray_bigint_init(&value->mag);
+}
+
+static void signed_clear(XraySignedScratchBigInt *value) {
+  if (!value) return;
+  xray_bigint_clear(&value->mag);
+  value->sign = 0;
+}
+
+static void signed_normalize(XraySignedScratchBigInt *value) {
+  if (!value) return;
+  normalize(&value->mag);
+  if (value->mag.count == 0) value->sign = 0;
+}
+
+static int signed_set_unsigned(XraySignedScratchBigInt *out, const XrayScratchBigInt *value) {
+  if (!out || !value) return 0;
+  if (!xray_bigint_copy(&out->mag, value)) return 0;
+  out->sign = out->mag.count ? 1 : 0;
+  return 1;
+}
+
+static int signed_copy(XraySignedScratchBigInt *out, const XraySignedScratchBigInt *value) {
+  if (!out || !value) return 0;
+  if (!xray_bigint_copy(&out->mag, &value->mag)) return 0;
+  out->sign = value->sign;
+  signed_normalize(out);
+  return 1;
+}
+
+static int signed_add(XraySignedScratchBigInt *out, const XraySignedScratchBigInt *left, const XraySignedScratchBigInt *right) {
+  if (!out || !left || !right) return 0;
+  XraySignedScratchBigInt temp;
+  signed_init(&temp);
+  int ok = 1;
+  if (left->sign == 0) ok = signed_copy(&temp, right);
+  else if (right->sign == 0) ok = signed_copy(&temp, left);
+  else if (left->sign == right->sign) {
+    ok = xray_bigint_add(&temp.mag, &left->mag, &right->mag);
+    temp.sign = ok && temp.mag.count ? left->sign : 0;
+  } else {
+    int compare = xray_bigint_compare(&left->mag, &right->mag);
+    if (compare == 0) ok = set_u32(&temp.mag, 0);
+    else if (compare > 0) {
+      ok = xray_bigint_sub(&temp.mag, &left->mag, &right->mag);
+      temp.sign = ok && temp.mag.count ? left->sign : 0;
+    } else {
+      ok = xray_bigint_sub(&temp.mag, &right->mag, &left->mag);
+      temp.sign = ok && temp.mag.count ? right->sign : 0;
+    }
+  }
+  if (ok) ok = signed_copy(out, &temp);
+  signed_clear(&temp);
+  return ok;
+}
+
+static int signed_sub(XraySignedScratchBigInt *out, const XraySignedScratchBigInt *left, const XraySignedScratchBigInt *right) {
+  if (!out || !left || !right) return 0;
+  XraySignedScratchBigInt neg_right;
+  signed_init(&neg_right);
+  int ok = signed_copy(&neg_right, right);
+  if (ok) {
+    neg_right.sign = -neg_right.sign;
+    ok = signed_add(out, left, &neg_right);
+  }
+  signed_clear(&neg_right);
+  return ok;
+}
+
+static int signed_sub_inplace(XraySignedScratchBigInt *value, const XraySignedScratchBigInt *subtrahend) {
+  return signed_sub(value, value, subtrahend);
+}
+
+static int signed_divexact_u32(XraySignedScratchBigInt *value, uint32_t divisor) {
+  if (!value || divisor == 0) return 0;
+  if (value->sign == 0) return 1;
+  XrayScratchBigInt quotient;
+  xray_bigint_init(&quotient);
+  uint32_t remainder = 0;
+  int ok = xray_bigint_divmod_u32(&quotient, &remainder, &value->mag, divisor) && remainder == 0;
+  if (ok) {
+    ok = xray_bigint_copy(&value->mag, &quotient);
+    signed_normalize(value);
+  }
+  xray_bigint_clear(&quotient);
+  return ok;
+}
+
+static int signed_mul_u32_inplace(XraySignedScratchBigInt *value, uint64_t multiplier) {
+  if (!value) return 0;
+  if (value->sign == 0 || multiplier == 1) return 1;
+  if (multiplier == 0) {
+    value->sign = 0;
+    value->mag.count = 0;
+    return 1;
+  }
+  int ok = mul_add_small_inplace(&value->mag, multiplier, 0);
+  signed_normalize(value);
+  return ok;
+}
+
+static int signed_mul_unsigned_threshold(
+  XraySignedScratchBigInt *out,
+  const XraySignedScratchBigInt *left,
+  const XraySignedScratchBigInt *right,
+  size_t threshold) {
+  if (!out || !left || !right) return 0;
+  if (left->sign == 0 || right->sign == 0) {
+    out->sign = 0;
+    return set_u32(&out->mag, 0);
+  }
+  int ok = mul_dispatch_threshold(&out->mag, &left->mag, &right->mag, threshold);
+  out->sign = ok && out->mag.count ? left->sign * right->sign : 0;
+  return ok;
+}
+
+static int add_scaled_unsigned(XrayScratchBigInt *out, const XrayScratchBigInt *value, uint64_t scale) {
+  if (!out || !value) return 0;
+  if (value->count == 0 || scale == 0) return 1;
+  XrayScratchBigInt scaled, sum;
+  xray_bigint_init(&scaled);
+  xray_bigint_init(&sum);
+  int ok = xray_bigint_copy(&scaled, value) && mul_add_small_inplace(&scaled, scale, 0) && xray_bigint_add(&sum, out, &scaled);
+  if (ok) ok = xray_bigint_copy(out, &sum);
+  xray_bigint_clear(&scaled);
+  xray_bigint_clear(&sum);
+  return ok;
+}
+
+static int eval_toom3_positive(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *part0,
+  const XrayScratchBigInt *part1,
+  const XrayScratchBigInt *part2,
+  uint64_t weight1,
+  uint64_t weight2) {
+  return set_u32(out, 0) &&
+    add_scaled_unsigned(out, part0, 1) &&
+    add_scaled_unsigned(out, part1, weight1) &&
+    add_scaled_unsigned(out, part2, weight2);
+}
+
+static int eval_toom3_minus_one(
+  XraySignedScratchBigInt *out,
+  const XrayScratchBigInt *part0,
+  const XrayScratchBigInt *part1,
+  const XrayScratchBigInt *part2) {
+  XrayScratchBigInt positive;
+  xray_bigint_init(&positive);
+  int ok = eval_toom3_positive(&positive, part0, part1, part2, 0, 1);
+  if (ok) {
+    int compare = xray_bigint_compare(&positive, part1);
+    if (compare == 0) {
+      ok = set_u32(&out->mag, 0);
+      out->sign = 0;
+    } else if (compare > 0) {
+      ok = xray_bigint_sub(&out->mag, &positive, part1);
+      out->sign = ok && out->mag.count ? 1 : 0;
+    } else {
+      ok = xray_bigint_sub(&out->mag, part1, &positive);
+      out->sign = ok && out->mag.count ? -1 : 0;
+    }
+  }
+  xray_bigint_clear(&positive);
+  return ok;
+}
+
+static int signed_from_positive_eval(
+  XraySignedScratchBigInt *out,
+  const XrayScratchBigInt *part0,
+  const XrayScratchBigInt *part1,
+  const XrayScratchBigInt *part2,
+  uint64_t weight1,
+  uint64_t weight2) {
+  XrayScratchBigInt eval;
+  xray_bigint_init(&eval);
+  int ok = eval_toom3_positive(&eval, part0, part1, part2, weight1, weight2) && signed_set_unsigned(out, &eval);
+  xray_bigint_clear(&eval);
+  return ok;
+}
+
+static int mul_toom3_probe_internal(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *left,
+  const XrayScratchBigInt *right,
+  size_t leaf_threshold) {
+  if (!out || !left || !right) return 0;
+  if (left->count == 0 || right->count == 0) return set_u32(out, 0);
+  size_t max_count = left->count > right->count ? left->count : right->count;
+  size_t min_count = left->count < right->count ? left->count : right->count;
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  if (max_count < active_threshold * 3U || min_count * 3U < max_count * 2U) {
+    return mul_dispatch_threshold(out, left, right, active_threshold);
+  }
+
+  size_t split = (max_count + 2U) / 3U;
+  XrayScratchBigInt a0, a1, a2, b0, b1, b2;
+  XraySignedScratchBigInt x0, x1, xm1, x2, xinf, y0, y1, ym1, y2, yinf;
+  XraySignedScratchBigInt v0, v1, vm1, v2, vinf, twice_vinf;
+  xray_bigint_init(&a0);
+  xray_bigint_init(&a1);
+  xray_bigint_init(&a2);
+  xray_bigint_init(&b0);
+  xray_bigint_init(&b1);
+  xray_bigint_init(&b2);
+  signed_init(&x0);
+  signed_init(&x1);
+  signed_init(&xm1);
+  signed_init(&x2);
+  signed_init(&xinf);
+  signed_init(&y0);
+  signed_init(&y1);
+  signed_init(&ym1);
+  signed_init(&y2);
+  signed_init(&yinf);
+  signed_init(&v0);
+  signed_init(&v1);
+  signed_init(&vm1);
+  signed_init(&v2);
+  signed_init(&vinf);
+  signed_init(&twice_vinf);
+
+  int ok = slice_bigint(&a0, left, 0, split) &&
+    slice_bigint(&a1, left, split, split) &&
+    slice_bigint(&a2, left, split * 2U, left->count > split * 2U ? left->count - split * 2U : 0) &&
+    slice_bigint(&b0, right, 0, split) &&
+    slice_bigint(&b1, right, split, split) &&
+    slice_bigint(&b2, right, split * 2U, right->count > split * 2U ? right->count - split * 2U : 0) &&
+    signed_set_unsigned(&x0, &a0) &&
+    signed_from_positive_eval(&x1, &a0, &a1, &a2, 1, 1) &&
+    eval_toom3_minus_one(&xm1, &a0, &a1, &a2) &&
+    signed_from_positive_eval(&x2, &a0, &a1, &a2, 2, 4) &&
+    signed_set_unsigned(&xinf, &a2) &&
+    signed_set_unsigned(&y0, &b0) &&
+    signed_from_positive_eval(&y1, &b0, &b1, &b2, 1, 1) &&
+    eval_toom3_minus_one(&ym1, &b0, &b1, &b2) &&
+    signed_from_positive_eval(&y2, &b0, &b1, &b2, 2, 4) &&
+    signed_set_unsigned(&yinf, &b2) &&
+    signed_mul_unsigned_threshold(&v0, &x0, &y0, active_threshold) &&
+    signed_mul_unsigned_threshold(&v1, &x1, &y1, active_threshold) &&
+    signed_mul_unsigned_threshold(&vm1, &xm1, &ym1, active_threshold) &&
+    signed_mul_unsigned_threshold(&v2, &x2, &y2, active_threshold) &&
+    signed_mul_unsigned_threshold(&vinf, &xinf, &yinf, active_threshold);
+
+  if (ok) {
+    ok = signed_sub_inplace(&v2, &vm1) &&
+      signed_divexact_u32(&v2, 3) &&
+      signed_sub(&vm1, &v1, &vm1) &&
+      signed_divexact_u32(&vm1, 2) &&
+      signed_sub_inplace(&v1, &v0) &&
+      signed_sub_inplace(&v2, &v1) &&
+      signed_divexact_u32(&v2, 2) &&
+      signed_sub_inplace(&v1, &vm1) &&
+      signed_sub_inplace(&v1, &vinf) &&
+      signed_copy(&twice_vinf, &vinf) &&
+      signed_mul_u32_inplace(&twice_vinf, 2) &&
+      signed_sub_inplace(&v2, &twice_vinf) &&
+      signed_sub_inplace(&vm1, &v2);
+  }
+
+  if (ok) {
+    ok = v0.sign >= 0 && vm1.sign >= 0 && v1.sign >= 0 && v2.sign >= 0 && vinf.sign >= 0;
+  }
+  if (ok) {
+    out->count = 0;
+    ok = reserve_limbs(out, left->count + right->count + 4U) &&
+      add_shifted_inplace(out, &v0.mag, 0) &&
+      add_shifted_inplace(out, &vm1.mag, split) &&
+      add_shifted_inplace(out, &v1.mag, split * 2U) &&
+      add_shifted_inplace(out, &v2.mag, split * 3U) &&
+      add_shifted_inplace(out, &vinf.mag, split * 4U);
+    if (ok) normalize(out);
+  }
+
+  xray_bigint_clear(&a0);
+  xray_bigint_clear(&a1);
+  xray_bigint_clear(&a2);
+  xray_bigint_clear(&b0);
+  xray_bigint_clear(&b1);
+  xray_bigint_clear(&b2);
+  signed_clear(&x0);
+  signed_clear(&x1);
+  signed_clear(&xm1);
+  signed_clear(&x2);
+  signed_clear(&xinf);
+  signed_clear(&y0);
+  signed_clear(&y1);
+  signed_clear(&ym1);
+  signed_clear(&y2);
+  signed_clear(&yinf);
+  signed_clear(&v0);
+  signed_clear(&v1);
+  signed_clear(&vm1);
+  signed_clear(&v2);
+  signed_clear(&vinf);
+  signed_clear(&twice_vinf);
+  return ok;
+}
+
 static int mul_dispatch(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
   return mul_dispatch_threshold(out, left, right, XRAY_BIGINT_KARATSUBA_THRESHOLD);
 }
@@ -578,6 +885,20 @@ int xray_bigint_mul_with_threshold(XrayScratchBigInt *out, const XrayScratchBigI
     return ok;
   }
   return mul_dispatch_threshold(out, left, right, active_threshold);
+}
+
+int xray_bigint_mul_toom3_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold) {
+  if (!out || !left || !right) return 0;
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  if (out == left || out == right) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = mul_toom3_probe_internal(&temp, left, right, active_threshold);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return mul_toom3_probe_internal(out, left, right, active_threshold);
 }
 
 uint32_t xray_bigint_mod_u32(const XrayScratchBigInt *value, uint32_t modulus) {
