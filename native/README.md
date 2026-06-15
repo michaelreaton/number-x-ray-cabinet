@@ -39,6 +39,34 @@ ctest --test-dir native/build --output-on-failure
 
 If GTK4 development headers are unavailable, CMake skips the `xray_workbench` GUI target and still builds the reusable core, CLI, and tests.
 
+## Importing The Number Library
+
+Other C/CMake tools can use the native number core directly. From a monorepo or
+checkout-based integration, add the native project and link the namespaced
+target:
+
+```cmake
+add_subdirectory(path/to/number-x-ray-cabinet/native)
+target_link_libraries(my_tool PRIVATE NumberXRay::core)
+```
+
+For an installed SDK-style integration, install the native package first:
+
+```powershell
+cmake --install native/build --config Release --prefix C:/number-xray-sdk
+```
+
+Then consume it from another CMake project:
+
+```cmake
+find_package(NumberXRay CONFIG REQUIRED)
+target_link_libraries(my_tool PRIVATE NumberXRay::core)
+```
+
+Include `xray_workbench.h` for the public API. Consumers still need GMP or MPIR
+available at configure/build time; the exported package recreates the
+`GMP::GMP` dependency target from `GMP_ROOT`, vcpkg, or system paths.
+
 The app includes Fermat F12, `2^4096 + 1 = Phi_8192(2)`, as a large exact cyclotomic example. It is meant to test discovery, reporting, and UI handling for much larger structured numbers; it must not be reported as factored unless exact factors are found and product verification passes.
 
 ## GMP Parity And Performance Bar

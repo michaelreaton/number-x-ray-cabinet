@@ -1,0 +1,72 @@
+@PACKAGE_INIT@
+
+find_path(NumberXRay_GMP_INCLUDE_DIR
+  NAMES gmp.h
+  HINTS
+    "$ENV{GMP_ROOT}/include"
+    "$ENV{VCPKG_INSTALLATION_ROOT}/installed/x64-windows/include"
+    "$ENV{VCPKG_ROOT}/installed/x64-windows/include"
+    "C:/vcpkg/installed/x64-windows/include"
+)
+
+find_library(NumberXRay_GMP_LIBRARY
+  NAMES gmp mpir
+  HINTS
+    "$ENV{GMP_ROOT}/lib"
+    "$ENV{VCPKG_INSTALLATION_ROOT}/installed/x64-windows/lib"
+    "$ENV{VCPKG_ROOT}/installed/x64-windows/lib"
+    "C:/vcpkg/installed/x64-windows/lib"
+)
+
+if(NOT NumberXRay_GMP_INCLUDE_DIR OR NOT NumberXRay_GMP_LIBRARY)
+  set(NumberXRay_FOUND FALSE)
+  set(NumberXRay_NOT_FOUND_MESSAGE "NumberXRay requires GMP or MPIR development files. Set GMP_ROOT or use a vcpkg toolchain with mpir installed.")
+  return()
+endif()
+
+if(NOT TARGET GMP::GMP)
+  add_library(GMP::GMP UNKNOWN IMPORTED)
+  set_target_properties(GMP::GMP PROPERTIES
+    IMPORTED_LOCATION "${NumberXRay_GMP_LIBRARY}"
+    INTERFACE_INCLUDE_DIRECTORIES "${NumberXRay_GMP_INCLUDE_DIR}"
+  )
+endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/NumberXRayTargets.cmake")
+
+if(TARGET NumberXRay::core)
+  get_target_property(_xray_plain_location NumberXRay::core IMPORTED_LOCATION)
+  get_target_property(_xray_release_location NumberXRay::core IMPORTED_LOCATION_RELEASE)
+  get_target_property(_xray_noconfig_location NumberXRay::core IMPORTED_LOCATION_NOCONFIG)
+  get_target_property(_xray_imported_configs NumberXRay::core IMPORTED_CONFIGURATIONS)
+  if(_xray_release_location)
+    set(_xray_fallback_location "${_xray_release_location}")
+  elseif(_xray_noconfig_location)
+    set(_xray_fallback_location "${_xray_noconfig_location}")
+  elseif(_xray_plain_location)
+    set(_xray_fallback_location "${_xray_plain_location}")
+  elseif(_xray_imported_configs)
+    if("RELEASE" IN_LIST _xray_imported_configs)
+      get_target_property(_xray_fallback_location NumberXRay::core IMPORTED_LOCATION_RELEASE)
+    elseif("NOCONFIG" IN_LIST _xray_imported_configs)
+      get_target_property(_xray_fallback_location NumberXRay::core IMPORTED_LOCATION_NOCONFIG)
+    else()
+      list(GET _xray_imported_configs 0 _xray_fallback_config)
+      string(TOUPPER "${_xray_fallback_config}" _xray_fallback_config)
+      get_target_property(_xray_fallback_location NumberXRay::core
+        IMPORTED_LOCATION_${_xray_fallback_config})
+    endif()
+  endif()
+
+  if(_xray_fallback_location)
+    foreach(_config DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
+      get_target_property(_location NumberXRay::core IMPORTED_LOCATION_${_config})
+      if(NOT _location)
+        set_property(TARGET NumberXRay::core PROPERTY
+          IMPORTED_LOCATION_${_config} "${_xray_fallback_location}")
+      endif()
+    endforeach()
+  endif()
+endif()
+
+check_required_components(NumberXRay)
