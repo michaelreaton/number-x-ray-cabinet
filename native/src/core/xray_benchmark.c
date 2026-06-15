@@ -2790,6 +2790,14 @@ static void run_scratch_bigint_gates(XrayBenchmarkReport *report) {
     run_square_karatsuba_probe_case(report, square_probe_sizes[index], 64, 0);
     run_square_karatsuba_probe_case(report, square_probe_sizes[index], 64, 1);
   }
+  const size_t square_scout_sizes[] = {4096, 8192, 16384};
+  const size_t square_scout_thresholds[] = {32, 96, 128};
+  for (size_t size_index = 0; size_index < sizeof(square_scout_sizes) / sizeof(square_scout_sizes[0]); ++size_index) {
+    for (size_t threshold_index = 0; threshold_index < sizeof(square_scout_thresholds) / sizeof(square_scout_thresholds[0]); ++threshold_index) {
+      run_square_karatsuba_probe_case(report, square_scout_sizes[size_index], square_scout_thresholds[threshold_index], 0);
+      run_square_karatsuba_probe_case(report, square_scout_sizes[size_index], square_scout_thresholds[threshold_index], 1);
+    }
+  }
 }
 
 static void run_kernel_probes(XrayBenchmarkReport *report) {
