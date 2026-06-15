@@ -1952,6 +1952,7 @@ static void run_scratch_bigint_gates(XrayBenchmarkReport *report) {
     run_scratch_divmod_case(report, sizes[index]);
     run_scratch_mul_case(report, sizes[index]);
   }
+  run_scratch_mul_case(report, 16384);
 }
 
 static void run_kernel_probes(XrayBenchmarkReport *report) {
@@ -1970,7 +1971,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
 #endif
   }
 
-  const size_t digits[] = {1000, 4096, 8192};
+  const size_t digits[] = {1000, 4096, 8192, 16384};
   const size_t thresholds[] = {32, 48, 64, 96, 128};
   for (size_t digit_index = 0; digit_index < sizeof(digits) / sizeof(digits[0]); ++digit_index) {
     for (size_t threshold_index = 0; threshold_index < sizeof(thresholds) / sizeof(thresholds[0]); ++threshold_index) {
@@ -1978,7 +1979,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     }
   }
 
-  const size_t toom_digits[] = {4096, 8192};
+  const size_t toom_digits[] = {4096, 8192, 16384};
   const size_t toom_leaf_thresholds[] = {32, 64};
   for (size_t digit_index = 0; digit_index < sizeof(toom_digits) / sizeof(toom_digits[0]); ++digit_index) {
     for (size_t threshold_index = 0; threshold_index < sizeof(toom_leaf_thresholds) / sizeof(toom_leaf_thresholds[0]); ++threshold_index) {
@@ -1988,12 +1989,12 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
   }
 
 #if XRAY_HAS_MSVC_BMI2_ADX_INTRINSICS
-  const size_t unroll_digits[] = {40, 150, 1000, 4096, 8192};
+  const size_t unroll_digits[] = {40, 150, 1000, 4096, 8192, 16384};
   for (size_t digit_index = 0; digit_index < sizeof(unroll_digits) / sizeof(unroll_digits[0]); ++digit_index) {
     run_mul_unroll4_vs_scratch_probe_case(report, unroll_digits[digit_index], 64);
     run_mul_unroll4_vs_gmp_probe_case(report, unroll_digits[digit_index], 64);
   }
-  const size_t unroll_deep_digits[] = {4096, 8192};
+  const size_t unroll_deep_digits[] = {4096, 8192, 16384};
   for (size_t digit_index = 0; digit_index < sizeof(unroll_deep_digits) / sizeof(unroll_deep_digits[0]); ++digit_index) {
     run_mul_unroll4_deep_vs_gmp_probe_case(report, unroll_deep_digits[digit_index], 64);
   }

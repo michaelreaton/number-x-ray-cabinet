@@ -235,3 +235,28 @@ Decision: keep the higher iteration floor. The benchmark still finishes in
 about ten seconds locally while removing noisy large add/sub oracle-only
 flips. Remaining scratch oracle-only rows are parse at 4096/8192 digits and
 multiply at 8192 digits.
+
+## 2026-06-15: 16384 Digit Multiply Discovery Tier
+
+Run: `runs/20260615-063047-c4b04caf`
+
+The next multiply frontier is larger than the current 8192 digit scratch gate,
+but parse is being worked separately. The benchmark now adds 16384 digit rows
+only to multiply-specific surfaces: scratch `mul`, runtime threshold probes,
+Toom-3 probes, and unroll4 GMP gates. This is evidence collection only; no
+production route changes are made by this tier.
+
+- 16384 digit scratch `mul`: ratio `1.307`, stable `1/5`, `oracle-only`
+- 16384 digit unroll4 vs scratch: ratio `0.693`, stable `5/5`,
+  `candidate-faster`
+- 16384 digit unroll4 vs GMP: ratio `1.040`, stable `2/5`, `gmp-faster`
+- 16384 digit deep unroll4 vs GMP: ratio `1.143`, stable `3/9`,
+  `gmp-faster`
+- Best 16384 digit Toom-3 vs scratch row: ratio `0.940`, stable `3/5`,
+  `candidate-no-margin`
+
+Decision: do not widen the unroll4 route. The 16384 rows show that unroll4
+improves our scalar scratch path but does not catch GMP at this size; GMP is
+winning from higher-level multiplication strategy, not just leaf scheduling.
+The next larger-number multiply work should target algorithm structure above
+the leaf loop.

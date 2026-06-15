@@ -726,7 +726,9 @@ static void test_benchmarks(void) {
   size_t oracle_only_rows = 0;
   size_t blocked_rows = 0;
   int saw_8192_scratch = 0;
+  int saw_16384_scratch_mul = 0;
   int saw_8192_kernel_probe = 0;
+  int saw_16384_kernel_probe = 0;
   int saw_toom3_probe = 0;
   int saw_toom3_vs_scratch_probe = 0;
   int saw_muladd_bmi2_adx_probe = 0;
@@ -746,6 +748,7 @@ static void test_benchmarks(void) {
       CHECK(report->results[index].sample_count == 5);
       CHECK(report->results[index].stable_sample_count <= report->results[index].sample_count);
       if (report->results[index].digits == 8192) saw_8192_scratch = 1;
+      if (report->results[index].digits == 16384 && strcmp(report->results[index].operation, "mul") == 0) saw_16384_scratch_mul = 1;
       CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
       CHECK(strstr(report->results[index].detail, "stablePairs=") != NULL);
       CHECK(strstr(report->results[index].detail, "worstPairRatio=") != NULL);
@@ -762,6 +765,7 @@ static void test_benchmarks(void) {
     } else if (strcmp(report->results[index].category, "kernel-probe") == 0) {
       kernel_rows++;
       if (report->results[index].digits == 8192) saw_8192_kernel_probe = 1;
+      if (report->results[index].digits == 16384) saw_16384_kernel_probe = 1;
       CHECK(report->results[index].passed);
       CHECK(report->results[index].scratch_us > 0);
       CHECK(report->results[index].gmp_us > 0);
@@ -869,7 +873,9 @@ static void test_benchmarks(void) {
   CHECK(strcmp(xray_scratch_adoption_for_result(&unstable), "oracle-only") == 0);
   CHECK(scratch_rows >= 40);
   CHECK(saw_8192_scratch);
+  CHECK(saw_16384_scratch_mul);
   CHECK(saw_8192_kernel_probe);
+  CHECK(saw_16384_kernel_probe);
   CHECK(saw_toom3_probe);
   CHECK(saw_toom3_vs_scratch_probe);
 #if defined(_MSC_VER) && defined(_M_X64)
