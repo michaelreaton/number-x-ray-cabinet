@@ -810,6 +810,11 @@ static unsigned int perf_iterations(const char *operation, size_t digits) {
     if (digits > 4096) return 1200;
     return 2200;
   }
+  if (strcmp(operation, "add") == 0 || strcmp(operation, "sub") == 0) {
+    if (digits <= 40) return 20000;
+    if (digits <= 150) return 8000;
+    return 6400;
+  }
   if (digits <= 40) return 20000;
   if (digits <= 150) return 8000;
   if (digits > 4096) return 800;
