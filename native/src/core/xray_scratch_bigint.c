@@ -249,6 +249,23 @@ static uint64_t divmod_word_u32(uint32_t high, uint64_t low, uint32_t divisor, u
   return ((uint64_t)quotient_high << 32U) | quotient_low;
 }
 
+static uint64_t divmod_word_u32_direct(uint32_t high, uint64_t low, uint32_t divisor, uint32_t *remainder) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  unsigned __int64 rem = 0;
+  unsigned __int64 quotient = _udiv128(
+    (unsigned __int64)high,
+    (unsigned __int64)low,
+    (unsigned __int64)divisor,
+    &rem);
+  if (remainder) *remainder = (uint32_t)rem;
+  return (uint64_t)quotient;
+#else
+  __uint128_t numerator = ((__uint128_t)high << XRAY_BIGINT_WORD_BITS) | (__uint128_t)low;
+  if (remainder) *remainder = (uint32_t)(numerator % divisor);
+  return (uint64_t)(numerator / divisor);
+#endif
+}
+
 static uint32_t divmod_decimal_chunk_inplace(XrayScratchBigInt *value) {
   uint32_t remainder = 0;
   for (size_t remaining = value->count; remaining > 0; --remaining) {
@@ -321,6 +338,33 @@ static int decimal_chunks_from_limbs_horner(uint32_t **chunks_out, size_t *chunk
         XRAY_BIGINT_DECIMAL_CHUNK_RECIPROCAL,
         (carry >> 32U) != 0,
         &remainder);
+      if (!append_decimal_chunk(&chunks, &chunk_count, &chunk_capacity, remainder)) {
+        free(chunks);
+        return 0;
+      }
+    }
+  }
+  while (chunk_count > 0 && chunks[chunk_count - 1U] == 0) chunk_count--;
+  *chunks_out = chunks;
+  *chunk_count_out = chunk_count;
+  return 1;
+}
+
+static int decimal_chunks_from_limbs_horner_direct(uint32_t **chunks_out, size_t *chunk_count_out, const XrayScratchBigInt *value) {
+  uint32_t *chunks = NULL;
+  size_t chunk_count = 0;
+  size_t chunk_capacity = 0;
+  if (!reserve_decimal_chunks(&chunks, &chunk_capacity, estimate_decimal_chunk_capacity(value))) return 0;
+  for (size_t remaining = value->count; remaining > 0; --remaining) {
+    uint64_t carry = value->limbs[remaining - 1U];
+    for (size_t index = 0; index < chunk_count; ++index) {
+      uint32_t remainder = 0;
+      carry = divmod_word_u32_direct(chunks[index], carry, XRAY_BIGINT_DECIMAL_CHUNK_BASE, &remainder);
+      chunks[index] = remainder;
+    }
+    while (carry) {
+      uint32_t remainder = 0;
+      carry = divmod_word_u32_direct(0, carry, XRAY_BIGINT_DECIMAL_CHUNK_BASE, &remainder);
       if (!append_decimal_chunk(&chunks, &chunk_count, &chunk_capacity, remainder)) {
         free(chunks);
         return 0;
@@ -411,7 +455,7 @@ int xray_bigint_set_decimal(XrayScratchBigInt *value, const char *decimal) {
   return 1;
 }
 
-static char *get_decimal_with_horner_min(const XrayScratchBigInt *value, size_t horner_min_limbs) {
+static char *get_decimal_with_options(const XrayScratchBigInt *value, size_t horner_min_limbs, int use_direct_divider) {
   if (!value || value->count == 0) {
     char *zero = (char *)calloc(2, 1);
     if (zero) zero[0] = '0';
@@ -425,7 +469,10 @@ static char *get_decimal_with_horner_min(const XrayScratchBigInt *value, size_t 
   size_t chunk_count = 0;
   size_t chunk_capacity = 0;
   if (value->count >= horner_min_limbs) {
-    if (!decimal_chunks_from_limbs_horner(&chunks, &chunk_count, value)) {
+    int ok = use_direct_divider ?
+      decimal_chunks_from_limbs_horner_direct(&chunks, &chunk_count, value) :
+      decimal_chunks_from_limbs_horner(&chunks, &chunk_count, value);
+    if (!ok) {
       xray_bigint_clear(&copy);
       return NULL;
     }
@@ -473,11 +520,15 @@ static char *get_decimal_with_horner_min(const XrayScratchBigInt *value, size_t 
 }
 
 char *xray_bigint_get_decimal(const XrayScratchBigInt *value) {
-  return get_decimal_with_horner_min(value, XRAY_BIGINT_DECIMAL_HORNER_MIN_LIMBS);
+  return get_decimal_with_options(value, XRAY_BIGINT_DECIMAL_HORNER_MIN_LIMBS, 0);
 }
 
 char *xray_bigint_get_decimal_horner_threshold_probe(const XrayScratchBigInt *value, size_t horner_min_limbs) {
-  return get_decimal_with_horner_min(value, horner_min_limbs ? horner_min_limbs : 1U);
+  return get_decimal_with_options(value, horner_min_limbs ? horner_min_limbs : 1U, 0);
+}
+
+char *xray_bigint_get_decimal_divider_probe(const XrayScratchBigInt *value, int use_direct_divider) {
+  return get_decimal_with_options(value, XRAY_BIGINT_DECIMAL_HORNER_MIN_LIMBS, use_direct_divider);
 }
 
 int xray_bigint_compare(const XrayScratchBigInt *left, const XrayScratchBigInt *right) {

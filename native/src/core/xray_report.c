@@ -405,6 +405,9 @@ static void benchmark_frontier_label(const XrayBenchmarkResult *row, char *out, 
   if (benchmark_detail_value(row, "depthLimit", value, sizeof(value))) {
     append_label_token(out, out_size, "depth=", value);
   }
+  if (benchmark_detail_value(row, "mode", value, sizeof(value))) {
+    append_label_token(out, out_size, "mode=", value);
+  }
   if (benchmark_detail_value(row, "baseline", value, sizeof(value))) {
     append_label_token(out, out_size, "base=", value);
   }
