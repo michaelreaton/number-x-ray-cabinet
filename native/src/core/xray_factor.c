@@ -1,9 +1,12 @@
 #include "xray_workbench.h"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+
+#include "xray_prime_table.inc"
 
 #ifdef _WIN32
 typedef union XrayWinLargeInteger {
@@ -96,12 +99,101 @@ static int is_prime_ulong(unsigned long value) {
   return 1;
 }
 
-int xray_small_factor(mpz_t factor, const mpz_t value, unsigned long limit) {
+typedef struct XrayPrimeTable {
+  unsigned long limit;
+  const unsigned long *values;
+  size_t count;
+  unsigned long *owned_values;
+} XrayPrimeTable;
+
+static void prime_table_clear(XrayPrimeTable *table) {
+  if (!table) return;
+  free(table->owned_values);
+  table->values = NULL;
+  table->owned_values = NULL;
+  table->count = 0;
+  table->limit = 0;
+}
+
+static size_t static_prime_count_for_limit(unsigned long limit) {
+  size_t low = 0;
+  size_t high = XRAY_STATIC_PRIME_COUNT;
+  while (low < high) {
+    size_t mid = low + (high - low) / 2;
+    if (xray_static_primes[mid] <= limit) low = mid + 1;
+    else high = mid;
+  }
+  return low;
+}
+
+static int prime_table_build(XrayPrimeTable *table, unsigned long limit) {
+  if (!table) return 0;
+  table->values = NULL;
+  table->owned_values = NULL;
+  table->count = 0;
+  table->limit = limit;
+  if (limit < 2) return 1;
+
+  if (limit <= XRAY_STATIC_PRIME_LIMIT) {
+    table->values = xray_static_primes;
+    table->count = static_prime_count_for_limit(limit);
+    return 1;
+  }
+
+  if ((uintmax_t)limit > ((uintmax_t)SIZE_MAX - 1U)) return 0;
+
+  size_t sieve_count = (size_t)limit + 1U;
+  unsigned char *composite = (unsigned char *)calloc(sieve_count, 1);
+  if (!composite) return 0;
+  composite[0] = 1;
+  composite[1] = 1;
+  for (unsigned long p = 2; p <= limit / p; ++p) {
+    if (composite[p]) continue;
+    for (unsigned long multiple = p * p; multiple <= limit; multiple += p) {
+      composite[multiple] = 1;
+    }
+  }
+
+  size_t count = 0;
+  for (unsigned long value = 2; value <= limit; ++value) {
+    if (!composite[value]) count++;
+  }
+  unsigned long *values = (unsigned long *)calloc(count ? count : 1U, sizeof(unsigned long));
+  if (!values) {
+    free(composite);
+    return 0;
+  }
+  size_t index = 0;
+  for (unsigned long value = 2; value <= limit; ++value) {
+    if (!composite[value]) values[index++] = value;
+  }
+
+  free(composite);
+  table->values = values;
+  table->owned_values = values;
+  table->count = count;
+  table->limit = limit;
+  return 1;
+}
+
+static int small_factor_with_table(mpz_t factor, const mpz_t value, unsigned long limit, const XrayPrimeTable *table) {
   if (mpz_cmp_ui(value, 2) < 0) return 0;
   if (mpz_divisible_ui_p(value, 2)) {
     if (mpz_cmp_ui(value, 2) == 0) return 0;
     mpz_set_ui(factor, 2);
     return 1;
+  }
+
+  if (table && table->limit >= limit && table->values) {
+    for (size_t index = 1; index < table->count && table->values[index] <= limit; ++index) {
+      unsigned long p = table->values[index];
+      if (mpz_cmp_ui(value, p) == 0) return 0;
+      if (mpz_divisible_ui_p(value, p)) {
+        mpz_set_ui(factor, p);
+        return 1;
+      }
+    }
+    return 0;
   }
 
   for (unsigned long p = 3; p <= limit; p += 2) {
@@ -113,6 +205,14 @@ int xray_small_factor(mpz_t factor, const mpz_t value, unsigned long limit) {
     }
   }
   return 0;
+}
+
+int xray_small_factor(mpz_t factor, const mpz_t value, unsigned long limit) {
+  XrayPrimeTable table;
+  int has_table = prime_table_build(&table, limit);
+  int found = small_factor_with_table(factor, value, limit, has_table ? &table : NULL);
+  prime_table_clear(&table);
+  return found;
 }
 
 int xray_perfect_power_factor(mpz_t base, unsigned long *exponent, const mpz_t value, unsigned long max_exponent) {
@@ -209,17 +309,28 @@ int xray_pollard_rho_factor(mpz_t factor, mpz_t cofactor, const mpz_t value, uns
   return 0;
 }
 
-int xray_pollard_pm1_factor(mpz_t factor, mpz_t cofactor, const mpz_t value, unsigned long bound) {
+static int pollard_pm1_with_table(mpz_t factor, mpz_t cofactor, const mpz_t value, unsigned long bound, const XrayPrimeTable *table) {
   if (bound < 2 || mpz_cmp_ui(value, 4) < 0 || mpz_even_p(value)) return 0;
   mpz_t a, d, exponent;
   mpz_inits(a, d, exponent, NULL);
   mpz_set_ui(a, 2);
-  for (unsigned long prime = 2; prime <= bound; ++prime) {
-    if (!is_prime_ulong(prime)) continue;
-    unsigned long power = prime;
-    while (power <= bound / prime) power *= prime;
-    mpz_set_ui(exponent, power);
-    mpz_powm(a, a, exponent, value);
+
+  if (table && table->limit >= bound && table->values) {
+    for (size_t index = 0; index < table->count && table->values[index] <= bound; ++index) {
+      unsigned long prime = table->values[index];
+      unsigned long power = prime;
+      while (power <= bound / prime) power *= prime;
+      mpz_set_ui(exponent, power);
+      mpz_powm(a, a, exponent, value);
+    }
+  } else {
+    for (unsigned long prime = 2; prime <= bound; ++prime) {
+      if (!is_prime_ulong(prime)) continue;
+      unsigned long power = prime;
+      while (power <= bound / prime) power *= prime;
+      mpz_set_ui(exponent, power);
+      mpz_powm(a, a, exponent, value);
+    }
   }
   mpz_sub_ui(d, a, 1);
   mpz_gcd(d, d, value);
@@ -231,6 +342,14 @@ int xray_pollard_pm1_factor(mpz_t factor, mpz_t cofactor, const mpz_t value, uns
   }
   mpz_clears(a, d, exponent, NULL);
   return 0;
+}
+
+int xray_pollard_pm1_factor(mpz_t factor, mpz_t cofactor, const mpz_t value, unsigned long bound) {
+  XrayPrimeTable table;
+  int has_table = prime_table_build(&table, bound);
+  int found = pollard_pm1_with_table(factor, cofactor, value, bound, has_table ? &table : NULL);
+  prime_table_clear(&table);
+  return found;
 }
 
 int xray_brent_rho_factor(mpz_t factor, mpz_t cofactor, const mpz_t value, unsigned long iterations) {
@@ -413,6 +532,10 @@ int xray_factor_solve(const char *raw_input, const XrayFactorConfig *config_inpu
   report->digits = strlen(normalized);
   report->bit_length = mpz_sizeinbase(input, 2);
 
+  unsigned long prime_limit = config.trial_limit > config.pm1_bound ? config.trial_limit : config.pm1_bound;
+  XrayPrimeTable prime_table;
+  int has_prime_table = prime_table_build(&prime_table, prime_limit);
+
   mpz_t *queue = NULL;
   size_t queue_count = 0;
   size_t queue_capacity = 0;
@@ -446,7 +569,7 @@ int xray_factor_solve(const char *raw_input, const XrayFactorConfig *config_inpu
 
     mpz_t factor, cofactor;
     mpz_inits(factor, cofactor, NULL);
-    if (xray_small_factor(factor, current, config.trial_limit)) {
+    if (small_factor_with_table(factor, current, config.trial_limit, has_prime_table ? &prime_table : NULL)) {
       mpz_tdiv_q(cofactor, current, factor);
       append_step(report, "trial-division", "factor-found", current, "small prime divisor found", started_at);
       queue_push(&queue, &queue_count, &queue_capacity, cofactor);
@@ -477,7 +600,7 @@ int xray_factor_solve(const char *raw_input, const XrayFactorConfig *config_inpu
     }
     append_step(report, "fermat", config.fermat_iterations ? "miss" : "disabled", current, "no square offset inside configured budget", started_at);
 
-    if (xray_pollard_pm1_factor(factor, cofactor, current, config.pm1_bound)) {
+    if (pollard_pm1_with_table(factor, cofactor, current, config.pm1_bound, has_prime_table ? &prime_table : NULL)) {
       append_step(report, "pollard-p-1", "factor-found", current, "p-1 smoothness yielded factor", started_at);
       queue_push(&queue, &queue_count, &queue_capacity, cofactor);
       queue_push(&queue, &queue_count, &queue_capacity, factor);
@@ -540,6 +663,7 @@ int xray_factor_solve(const char *raw_input, const XrayFactorConfig *config_inpu
   else snprintf(report->status, sizeof(report->status), "unsolved");
 
   mpz_clears(product, unresolved_product, temp, power, input, NULL);
+  prime_table_clear(&prime_table);
   return 1;
 }
 

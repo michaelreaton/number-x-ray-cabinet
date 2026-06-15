@@ -935,6 +935,22 @@ static void test_stronger_factor_methods(void) {
   CHECK(xray_pollard_pm1_factor(factor, cofactor, value, 32));
   mpz_mul(factor, factor, cofactor);
   CHECK(mpz_cmp(factor, value) == 0);
+
+  mpz_set_ui(value, 49999);
+  mpz_mul_ui(value, value, 50021);
+  CHECK(xray_small_factor(factor, value, 50000));
+  CHECK(mpz_cmp_ui(factor, 49999) == 0);
+  mpz_divexact(cofactor, value, factor);
+  mpz_mul(factor, factor, cofactor);
+  CHECK(mpz_cmp(factor, value) == 0);
+
+  mpz_set_ui(value, 100003);
+  mpz_mul_ui(value, value, 1000003);
+  CHECK(xray_pollard_pm1_factor(factor, cofactor, value, 100003));
+  CHECK(mpz_cmp_ui(factor, 1) > 0);
+  CHECK(mpz_cmp(factor, value) < 0);
+  mpz_mul(factor, factor, cofactor);
+  CHECK(mpz_cmp(factor, value) == 0);
   mpz_clears(value, factor, cofactor, NULL);
 }
 
