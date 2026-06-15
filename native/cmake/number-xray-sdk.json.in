@@ -56,4 +56,5 @@
     "freeFunction": "xray_free",
     "callerFrees": true
   }
+@XRAY_SDK_PYTHON_CTYPES_JSON@
 }
