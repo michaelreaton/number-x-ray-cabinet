@@ -196,19 +196,38 @@ static char *format_benchmark_report_text(const XrayBenchmarkReport *report) {
   if (!report || !report->result_count) {
     return gui_strdup(
       "BENCHMARK RESULTS\n"
-      "Run Proof with benchmarks enabled to populate live primitive timings.\n");
+      "Run Proof with benchmarks enabled to populate live primitive timings.\n"
+      "A frontier summary will highlight replacement-ready rows, near wins, and the largest remaining gaps.\n");
   }
 
   size_t capacity = 4096 + report->result_count * 360;
   char *text = (char *)calloc(capacity, 1);
   if (!text) return NULL;
   char *cpu_summary = xray_cpu_features_summary(&report->cpu);
+  const XrayBenchmarkResult *near_wins[5] = {0};
+  const XrayBenchmarkResult *top_gaps[5] = {0};
+  size_t near_count = 0;
+  for (size_t index = 0; index < report->result_count; ++index) {
+    const XrayBenchmarkResult *row = &report->results[index];
+    if (strcmp(row->category, "scratch-vs-gmp") != 0 || row->replacement_ready) continue;
+    if (row->parity_verified && row->speed_ratio <= 1.10 && near_count < sizeof(near_wins) / sizeof(near_wins[0])) {
+      near_wins[near_count++] = row;
+    }
+    for (size_t slot = 0; slot < sizeof(top_gaps) / sizeof(top_gaps[0]); ++slot) {
+      if (!top_gaps[slot] || row->speed_ratio > top_gaps[slot]->speed_ratio) {
+        for (size_t move = sizeof(top_gaps) / sizeof(top_gaps[0]) - 1; move > slot; --move) {
+          top_gaps[move] = top_gaps[move - 1];
+        }
+        top_gaps[slot] = row;
+        break;
+      }
+    }
+  }
   size_t used = 0;
   used += (size_t)snprintf(text + used, capacity - used,
     "BENCHMARK RESULTS\n"
     "%s\n"
-    "Passed: %zu/%zu   Scratch rows: %zu   Replacement-ready: %zu   Oracle-only: %zu   Blocked: %zu   Elapsed: %lums\n\n"
-    "%-30s %-8s %-14s %-7s %10s %10s %7s %8s\n",
+    "Passed: %zu/%zu   Scratch rows: %zu   Replacement-ready: %zu   Oracle-only: %zu   Blocked: %zu   Elapsed: %lums\n\n",
     cpu_summary ? cpu_summary : "CPU: unavailable",
     report->passed_count,
     report->result_count,
@@ -216,7 +235,43 @@ static char *format_benchmark_report_text(const XrayBenchmarkReport *report) {
     report->replacement_ready_count,
     report->oracle_only_count,
     report->blocked_count,
-    report->elapsed_ms,
+    report->elapsed_ms);
+  free(cpu_summary);
+
+  used += (size_t)snprintf(text + used, capacity - used,
+    "FRONTIER SUMMARY\n"
+    "Ready rows are locally safe replacements. Oracle-only rows are evidence, not proof-routing permission.\n");
+  if (near_count) {
+    used += (size_t)snprintf(text + used, capacity - used, "Near wins needing stability:\n");
+    for (size_t index = 0; index < near_count && used < capacity; ++index) {
+      const XrayBenchmarkResult *row = near_wins[index];
+      used += (size_t)snprintf(text + used, capacity - used,
+        "  %-10s %5zu digits   ratio %.3f   stable %zu/%zu\n",
+        row->operation,
+        row->digits,
+        row->speed_ratio,
+        row->stable_sample_count,
+        row->sample_count);
+    }
+  } else {
+    used += (size_t)snprintf(text + used, capacity - used, "Near wins needing stability: none in this run\n");
+  }
+  used += (size_t)snprintf(text + used, capacity - used, "Largest scratch gaps:\n");
+  for (size_t index = 0; index < sizeof(top_gaps) / sizeof(top_gaps[0]) && top_gaps[index] && used < capacity; ++index) {
+    const XrayBenchmarkResult *row = top_gaps[index];
+    used += (size_t)snprintf(text + used, capacity - used,
+      "  %-10s %5zu digits   ratio %.3f   stable %zu/%zu   %s\n",
+      row->operation,
+      row->digits,
+      row->speed_ratio,
+      row->stable_sample_count,
+      row->sample_count,
+      row->adoption);
+  }
+
+  used += (size_t)snprintf(text + used, capacity - used,
+    "\nSCRATCH VS GMP\n"
+    "%-30s %-8s %-14s %-7s %10s %10s %7s %8s\n",
     "Operation",
     "Digits",
     "Adoption",
@@ -225,7 +280,6 @@ static char *format_benchmark_report_text(const XrayBenchmarkReport *report) {
     "GmpUs",
     "Ratio",
     "Stable");
-  free(cpu_summary);
   used += (size_t)snprintf(text + used, capacity - used,
     "%-30s %-8s %-14s %-7s %10s %10s %7s %8s\n",
     "------------------------------",
@@ -906,7 +960,7 @@ static GtkWidget *build_benchmark_page(AppState *app) {
   set_text_view(app->benchmark_view,
     "BENCHMARK RESULTS\n"
     "Run Proof to measure scratch bigint primitives against GMP.\n\n"
-    "The table will show parse/add/sub/mul/mod/div/gcd/powmod timings, adoption status, and replacement-ready gates.\n");
+    "The frontier summary will show replacement-ready rows, near wins, and the largest remaining gaps before the detailed timing tables.\n");
 
   GtkWidget *ladder = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
   gtk_widget_add_css_class(ladder, "panel");
@@ -1140,7 +1194,7 @@ static void on_run_clicked(GtkButton *button, gpointer user_data) {
   set_text_view(app->benchmark_view,
     "BENCHMARK RESULTS\n"
     "Running native proof worker...\n\n"
-    "The table will populate when the benchmark report is assembled.\n"
+    "The frontier summary and timing tables will populate when the benchmark report is assembled.\n"
     "You can keep this tab open; the final scratch-vs-GMP rows replace this placeholder automatically.\n");
   set_live_log(app);
   if (!app->live_timer_id) app->live_timer_id = g_timeout_add(250, live_run_tick, app);
