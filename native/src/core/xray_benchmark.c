@@ -440,7 +440,8 @@ static unsigned int perf_iterations(const char *operation, size_t digits) {
   if (strcmp(operation, "mul") == 0) {
     if (digits <= 40) return 2000;
     if (digits <= 150) return 180;
-    return 12;
+    if (digits <= 1000) return 240;
+    return 80;
   }
   if (strcmp(operation, "powmod-u32") == 0) {
     if (digits <= 40) return 12000;
