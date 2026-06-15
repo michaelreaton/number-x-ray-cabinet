@@ -289,3 +289,37 @@ yet. Leaf 64 is a clear improvement over the current scratch path at 8192 and
 scheduling. It still does not beat GMP with enough stability, so the next
 larger-number step should explore deeper Toom thresholds or Karatsuba/Toom
 handoff policy before any replacement claim.
+
+## 2026-06-15: Toom-3 + Unroll4 Deep GMP Gate
+
+Run: `runs/20260615-071642-c4b04caf`
+
+The leaf 64 Toom-3+unroll4 row sometimes looks like a near GMP win in the
+ordinary five-sample benchmark, so the benchmark now emits
+`mul-toom3-unroll4-deep-vs-gmp` rows for 8192 and 16384 digits with nine paired
+samples. Deep rows need 8 of 9 paired samples inside the speed gate before they
+can become promotion candidates.
+
+Five-sample rows from this run:
+
+- 8192 digits, leaf 64 vs scratch: ratio `0.862`, stable `5/5`,
+  `promote-candidate`
+- 8192 digits, leaf 64 vs GMP: ratio `1.000`, stable `2/5`,
+  `observe-only`
+- 16384 digits, leaf 64 vs scratch: ratio `0.748`, stable `5/5`,
+  `promote-candidate`
+- 16384 digits, leaf 64 vs GMP: ratio `1.052`, stable `2/5`,
+  `observe-only`
+
+Deep GMP rows:
+
+- 8192 digits, leaf 64 vs GMP: ratio `0.986`, stable `4/9`, worst pair ratio
+  `1.047`, `observe-only`
+- 16384 digits, leaf 64 vs GMP: ratio `1.125`, stable `3/9`, worst pair ratio
+  `1.188`, `observe-only`
+
+Decision: do not route production multiplication through Toom-3+unroll4 yet.
+The combined candidate is a real improvement over the current scratch path, but
+the stricter GMP gate shows it is not a stable GMP replacement on this laptop.
+Next work should test a more GMP-like handoff ladder, not simply reuse the same
+one-level Toom split with more confidence.

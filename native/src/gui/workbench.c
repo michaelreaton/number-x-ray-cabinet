@@ -144,14 +144,16 @@ static void benchmark_display_operation(const XrayBenchmarkResult *row, char *ou
     return;
   }
   if (strcmp(row->operation, "mul-toom3-unroll4-vs-scratch") == 0 ||
-      strcmp(row->operation, "mul-toom3-unroll4-vs-gmp") == 0) {
+      strcmp(row->operation, "mul-toom3-unroll4-vs-gmp") == 0 ||
+      strcmp(row->operation, "mul-toom3-unroll4-deep-vs-gmp") == 0) {
     const char *threshold = strstr(row->detail, "leafThreshold=");
     if (threshold) {
       char *end = NULL;
       unsigned long limbs = strtoul(threshold + strlen("leafThreshold="), &end, 10);
       if (end && end != threshold + strlen("leafThreshold=")) {
         snprintf(out, out_size, "%s %lu",
-          strcmp(row->operation, "mul-toom3-unroll4-vs-gmp") == 0 ? "Toom-3+unroll4 vs GMP leaf" : "Toom-3+unroll4 vs scratch leaf",
+          strcmp(row->operation, "mul-toom3-unroll4-deep-vs-gmp") == 0 ? "Toom-3+unroll4 deep vs GMP leaf" :
+          (strcmp(row->operation, "mul-toom3-unroll4-vs-gmp") == 0 ? "Toom-3+unroll4 vs GMP leaf" : "Toom-3+unroll4 vs scratch leaf"),
           limbs);
         return;
       }
