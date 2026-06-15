@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "name": "number-xray",
+  "version": "@PROJECT_VERSION@",
+  "description": "Native Number X-Ray arbitrary-precision research core",
+  "language": "C11",
+  "headers": {
+    "public": "number_xray.h",
+    "compatibility": "xray_workbench.h",
+    "includeDir": "@CMAKE_INSTALL_INCLUDEDIR@"
+  },
+  "libraries": {
+    "core": {
+      "name": "xray_core",
+      "kind": "static",
+      "libDir": "@CMAKE_INSTALL_LIBDIR@",
+      "cmakeTarget": "NumberXRay::core",
+      "pkgConfig": "number-xray"
+    }
+  },
+  "cmake": {
+    "package": "NumberXRay",
+    "configFile": "@NumberXRay_INSTALL_CMAKEDIR@/NumberXRayConfig.cmake"
+  },
+  "dependencies": [
+    {
+      "name": "GMP or MPIR",
+      "header": "gmp.h",
+      "cmakeTarget": "GMP::GMP",
+      "required": true
+    }
+  ],
+  "memory": {
+    "allocator": "system malloc/free",
+    "callerFrees": true
+  }
+}

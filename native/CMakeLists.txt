@@ -108,6 +108,12 @@ if(XRAY_INSTALL)
     @ONLY
   )
 
+  configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/number-xray-sdk.json.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/number-xray-sdk.json"
+    @ONLY
+  )
+
   write_basic_package_version_file(
     "${CMAKE_CURRENT_BINARY_DIR}/NumberXRayConfigVersion.cmake"
     VERSION ${PROJECT_VERSION}
@@ -128,6 +134,11 @@ if(XRAY_INSTALL)
   install(FILES
     "${CMAKE_CURRENT_BINARY_DIR}/number-xray.pc"
     DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig"
+  )
+
+  install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/number-xray-sdk.json"
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/number-xray"
   )
 endif()
 
@@ -157,6 +168,7 @@ if(BUILD_TESTING)
         -DXRAY_GENERATOR_PLATFORM=${CMAKE_GENERATOR_PLATFORM}
         -DXRAY_GENERATOR_TOOLSET=${CMAKE_GENERATOR_TOOLSET}
         -DXRAY_INSTALL_LIBDIR=${CMAKE_INSTALL_LIBDIR}
+        -DXRAY_INSTALL_DATADIR=${CMAKE_INSTALL_DATADIR}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/import_smoke.cmake
     )
   endif()
