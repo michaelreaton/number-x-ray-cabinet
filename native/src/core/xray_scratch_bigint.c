@@ -93,17 +93,37 @@ static int add_small_inplace(XrayScratchBigInt *value, uint32_t addend) {
   return 1;
 }
 
-int xray_bigint_set_decimal(XrayScratchBigInt *value, const char *decimal) {
-  if (!value || !decimal) return 0;
-  value->count = 0;
-  size_t digit_count = 0;
+static int set_decimal_buffered(XrayScratchBigInt *value, const char *decimal, size_t digit_count) {
+  char *digits = (char *)calloc(digit_count + 1, 1);
+  if (!digits) return 0;
+  size_t used = 0;
   for (const unsigned char *p = (const unsigned char *)decimal; *p; ++p) {
     if (*p == ',' || *p == '_' || isspace(*p)) continue;
-    if (!isdigit(*p)) return 0;
-    digit_count++;
+    digits[used++] = (char)*p;
   }
-  if (!digit_count) return 0;
 
+  size_t chunks = (used + XRAY_BIGINT_BASE_DIGITS - 1U) / XRAY_BIGINT_BASE_DIGITS;
+  if (!reserve_limbs(value, chunks ? chunks : 1)) {
+    free(digits);
+    return 0;
+  }
+
+  size_t end = used;
+  while (end > 0) {
+    size_t start = end > XRAY_BIGINT_BASE_DIGITS ? end - XRAY_BIGINT_BASE_DIGITS : 0;
+    uint32_t limb = 0;
+    for (size_t index = start; index < end; ++index) {
+      limb = limb * 10U + (uint32_t)(digits[index] - '0');
+    }
+    value->limbs[value->count++] = limb;
+    end = start;
+  }
+
+  free(digits);
+  return 1;
+}
+
+static int set_decimal_noalloc(XrayScratchBigInt *value, const char *decimal, size_t digit_count) {
   size_t chunks = (digit_count + XRAY_BIGINT_BASE_DIGITS - 1U) / XRAY_BIGINT_BASE_DIGITS;
   if (!reserve_limbs(value, chunks ? chunks : 1)) return 0;
 
@@ -126,6 +146,25 @@ int xray_bigint_set_decimal(XrayScratchBigInt *value, const char *decimal) {
     }
   }
   if (limb_digits) value->limbs[value->count++] = limb;
+  return 1;
+}
+
+int xray_bigint_set_decimal(XrayScratchBigInt *value, const char *decimal) {
+  if (!value || !decimal) return 0;
+  value->count = 0;
+  size_t digit_count = 0;
+  for (const unsigned char *p = (const unsigned char *)decimal; *p; ++p) {
+    if (*p == ',' || *p == '_' || isspace(*p)) continue;
+    if (!isdigit(*p)) return 0;
+    digit_count++;
+  }
+  if (!digit_count) return 0;
+
+  /* Benchmarks show the raw reverse scan helps larger research inputs but hurts short integers. */
+  int ok = digit_count < 100 ?
+    set_decimal_buffered(value, decimal, digit_count) :
+    set_decimal_noalloc(value, decimal, digit_count);
+  if (!ok) return 0;
 
   normalize(value);
   return 1;
