@@ -1186,9 +1186,11 @@ static void test_benchmarks(void) {
   CHECK(strstr(workbench.events_jsonl, "\"stage\":\"cpu\"") != NULL);
   char *benchmark_json_path = test_path_join(workbench.run_dir, "benchmark.json");
   char *benchmark_tsv_path = test_path_join(workbench.run_dir, "benchmark.tsv");
+  char *benchmark_frontier_path = test_path_join(workbench.run_dir, "benchmark_frontier.txt");
   char *cpu_path = test_path_join(workbench.run_dir, "cpu_features.txt");
   char *benchmark_json = read_text_file(benchmark_json_path);
   char *benchmark_tsv = read_text_file(benchmark_tsv_path);
+  char *benchmark_frontier = read_text_file(benchmark_frontier_path);
   char *cpu_text = read_text_file(cpu_path);
   CHECK(strstr(benchmark_json, "\"benchmarkReport\"") != NULL);
   CHECK(strstr(benchmark_json, "\"cpu\"") != NULL);
@@ -1212,13 +1214,21 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "stableSampleCount") != NULL);
   CHECK(strstr(benchmark_tsv, "worstPairRatio") != NULL);
   CHECK(strstr(benchmark_tsv, "ratioMethod=paired-median") != NULL);
+  CHECK(strstr(benchmark_frontier, "BENCHMARK FRONTIER") != NULL);
+  CHECK(strstr(benchmark_frontier, "FRONTIER SUMMARY") != NULL);
+  CHECK(strstr(benchmark_frontier, "Largest scratch gaps") != NULL);
+  CHECK(strstr(benchmark_frontier, "SCRATCH VS GMP") != NULL);
+  CHECK(strstr(benchmark_frontier, "format") != NULL);
+  CHECK(strstr(benchmark_frontier, "flags=") != NULL);
   CHECK(strstr(cpu_text, "CPU:") != NULL);
   CHECK(strstr(cpu_text, "flags=") != NULL);
   free(benchmark_json_path);
   free(benchmark_tsv_path);
+  free(benchmark_frontier_path);
   free(cpu_path);
   free(benchmark_json);
   free(benchmark_tsv);
+  free(benchmark_frontier);
   free(cpu_text);
   xray_workbench_report_clear(&workbench);
 }

@@ -279,6 +279,7 @@ int xray_benchmark_run(XrayBenchmarkReport *report);
 void xray_benchmark_report_clear(XrayBenchmarkReport *report);
 char *xray_benchmark_report_json(const XrayBenchmarkReport *report);
 char *xray_benchmark_report_tsv(const XrayBenchmarkReport *report);
+char *xray_benchmark_frontier_text(const XrayBenchmarkReport *report);
 const char *xray_scratch_adoption_for_result(const XrayBenchmarkResult *result);
 
 int xray_gnfs_stage_proof(const char *normalized_input, const char *run_dir, XrayGnfsReport *report);

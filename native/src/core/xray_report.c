@@ -349,6 +349,159 @@ char *xray_benchmark_report_tsv(const XrayBenchmarkReport *report) {
   return jb_take(&buffer);
 }
 
+static void benchmark_row_label(const XrayBenchmarkResult *row, char *out, size_t out_size) {
+  if (!out || out_size == 0) return;
+  if (!row) {
+    snprintf(out, out_size, "unknown");
+    return;
+  }
+  if (row->operation[0] && strcmp(row->category, "kernel-probe") != 0) {
+    snprintf(out, out_size, "%s", row->operation);
+    return;
+  }
+  snprintf(out, out_size, "%s", row->name[0] ? row->name : row->operation);
+}
+
+char *xray_benchmark_frontier_text(const XrayBenchmarkReport *report) {
+  if (!report || !report->result_count) {
+    char *empty = (char *)calloc(256, 1);
+    if (empty) {
+      snprintf(empty, 256,
+        "BENCHMARK FRONTIER\n"
+        "Run Proof with benchmarks enabled to populate scratch-vs-GMP timings, CPU feature gates, and frontier rows.\n");
+    }
+    return empty;
+  }
+
+  JsonBuffer buffer = {0};
+  const XrayBenchmarkResult *near_wins[5] = {0};
+  const XrayBenchmarkResult *top_gaps[5] = {0};
+  size_t near_count = 0;
+
+  for (size_t index = 0; index < report->result_count; ++index) {
+    const XrayBenchmarkResult *row = &report->results[index];
+    if (strcmp(row->category, "scratch-vs-gmp") != 0 || row->replacement_ready) continue;
+    if (row->parity_verified && row->speed_ratio > 0.0 && row->speed_ratio <= 1.10) {
+      for (size_t slot = 0; slot < sizeof(near_wins) / sizeof(near_wins[0]); ++slot) {
+        if (!near_wins[slot] || row->speed_ratio < near_wins[slot]->speed_ratio) {
+          for (size_t move = sizeof(near_wins) / sizeof(near_wins[0]) - 1; move > slot; --move) {
+            near_wins[move] = near_wins[move - 1];
+          }
+          near_wins[slot] = row;
+          if (near_count < sizeof(near_wins) / sizeof(near_wins[0])) near_count++;
+          break;
+        }
+      }
+    }
+    for (size_t slot = 0; slot < sizeof(top_gaps) / sizeof(top_gaps[0]); ++slot) {
+      if (!top_gaps[slot] || row->speed_ratio > top_gaps[slot]->speed_ratio) {
+        for (size_t move = sizeof(top_gaps) / sizeof(top_gaps[0]) - 1; move > slot; --move) {
+          top_gaps[move] = top_gaps[move - 1];
+        }
+        top_gaps[slot] = row;
+        break;
+      }
+    }
+  }
+
+  char *cpu_summary = xray_cpu_features_summary(&report->cpu);
+  jb_append(&buffer, "BENCHMARK FRONTIER\n");
+  jb_printf(&buffer, "%s\n", cpu_summary ? cpu_summary : "CPU: unavailable");
+  free(cpu_summary);
+  jb_printf(&buffer,
+    "Passed: %zu/%zu   Scratch rows: %zu   Replacement-ready: %zu   Oracle-only: %zu   Blocked: %zu   Elapsed: %lums\n\n",
+    report->passed_count,
+    report->result_count,
+    report->scratch_count,
+    report->replacement_ready_count,
+    report->oracle_only_count,
+    report->blocked_count,
+    report->elapsed_ms);
+
+  jb_append(&buffer,
+    "FRONTIER SUMMARY\n"
+    "Ready rows are locally safe replacements. Oracle-only rows are evidence, not proof-routing permission.\n");
+  if (near_count) {
+    jb_append(&buffer, "Near wins needing stability:\n");
+    for (size_t index = 0; index < near_count; ++index) {
+      const XrayBenchmarkResult *row = near_wins[index];
+      char label[80];
+      benchmark_row_label(row, label, sizeof(label));
+      jb_printf(&buffer,
+        "  %-24s %5zu digits   ratio %.3f   stable %zu/%zu   %s\n",
+        label,
+        row->digits,
+        row->speed_ratio,
+        row->stable_sample_count,
+        row->sample_count,
+        row->adoption);
+    }
+  } else {
+    jb_append(&buffer, "Near wins needing stability: none in this run\n");
+  }
+
+  jb_append(&buffer, "Largest scratch gaps:\n");
+  for (size_t index = 0; index < sizeof(top_gaps) / sizeof(top_gaps[0]) && top_gaps[index]; ++index) {
+    const XrayBenchmarkResult *row = top_gaps[index];
+    char label[80];
+    benchmark_row_label(row, label, sizeof(label));
+    jb_printf(&buffer,
+      "  %-24s %5zu digits   ratio %.3f   stable %zu/%zu   %s\n",
+      label,
+      row->digits,
+      row->speed_ratio,
+      row->stable_sample_count,
+      row->sample_count,
+      row->adoption);
+  }
+
+  jb_append(&buffer,
+    "\nSCRATCH VS GMP\n"
+    "Operation                  Digits   Adoption       Ready    ScratchUs      GmpUs   Ratio   Stable\n"
+    "------------------------   ------   ------------   -----   ----------   --------   -----   ------\n");
+  for (size_t index = 0; index < report->result_count; ++index) {
+    const XrayBenchmarkResult *row = &report->results[index];
+    if (strcmp(row->category, "scratch-vs-gmp") != 0) continue;
+    char label[80];
+    benchmark_row_label(row, label, sizeof(label));
+    jb_printf(&buffer,
+      "%-24s   %6zu   %-12s   %-5s   %10llu   %8llu   %5.2f   %3zu/%-3zu\n",
+      label,
+      row->digits,
+      row->adoption,
+      row->replacement_ready ? "yes" : "no",
+      row->scratch_us,
+      row->gmp_us,
+      row->speed_ratio,
+      row->stable_sample_count,
+      row->sample_count);
+  }
+
+  jb_append(&buffer,
+    "\nKERNEL PROBES\n"
+    "Operation                                  Digits   Status              Adoption               Ratio   Stable\n"
+    "----------------------------------------   ------   ----------------   --------------------   -----   ------\n");
+  for (size_t index = 0; index < report->result_count; ++index) {
+    const XrayBenchmarkResult *row = &report->results[index];
+    if (strcmp(row->category, "kernel-probe") != 0) continue;
+    char label[80];
+    benchmark_row_label(row, label, sizeof(label));
+    jb_printf(&buffer,
+      "%-40s   %6zu   %-16s   %-20s   %5.2f   %3zu/%-3zu\n",
+      label,
+      row->digits,
+      row->status,
+      row->adoption,
+      row->speed_ratio,
+      row->stable_sample_count,
+      row->sample_count);
+  }
+
+  jb_append(&buffer,
+    "\nRule: replacements require exact parity, a same-run paired-median speed win inside the configured gate, and enough paired-sample wins. Ordinary five-sample rows require 4 stable wins; deep nine-sample rows require 8.\n");
+  return jb_take(&buffer);
+}
+
 char *xray_workbench_full_report_json(const XrayWorkbenchReport *report) {
   JsonBuffer buffer = {0};
   jb_append(&buffer, "{");

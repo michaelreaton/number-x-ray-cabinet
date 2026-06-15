@@ -193,6 +193,9 @@ static void benchmark_display_operation(const XrayBenchmarkResult *row, char *ou
 }
 
 static char *format_benchmark_report_text(const XrayBenchmarkReport *report) {
+  char *shared = xray_benchmark_frontier_text(report);
+  if (shared) return shared;
+
   if (!report || !report->result_count) {
     return gui_strdup(
       "BENCHMARK RESULTS\n"
@@ -958,7 +961,7 @@ static GtkWidget *build_benchmark_page(AppState *app) {
   gtk_widget_set_size_request(benchmark_scroll, -1, app->layout == XRAY_LAYOUT_COMPACT ? 260 : 360);
   gtk_box_append(GTK_BOX(page), benchmark_scroll);
   set_text_view(app->benchmark_view,
-    "BENCHMARK RESULTS\n"
+    "BENCHMARK FRONTIER\n"
     "Run Proof to measure scratch bigint primitives against GMP.\n\n"
     "The frontier summary will show replacement-ready rows, near wins, and the largest remaining gaps before the detailed timing tables.\n");
 
@@ -1192,7 +1195,7 @@ static void on_run_clicked(GtkButton *button, gpointer user_data) {
     "  \"note\": \"Native proof worker is active. Final JSON replaces this when the verified report is assembled.\"\n"
     "}\n");
   set_text_view(app->benchmark_view,
-    "BENCHMARK RESULTS\n"
+    "BENCHMARK FRONTIER\n"
     "Running native proof worker...\n\n"
     "The frontier summary and timing tables will populate when the benchmark report is assembled.\n"
     "You can keep this tab open; the final scratch-vs-GMP rows replace this placeholder automatically.\n");
