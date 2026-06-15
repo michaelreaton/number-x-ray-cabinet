@@ -116,3 +116,20 @@ The 1000 and 4096 digit rows cleared the same-run gate, but the 8192 digit row
 missed the 4 of 5 stability requirement. The same run also showed the raw
 muladd primitive rows as noisy or slower, so the next step is confirmation and
 carry-scheduling work rather than adoption.
+
+## 2026-06-15: Unroll4 GMP Gate
+
+Run: `runs/20260615-053253-c4b04caf`
+
+`mul-unroll4-vs-gmp` compared the full unroll4 multiply candidate directly
+against `mpz_mul`:
+
+- 1000 digits: ratio `0.667`, stable `5/5`, `candidate-faster`
+- 4096 digits: ratio `0.844`, stable `5/5`, `candidate-faster`
+- 8192 digits: ratio `1.009`, stable `2/5`, `observe-only`
+
+Decision: keep the direct GMP gate and do not adopt the route globally. The
+candidate is locally safe-looking through 4096 digits in this run, but 8192
+digits still fails the GMP gate. A future production route must be bounded to
+the proven size window or collect stronger 8192+ evidence before replacing the
+current path.

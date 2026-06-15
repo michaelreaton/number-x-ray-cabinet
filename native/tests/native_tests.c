@@ -733,6 +733,7 @@ static void test_benchmarks(void) {
   int saw_muladd_unroll_probe = 0;
   int saw_muladd_unroll8_probe = 0;
   int saw_mul_unroll4_vs_scratch_probe = 0;
+  int saw_mul_unroll4_vs_gmp_probe = 0;
   for (size_t index = 0; index < report->result_count; ++index) {
     if (strcmp(report->results[index].category, "scratch-vs-gmp") == 0) {
       scratch_rows++;
@@ -798,6 +799,14 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "featureGate=msvc-x64-full-mul-schedule") != NULL);
         CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
       }
+      if (strcmp(report->results[index].operation, "mul-unroll4-vs-gmp") == 0) {
+        saw_mul_unroll4_vs_gmp_probe = 1;
+        CHECK(strstr(report->results[index].detail, "leafThreshold=") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=_umul128+_addcarry_u64-unroll4-full") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=mpz_mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=msvc-x64-full-mul-schedule") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+      }
       if (strcmp(report->results[index].operation, "muladd-bmi2-adx") == 0) {
         saw_muladd_bmi2_adx_probe = 1;
         CHECK(strstr(report->results[index].detail, "candidate=_mulx_u64+_addcarryx_u64") != NULL);
@@ -850,6 +859,7 @@ static void test_benchmarks(void) {
   CHECK(saw_muladd_unroll_probe);
   CHECK(saw_muladd_unroll8_probe);
   CHECK(saw_mul_unroll4_vs_scratch_probe);
+  CHECK(saw_mul_unroll4_vs_gmp_probe);
   if (report->cpu.bmi2 && report->cpu.adx) CHECK(saw_muladd_bmi2_adx_probe);
 #endif
   CHECK(kernel_rows >= 4);
@@ -881,6 +891,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "muladd-unroll4") != NULL);
   CHECK(strstr(json, "muladd-unroll8") != NULL);
   CHECK(strstr(json, "mul-unroll4-vs-scratch") != NULL);
+  CHECK(strstr(json, "mul-unroll4-vs-gmp") != NULL);
   if (report->cpu.bmi2 && report->cpu.adx) CHECK(strstr(json, "muladd-bmi2-adx") != NULL);
 #endif
   free(json);
@@ -898,6 +909,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "muladd-unroll4") != NULL);
   CHECK(strstr(tsv, "muladd-unroll8") != NULL);
   CHECK(strstr(tsv, "mul-unroll4-vs-scratch") != NULL);
+  CHECK(strstr(tsv, "mul-unroll4-vs-gmp") != NULL);
   if (report->cpu.bmi2 && report->cpu.adx) CHECK(strstr(tsv, "muladd-bmi2-adx") != NULL);
 #endif
   CHECK(strstr(tsv, "replacement-ready") != NULL || strstr(tsv, "parity") != NULL);
