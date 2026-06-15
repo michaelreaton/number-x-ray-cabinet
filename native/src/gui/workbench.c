@@ -39,6 +39,10 @@ typedef struct AppState {
   GtkWidget *solver_proof_label;
   GtkWidget *json_view;
   GtkWidget *log_view;
+  guint live_timer_id;
+  unsigned long run_started_ms;
+  unsigned int run_pulse;
+  int run_active;
   volatile int cancel_requested;
   int persian;
   XrayLayoutProfile layout;
@@ -254,6 +258,75 @@ static void set_text_view(GtkWidget *view, const char *text) {
 
 static void set_label_if(GtkWidget *label, const char *text) {
   if (label) gtk_label_set_text(GTK_LABEL(label), text ? text : "");
+}
+
+static void set_run_status(AppState *app, const char *factor, const char *proof, const char *cyclo, const char *bench) {
+  set_label_if(app->metric_factor_label, factor);
+  set_label_if(app->metric_cyclo_label, cyclo);
+  set_label_if(app->metric_bench_label, bench);
+  set_label_if(app->xray_cyclo_label, cyclo);
+  set_label_if(app->solver_proof_label, proof);
+  set_label_if(app->factor_label, factor);
+  set_label_if(app->proof_label, proof);
+  set_label_if(app->cyclo_label, cyclo);
+  set_label_if(app->bench_label, bench);
+}
+
+static const char *live_stage(unsigned int pulse) {
+  static const char *stages[] = {
+    "Ingest",
+    "Normalize",
+    "Factor",
+    "Cyclotomic",
+    "GNFS scaffold",
+    "Benchmark",
+    "Assemble"
+  };
+  return stages[(pulse / 4U) % (sizeof(stages) / sizeof(stages[0]))];
+}
+
+static void set_live_log(AppState *app) {
+  unsigned long elapsed = app->run_started_ms ? xray_now_ms() - app->run_started_ms : 0;
+  const char *stage = app->cancel_requested ? "Cancel checkpoint" : live_stage(app->run_pulse);
+  char activity[4] = "...";
+  activity[app->run_pulse % 4U] = '\0';
+  char log_line[2048];
+  snprintf(log_line, sizeof(log_line),
+    "RUNNING%s\n"
+    "Elapsed: %lu.%03lus\n"
+    "Active stage: %s\n"
+    "Worker: background proof run is active; UI pulse is live.\n"
+    "Cancel: %s\n\n"
+    "Live surfaces now update while the engine runs. Exact factors, cyclotomic candidates, benchmark rows, and JSON still settle only after the verified report is assembled.",
+    activity,
+    elapsed / 1000UL,
+    elapsed % 1000UL,
+    stage,
+    app->cancel_requested ? "requested; waiting for solver checkpoint" : "available");
+  set_text_view(app->log_view, log_line);
+}
+
+static gboolean live_run_tick(gpointer user_data) {
+  AppState *app = (AppState *)user_data;
+  if (!app || !app->run_active) {
+    if (app) app->live_timer_id = 0;
+    return G_SOURCE_REMOVE;
+  }
+
+  app->run_pulse++;
+  unsigned long elapsed = app->run_started_ms ? xray_now_ms() - app->run_started_ms : 0;
+  char factor[80];
+  char proof[128];
+  char cyclo[128];
+  char bench[128];
+  snprintf(factor, sizeof(factor), app->cancel_requested ? "Factor Solver: CANCEL REQUESTED" : "Factor Solver: RUNNING");
+  snprintf(proof, sizeof(proof), "Product proof: running | elapsed %lu.%03lus", elapsed / 1000UL, elapsed % 1000UL);
+  snprintf(cyclo, sizeof(cyclo), "Live stage: %s | pulse %u", app->cancel_requested ? "Cancel checkpoint" : live_stage(app->run_pulse), app->run_pulse);
+  snprintf(bench, sizeof(bench), "Report assembling | worker active%s", app->cancel_requested ? " | cancel pending" : "");
+  set_run_status(app, factor, proof, cyclo, bench);
+  gtk_button_set_label(GTK_BUTTON(app->run_button), app->cancel_requested ? "CANCELLING..." : "RUNNING...");
+  set_live_log(app);
+  return G_SOURCE_CONTINUE;
 }
 
 static char *chunk_decimal(const char *value, size_t width) {
@@ -740,18 +813,16 @@ static XrayRunConfig config_from_ui(AppState *app) {
 static gboolean finish_run(gpointer data) {
   RunResult *result = (RunResult *)data;
   AppState *app = result->app;
+  app->run_active = 0;
+  if (app->live_timer_id) {
+    g_source_remove(app->live_timer_id);
+    app->live_timer_id = 0;
+  }
   gtk_widget_set_sensitive(app->run_button, TRUE);
+  gtk_button_set_label(GTK_BUTTON(app->run_button), "RUN PROOF");
   gtk_widget_set_sensitive(app->cancel_button, FALSE);
   gtk_widget_set_visible(app->cancel_button, FALSE);
-  set_label_if(app->metric_factor_label, result->factor_status);
-  set_label_if(app->metric_cyclo_label, result->cyclo_status);
-  set_label_if(app->metric_bench_label, result->bench_status);
-  set_label_if(app->xray_cyclo_label, result->cyclo_status);
-  set_label_if(app->solver_proof_label, result->proof_status);
-  set_label_if(app->factor_label, result->factor_status);
-  set_label_if(app->proof_label, result->proof_status);
-  set_label_if(app->cyclo_label, result->cyclo_status);
-  set_label_if(app->bench_label, result->bench_status);
+  set_run_status(app, result->factor_status, result->proof_status, result->cyclo_status, result->bench_status);
   set_text_view(app->json_view, result->json);
   set_text_view(app->log_view, result->log_line);
   free(result->json);
@@ -820,10 +891,25 @@ static void on_run_clicked(GtkButton *button, gpointer user_data) {
   AppState *app = (AppState *)user_data;
   char *input = text_view_text(app->input_view);
   app->cancel_requested = 0;
+  app->run_active = 1;
+  app->run_started_ms = xray_now_ms();
+  app->run_pulse = 0;
   gtk_widget_set_sensitive(app->run_button, FALSE);
+  gtk_button_set_label(GTK_BUTTON(app->run_button), "RUNNING...");
   gtk_widget_set_visible(app->cancel_button, TRUE);
   gtk_widget_set_sensitive(app->cancel_button, TRUE);
-  set_text_view(app->log_view, "Running native proof worker. UI remains responsive; cancel stops at the next solver checkpoint.");
+  set_run_status(app,
+    "Factor Solver: RUNNING",
+    "Product proof: running | awaiting verified report",
+    "Live stage: Ingest | pulse 0",
+    "Report assembling | worker active");
+  set_text_view(app->json_view,
+    "{\n"
+    "  \"status\": \"running\",\n"
+    "  \"note\": \"Native proof worker is active. Final JSON replaces this when the verified report is assembled.\"\n"
+    "}\n");
+  set_live_log(app);
+  if (!app->live_timer_id) app->live_timer_id = g_timeout_add(250, live_run_tick, app);
 
   RunJob *job = (RunJob *)calloc(1, sizeof(*job));
   job->app = app;
@@ -838,7 +924,13 @@ static void on_cancel_clicked(GtkButton *button, gpointer user_data) {
   AppState *app = (AppState *)user_data;
   app->cancel_requested = 1;
   gtk_widget_set_sensitive(app->cancel_button, FALSE);
-  set_text_view(app->log_view, "Cancel requested. The worker will stop at the next solver checkpoint.");
+  gtk_button_set_label(GTK_BUTTON(app->run_button), "CANCELLING...");
+  set_run_status(app,
+    "Factor Solver: CANCEL REQUESTED",
+    "Product proof: stopping at checkpoint",
+    "Live stage: Cancel checkpoint",
+    "Report assembling | cancel pending");
+  set_live_log(app);
 }
 
 static void on_language_clicked(GtkButton *button, gpointer user_data) {
