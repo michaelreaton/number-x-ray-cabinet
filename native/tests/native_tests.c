@@ -78,6 +78,21 @@ static void set_karatsuba_halves(XrayScratchBigInt *value, uint64_t low_top, uin
   value->limbs[count - 1] = high_top;
 }
 
+static void set_toom3_parts(XrayScratchBigInt *value, uint64_t part0_top, uint64_t part1_top, uint64_t part2_top, uint64_t salt) {
+  const size_t part = 30;
+  const size_t count = part * 3;
+  value->limbs = (uint64_t *)calloc(count, sizeof(uint64_t));
+  CHECK(value->limbs != NULL);
+  value->capacity = count;
+  value->count = count;
+  for (size_t index = 0; index < count; ++index) {
+    value->limbs[index] = salt + index + 1;
+  }
+  value->limbs[part - 1] = part0_top;
+  value->limbs[part * 2 - 1] = part1_top;
+  value->limbs[part * 3 - 1] = part2_top;
+}
+
 static void mpz_set_from_scratch_limbs(mpz_t out, const XrayScratchBigInt *value) {
   mpz_import(out, value->count, -1, sizeof(uint64_t), 0, 0, value->limbs);
 }
@@ -458,6 +473,62 @@ static void test_scratch_bigint_mul_thresholds(void) {
   free(right_text);
 }
 
+static void test_scratch_bigint_toom3_probe_oracle(void) {
+  char *left_text = make_pattern_decimal(2400, "97531864208642135790");
+  char *right_text = make_pattern_decimal(2400, "24681357913579246801");
+  XrayScratchBigInt a, b, product, alias;
+  xray_bigint_init(&a);
+  xray_bigint_init(&b);
+  xray_bigint_init(&product);
+  xray_bigint_init(&alias);
+  mpz_t ga, gb, gproduct;
+  mpz_inits(ga, gb, gproduct, NULL);
+
+  CHECK(xray_bigint_set_decimal(&a, left_text));
+  CHECK(xray_bigint_set_decimal(&b, right_text));
+  CHECK(mpz_set_str(ga, left_text, 10) == 0);
+  CHECK(mpz_set_str(gb, right_text, 10) == 0);
+  mpz_mul(gproduct, ga, gb);
+
+  CHECK(xray_bigint_mul_toom3_probe(&product, &a, &b, 32));
+  check_scratch_matches_mpz(&product, gproduct);
+
+  CHECK(xray_bigint_copy(&alias, &a));
+  CHECK(xray_bigint_mul_toom3_probe(&alias, &alias, &b, 32));
+  check_scratch_matches_mpz(&alias, gproduct);
+
+  xray_bigint_clear(&a);
+  xray_bigint_clear(&b);
+  xray_bigint_clear(&product);
+  xray_bigint_clear(&alias);
+  mpz_clears(ga, gb, gproduct, NULL);
+  free(left_text);
+  free(right_text);
+}
+
+static void test_scratch_bigint_toom3_minus_one_signs(void) {
+  XrayScratchBigInt a, b, product;
+  xray_bigint_init(&a);
+  xray_bigint_init(&b);
+  xray_bigint_init(&product);
+  set_toom3_parts(&a, 2, 19, 3, 1000);
+  set_toom3_parts(&b, 5, 23, 7, 2000);
+
+  mpz_t ga, gb, gproduct;
+  mpz_inits(ga, gb, gproduct, NULL);
+  mpz_set_from_scratch_limbs(ga, &a);
+  mpz_set_from_scratch_limbs(gb, &b);
+  mpz_mul(gproduct, ga, gb);
+
+  CHECK(xray_bigint_mul_toom3_probe(&product, &a, &b, 16));
+  check_scratch_matches_mpz(&product, gproduct);
+
+  mpz_clears(ga, gb, gproduct, NULL);
+  xray_bigint_clear(&a);
+  xray_bigint_clear(&b);
+  xray_bigint_clear(&product);
+}
+
 static void test_ambiguous_input_rejected(void) {
   mpz_t value;
   mpz_init(value);
@@ -619,6 +690,7 @@ static void test_benchmarks(void) {
   size_t blocked_rows = 0;
   int saw_8192_scratch = 0;
   int saw_8192_kernel_probe = 0;
+  int saw_toom3_probe = 0;
   for (size_t index = 0; index < report->result_count; ++index) {
     if (strcmp(report->results[index].category, "scratch-vs-gmp") == 0) {
       scratch_rows++;
@@ -662,6 +734,12 @@ static void test_benchmarks(void) {
       if (strcmp(report->results[index].operation, "mul-threshold") == 0) {
         CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
       }
+      if (strcmp(report->results[index].operation, "mul-toom3") == 0) {
+        saw_toom3_probe = 1;
+        CHECK(strstr(report->results[index].detail, "leafThreshold=") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=one-level-toom3") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+      }
       if (strcmp(report->results[index].adoption, "promote-candidate") == 0) {
         CHECK(report->results[index].stable_sample_count >= 4);
         CHECK(report->results[index].speed_ratio <= report->results[index].max_allowed_speed_ratio);
@@ -690,6 +768,7 @@ static void test_benchmarks(void) {
   CHECK(scratch_rows >= 40);
   CHECK(saw_8192_scratch);
   CHECK(saw_8192_kernel_probe);
+  CHECK(saw_toom3_probe);
   CHECK(kernel_rows >= 4);
   CHECK(report->scratch_count == scratch_rows);
   CHECK(report->replacement_ready_count == replacement_ready_rows);
@@ -713,6 +792,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "\"adoption\"") != NULL);
   CHECK(strstr(json, "\"maxAllowedSpeedRatio\"") != NULL);
   CHECK(strstr(json, "\"scratchUs\"") != NULL);
+  CHECK(strstr(json, "mul-toom3") != NULL);
   free(json);
   char *tsv = xray_benchmark_report_tsv(report);
   CHECK(tsv != NULL);
@@ -722,6 +802,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "scratch-vs-gmp") != NULL);
   CHECK(strstr(tsv, "kernel-probe") != NULL);
   CHECK(strstr(tsv, "gmpClue=") != NULL);
+  CHECK(strstr(tsv, "mul-toom3") != NULL);
   CHECK(strstr(tsv, "replacement-ready") != NULL || strstr(tsv, "parity") != NULL);
   free(tsv);
 
@@ -740,6 +821,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_json, "\"scratchRows\"") != NULL);
   CHECK(strstr(benchmark_tsv, "scratch-vs-gmp") != NULL);
   CHECK(strstr(benchmark_tsv, "kernel-probe") != NULL);
+  CHECK(strstr(benchmark_tsv, "mul-toom3") != NULL);
   CHECK(strstr(benchmark_tsv, "speedRatio") != NULL);
   CHECK(strstr(benchmark_tsv, "stableSampleCount") != NULL);
   CHECK(strstr(benchmark_tsv, "worstPairRatio") != NULL);
@@ -764,6 +846,8 @@ int main(void) {
   test_scratch_bigint_large_mul_oracle();
   test_scratch_bigint_karatsuba_middle_signs();
   test_scratch_bigint_mul_thresholds();
+  test_scratch_bigint_toom3_probe_oracle();
+  test_scratch_bigint_toom3_minus_one_signs();
   test_ambiguous_input_rejected();
   test_factor_solver_exact();
   test_factor_solver_unresolved_budget();
