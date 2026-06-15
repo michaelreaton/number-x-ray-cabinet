@@ -4,12 +4,33 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define XRAY_BENCH_SAMPLES 3
+
 static void append_result(XrayBenchmarkReport *report, const XrayBenchmarkResult *result) {
   XrayBenchmarkResult *next = (XrayBenchmarkResult *)realloc(report->results, sizeof(XrayBenchmarkResult) * (report->result_count + 1));
   if (!next) return;
   report->results = next;
   report->results[report->result_count++] = *result;
   if (result->passed) report->passed_count++;
+}
+
+static unsigned long long median3(unsigned long long a, unsigned long long b, unsigned long long c) {
+  if (a > b) {
+    unsigned long long tmp = a;
+    a = b;
+    b = tmp;
+  }
+  if (b > c) {
+    unsigned long long tmp = b;
+    b = c;
+    c = tmp;
+  }
+  if (a > b) {
+    unsigned long long tmp = a;
+    a = b;
+    b = tmp;
+  }
+  return b;
 }
 
 static void run_factor_case(XrayBenchmarkReport *report, const char *name, const char *input, const char *expected_status, unsigned long budget_ms) {
@@ -112,9 +133,10 @@ static void append_perf_result(
   snprintf(result.status, sizeof(result.status), "%s",
     !parity ? "failed" : (result.replacement_ready ? "replacement-ready" : "parity"));
   snprintf(result.detail, sizeof(result.detail),
-    "operation=%s digits=%zu scratchUs=%llu gmpUs=%llu ratio=%.3f gate=%s",
+    "operation=%s digits=%zu samples=%u scratchUs=%llu gmpUs=%llu ratio=%.3f gate=%s",
     operation,
     digits,
+    XRAY_BENCH_SAMPLES,
     result.scratch_us,
     result.gmp_us,
     result.speed_ratio,
@@ -131,26 +153,33 @@ static void run_scratch_parse_case(XrayBenchmarkReport *report, size_t digits) {
   mpz_t gmp;
   mpz_init(gmp);
   int ok = 1;
+  unsigned long long scratch_samples[XRAY_BENCH_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_SAMPLES] = {0};
+  int parity = 1;
 
-  unsigned long long scratch_started = xray_now_us();
-  for (unsigned int index = 0; ok && index < iterations; ++index) {
-    ok = xray_bigint_set_decimal(&scratch, text);
+  for (unsigned int sample = 0; sample < XRAY_BENCH_SAMPLES; ++sample) {
+    unsigned long long scratch_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      ok = xray_bigint_set_decimal(&scratch, text);
+    }
+    scratch_samples[sample] = xray_now_us() - scratch_started;
+
+    unsigned long long gmp_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      ok = mpz_set_str(gmp, text, 10) == 0;
+    }
+    gmp_samples[sample] = xray_now_us() - gmp_started;
+
+    char *scratch_text = xray_bigint_get_decimal(&scratch);
+    char *gmp_text = mpz_get_str(NULL, 10, gmp);
+    parity = parity && ok && scratch_text && gmp_text && strcmp(scratch_text, gmp_text) == 0;
+    free(scratch_text);
+    free(gmp_text);
   }
-  unsigned long long scratch_us = xray_now_us() - scratch_started;
-
-  unsigned long long gmp_started = xray_now_us();
-  for (unsigned int index = 0; ok && index < iterations; ++index) {
-    ok = mpz_set_str(gmp, text, 10) == 0;
-  }
-  unsigned long long gmp_us = xray_now_us() - gmp_started;
-
-  char *scratch_text = xray_bigint_get_decimal(&scratch);
-  char *gmp_text = mpz_get_str(NULL, 10, gmp);
-  int parity = ok && scratch_text && gmp_text && strcmp(scratch_text, gmp_text) == 0;
+  unsigned long long scratch_us = median3(scratch_samples[0], scratch_samples[1], scratch_samples[2]);
+  unsigned long long gmp_us = median3(gmp_samples[0], gmp_samples[1], gmp_samples[2]);
   append_perf_result(report, "parse", digits, parity, scratch_us, gmp_us);
 
-  free(scratch_text);
-  free(gmp_text);
   mpz_clear(gmp);
   xray_bigint_clear(&scratch);
   free(text);
@@ -176,29 +205,36 @@ static void run_scratch_binary_case(XrayBenchmarkReport *report, const char *ope
     mpz_set_str(ga, left_text, 10) == 0 &&
     mpz_set_str(gb, right_text, 10) == 0;
 
-  unsigned long long scratch_started = xray_now_us();
-  for (unsigned int index = 0; ok && index < iterations; ++index) {
-    if (strcmp(operation, "add") == 0) ok = xray_bigint_add(&scratch_out, &a, &b);
-    else if (strcmp(operation, "sub") == 0) ok = xray_bigint_sub(&scratch_out, &a, &b);
-    else ok = xray_bigint_mul(&scratch_out, &a, &b);
-  }
-  unsigned long long scratch_us = xray_now_us() - scratch_started;
+  unsigned long long scratch_samples[XRAY_BENCH_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_SAMPLES] = {0};
+  int parity = 1;
+  for (unsigned int sample = 0; sample < XRAY_BENCH_SAMPLES; ++sample) {
+    unsigned long long scratch_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      if (strcmp(operation, "add") == 0) ok = xray_bigint_add(&scratch_out, &a, &b);
+      else if (strcmp(operation, "sub") == 0) ok = xray_bigint_sub(&scratch_out, &a, &b);
+      else ok = xray_bigint_mul(&scratch_out, &a, &b);
+    }
+    scratch_samples[sample] = xray_now_us() - scratch_started;
 
-  unsigned long long gmp_started = xray_now_us();
-  for (unsigned int index = 0; ok && index < iterations; ++index) {
-    if (strcmp(operation, "add") == 0) mpz_add(gout, ga, gb);
-    else if (strcmp(operation, "sub") == 0) mpz_sub(gout, ga, gb);
-    else mpz_mul(gout, ga, gb);
-  }
-  unsigned long long gmp_us = xray_now_us() - gmp_started;
+    unsigned long long gmp_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      if (strcmp(operation, "add") == 0) mpz_add(gout, ga, gb);
+      else if (strcmp(operation, "sub") == 0) mpz_sub(gout, ga, gb);
+      else mpz_mul(gout, ga, gb);
+    }
+    gmp_samples[sample] = xray_now_us() - gmp_started;
 
-  char *scratch_text = xray_bigint_get_decimal(&scratch_out);
-  char *gmp_text = mpz_get_str(NULL, 10, gout);
-  int parity = ok && scratch_text && gmp_text && strcmp(scratch_text, gmp_text) == 0;
+    char *scratch_text = xray_bigint_get_decimal(&scratch_out);
+    char *gmp_text = mpz_get_str(NULL, 10, gout);
+    parity = parity && ok && scratch_text && gmp_text && strcmp(scratch_text, gmp_text) == 0;
+    free(scratch_text);
+    free(gmp_text);
+  }
+  unsigned long long scratch_us = median3(scratch_samples[0], scratch_samples[1], scratch_samples[2]);
+  unsigned long long gmp_us = median3(gmp_samples[0], gmp_samples[1], gmp_samples[2]);
   append_perf_result(report, operation, digits, parity, scratch_us, gmp_us);
 
-  free(scratch_text);
-  free(gmp_text);
   mpz_clears(ga, gb, gout, NULL);
   xray_bigint_clear(&a);
   xray_bigint_clear(&b);
@@ -221,27 +257,34 @@ static void run_scratch_divmod_case(XrayBenchmarkReport *report, size_t digits) 
   uint32_t scratch_remainder = 0;
   unsigned long gmp_remainder = 0;
 
-  unsigned long long scratch_started = xray_now_us();
-  for (unsigned int index = 0; ok && index < iterations; ++index) {
-    ok = xray_bigint_divmod_u32(&quotient, &scratch_remainder, &a, divisor);
-  }
-  unsigned long long scratch_us = xray_now_us() - scratch_started;
+  unsigned long long scratch_samples[XRAY_BENCH_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_SAMPLES] = {0};
+  int parity = 1;
+  for (unsigned int sample = 0; sample < XRAY_BENCH_SAMPLES; ++sample) {
+    unsigned long long scratch_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      ok = xray_bigint_divmod_u32(&quotient, &scratch_remainder, &a, divisor);
+    }
+    scratch_samples[sample] = xray_now_us() - scratch_started;
 
-  unsigned long long gmp_started = xray_now_us();
-  for (unsigned int index = 0; ok && index < iterations; ++index) {
-    gmp_remainder = (unsigned long)mpz_tdiv_q_ui(gquot, ga, divisor);
-  }
-  unsigned long long gmp_us = xray_now_us() - gmp_started;
+    unsigned long long gmp_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      gmp_remainder = (unsigned long)mpz_tdiv_q_ui(gquot, ga, divisor);
+    }
+    gmp_samples[sample] = xray_now_us() - gmp_started;
 
-  char *scratch_text = xray_bigint_get_decimal(&quotient);
-  char *gmp_text = mpz_get_str(NULL, 10, gquot);
-  int parity = ok && scratch_text && gmp_text && strcmp(scratch_text, gmp_text) == 0 &&
-    scratch_remainder == (uint32_t)gmp_remainder &&
-    xray_bigint_mod_u32(&a, divisor) == (uint32_t)gmp_remainder;
+    char *scratch_text = xray_bigint_get_decimal(&quotient);
+    char *gmp_text = mpz_get_str(NULL, 10, gquot);
+    parity = parity && ok && scratch_text && gmp_text && strcmp(scratch_text, gmp_text) == 0 &&
+      scratch_remainder == (uint32_t)gmp_remainder &&
+      xray_bigint_mod_u32(&a, divisor) == (uint32_t)gmp_remainder;
+    free(scratch_text);
+    free(gmp_text);
+  }
+  unsigned long long scratch_us = median3(scratch_samples[0], scratch_samples[1], scratch_samples[2]);
+  unsigned long long gmp_us = median3(gmp_samples[0], gmp_samples[1], gmp_samples[2]);
   append_perf_result(report, "divmod-u32", digits, parity, scratch_us, gmp_us);
 
-  free(scratch_text);
-  free(gmp_text);
   mpz_clears(ga, gquot, NULL);
   xray_bigint_clear(&a);
   xray_bigint_clear(&quotient);
@@ -263,31 +306,37 @@ static void run_scratch_modular_case(XrayBenchmarkReport *report, const char *op
   uint32_t scratch_result = 0;
   unsigned long gmp_result = 0;
 
-  unsigned long long scratch_started = xray_now_us();
-  for (unsigned int index = 0; ok && index < iterations; ++index) {
-    if (strcmp(operation, "mod-u32") == 0) scratch_result = xray_bigint_mod_u32(&a, modulus);
-    else if (strcmp(operation, "gcd-u32") == 0) scratch_result = xray_bigint_gcd_u32(&a, gcd_operand);
-    else scratch_result = xray_bigint_powmod_u32(&a, exponent, modulus);
-  }
-  unsigned long long scratch_us = xray_now_us() - scratch_started;
-
-  unsigned long long gmp_started = xray_now_us();
-  for (unsigned int index = 0; ok && index < iterations; ++index) {
-    if (strcmp(operation, "mod-u32") == 0) {
-      gmp_result = (unsigned long)mpz_tdiv_ui(ga, modulus);
-    } else if (strcmp(operation, "gcd-u32") == 0) {
-      mpz_set_ui(gmodulus, gcd_operand);
-      mpz_gcd(gout, ga, gmodulus);
-      gmp_result = (unsigned long)mpz_get_ui(gout);
-    } else {
-      mpz_set_ui(gmodulus, modulus);
-      mpz_powm_ui(gout, ga, exponent, gmodulus);
-      gmp_result = (unsigned long)mpz_get_ui(gout);
+  unsigned long long scratch_samples[XRAY_BENCH_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_SAMPLES] = {0};
+  int parity = 1;
+  for (unsigned int sample = 0; sample < XRAY_BENCH_SAMPLES; ++sample) {
+    unsigned long long scratch_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      if (strcmp(operation, "mod-u32") == 0) scratch_result = xray_bigint_mod_u32(&a, modulus);
+      else if (strcmp(operation, "gcd-u32") == 0) scratch_result = xray_bigint_gcd_u32(&a, gcd_operand);
+      else scratch_result = xray_bigint_powmod_u32(&a, exponent, modulus);
     }
-  }
-  unsigned long long gmp_us = xray_now_us() - gmp_started;
+    scratch_samples[sample] = xray_now_us() - scratch_started;
 
-  int parity = ok && scratch_result == (uint32_t)gmp_result;
+    unsigned long long gmp_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      if (strcmp(operation, "mod-u32") == 0) {
+        gmp_result = (unsigned long)mpz_tdiv_ui(ga, modulus);
+      } else if (strcmp(operation, "gcd-u32") == 0) {
+        mpz_set_ui(gmodulus, gcd_operand);
+        mpz_gcd(gout, ga, gmodulus);
+        gmp_result = (unsigned long)mpz_get_ui(gout);
+      } else {
+        mpz_set_ui(gmodulus, modulus);
+        mpz_powm_ui(gout, ga, exponent, gmodulus);
+        gmp_result = (unsigned long)mpz_get_ui(gout);
+      }
+    }
+    gmp_samples[sample] = xray_now_us() - gmp_started;
+    parity = parity && ok && scratch_result == (uint32_t)gmp_result;
+  }
+  unsigned long long scratch_us = median3(scratch_samples[0], scratch_samples[1], scratch_samples[2]);
+  unsigned long long gmp_us = median3(gmp_samples[0], gmp_samples[1], gmp_samples[2]);
   append_perf_result(report, operation, digits, parity, scratch_us, gmp_us);
 
   mpz_clears(ga, gmodulus, gout, NULL);
