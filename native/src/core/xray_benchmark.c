@@ -701,7 +701,7 @@ static void run_scratch_modular_case(XrayBenchmarkReport *report, const char *op
 }
 
 static void run_scratch_bigint_gates(XrayBenchmarkReport *report) {
-  const size_t sizes[] = {40, 150, 1000};
+  const size_t sizes[] = {40, 150, 1000, 4096};
   for (size_t index = 0; index < sizeof(sizes) / sizeof(sizes[0]); ++index) {
     run_scratch_parse_case(report, sizes[index]);
     run_scratch_binary_case(report, "add", sizes[index]);
