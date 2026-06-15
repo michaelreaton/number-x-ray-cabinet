@@ -18,6 +18,7 @@
 #define XRAY_BIGINT_DECIMAL_CHUNK_DIGITS 9U
 #define XRAY_BIGINT_PARSE_CHUNK_BASE UINT64_C(10000000000000000000)
 #define XRAY_BIGINT_PARSE_CHUNK_DIGITS 19U
+#define XRAY_BIGINT_KARATSUBA_THRESHOLD 64U
 
 static const uint64_t parse_decimal_powers[] = {
   UINT64_C(1),
@@ -399,17 +400,133 @@ static int mul_schoolbook(XrayScratchBigInt *out, const XrayScratchBigInt *left,
   return 1;
 }
 
+static int slice_bigint(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t offset, size_t count) {
+  if (!out || !value) return 0;
+  out->count = 0;
+  if (offset >= value->count || count == 0) return 1;
+  size_t available = value->count - offset;
+  size_t actual = count < available ? count : available;
+  if (!reserve_limbs(out, actual)) return 0;
+  memcpy(out->limbs, value->limbs + offset, sizeof(uint64_t) * actual);
+  out->count = actual;
+  normalize(out);
+  return 1;
+}
+
+static int add_shifted_inplace(XrayScratchBigInt *out, const XrayScratchBigInt *addend, size_t shift) {
+  if (!out || !addend) return 0;
+  if (addend->count == 0) return 1;
+  size_t needed = shift + addend->count + 1;
+  if (!reserve_limbs(out, needed)) return 0;
+  if (out->count < shift) {
+    memset(out->limbs + out->count, 0, sizeof(uint64_t) * (shift - out->count));
+    out->count = shift;
+  }
+  if (out->count < shift + addend->count) {
+    memset(out->limbs + out->count, 0, sizeof(uint64_t) * (shift + addend->count - out->count));
+    out->count = shift + addend->count;
+  }
+  unsigned char carry = 0;
+  size_t index = 0;
+  for (; index < addend->count; ++index) {
+    carry = add_with_carry_u64(out->limbs[shift + index], addend->limbs[index], carry, &out->limbs[shift + index]);
+  }
+  size_t position = shift + index;
+  while (carry) {
+    if (position == out->count) {
+      out->limbs[out->count++] = 0;
+    }
+    carry = add_with_carry_u64(out->limbs[position], 0, carry, &out->limbs[position]);
+    position++;
+  }
+  normalize(out);
+  return 1;
+}
+
+static void clear_many_bigints(
+  XrayScratchBigInt *a0,
+  XrayScratchBigInt *a1,
+  XrayScratchBigInt *b0,
+  XrayScratchBigInt *b1,
+  XrayScratchBigInt *z0,
+  XrayScratchBigInt *z1,
+  XrayScratchBigInt *z2,
+  XrayScratchBigInt *sum_a,
+  XrayScratchBigInt *sum_b) {
+  xray_bigint_clear(a0);
+  xray_bigint_clear(a1);
+  xray_bigint_clear(b0);
+  xray_bigint_clear(b1);
+  xray_bigint_clear(z0);
+  xray_bigint_clear(z1);
+  xray_bigint_clear(z2);
+  xray_bigint_clear(sum_a);
+  xray_bigint_clear(sum_b);
+}
+
+static int mul_dispatch(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right);
+
+static int mul_karatsuba(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
+  size_t left_count = left ? left->count : 0;
+  size_t right_count = right ? right->count : 0;
+  size_t max_count = left_count > right_count ? left_count : right_count;
+  size_t min_count = left_count < right_count ? left_count : right_count;
+  if (max_count < XRAY_BIGINT_KARATSUBA_THRESHOLD || min_count * 2U < max_count) {
+    return mul_schoolbook(out, left, right);
+  }
+
+  size_t split = max_count / 2U;
+  XrayScratchBigInt a0, a1, b0, b1, z0, z1, z2, sum_a, sum_b;
+  xray_bigint_init(&a0);
+  xray_bigint_init(&a1);
+  xray_bigint_init(&b0);
+  xray_bigint_init(&b1);
+  xray_bigint_init(&z0);
+  xray_bigint_init(&z1);
+  xray_bigint_init(&z2);
+  xray_bigint_init(&sum_a);
+  xray_bigint_init(&sum_b);
+
+  int ok = slice_bigint(&a0, left, 0, split) &&
+    slice_bigint(&a1, left, split, left_count > split ? left_count - split : 0) &&
+    slice_bigint(&b0, right, 0, split) &&
+    slice_bigint(&b1, right, split, right_count > split ? right_count - split : 0) &&
+    mul_dispatch(&z0, &a0, &b0) &&
+    mul_dispatch(&z2, &a1, &b1) &&
+    xray_bigint_add(&sum_a, &a0, &a1) &&
+    xray_bigint_add(&sum_b, &b0, &b1) &&
+    mul_dispatch(&z1, &sum_a, &sum_b) &&
+    xray_bigint_sub(&z1, &z1, &z0) &&
+    xray_bigint_sub(&z1, &z1, &z2);
+
+  if (ok) {
+    out->count = 0;
+    ok = reserve_limbs(out, left_count + right_count) &&
+      add_shifted_inplace(out, &z0, 0) &&
+      add_shifted_inplace(out, &z1, split) &&
+      add_shifted_inplace(out, &z2, split * 2U);
+    if (ok) normalize(out);
+  }
+
+  clear_many_bigints(&a0, &a1, &b0, &b1, &z0, &z1, &z2, &sum_a, &sum_b);
+  return ok;
+}
+
+static int mul_dispatch(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
+  return mul_karatsuba(out, left, right);
+}
+
 int xray_bigint_mul(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
   if (!out || !left || !right) return 0;
   if (out == left || out == right) {
     XrayScratchBigInt temp;
     xray_bigint_init(&temp);
-    int ok = mul_schoolbook(&temp, left, right);
+    int ok = mul_dispatch(&temp, left, right);
     if (ok) ok = xray_bigint_copy(out, &temp);
     xray_bigint_clear(&temp);
     return ok;
   }
-  return mul_schoolbook(out, left, right);
+  return mul_dispatch(out, left, right);
 }
 
 uint32_t xray_bigint_mod_u32(const XrayScratchBigInt *value, uint32_t modulus) {

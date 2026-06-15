@@ -50,6 +50,19 @@ static char *read_text_file(const char *path) {
   return text;
 }
 
+static char *make_pattern_decimal(size_t digits, const char *pattern) {
+  size_t pattern_length = pattern ? strlen(pattern) : 0;
+  CHECK(digits > 0);
+  CHECK(pattern_length > 0);
+  char *text = (char *)calloc(digits + 1, 1);
+  CHECK(text != NULL);
+  for (size_t index = 0; index < digits; ++index) {
+    text[index] = pattern[index % pattern_length];
+  }
+  if (text[0] == '0') text[0] = '1';
+  return text;
+}
+
 static void test_parse_messy_input(void) {
   mpz_t value;
   mpz_init(value);
@@ -321,6 +334,38 @@ static void test_scratch_bigint_oracle_sweep(void) {
   xray_bigint_clear(&quotient);
 }
 
+static void test_scratch_bigint_large_mul_oracle(void) {
+  char *left_text = make_pattern_decimal(1500, "98765432101234567890");
+  char *right_text = make_pattern_decimal(1500, "31415926535897932384");
+  XrayScratchBigInt a, b, product;
+  xray_bigint_init(&a);
+  xray_bigint_init(&b);
+  xray_bigint_init(&product);
+  mpz_t ga, gb, gproduct;
+  mpz_inits(ga, gb, gproduct, NULL);
+
+  CHECK(xray_bigint_set_decimal(&a, left_text));
+  CHECK(xray_bigint_set_decimal(&b, right_text));
+  CHECK(a.count >= 64);
+  CHECK(b.count >= 64);
+  CHECK(mpz_set_str(ga, left_text, 10) == 0);
+  CHECK(mpz_set_str(gb, right_text, 10) == 0);
+  mpz_mul(gproduct, ga, gb);
+
+  CHECK(xray_bigint_mul(&product, &a, &b));
+  check_scratch_matches_mpz(&product, gproduct);
+
+  CHECK(xray_bigint_mul(&a, &a, &b));
+  check_scratch_matches_mpz(&a, gproduct);
+
+  xray_bigint_clear(&a);
+  xray_bigint_clear(&b);
+  xray_bigint_clear(&product);
+  mpz_clears(ga, gb, gproduct, NULL);
+  free(left_text);
+  free(right_text);
+}
+
 static void test_ambiguous_input_rejected(void) {
   mpz_t value;
   mpz_init(value);
@@ -580,6 +625,7 @@ int main(void) {
   test_cpu_feature_detection();
   test_scratch_bigint_oracle();
   test_scratch_bigint_oracle_sweep();
+  test_scratch_bigint_large_mul_oracle();
   test_ambiguous_input_rejected();
   test_factor_solver_exact();
   test_factor_solver_unresolved_budget();
