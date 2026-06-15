@@ -937,6 +937,47 @@ static void test_workspace_and_gnfs_artifacts(void) {
   xray_workbench_report_clear(&report);
 }
 
+static void test_report_json_ffi_helpers(void) {
+  char *factor_json = xray_factor_solve_json("10_403");
+  CHECK(factor_json != NULL);
+  CHECK(strstr(factor_json, "\"factorReport\"") != NULL);
+  CHECK(strstr(factor_json, "\"input\":\"10403\"") != NULL);
+  CHECK(strstr(factor_json, "\"status\":\"solved\"") != NULL);
+  CHECK(strstr(factor_json, "\"productVerified\":true") != NULL);
+  xray_free(factor_json);
+
+  char *invalid_factor_json = xray_factor_solve_json("12x");
+  CHECK(invalid_factor_json != NULL);
+  CHECK(strstr(invalid_factor_json, "\"factorReport\"") != NULL);
+  CHECK(strstr(invalid_factor_json, "\"status\":\"invalid\"") != NULL);
+  xray_free(invalid_factor_json);
+
+  char *cyclotomic_json = xray_cyclotomic_scan_json("111");
+  CHECK(cyclotomic_json != NULL);
+  CHECK(strstr(cyclotomic_json, "\"cyclotomicReport\"") != NULL);
+  CHECK(strstr(cyclotomic_json, "\"input\":\"111\"") != NULL);
+  CHECK(strstr(cyclotomic_json, "\"exactMatches\":") != NULL);
+  CHECK(strstr(cyclotomic_json, "\"verdict\":\"exact\"") != NULL);
+  xray_free(cyclotomic_json);
+
+  char *invalid_cyclotomic_json = xray_cyclotomic_scan_json("12x");
+  CHECK(invalid_cyclotomic_json != NULL);
+  CHECK(strstr(invalid_cyclotomic_json, "\"cyclotomicReport\"") != NULL);
+  CHECK(strstr(invalid_cyclotomic_json, "Unexpected trailing input") != NULL);
+  CHECK(strstr(invalid_cyclotomic_json, "\"scanned\":0") != NULL);
+  xray_free(invalid_cyclotomic_json);
+
+  char *workbench_json = xray_workbench_run_json("2^12 + 1");
+  CHECK(workbench_json != NULL);
+  CHECK(strstr(workbench_json, "\"app\":\"Number X-Ray Workbench\"") != NULL);
+  CHECK(strstr(workbench_json, "\"normalized\":\"4097\"") != NULL);
+  CHECK(strstr(workbench_json, "\"factorReport\"") != NULL);
+  CHECK(strstr(workbench_json, "\"cyclotomicReport\"") != NULL);
+  CHECK(strstr(workbench_json, "\"benchmarkReport\":null") != NULL);
+  CHECK(strstr(workbench_json, "\"gnfsReport\"") != NULL);
+  xray_free(workbench_json);
+}
+
 static void test_cyclotomic_scan_exact(void) {
   XrayCyclotomicConfig config = xray_cyclotomic_default_config();
   config.n_min = 3;
@@ -1288,6 +1329,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "\"stableSampleCount\"") != NULL);
   CHECK(strstr(json, "\"sampleCount\"") != NULL);
   CHECK(strstr(json, "\"worstPairRatio\"") != NULL);
+  CHECK(strstr(json, "\"baselineBackend\"") != NULL);
   CHECK(strstr(json, "\"cpu\"") != NULL);
   CHECK(strstr(json, "kernel-probe") != NULL);
   CHECK(strstr(json, "\"avx\"") != NULL);
@@ -1369,6 +1411,7 @@ static void test_benchmarks(void) {
   char *cpu_text = read_text_file(cpu_path);
   CHECK(strstr(benchmark_json, "\"benchmarkReport\"") != NULL);
   CHECK(strstr(benchmark_json, "\"cpu\"") != NULL);
+  CHECK(strstr(benchmark_json, "\"baselineBackend\"") != NULL);
   CHECK(strstr(benchmark_json, "\"scratchRows\"") != NULL);
   CHECK(strstr(benchmark_tsv, "scratch-vs-gmp") != NULL);
   CHECK(strstr(benchmark_tsv, "kernel-probe") != NULL);
@@ -1392,9 +1435,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "worstPairRatio") != NULL);
   CHECK(strstr(benchmark_tsv, "ratioMethod=paired-median") != NULL);
   CHECK(strstr(benchmark_frontier, "BENCHMARK FRONTIER") != NULL);
+  CHECK(strstr(benchmark_frontier, "Baseline backend:") != NULL);
   CHECK(strstr(benchmark_frontier, "FRONTIER SUMMARY") != NULL);
   CHECK(strstr(benchmark_frontier, "Largest scratch gaps") != NULL);
-  CHECK(strstr(benchmark_frontier, "SCRATCH VS GMP") != NULL);
+  CHECK(strstr(benchmark_frontier, "SCRATCH VS ") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-threshold thr=") != NULL);
   CHECK(strstr(benchmark_frontier, "format-threshold thr=48") != NULL);
   CHECK(strstr(benchmark_frontier, "format-threshold thr=64") != NULL);
@@ -1444,6 +1488,7 @@ int main(void) {
   test_cyclotomic_known_values();
   test_cyclotomic_scan_exact();
   test_workspace_and_gnfs_artifacts();
+  test_report_json_ffi_helpers();
   test_large_nonhit_does_not_false_solve();
   test_benchmarks();
   puts("native xray tests passed");

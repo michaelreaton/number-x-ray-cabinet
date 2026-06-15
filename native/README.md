@@ -101,6 +101,29 @@ These helpers parse the same messy decimal separators as the struct-based
 scratch bigint API and return newly allocated decimal strings, which makes them
 easier to import from FFI layers before a binding owns the full struct lifecycle.
 
+Report-producing tools can also start with one-shot JSON helpers before they
+model the C report structs:
+
+```c
+char *json = xray_factor_solve_json("10_403");
+if (json) {
+  puts(json);
+  xray_free(json);
+}
+```
+
+`xray_factor_solve_json()` and `xray_cyclotomic_scan_json()` use the default
+bounded configs and return self-contained reports. `xray_workbench_run_json()`
+runs the standard proof stages with the benchmark ladder disabled so scripts do
+not accidentally trigger a long local benchmark; use `xray_workbench_run()` with
+a custom `XrayRunConfig` when benchmark evidence is part of the run.
+
+For speed comparisons, GMP and MPIR are treated as compatible oracle backends,
+not as identical performance baselines. Windows vcpkg builds usually benchmark
+against MPIR, while Linux/macOS builds usually benchmark against GMP. Benchmark
+JSON records the configured `baselineBackend`, and human-readable frontier text
+prints the same backend name so local speed claims are not over-generalized.
+
 CTest enforces that documentation contract with `xray_api_doc_coverage`, which
 fails the build if a new exported `XRAY_API` function is added without a
 preceding Doxygen block.

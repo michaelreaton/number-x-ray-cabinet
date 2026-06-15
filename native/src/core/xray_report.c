@@ -5,6 +5,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifndef XRAY_GMP_BACKEND_NAME
+#define XRAY_GMP_BACKEND_NAME "GMP/MPIR"
+#endif
+
 typedef struct JsonBuffer {
   char *data;
   size_t length;
@@ -215,6 +219,8 @@ static void append_cpu_json(JsonBuffer *buffer, const char *key, const XrayCpuFe
 static void append_benchmark_json(JsonBuffer *buffer, const XrayBenchmarkReport *report) {
   jb_append(buffer, "\"benchmarkReport\":{");
   append_cpu_json(buffer, "cpu", report ? &report->cpu : NULL);
+  jb_append(buffer, ",\"baselineBackend\":");
+  jb_string(buffer, XRAY_GMP_BACKEND_NAME);
   jb_printf(buffer,
     ",\"passed\":%zu,\"total\":%zu,\"scratchRows\":%zu,\"replacementReadyRows\":%zu,\"oracleOnlyRows\":%zu,\"blockedRows\":%zu,\"elapsedMs\":%lu,\"results\":[",
     report->passed_count,
@@ -299,12 +305,28 @@ char *xray_factor_report_json(const XrayFactorReport *report) {
   return jb_take(&buffer);
 }
 
+char *xray_factor_solve_json(const char *raw_input) {
+  XrayFactorReport report;
+  xray_factor_solve(raw_input, NULL, &report);
+  char *json = xray_factor_report_json(&report);
+  xray_factor_report_clear(&report);
+  return json;
+}
+
 char *xray_cyclotomic_report_json(const XrayCyclotomicReport *report) {
   JsonBuffer buffer = {0};
   jb_append(&buffer, "{");
   append_cyclotomic_json(&buffer, report);
   jb_append(&buffer, "}");
   return jb_take(&buffer);
+}
+
+char *xray_cyclotomic_scan_json(const char *raw_input) {
+  XrayCyclotomicReport report;
+  xray_cyclotomic_scan(raw_input, NULL, &report);
+  char *json = xray_cyclotomic_report_json(&report);
+  xray_cyclotomic_report_clear(&report);
+  return json;
 }
 
 char *xray_benchmark_report_json(const XrayBenchmarkReport *report) {
@@ -419,7 +441,7 @@ char *xray_benchmark_frontier_text(const XrayBenchmarkReport *report) {
     if (empty) {
       snprintf(empty, 256,
         "BENCHMARK FRONTIER\n"
-        "Run Proof with benchmarks enabled to populate scratch-vs-GMP timings, CPU feature gates, and frontier rows.\n");
+        "Run Proof with benchmarks enabled to populate scratch-vs-GMP/MPIR timings, CPU feature gates, and frontier rows.\n");
     }
     return empty;
   }
@@ -458,6 +480,7 @@ char *xray_benchmark_frontier_text(const XrayBenchmarkReport *report) {
   char *cpu_summary = xray_cpu_features_summary(&report->cpu);
   jb_append(&buffer, "BENCHMARK FRONTIER\n");
   jb_printf(&buffer, "%s\n", cpu_summary ? cpu_summary : "CPU: unavailable");
+  jb_printf(&buffer, "Baseline backend: %s\n", XRAY_GMP_BACKEND_NAME);
   free(cpu_summary);
   jb_printf(&buffer,
     "Passed: %zu/%zu   Scratch rows: %zu   Replacement-ready: %zu   Oracle-only: %zu   Blocked: %zu   Elapsed: %lums\n\n",
@@ -507,8 +530,10 @@ char *xray_benchmark_frontier_text(const XrayBenchmarkReport *report) {
   }
 
   jb_append(&buffer,
-    "\nSCRATCH VS GMP\n"
-    "Operation                  Digits   Adoption       Ready    ScratchUs      GmpUs   Ratio   Stable\n"
+    "\nSCRATCH VS ");
+  jb_append(&buffer, XRAY_GMP_BACKEND_NAME);
+  jb_append(&buffer,
+    "\nOperation                  Digits   Adoption       Ready    ScratchUs   BackendUs   Ratio   Stable\n"
     "------------------------   ------   ------------   -----   ----------   --------   -----   ------\n");
   for (size_t index = 0; index < report->result_count; ++index) {
     const XrayBenchmarkResult *row = &report->results[index];
@@ -580,6 +605,16 @@ char *xray_workbench_full_report_json(const XrayWorkbenchReport *report) {
   append_gnfs_json(&buffer, report ? &report->gnfs : NULL);
   jb_append(&buffer, "}");
   return jb_take(&buffer);
+}
+
+char *xray_workbench_run_json(const char *raw_input) {
+  XrayWorkbenchReport report;
+  XrayRunConfig config = xray_run_default_config();
+  config.enable_benchmark = 0;
+  xray_workbench_run(raw_input, &config, &report);
+  char *json = xray_workbench_full_report_json(&report);
+  xray_workbench_report_clear(&report);
+  return json;
 }
 
 char *xray_workbench_report_json(const XrayFactorReport *factor, const XrayCyclotomicReport *cyclotomic, const XrayBenchmarkReport *benchmark) {

@@ -22,6 +22,11 @@ int main(void) {
   ok = ok && text && strcmp(text, "10000000000000000001") == 0;
   char *ffi_sum = ok ? xray_bigint_add_decimal("10,000_000 000,000_000 000", "1") : NULL;
   ok = ok && ffi_sum && strcmp(ffi_sum, "10000000000000000001") == 0;
+  char *factor_json = ok ? xray_factor_solve_json("10_403") : NULL;
+  ok = ok &&
+    factor_json &&
+    strstr(factor_json, "\"status\":\"solved\"") &&
+    strstr(factor_json, "\"productVerified\":true");
 
   if (ok) {
     printf("NumberXRay::core import ok: %s\n", ffi_sum);
@@ -31,6 +36,7 @@ int main(void) {
 
   xray_free(text);
   xray_free(ffi_sum);
+  xray_free(factor_json);
   xray_bigint_clear(&value);
   xray_bigint_clear(&one);
   xray_bigint_clear(&sum);

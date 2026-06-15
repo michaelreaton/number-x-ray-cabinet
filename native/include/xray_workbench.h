@@ -651,6 +651,17 @@ XRAY_API void xray_factor_report_clear(XrayFactorReport *report);
 XRAY_API char *xray_factor_report_json(const XrayFactorReport *report);
 
 /**
+ * Run the factor solver with the default config and return JSON.
+ *
+ * This one-shot helper is intended for FFI, plugin, and scripting consumers
+ * that want a self-contained report without managing XrayFactorReport storage.
+ * Invalid inputs are represented as JSON reports when possible. The caller owns
+ * the returned string and must release it with xray_free(). Returns NULL only
+ * when report allocation or serialization fails.
+ */
+XRAY_API char *xray_factor_solve_json(const char *raw_input);
+
+/**
  * Return Euler's totient phi(n) for an unsigned integer n.
  */
 XRAY_API unsigned int xray_phi_ui(unsigned int n);
@@ -682,6 +693,17 @@ XRAY_API void xray_cyclotomic_report_clear(XrayCyclotomicReport *report);
  * The caller owns the returned string and must release it with xray_free().
  */
 XRAY_API char *xray_cyclotomic_report_json(const XrayCyclotomicReport *report);
+
+/**
+ * Run the cyclotomic scanner with the default config and return JSON.
+ *
+ * This one-shot helper is intended for FFI, plugin, and scripting consumers
+ * that want a self-contained report without managing XrayCyclotomicReport
+ * storage. Invalid inputs are represented as JSON reports when possible. The
+ * caller owns the returned string and must release it with xray_free(). Returns
+ * NULL only when report allocation or serialization fails.
+ */
+XRAY_API char *xray_cyclotomic_scan_json(const char *raw_input);
 
 /**
  * Run the scratch-vs-GMP benchmark and kernel-probe ladder.
@@ -758,6 +780,19 @@ XRAY_API void xray_workbench_report_clear(XrayWorkbenchReport *report);
  * The caller owns the returned string and must release it with xray_free().
  */
 XRAY_API char *xray_workbench_full_report_json(const XrayWorkbenchReport *report);
+
+/**
+ * Run the standard proof workbench pipeline and return JSON.
+ *
+ * This one-shot helper is intended for FFI, plugin, and scripting consumers
+ * that want expression, factor, cyclotomic, and GNFS-stage reports without
+ * managing XrayWorkbenchReport storage. It uses the default workbench config
+ * with the benchmark ladder disabled to avoid surprise long-running calls, and
+ * still writes the normal workspace artifacts. The caller owns the returned
+ * string and must release it with xray_free(). Returns NULL only when report
+ * allocation or serialization fails.
+ */
+XRAY_API char *xray_workbench_run_json(const char *raw_input);
 
 /**
  * Serialize selected factor/cyclotomic/benchmark reports as workbench JSON.
