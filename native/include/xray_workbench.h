@@ -28,6 +28,7 @@ int xray_bigint_sub(XrayScratchBigInt *out, const XrayScratchBigInt *left, const
 int xray_bigint_mul(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right);
 int xray_bigint_mul_with_threshold(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t threshold);
 int xray_bigint_mul_toom3_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold);
+int xray_bigint_mul_toom3_unroll4_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold);
 int xray_bigint_mul_unroll4_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold);
 int xray_bigint_compare(const XrayScratchBigInt *left, const XrayScratchBigInt *right);
 uint32_t xray_bigint_mod_u32(const XrayScratchBigInt *value, uint32_t modulus);

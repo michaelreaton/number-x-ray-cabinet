@@ -711,17 +711,18 @@ static int signed_mul_u32_inplace(XraySignedScratchBigInt *value, uint64_t multi
   return ok;
 }
 
-static int signed_mul_unsigned_threshold(
+static int signed_mul_unsigned_threshold_mode(
   XraySignedScratchBigInt *out,
   const XraySignedScratchBigInt *left,
   const XraySignedScratchBigInt *right,
-  size_t threshold) {
+  size_t threshold,
+  int use_unroll4) {
   if (!out || !left || !right) return 0;
   if (left->sign == 0 || right->sign == 0) {
     out->sign = 0;
     return set_u32(&out->mag, 0);
   }
-  int ok = mul_dispatch_threshold(&out->mag, &left->mag, &right->mag, threshold);
+  int ok = mul_dispatch_threshold_mode(&out->mag, &left->mag, &right->mag, threshold, use_unroll4);
   out->sign = ok && out->mag.count ? left->sign * right->sign : 0;
   return ok;
 }
@@ -829,14 +830,15 @@ static int mul_toom3_probe_internal(
   XrayScratchBigInt *out,
   const XrayScratchBigInt *left,
   const XrayScratchBigInt *right,
-  size_t leaf_threshold) {
+  size_t leaf_threshold,
+  int use_unroll4) {
   if (!out || !left || !right) return 0;
   if (left->count == 0 || right->count == 0) return set_u32(out, 0);
   size_t max_count = left->count > right->count ? left->count : right->count;
   size_t min_count = left->count < right->count ? left->count : right->count;
   size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
   if (max_count < active_threshold * 3U || min_count * 3U < max_count * 2U) {
-    return mul_dispatch_threshold(out, left, right, active_threshold);
+    return mul_dispatch_threshold_mode(out, left, right, active_threshold, use_unroll4);
   }
 
   size_t split = (max_count + 2U) / 3U;
@@ -882,11 +884,11 @@ static int mul_toom3_probe_internal(
     eval_toom3_minus_one(&ym1, &b0, &b1, &b2) &&
     signed_from_positive_eval(&y2, &b0, &b1, &b2, 2, 4) &&
     signed_set_unsigned(&yinf, &b2) &&
-    signed_mul_unsigned_threshold(&v0, &x0, &y0, active_threshold) &&
-    signed_mul_unsigned_threshold(&v1, &x1, &y1, active_threshold) &&
-    signed_mul_unsigned_threshold(&vm1, &xm1, &ym1, active_threshold) &&
-    signed_mul_unsigned_threshold(&v2, &x2, &y2, active_threshold) &&
-    signed_mul_unsigned_threshold(&vinf, &xinf, &yinf, active_threshold);
+    signed_mul_unsigned_threshold_mode(&v0, &x0, &y0, active_threshold, use_unroll4) &&
+    signed_mul_unsigned_threshold_mode(&v1, &x1, &y1, active_threshold, use_unroll4) &&
+    signed_mul_unsigned_threshold_mode(&vm1, &xm1, &ym1, active_threshold, use_unroll4) &&
+    signed_mul_unsigned_threshold_mode(&v2, &x2, &y2, active_threshold, use_unroll4) &&
+    signed_mul_unsigned_threshold_mode(&vinf, &xinf, &yinf, active_threshold, use_unroll4);
 
   if (ok) {
     ok = signed_sub_inplace(&v2, &vm1) &&
@@ -991,12 +993,34 @@ int xray_bigint_mul_toom3_probe(XrayScratchBigInt *out, const XrayScratchBigInt 
   if (out == left || out == right) {
     XrayScratchBigInt temp;
     xray_bigint_init(&temp);
-    int ok = mul_toom3_probe_internal(&temp, left, right, active_threshold);
+    int ok = mul_toom3_probe_internal(&temp, left, right, active_threshold, 0);
     if (ok) ok = xray_bigint_copy(out, &temp);
     xray_bigint_clear(&temp);
     return ok;
   }
-  return mul_toom3_probe_internal(out, left, right, active_threshold);
+  return mul_toom3_probe_internal(out, left, right, active_threshold, 0);
+}
+
+int xray_bigint_mul_toom3_unroll4_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (!out || !left || !right) return 0;
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  if (out == left || out == right) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = mul_toom3_probe_internal(&temp, left, right, active_threshold, 1);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return mul_toom3_probe_internal(out, left, right, active_threshold, 1);
+#else
+  (void)out;
+  (void)left;
+  (void)right;
+  (void)leaf_threshold;
+  return 0;
+#endif
 }
 
 int xray_bigint_mul_unroll4_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold) {
