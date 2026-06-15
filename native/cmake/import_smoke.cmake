@@ -43,6 +43,11 @@ set(pkgconfig_file "${install_prefix}/${XRAY_INSTALL_LIBDIR}/pkgconfig/number-xr
 if(NOT EXISTS "${pkgconfig_file}")
   message(FATAL_ERROR "NumberXRay install smoke did not install pkg-config metadata: ${pkgconfig_file}")
 endif()
+file(READ "${pkgconfig_file}" pkgconfig_static)
+string(FIND "${pkgconfig_static}" "-lxray_core" pkgconfig_static_lib_index)
+if(pkgconfig_static_lib_index LESS 0)
+  message(FATAL_ERROR "NumberXRay static pkg-config metadata does not link xray_core.")
+endif()
 
 set(sdk_manifest_file "${install_prefix}/${XRAY_INSTALL_DATADIR}/number-xray/number-xray-sdk.json")
 if(NOT EXISTS "${sdk_manifest_file}")
@@ -66,8 +71,19 @@ foreach(expected
 endforeach()
 
 if(XRAY_EXPECT_SHARED)
+  set(shared_pkgconfig_file "${install_prefix}/${XRAY_INSTALL_LIBDIR}/pkgconfig/number-xray-shared.pc")
+  if(NOT EXISTS "${shared_pkgconfig_file}")
+    message(FATAL_ERROR "NumberXRay install smoke did not install shared pkg-config metadata: ${shared_pkgconfig_file}")
+  endif()
+  file(READ "${shared_pkgconfig_file}" pkgconfig_shared)
+  string(FIND "${pkgconfig_shared}" "-lnumber_xray" pkgconfig_shared_lib_index)
+  if(pkgconfig_shared_lib_index LESS 0)
+    message(FATAL_ERROR "NumberXRay shared pkg-config metadata does not link number_xray.")
+  endif()
+
   foreach(expected
       "\"cmakeTarget\": \"NumberXRay::core_shared\""
+      "\"pkgConfig\": \"number-xray-shared\""
       "\"libDir\": \"${XRAY_INSTALL_LIBDIR}\""
       "\"binDir\": \"${XRAY_INSTALL_BINDIR}\"")
     string(FIND "${sdk_manifest}" "${expected}" expected_index)
@@ -75,6 +91,15 @@ if(XRAY_EXPECT_SHARED)
       message(FATAL_ERROR "NumberXRay SDK manifest is missing expected shared entry: ${expected}")
     endif()
   endforeach()
+else()
+  set(shared_pkgconfig_file "${install_prefix}/${XRAY_INSTALL_LIBDIR}/pkgconfig/number-xray-shared.pc")
+  if(EXISTS "${shared_pkgconfig_file}")
+    message(FATAL_ERROR "NumberXRay static-only install unexpectedly installed shared pkg-config metadata: ${shared_pkgconfig_file}")
+  endif()
+  string(FIND "${sdk_manifest}" "\"coreShared\"" shared_manifest_index)
+  if(NOT shared_manifest_index LESS 0)
+    message(FATAL_ERROR "NumberXRay static-only SDK manifest unexpectedly advertises coreShared.")
+  endif()
 endif()
 
 set(configure_command

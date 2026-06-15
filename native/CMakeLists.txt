@@ -147,15 +147,28 @@ if(XRAY_INSTALL)
     @ONLY
   )
 
+  set(XRAY_PKG_CONFIG_FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/number-xray.pc"
+  )
+
   set(XRAY_SDK_SHARED_LIBRARY_JSON "")
   if(TARGET xray_core_shared)
+    configure_file(
+      "${CMAKE_CURRENT_SOURCE_DIR}/cmake/number-xray-shared.pc.in"
+      "${CMAKE_CURRENT_BINARY_DIR}/number-xray-shared.pc"
+      @ONLY
+    )
+    list(APPEND XRAY_PKG_CONFIG_FILES
+      "${CMAKE_CURRENT_BINARY_DIR}/number-xray-shared.pc"
+    )
     set(XRAY_SDK_SHARED_LIBRARY_JSON ",
     \"coreShared\": {
       \"name\": \"number_xray\",
       \"kind\": \"shared\",
       \"libDir\": \"${CMAKE_INSTALL_LIBDIR}\",
       \"binDir\": \"${CMAKE_INSTALL_BINDIR}\",
-      \"cmakeTarget\": \"NumberXRay::core_shared\"
+      \"cmakeTarget\": \"NumberXRay::core_shared\",
+      \"pkgConfig\": \"number-xray-shared\"
     }")
   endif()
 
@@ -183,7 +196,7 @@ if(XRAY_INSTALL)
   )
 
   install(FILES
-    "${CMAKE_CURRENT_BINARY_DIR}/number-xray.pc"
+    ${XRAY_PKG_CONFIG_FILES}
     DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig"
   )
 
