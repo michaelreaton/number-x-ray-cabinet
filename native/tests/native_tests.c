@@ -744,6 +744,7 @@ static void test_benchmarks(void) {
   int saw_toom3_vs_scratch_probe = 0;
   int saw_toom3_unroll4_vs_scratch_probe = 0;
   int saw_toom3_unroll4_vs_gmp_probe = 0;
+  int saw_toom3_unroll4_deep_vs_gmp_probe = 0;
   int saw_muladd_bmi2_adx_probe = 0;
   int saw_muladd_unroll_probe = 0;
   int saw_muladd_unroll8_probe = 0;
@@ -784,7 +785,8 @@ static void test_benchmarks(void) {
       CHECK(report->results[index].gmp_us > 0);
       CHECK(report->results[index].speed_ratio > 0.0);
       CHECK(report->results[index].max_allowed_speed_ratio == 0.98);
-      if (strcmp(report->results[index].operation, "mul-unroll4-deep-vs-gmp") == 0) {
+      if (strcmp(report->results[index].operation, "mul-unroll4-deep-vs-gmp") == 0 ||
+          strcmp(report->results[index].operation, "mul-toom3-unroll4-deep-vs-gmp") == 0) {
         CHECK(report->results[index].sample_count == 9);
       } else {
         CHECK(report->results[index].sample_count == 5);
@@ -824,6 +826,15 @@ static void test_benchmarks(void) {
       if (strcmp(report->results[index].operation, "mul-toom3-unroll4-vs-gmp") == 0) {
         saw_toom3_unroll4_vs_gmp_probe = 1;
         CHECK(strstr(report->results[index].detail, "leafThreshold=") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=one-level-toom3+unroll4-leaf") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=mpz_mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=msvc-x64-toom3-unroll4") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+      }
+      if (strcmp(report->results[index].operation, "mul-toom3-unroll4-deep-vs-gmp") == 0) {
+        saw_toom3_unroll4_deep_vs_gmp_probe = 1;
+        CHECK(strstr(report->results[index].detail, "samples=9") != NULL);
+        CHECK(strstr(report->results[index].detail, "leafThreshold=64") != NULL);
         CHECK(strstr(report->results[index].detail, "candidate=one-level-toom3+unroll4-leaf") != NULL);
         CHECK(strstr(report->results[index].detail, "baseline=mpz_mul") != NULL);
         CHECK(strstr(report->results[index].detail, "featureGate=msvc-x64-toom3-unroll4") != NULL);
@@ -910,6 +921,7 @@ static void test_benchmarks(void) {
 #if defined(_MSC_VER) && defined(_M_X64)
   CHECK(saw_toom3_unroll4_vs_scratch_probe);
   CHECK(saw_toom3_unroll4_vs_gmp_probe);
+  CHECK(saw_toom3_unroll4_deep_vs_gmp_probe);
   CHECK(saw_muladd_unroll_probe);
   CHECK(saw_muladd_unroll8_probe);
   CHECK(saw_mul_unroll4_vs_scratch_probe);
@@ -945,6 +957,7 @@ static void test_benchmarks(void) {
 #if defined(_MSC_VER) && defined(_M_X64)
   CHECK(strstr(json, "mul-toom3-unroll4-vs-scratch") != NULL);
   CHECK(strstr(json, "mul-toom3-unroll4-vs-gmp") != NULL);
+  CHECK(strstr(json, "mul-toom3-unroll4-deep-vs-gmp") != NULL);
   CHECK(strstr(json, "muladd-unroll4") != NULL);
   CHECK(strstr(json, "muladd-unroll8") != NULL);
   CHECK(strstr(json, "mul-unroll4-vs-scratch") != NULL);
@@ -966,6 +979,7 @@ static void test_benchmarks(void) {
 #if defined(_MSC_VER) && defined(_M_X64)
   CHECK(strstr(tsv, "mul-toom3-unroll4-vs-scratch") != NULL);
   CHECK(strstr(tsv, "mul-toom3-unroll4-vs-gmp") != NULL);
+  CHECK(strstr(tsv, "mul-toom3-unroll4-deep-vs-gmp") != NULL);
   CHECK(strstr(tsv, "muladd-unroll4") != NULL);
   CHECK(strstr(tsv, "muladd-unroll8") != NULL);
   CHECK(strstr(tsv, "mul-unroll4-vs-scratch") != NULL);
@@ -995,6 +1009,7 @@ static void test_benchmarks(void) {
 #if defined(_MSC_VER) && defined(_M_X64)
   CHECK(strstr(benchmark_tsv, "mul-toom3-unroll4-vs-scratch") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-toom3-unroll4-vs-gmp") != NULL);
+  CHECK(strstr(benchmark_tsv, "mul-toom3-unroll4-deep-vs-gmp") != NULL);
 #endif
   CHECK(strstr(benchmark_tsv, "speedRatio") != NULL);
   CHECK(strstr(benchmark_tsv, "stableSampleCount") != NULL);
