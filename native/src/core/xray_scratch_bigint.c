@@ -540,6 +540,7 @@ static void clear_many_bigints(
 
 static int mul_dispatch_threshold_mode(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t threshold, int use_unroll4);
 static int mul_dispatch_threshold(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t threshold);
+static int mul_toom3_probe_internal(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold, int use_unroll4, size_t depth_limit);
 
 static int mul_karatsuba_threshold_mode(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t threshold, int use_unroll4) {
   size_t left_count = left ? left->count : 0;
@@ -727,6 +728,23 @@ static int signed_mul_unsigned_threshold_mode(
   return ok;
 }
 
+static int signed_mul_toom3_recursive_mode(
+  XraySignedScratchBigInt *out,
+  const XraySignedScratchBigInt *left,
+  const XraySignedScratchBigInt *right,
+  size_t threshold,
+  int use_unroll4,
+  size_t depth_limit) {
+  if (!out || !left || !right) return 0;
+  if (left->sign == 0 || right->sign == 0) {
+    out->sign = 0;
+    return set_u32(&out->mag, 0);
+  }
+  int ok = mul_toom3_probe_internal(&out->mag, &left->mag, &right->mag, threshold, use_unroll4, depth_limit);
+  out->sign = ok && out->mag.count ? left->sign * right->sign : 0;
+  return ok;
+}
+
 static int add_scaled_unsigned(XrayScratchBigInt *out, const XrayScratchBigInt *value, uint64_t scale) {
   if (!out || !value) return 0;
   if (value->count == 0 || scale == 0) return 1;
@@ -831,13 +849,14 @@ static int mul_toom3_probe_internal(
   const XrayScratchBigInt *left,
   const XrayScratchBigInt *right,
   size_t leaf_threshold,
-  int use_unroll4) {
+  int use_unroll4,
+  size_t depth_limit) {
   if (!out || !left || !right) return 0;
   if (left->count == 0 || right->count == 0) return set_u32(out, 0);
   size_t max_count = left->count > right->count ? left->count : right->count;
   size_t min_count = left->count < right->count ? left->count : right->count;
   size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
-  if (max_count < active_threshold * 3U || min_count * 3U < max_count * 2U) {
+  if (depth_limit == 0 || max_count < active_threshold * 3U || min_count * 3U < max_count * 2U) {
     return mul_dispatch_threshold_mode(out, left, right, active_threshold, use_unroll4);
   }
 
@@ -884,11 +903,11 @@ static int mul_toom3_probe_internal(
     eval_toom3_minus_one(&ym1, &b0, &b1, &b2) &&
     signed_from_positive_eval(&y2, &b0, &b1, &b2, 2, 4) &&
     signed_set_unsigned(&yinf, &b2) &&
-    signed_mul_unsigned_threshold_mode(&v0, &x0, &y0, active_threshold, use_unroll4) &&
-    signed_mul_unsigned_threshold_mode(&v1, &x1, &y1, active_threshold, use_unroll4) &&
-    signed_mul_unsigned_threshold_mode(&vm1, &xm1, &ym1, active_threshold, use_unroll4) &&
-    signed_mul_unsigned_threshold_mode(&v2, &x2, &y2, active_threshold, use_unroll4) &&
-    signed_mul_unsigned_threshold_mode(&vinf, &xinf, &yinf, active_threshold, use_unroll4);
+    signed_mul_toom3_recursive_mode(&v0, &x0, &y0, active_threshold, use_unroll4, depth_limit - 1U) &&
+    signed_mul_toom3_recursive_mode(&v1, &x1, &y1, active_threshold, use_unroll4, depth_limit - 1U) &&
+    signed_mul_toom3_recursive_mode(&vm1, &xm1, &ym1, active_threshold, use_unroll4, depth_limit - 1U) &&
+    signed_mul_toom3_recursive_mode(&v2, &x2, &y2, active_threshold, use_unroll4, depth_limit - 1U) &&
+    signed_mul_toom3_recursive_mode(&vinf, &xinf, &yinf, active_threshold, use_unroll4, depth_limit - 1U);
 
   if (ok) {
     ok = signed_sub_inplace(&v2, &vm1) &&
@@ -993,12 +1012,12 @@ int xray_bigint_mul_toom3_probe(XrayScratchBigInt *out, const XrayScratchBigInt 
   if (out == left || out == right) {
     XrayScratchBigInt temp;
     xray_bigint_init(&temp);
-    int ok = mul_toom3_probe_internal(&temp, left, right, active_threshold, 0);
+    int ok = mul_toom3_probe_internal(&temp, left, right, active_threshold, 0, 1);
     if (ok) ok = xray_bigint_copy(out, &temp);
     xray_bigint_clear(&temp);
     return ok;
   }
-  return mul_toom3_probe_internal(out, left, right, active_threshold, 0);
+  return mul_toom3_probe_internal(out, left, right, active_threshold, 0, 1);
 }
 
 int xray_bigint_mul_toom3_unroll4_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold) {
@@ -1008,17 +1027,41 @@ int xray_bigint_mul_toom3_unroll4_probe(XrayScratchBigInt *out, const XrayScratc
   if (out == left || out == right) {
     XrayScratchBigInt temp;
     xray_bigint_init(&temp);
-    int ok = mul_toom3_probe_internal(&temp, left, right, active_threshold, 1);
+    int ok = mul_toom3_probe_internal(&temp, left, right, active_threshold, 1, 1);
     if (ok) ok = xray_bigint_copy(out, &temp);
     xray_bigint_clear(&temp);
     return ok;
   }
-  return mul_toom3_probe_internal(out, left, right, active_threshold, 1);
+  return mul_toom3_probe_internal(out, left, right, active_threshold, 1, 1);
 #else
   (void)out;
   (void)left;
   (void)right;
   (void)leaf_threshold;
+  return 0;
+#endif
+}
+
+int xray_bigint_mul_toom3_unroll4_recursive_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold, size_t depth_limit) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (!out || !left || !right) return 0;
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  size_t active_depth = depth_limit >= 1U ? depth_limit : 1U;
+  if (out == left || out == right) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = mul_toom3_probe_internal(&temp, left, right, active_threshold, 1, active_depth);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return mul_toom3_probe_internal(out, left, right, active_threshold, 1, active_depth);
+#else
+  (void)out;
+  (void)left;
+  (void)right;
+  (void)leaf_threshold;
+  (void)depth_limit;
   return 0;
 #endif
 }
