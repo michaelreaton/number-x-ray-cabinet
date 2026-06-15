@@ -92,6 +92,10 @@ static void benchmark_display_operation(const XrayBenchmarkResult *row, char *ou
       }
     }
   }
+  if (strcmp(row->operation, "muladd-bmi2-adx") == 0) {
+    snprintf(out, out_size, "muladd BMI2/ADX");
+    return;
+  }
   if (strcmp(row->operation, "mul-toom3") == 0 || strcmp(row->operation, "mul-toom3-vs-scratch") == 0) {
     const char *threshold = strstr(row->detail, "leafThreshold=");
     if (threshold) {
