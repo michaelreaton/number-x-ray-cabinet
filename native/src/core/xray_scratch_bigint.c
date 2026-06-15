@@ -96,30 +96,41 @@ static int add_small_inplace(XrayScratchBigInt *value, uint32_t addend) {
 int xray_bigint_set_decimal(XrayScratchBigInt *value, const char *decimal) {
   if (!value || !decimal) return 0;
   value->count = 0;
-  int saw_digit = 0;
-  uint32_t chunk = 0;
-  unsigned int chunk_digits = 0;
-  static const uint32_t powers10[] = {
-    1U, 10U, 100U, 1000U, 10000U, 100000U, 1000000U, 10000000U, 100000000U
-  };
+  size_t raw_length = strlen(decimal);
+  char *digits = (char *)calloc(raw_length + 1, 1);
+  if (!digits) return 0;
+  size_t used = 0;
   for (const unsigned char *p = (const unsigned char *)decimal; *p; ++p) {
     if (*p == ',' || *p == '_' || isspace(*p)) continue;
-    if (!isdigit(*p)) return 0;
-    saw_digit = 1;
-    chunk = chunk * 10U + (uint32_t)(*p - '0');
-    chunk_digits++;
-    if (chunk_digits == XRAY_BIGINT_BASE_DIGITS) {
-      if (!mul_small_inplace(value, XRAY_BIGINT_BASE)) return 0;
-      if (!add_small_inplace(value, chunk)) return 0;
-      chunk = 0;
-      chunk_digits = 0;
+    if (!isdigit(*p)) {
+      free(digits);
+      return 0;
     }
+    digits[used++] = (char)*p;
   }
-  if (chunk_digits) {
-    if (!mul_small_inplace(value, powers10[chunk_digits])) return 0;
-    if (!add_small_inplace(value, chunk)) return 0;
+  if (!used) {
+    free(digits);
+    return 0;
   }
-  if (!saw_digit) return 0;
+
+  size_t chunks = (used + XRAY_BIGINT_BASE_DIGITS - 1U) / XRAY_BIGINT_BASE_DIGITS;
+  if (!reserve_limbs(value, chunks ? chunks : 1)) {
+    free(digits);
+    return 0;
+  }
+
+  size_t end = used;
+  while (end > 0) {
+    size_t start = end > XRAY_BIGINT_BASE_DIGITS ? end - XRAY_BIGINT_BASE_DIGITS : 0;
+    uint32_t limb = 0;
+    for (size_t index = start; index < end; ++index) {
+      limb = limb * 10U + (uint32_t)(digits[index] - '0');
+    }
+    value->limbs[value->count++] = limb;
+    end = start;
+  }
+
+  free(digits);
   normalize(value);
   return 1;
 }
