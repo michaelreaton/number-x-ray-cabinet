@@ -276,6 +276,26 @@ static int mul_add_small_inplace(XrayScratchBigInt *value, uint64_t multiplier, 
   return 1;
 }
 
+static size_t write_u32_decimal(char *out, uint32_t value) {
+  char digits[10];
+  size_t count = 0;
+  do {
+    digits[count++] = (char)('0' + (value % 10U));
+    value /= 10U;
+  } while (value);
+  for (size_t index = 0; index < count; ++index) {
+    out[index] = digits[count - index - 1];
+  }
+  return count;
+}
+
+static void write_u32_decimal_padded9(char *out, uint32_t value) {
+  for (size_t index = XRAY_BIGINT_DECIMAL_CHUNK_DIGITS; index-- > 0;) {
+    out[index] = (char)('0' + (value % 10U));
+    value /= 10U;
+  }
+}
+
 int xray_bigint_set_decimal(XrayScratchBigInt *value, const char *decimal) {
   if (!value || !decimal) return 0;
   value->count = 0;
@@ -346,11 +366,10 @@ char *xray_bigint_get_decimal(const XrayScratchBigInt *value) {
     free(chunks);
     return NULL;
   }
-  int written = snprintf(text, capacity, "%u", chunks[chunk_count - 1]);
-  size_t used = written > 0 ? (size_t)written : 0;
+  size_t used = write_u32_decimal(text, chunks[chunk_count - 1]);
   for (size_t index = chunk_count - 1; index-- > 0;) {
-    written = snprintf(text + used, capacity - used, "%09u", chunks[index]);
-    used += written > 0 ? (size_t)written : 0;
+    write_u32_decimal_padded9(text + used, chunks[index]);
+    used += XRAY_BIGINT_DECIMAL_CHUNK_DIGITS;
   }
   free(chunks);
   return text;
