@@ -198,6 +198,12 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+  add_test(NAME xray_api_doc_coverage
+    COMMAND ${CMAKE_COMMAND}
+      -DXRAY_HEADER=${CMAKE_CURRENT_SOURCE_DIR}/include/xray_workbench.h
+      -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/api_doc_coverage.cmake
+  )
+
   add_executable(xray_native_tests tests/native_tests.c)
   target_link_libraries(xray_native_tests PRIVATE xray_core)
   add_test(NAME xray_native_tests COMMAND xray_native_tests)

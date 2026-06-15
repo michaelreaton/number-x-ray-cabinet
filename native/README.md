@@ -81,6 +81,10 @@ function documentation says the pointer is borrowed. Report structs that
 receive heap fields have matching `*_clear()` functions, and those clearers are
 part of the documented API contract.
 
+CTest enforces that documentation contract with `xray_api_doc_coverage`, which
+fails the build if a new exported `XRAY_API` function is added without a
+preceding Doxygen block.
+
 Non-CMake tools can discover compiler and linker flags from the installed
 pkg-config file on platforms that use pkg-config:
 
