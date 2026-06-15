@@ -391,3 +391,32 @@ CLI benchmark with the same route:
 Decision: reject the route and leave production multiplication unchanged. The
 ordinary scratch row was too run-sensitive, and the deep GMP gate did not
 confirm the candidate. This is useful evidence, but not permission to route.
+
+## 2026-06-15: Recursive Toom-3 + Unroll4 Probe
+
+Runs: `native/build-codex-fresh/native-test-runs/20260615-075145-c4b04caf`,
+`runs/20260615-075234-c4b04caf`
+
+The benchmark now includes `mul-toom3-u4-rec-vs-gmp` rows at the 16384 digit
+frontier. The candidate uses depth-limited recursive Toom-3 with the MSVC x64
+unroll4 leaf. A direct 12000 digit oracle test verifies exact output parity
+against GMP before benchmark rows are trusted.
+
+CTest benchmark:
+
+- 16384 digits, leaf 64, depth 2: ratio `0.930`, stable `4/5`, worst pair
+  ratio `1.266`, `promote-candidate`
+- 16384 digits, leaf 96, depth 2: ratio `1.103`, stable `1/5`, worst pair
+  ratio `1.317`, `observe-only`
+
+CLI benchmark:
+
+- 16384 digits, leaf 64, depth 2: ratio `1.082`, stable `0/5`, worst pair
+  ratio `1.413`, `observe-only`
+- 16384 digits, leaf 96, depth 2: ratio `1.178`, stable `1/5`, worst pair
+  ratio `1.258`, `observe-only`
+
+Decision: keep the recursive probe, but do not route it or add a deep gate yet.
+The leaf 64 result was promising in one run and disappeared in the canonical
+CLI benchmark. This points to benchmark noise or operand-shape sensitivity, not
+a proven GMP replacement.

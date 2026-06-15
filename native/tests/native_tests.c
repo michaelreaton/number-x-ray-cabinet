@@ -517,6 +517,48 @@ static void test_scratch_bigint_toom3_probe_oracle(void) {
   free(right_text);
 }
 
+static void test_scratch_bigint_toom3_recursive_probe_oracle(void) {
+#if defined(_MSC_VER) && defined(_M_X64)
+  char *left_text = make_pattern_decimal(12000, "98673142086421357905");
+  char *right_text = make_pattern_decimal(12000, "31415926535897932384");
+  XrayScratchBigInt a, b, product, alias;
+  xray_bigint_init(&a);
+  xray_bigint_init(&b);
+  xray_bigint_init(&product);
+  xray_bigint_init(&alias);
+  mpz_t ga, gb, gproduct;
+  mpz_inits(ga, gb, gproduct, NULL);
+
+  CHECK(xray_bigint_set_decimal(&a, left_text));
+  CHECK(xray_bigint_set_decimal(&b, right_text));
+  CHECK(a.count >= 576);
+  CHECK(b.count >= 576);
+  CHECK(mpz_set_str(ga, left_text, 10) == 0);
+  CHECK(mpz_set_str(gb, right_text, 10) == 0);
+  mpz_mul(gproduct, ga, gb);
+
+  CHECK(xray_bigint_mul_toom3_unroll4_recursive_probe(&product, &a, &b, 64, 2));
+  check_scratch_matches_mpz(&product, gproduct);
+
+  CHECK(xray_bigint_copy(&alias, &a));
+  CHECK(xray_bigint_mul_toom3_unroll4_recursive_probe(&alias, &alias, &b, 64, 2));
+  check_scratch_matches_mpz(&alias, gproduct);
+
+  xray_bigint_clear(&a);
+  xray_bigint_clear(&b);
+  xray_bigint_clear(&product);
+  xray_bigint_clear(&alias);
+  mpz_clears(ga, gb, gproduct, NULL);
+  free(left_text);
+  free(right_text);
+#else
+  XrayScratchBigInt value;
+  xray_bigint_init(&value);
+  CHECK(!xray_bigint_mul_toom3_unroll4_recursive_probe(&value, &value, &value, 64, 2));
+  xray_bigint_clear(&value);
+#endif
+}
+
 static void test_scratch_bigint_unroll4_probe_oracle(void) {
   char *left_text = make_pattern_decimal(1800, "80852963074185296307");
   char *right_text = make_pattern_decimal(1800, "27182818284590452353");
@@ -747,6 +789,7 @@ static void test_benchmarks(void) {
   int saw_toom3_unroll4_deep_vs_gmp_probe = 0;
   int saw_toom3_unroll4_deep_leaf64_probe = 0;
   int saw_toom3_unroll4_deep_leaf96_probe = 0;
+  int saw_toom3_unroll4_recursive_vs_gmp_probe = 0;
   int saw_muladd_bmi2_adx_probe = 0;
   int saw_muladd_unroll_probe = 0;
   int saw_muladd_unroll8_probe = 0;
@@ -844,6 +887,15 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "featureGate=msvc-x64-toom3-unroll4") != NULL);
         CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
       }
+      if (strcmp(report->results[index].operation, "mul-toom3-u4-rec-vs-gmp") == 0) {
+        saw_toom3_unroll4_recursive_vs_gmp_probe = 1;
+        CHECK(strstr(report->results[index].detail, "leafThreshold=") != NULL);
+        CHECK(strstr(report->results[index].detail, "depthLimit=2") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=recursive-toom3+unroll4") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=mpz_mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=msvc-x64-recursive-toom3") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+      }
       if (strcmp(report->results[index].operation, "mul-unroll4-vs-scratch") == 0) {
         saw_mul_unroll4_vs_scratch_probe = 1;
         CHECK(strstr(report->results[index].detail, "leafThreshold=") != NULL);
@@ -928,6 +980,7 @@ static void test_benchmarks(void) {
   CHECK(saw_toom3_unroll4_deep_vs_gmp_probe);
   CHECK(saw_toom3_unroll4_deep_leaf64_probe);
   CHECK(saw_toom3_unroll4_deep_leaf96_probe);
+  CHECK(saw_toom3_unroll4_recursive_vs_gmp_probe);
   CHECK(saw_muladd_unroll_probe);
   CHECK(saw_muladd_unroll8_probe);
   CHECK(saw_mul_unroll4_vs_scratch_probe);
@@ -964,6 +1017,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "mul-toom3-unroll4-vs-scratch") != NULL);
   CHECK(strstr(json, "mul-toom3-unroll4-vs-gmp") != NULL);
   CHECK(strstr(json, "mul-toom3-unroll4-deep-vs-gmp") != NULL);
+  CHECK(strstr(json, "mul-toom3-u4-rec-vs-gmp") != NULL);
   CHECK(strstr(json, "muladd-unroll4") != NULL);
   CHECK(strstr(json, "muladd-unroll8") != NULL);
   CHECK(strstr(json, "mul-unroll4-vs-scratch") != NULL);
@@ -986,6 +1040,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "mul-toom3-unroll4-vs-scratch") != NULL);
   CHECK(strstr(tsv, "mul-toom3-unroll4-vs-gmp") != NULL);
   CHECK(strstr(tsv, "mul-toom3-unroll4-deep-vs-gmp") != NULL);
+  CHECK(strstr(tsv, "mul-toom3-u4-rec-vs-gmp") != NULL);
   CHECK(strstr(tsv, "muladd-unroll4") != NULL);
   CHECK(strstr(tsv, "muladd-unroll8") != NULL);
   CHECK(strstr(tsv, "mul-unroll4-vs-scratch") != NULL);
@@ -1016,6 +1071,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "mul-toom3-unroll4-vs-scratch") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-toom3-unroll4-vs-gmp") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-toom3-unroll4-deep-vs-gmp") != NULL);
+  CHECK(strstr(benchmark_tsv, "mul-toom3-u4-rec-vs-gmp") != NULL);
 #endif
   CHECK(strstr(benchmark_tsv, "speedRatio") != NULL);
   CHECK(strstr(benchmark_tsv, "stableSampleCount") != NULL);
@@ -1042,6 +1098,7 @@ int main(void) {
   test_scratch_bigint_karatsuba_middle_signs();
   test_scratch_bigint_mul_thresholds();
   test_scratch_bigint_toom3_probe_oracle();
+  test_scratch_bigint_toom3_recursive_probe_oracle();
   test_scratch_bigint_unroll4_probe_oracle();
   test_scratch_bigint_toom3_minus_one_signs();
   test_ambiguous_input_rejected();
