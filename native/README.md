@@ -86,6 +86,21 @@ Bindings and plugin-style loaders should check the runtime library they loaded:
 returns the C ABI version. The stable wrapper header also exposes
 `NUMBER_XRAY_VERSION` and `NUMBER_XRAY_ABI_VERSION` for compile-time checks.
 
+Tools that only need basic non-negative integer arithmetic can start with the
+decimal-string convenience helpers:
+
+```c
+char *sum = xray_bigint_add_decimal("10,000_000", "1");
+if (sum) {
+  puts(sum);
+  xray_free(sum);
+}
+```
+
+These helpers parse the same messy decimal separators as the struct-based
+scratch bigint API and return newly allocated decimal strings, which makes them
+easier to import from FFI layers before a binding owns the full struct lifecycle.
+
 CTest enforces that documentation contract with `xray_api_doc_coverage`, which
 fails the build if a new exported `XRAY_API` function is added without a
 preceding Doxygen block.
