@@ -371,7 +371,7 @@ static void run_scratch_bigint_gates(XrayBenchmarkReport *report) {
     run_scratch_modular_case(report, "gcd-u32", sizes[index]);
     run_scratch_modular_case(report, "powmod-u32", sizes[index]);
     run_scratch_divmod_case(report, sizes[index]);
-    if (sizes[index] <= 150) run_scratch_binary_case(report, "mul", sizes[index]);
+    run_scratch_binary_case(report, "mul", sizes[index]);
   }
 }
 

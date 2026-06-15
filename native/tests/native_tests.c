@@ -159,6 +159,19 @@ static void test_scratch_bigint_oracle(void) {
   free(alias_difference);
   free(oracle_alias_difference);
 
+  CHECK(xray_bigint_set_decimal(&a, "123456789012345678901234567890"));
+  CHECK(xray_bigint_set_decimal(&b, "98765432109876543210"));
+  mpz_set_str(ga, "123456789012345678901234567890", 10);
+  mpz_set_str(gb, "98765432109876543210", 10);
+  CHECK(xray_bigint_mul(&a, &a, &b));
+  mpz_mul(gproduct, ga, gb);
+  check_scratch_matches_mpz(&a, gproduct);
+
+  CHECK(xray_bigint_set_decimal(&a, "123456789012345678901234567890"));
+  CHECK(xray_bigint_set_decimal(&b, "98765432109876543210"));
+  CHECK(xray_bigint_mul(&b, &a, &b));
+  check_scratch_matches_mpz(&b, gproduct);
+
   mpz_clears(ga, gb, gsum, gdifference, gproduct, gquotient, gmodulus, ggcd, gpow, gexponent, NULL);
   xray_bigint_clear(&a);
   xray_bigint_clear(&b);
@@ -403,7 +416,7 @@ static void test_benchmarks(void) {
   XrayBenchmarkResult mismatch;
   memset(&mismatch, 0, sizeof(mismatch));
   CHECK(strcmp(xray_scratch_adoption_for_result(&mismatch), "blocked-output-mismatch") == 0);
-  CHECK(scratch_rows >= 23);
+  CHECK(scratch_rows >= 24);
   CHECK(report.scratch_count == scratch_rows);
   CHECK(report.replacement_ready_count == replacement_ready_rows);
   CHECK(report.oracle_only_count == oracle_only_rows);

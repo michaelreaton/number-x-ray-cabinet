@@ -51,6 +51,11 @@ int xray_bigint_is_zero(const XrayScratchBigInt *value) {
 
 int xray_bigint_copy(XrayScratchBigInt *out, const XrayScratchBigInt *value) {
   if (!out || !value) return 0;
+  if (out == value) return 1;
+  if (value->count == 0) {
+    out->count = 0;
+    return 1;
+  }
   if (!reserve_limbs(out, value->count ? value->count : 1)) return 0;
   if (value->count) memcpy(out->limbs, value->limbs, sizeof(uint32_t) * value->count);
   out->count = value->count;
@@ -123,14 +128,14 @@ static int set_decimal_buffered(XrayScratchBigInt *value, const char *decimal, s
   return 1;
 }
 
-static int set_decimal_noalloc(XrayScratchBigInt *value, const char *decimal, size_t digit_count) {
+static int set_decimal_noalloc(XrayScratchBigInt *value, const char *decimal, size_t digit_count, size_t text_length) {
   size_t chunks = (digit_count + XRAY_BIGINT_BASE_DIGITS - 1U) / XRAY_BIGINT_BASE_DIGITS;
   if (!reserve_limbs(value, chunks ? chunks : 1)) return 0;
 
   uint32_t limb = 0;
   uint32_t multiplier = 1;
   unsigned int limb_digits = 0;
-  size_t pos = strlen(decimal);
+  size_t pos = text_length;
   while (pos > 0) {
     unsigned char ch = (unsigned char)decimal[--pos];
     if (ch == ',' || ch == '_' || isspace(ch)) continue;
@@ -153,17 +158,19 @@ int xray_bigint_set_decimal(XrayScratchBigInt *value, const char *decimal) {
   if (!value || !decimal) return 0;
   value->count = 0;
   size_t digit_count = 0;
-  for (const unsigned char *p = (const unsigned char *)decimal; *p; ++p) {
+  const unsigned char *p = (const unsigned char *)decimal;
+  for (; *p; ++p) {
     if (*p == ',' || *p == '_' || isspace(*p)) continue;
     if (!isdigit(*p)) return 0;
     digit_count++;
   }
   if (!digit_count) return 0;
+  size_t text_length = (size_t)(p - (const unsigned char *)decimal);
 
   /* Benchmarks show the raw reverse scan helps larger research inputs but hurts short integers. */
   int ok = digit_count < 100 ?
     set_decimal_buffered(value, decimal, digit_count) :
-    set_decimal_noalloc(value, decimal, digit_count);
+    set_decimal_noalloc(value, decimal, digit_count, text_length);
   if (!ok) return 0;
 
   normalize(value);
@@ -202,6 +209,8 @@ int xray_bigint_compare(const XrayScratchBigInt *left, const XrayScratchBigInt *
 
 int xray_bigint_add(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
   if (!out || !left || !right) return 0;
+  if (left->count == 0) return xray_bigint_copy(out, right);
+  if (right->count == 0) return xray_bigint_copy(out, left);
   const XrayScratchBigInt *longer = left;
   const XrayScratchBigInt *shorter = right;
   if (right->count > left->count) {
@@ -233,13 +242,15 @@ int xray_bigint_add(XrayScratchBigInt *out, const XrayScratchBigInt *left, const
   }
   out->count = longer->count;
   if (carry) out->limbs[out->count++] = (uint32_t)carry;
-  normalize(out);
   return 1;
 }
 
 int xray_bigint_sub(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
   if (!out || !left || !right) return 0;
-  if (xray_bigint_compare(left, right) < 0) return 0;
+  int ordering = xray_bigint_compare(left, right);
+  if (ordering < 0) return 0;
+  if (ordering == 0) return set_u32(out, 0);
+  if (right->count == 0) return xray_bigint_copy(out, left);
   if (!reserve_limbs(out, left->count ? left->count : 1)) return 0;
   uint64_t borrow = 0;
   size_t index = 0;
@@ -269,7 +280,7 @@ int xray_bigint_sub(XrayScratchBigInt *out, const XrayScratchBigInt *left, const
   return borrow == 0;
 }
 
-int xray_bigint_mul(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
+static int mul_schoolbook(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
   if (!out || !left || !right) return 0;
   if (left->count == 0 || right->count == 0) return set_u32(out, 0);
   size_t needed = left->count + right->count;
@@ -286,17 +297,31 @@ int xray_bigint_mul(XrayScratchBigInt *out, const XrayScratchBigInt *left, const
     size_t pos = i + right->count;
     while (carry) {
       uint64_t current = out->limbs[pos] + carry;
-      out->limbs[pos] = (uint32_t)(current % XRAY_BIGINT_BASE);
-      carry = current / XRAY_BIGINT_BASE;
-      pos++;
-      if (pos >= out->count && carry) {
-        if (!reserve_limbs(out, out->count + 1)) return 0;
-        out->limbs[out->count++] = 0;
+      if (current >= XRAY_BIGINT_BASE) {
+        out->limbs[pos] = (uint32_t)(current - XRAY_BIGINT_BASE);
+        carry = 1;
+      } else {
+        out->limbs[pos] = (uint32_t)current;
+        carry = 0;
       }
+      pos++;
     }
   }
   normalize(out);
   return 1;
+}
+
+int xray_bigint_mul(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
+  if (!out || !left || !right) return 0;
+  if (out == left || out == right) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = mul_schoolbook(&temp, left, right);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return mul_schoolbook(out, left, right);
 }
 
 uint32_t xray_bigint_mod_u32(const XrayScratchBigInt *value, uint32_t modulus) {
