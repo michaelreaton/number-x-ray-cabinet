@@ -877,6 +877,57 @@ static void append_perf_result(
   append_result(report, &result);
 }
 
+static void append_parse_chunk_probe_result(
+  XrayBenchmarkReport *report,
+  size_t digits,
+  unsigned int chunk_digits,
+  int parity,
+  unsigned long long candidate_us,
+  unsigned long long baseline_us,
+  double paired_ratio,
+  size_t stable_sample_count,
+  size_t sample_count,
+  double worst_pair_ratio) {
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "kernel parse chunk %u digits %zu digits", chunk_digits, digits);
+  snprintf(result.category, sizeof(result.category), "kernel-probe");
+  snprintf(result.operation, sizeof(result.operation), "parse-chunk");
+  result.digits = digits;
+  result.scratch_us = candidate_us ? candidate_us : 1;
+  result.gmp_us = baseline_us ? baseline_us : 1;
+  result.speed_ratio = paired_ratio > 0.0 ? paired_ratio : (double)result.scratch_us / (double)result.gmp_us;
+  result.max_allowed_speed_ratio = 0.98;
+  result.stable_sample_count = stable_sample_count;
+  result.sample_count = sample_count;
+  result.worst_pair_ratio = worst_pair_ratio;
+  result.parity_verified = parity;
+  size_t required_stable = kernel_required_stable_samples(sample_count);
+  result.replacement_ready = parity &&
+    result.speed_ratio <= result.max_allowed_speed_ratio &&
+    result.stable_sample_count >= required_stable;
+  snprintf(result.adoption, sizeof(result.adoption), "%s",
+    !parity ? "blocked-output-mismatch" : (result.replacement_ready ? "promote-candidate" : "observe-only"));
+  snprintf(result.status, sizeof(result.status), "%s",
+    !parity ? "mismatch" : (result.replacement_ready ? "candidate-faster" : (result.speed_ratio < 1.0 ? "candidate-no-margin" : "baseline-faster")));
+  result.passed = parity;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  snprintf(result.detail, sizeof(result.detail),
+    "op=parse-chunk digits=%zu chunkDigits=%u operandFamilies=1 samples=%zu stablePairs=%zu/%zu candidateUs=%llu baselineUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median max=%.2f candidate=decimal-parse-chunk baseline=current-scratch-parse featureGate=decimal-parse-chunk gmpClue=mpz_set_str-chunking adoption=%s",
+    digits,
+    chunk_digits,
+    sample_count,
+    stable_sample_count,
+    sample_count,
+    result.scratch_us,
+    result.gmp_us,
+    result.speed_ratio,
+    result.worst_pair_ratio,
+    result.max_allowed_speed_ratio,
+    result.adoption);
+  append_result(report, &result);
+}
+
 static void append_square_vs_mul_probe_result(
   XrayBenchmarkReport *report,
   size_t digits,
@@ -1776,6 +1827,76 @@ static void run_scratch_parse_case(XrayBenchmarkReport *report, size_t digits) {
 
   mpz_clear(gmp);
   xray_bigint_clear(&scratch);
+  free(text);
+}
+
+static void run_parse_chunk_probe_case(XrayBenchmarkReport *report, size_t digits, unsigned int chunk_digits) {
+  char *text = benchmark_decimal(digits, 7U + chunk_digits, 1);
+  if (!text) return;
+  unsigned int iterations = perf_iterations("parse", digits);
+  XrayScratchBigInt candidate, baseline;
+  xray_bigint_init(&candidate);
+  xray_bigint_init(&baseline);
+  mpz_t gmp;
+  mpz_init(gmp);
+  int ok = mpz_set_str(gmp, text, 10) == 0;
+  unsigned long long candidate_samples[XRAY_BENCH_SAMPLES] = {0};
+  unsigned long long baseline_samples[XRAY_BENCH_SAMPLES] = {0};
+  int parity = 1;
+
+  for (unsigned int sample = 0; sample < XRAY_BENCH_SAMPLES; ++sample) {
+    if ((sample % 2U) == 0U) {
+      unsigned long long candidate_started = xray_now_us();
+      for (unsigned int index = 0; ok && index < iterations; ++index) {
+        ok = xray_bigint_set_decimal_chunk_probe(&candidate, text, chunk_digits);
+      }
+      candidate_samples[sample] = xray_now_us() - candidate_started;
+
+      unsigned long long baseline_started = xray_now_us();
+      for (unsigned int index = 0; ok && index < iterations; ++index) {
+        ok = xray_bigint_set_decimal(&baseline, text);
+      }
+      baseline_samples[sample] = xray_now_us() - baseline_started;
+    } else {
+      unsigned long long baseline_started = xray_now_us();
+      for (unsigned int index = 0; ok && index < iterations; ++index) {
+        ok = xray_bigint_set_decimal(&baseline, text);
+      }
+      baseline_samples[sample] = xray_now_us() - baseline_started;
+
+      unsigned long long candidate_started = xray_now_us();
+      for (unsigned int index = 0; ok && index < iterations; ++index) {
+        ok = xray_bigint_set_decimal_chunk_probe(&candidate, text, chunk_digits);
+      }
+      candidate_samples[sample] = xray_now_us() - candidate_started;
+    }
+
+    char *candidate_text = xray_bigint_get_decimal(&candidate);
+    char *baseline_text = xray_bigint_get_decimal(&baseline);
+    char *gmp_text = mpz_get_str(NULL, 10, gmp);
+    parity = parity && ok && candidate_text && baseline_text && gmp_text &&
+      strcmp(candidate_text, baseline_text) == 0 &&
+      strcmp(candidate_text, gmp_text) == 0;
+    free(candidate_text);
+    free(baseline_text);
+    free(gmp_text);
+  }
+
+  append_parse_chunk_probe_result(
+    report,
+    digits,
+    chunk_digits,
+    parity,
+    median_samples(candidate_samples, XRAY_BENCH_SAMPLES),
+    median_samples(baseline_samples, XRAY_BENCH_SAMPLES),
+    median_paired_ratio(candidate_samples, baseline_samples, XRAY_BENCH_SAMPLES),
+    paired_ratio_wins(candidate_samples, baseline_samples, XRAY_BENCH_SAMPLES, 0.98),
+    XRAY_BENCH_SAMPLES,
+    max_paired_ratio(candidate_samples, baseline_samples, XRAY_BENCH_SAMPLES));
+
+  mpz_clear(gmp);
+  xray_bigint_clear(&candidate);
+  xray_bigint_clear(&baseline);
   free(text);
 }
 
@@ -3494,16 +3615,11 @@ static void run_scratch_bigint_gates(XrayBenchmarkReport *report) {
   run_scratch_square_case(report, 16384);
   run_square_vs_mul_probe_case(report, 16384);
   const size_t square_probe_sizes[] = {1000, 4096, 8192, 16384};
-  for (size_t index = 0; index < sizeof(square_probe_sizes) / sizeof(square_probe_sizes[0]); ++index) {
-    run_square_karatsuba_probe_case(report, square_probe_sizes[index], 64, 0);
-    run_square_karatsuba_probe_case(report, square_probe_sizes[index], 64, 1);
-  }
-  const size_t square_scout_sizes[] = {4096, 8192, 16384};
-  const size_t square_scout_thresholds[] = {32, 96, 128};
-  for (size_t size_index = 0; size_index < sizeof(square_scout_sizes) / sizeof(square_scout_sizes[0]); ++size_index) {
-    for (size_t threshold_index = 0; threshold_index < sizeof(square_scout_thresholds) / sizeof(square_scout_thresholds[0]); ++threshold_index) {
-      run_square_karatsuba_probe_case(report, square_scout_sizes[size_index], square_scout_thresholds[threshold_index], 0);
-      run_square_karatsuba_probe_case(report, square_scout_sizes[size_index], square_scout_thresholds[threshold_index], 1);
+  const size_t square_probe_thresholds[] = {16, 24, 32, 48, 64, 80, 96, 112, 128, 160};
+  for (size_t size_index = 0; size_index < sizeof(square_probe_sizes) / sizeof(square_probe_sizes[0]); ++size_index) {
+    for (size_t threshold_index = 0; threshold_index < sizeof(square_probe_thresholds) / sizeof(square_probe_thresholds[0]); ++threshold_index) {
+      run_square_karatsuba_probe_case(report, square_probe_sizes[size_index], square_probe_thresholds[threshold_index], 0);
+      run_square_karatsuba_probe_case(report, square_probe_sizes[size_index], square_probe_thresholds[threshold_index], 1);
     }
   }
 }
@@ -3531,8 +3647,16 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     run_u32_precompute_probe_case(report, "powmod-u32", u32_precompute_digits[digit_index]);
   }
 
+  const size_t parse_chunk_digits[] = {40, 150, 512, 1000, 2048, 4096, 8192, 16384};
+  const unsigned int parse_chunk_sizes[] = {8, 9, 10, 15, 18, 19};
+  for (size_t digit_index = 0; digit_index < sizeof(parse_chunk_digits) / sizeof(parse_chunk_digits[0]); ++digit_index) {
+    for (size_t chunk_index = 0; chunk_index < sizeof(parse_chunk_sizes) / sizeof(parse_chunk_sizes[0]); ++chunk_index) {
+      run_parse_chunk_probe_case(report, parse_chunk_digits[digit_index], parse_chunk_sizes[chunk_index]);
+    }
+  }
+
   const size_t format_digits[] = {256, 512, 1000, 2048, 4096, 8192, 16384};
-  const size_t format_thresholds[] = {8, 16, 24, 32, 48, 64, 96, 128, 192};
+  const size_t format_thresholds[] = {8, 16, 24, 32, 40, 44, 48, 52, 56, 64, 80, 96, 128, 160, 192, 256};
   for (size_t digit_index = 0; digit_index < sizeof(format_digits) / sizeof(format_digits[0]); ++digit_index) {
     for (size_t threshold_index = 0; threshold_index < sizeof(format_thresholds) / sizeof(format_thresholds[0]); ++threshold_index) {
       run_format_threshold_probe_case(report, format_digits[digit_index], format_thresholds[threshold_index]);
@@ -3554,7 +3678,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
   }
 
   const size_t digits[] = {512, 1000, 2048, 4096, 8192, 16384};
-  const size_t thresholds[] = {16, 24, 32, 48, 64, 96, 128, 192};
+  const size_t thresholds[] = {16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 256};
   for (size_t digit_index = 0; digit_index < sizeof(digits) / sizeof(digits[0]); ++digit_index) {
     for (size_t threshold_index = 0; threshold_index < sizeof(thresholds) / sizeof(thresholds[0]); ++threshold_index) {
       run_mul_threshold_probe_case(report, digits[digit_index], thresholds[threshold_index]);
@@ -3562,7 +3686,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
   }
 
   const size_t toom_digits[] = {4096, 8192, 16384};
-  const size_t toom_leaf_thresholds[] = {32, 64};
+  const size_t toom_leaf_thresholds[] = {32, 48, 64, 96};
   for (size_t digit_index = 0; digit_index < sizeof(toom_digits) / sizeof(toom_digits[0]); ++digit_index) {
     for (size_t threshold_index = 0; threshold_index < sizeof(toom_leaf_thresholds) / sizeof(toom_leaf_thresholds[0]); ++threshold_index) {
       run_mul_toom3_probe_case(report, toom_digits[digit_index], toom_leaf_thresholds[threshold_index]);
@@ -3577,7 +3701,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
       run_mul_toom3_unroll4_vs_scratch_probe_case(report, toom_unroll_digits[digit_index], toom_leaf_thresholds[threshold_index]);
       run_mul_toom3_unroll4_vs_gmp_probe_case(report, toom_unroll_digits[digit_index], toom_leaf_thresholds[threshold_index]);
     }
-    const size_t toom_unroll_handoff_leaf_thresholds[] = {24, 48, 96};
+    const size_t toom_unroll_handoff_leaf_thresholds[] = {24, 40, 56, 80, 128};
     for (size_t threshold_index = 0; threshold_index < sizeof(toom_unroll_handoff_leaf_thresholds) / sizeof(toom_unroll_handoff_leaf_thresholds[0]); ++threshold_index) {
       run_mul_toom3_unroll4_vs_gmp_probe_case(report, toom_unroll_digits[digit_index], toom_unroll_handoff_leaf_thresholds[threshold_index]);
     }

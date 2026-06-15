@@ -25,7 +25,6 @@
 #define XRAY_BIGINT_DECIMAL_HORNER_MIN_LIMBS 48U
 #define XRAY_BIGINT_DECIMAL_PAIR_WRITER_SMALL_MAX_LIMBS 8U
 #define XRAY_BIGINT_DECIMAL_PAIR_WRITER_HORNER_MAX_LIMBS 54U
-#define XRAY_BIGINT_PARSE_CHUNK_BASE UINT64_C(10000000000000000000)
 #define XRAY_BIGINT_PARSE_CHUNK_DIGITS 19U
 #define XRAY_BIGINT_KARATSUBA_THRESHOLD 64U
 #define XRAY_BIGINT_UNROLL4_ROUTE_MIN_LIMBS 8U
@@ -672,8 +671,9 @@ static char *format_decimal_chunks_u32(const uint32_t *chunks, size_t chunk_coun
   return text;
 }
 
-int xray_bigint_set_decimal(XrayScratchBigInt *value, const char *decimal) {
+static int set_decimal_with_chunk_digits(XrayScratchBigInt *value, const char *decimal, unsigned int chunk_size) {
   if (!value || !decimal) return 0;
+  if (chunk_size == 0 || chunk_size >= sizeof(parse_decimal_powers) / sizeof(parse_decimal_powers[0])) return 0;
   value->count = 0;
   size_t digit_count = 0;
   uint64_t chunk = 0;
@@ -687,8 +687,8 @@ int xray_bigint_set_decimal(XrayScratchBigInt *value, const char *decimal) {
     digit_count++;
     chunk = chunk * 10U + (uint64_t)(ch - '0');
     chunk_digits++;
-    if (chunk_digits == XRAY_BIGINT_PARSE_CHUNK_DIGITS) {
-      if (!mul_add_small_inplace(value, XRAY_BIGINT_PARSE_CHUNK_BASE, chunk)) return 0;
+    if (chunk_digits == chunk_size) {
+      if (!mul_add_small_inplace(value, parse_decimal_powers[chunk_size], chunk)) return 0;
       chunk = 0;
       chunk_digits = 0;
     }
@@ -698,6 +698,14 @@ int xray_bigint_set_decimal(XrayScratchBigInt *value, const char *decimal) {
     if (!mul_add_small_inplace(value, parse_decimal_powers[chunk_digits], chunk)) return 0;
   }
   return 1;
+}
+
+int xray_bigint_set_decimal(XrayScratchBigInt *value, const char *decimal) {
+  return set_decimal_with_chunk_digits(value, decimal, XRAY_BIGINT_PARSE_CHUNK_DIGITS);
+}
+
+int xray_bigint_set_decimal_chunk_probe(XrayScratchBigInt *value, const char *decimal, unsigned int chunk_digits) {
+  return set_decimal_with_chunk_digits(value, decimal, chunk_digits);
 }
 
 static char *get_decimal_with_options_writer(const XrayScratchBigInt *value, size_t horner_min_limbs, int use_direct_divider, int use_pair_writer) {

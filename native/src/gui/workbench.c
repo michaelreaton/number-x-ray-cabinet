@@ -81,6 +81,19 @@ static char *gui_strdup(const char *text) {
 static void benchmark_display_operation(const XrayBenchmarkResult *row, char *out, size_t out_size) {
   if (!row || !out || out_size == 0) return;
   const char *operation = row->operation[0] ? row->operation : row->name;
+  if (strcmp(row->operation, "parse-chunk") == 0) {
+    const char *chunk_digits = strstr(row->detail, "chunkDigits=");
+    if (chunk_digits) {
+      char *end = NULL;
+      unsigned long digits = strtoul(chunk_digits + strlen("chunkDigits="), &end, 10);
+      if (end && end != chunk_digits + strlen("chunkDigits=")) {
+        snprintf(out, out_size, "parse chunk %lu digits", digits);
+        return;
+      }
+    }
+    snprintf(out, out_size, "parse chunk");
+    return;
+  }
   if (strcmp(row->operation, "mul-threshold") == 0) {
     const char *threshold = strstr(row->detail, "threshold=");
     if (threshold) {
