@@ -30,6 +30,7 @@
 #define XRAY_BIGINT_KARATSUBA_THRESHOLD 64U
 #define XRAY_BIGINT_UNROLL4_ROUTE_MIN_LIMBS 8U
 #define XRAY_BIGINT_UNROLL4_ROUTE_MAX_LIMBS 512U
+#define XRAY_BIGINT_SQUARE_SELF_MUL_MAX_LIMBS 8U
 #define XRAY_BIGINT_FERMAT_65537 65537U
 
 static const uint64_t parse_decimal_powers[] = {
@@ -1009,11 +1010,20 @@ static int square_schoolbook(XrayScratchBigInt *out, const XrayScratchBigInt *va
 
 static int slice_bigint(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t offset, size_t count);
 static int add_shifted_inplace(XrayScratchBigInt *out, const XrayScratchBigInt *addend, size_t shift);
+static int mul_schoolbook_mode(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, int use_unroll4);
 static int square_dispatch_threshold(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t threshold);
 
 static int square_karatsuba_threshold(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t threshold) {
   if (!out || !value) return 0;
   if (value->count == 0) return set_u32(out, 0);
+  if (value->count <= XRAY_BIGINT_SQUARE_SELF_MUL_MAX_LIMBS) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+    int use_unroll4 = value->count >= XRAY_BIGINT_UNROLL4_ROUTE_MIN_LIMBS;
+#else
+    int use_unroll4 = 0;
+#endif
+    return mul_schoolbook_mode(out, value, value, use_unroll4);
+  }
   size_t active_threshold = threshold >= 2U ? threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
   if (value->count < active_threshold) return square_schoolbook(out, value);
 
