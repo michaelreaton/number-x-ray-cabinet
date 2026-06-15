@@ -1234,6 +1234,12 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "FRONTIER SUMMARY") != NULL);
   CHECK(strstr(benchmark_frontier, "Largest scratch gaps") != NULL);
   CHECK(strstr(benchmark_frontier, "SCRATCH VS GMP") != NULL);
+  CHECK(strstr(benchmark_frontier, "mul-threshold thr=") != NULL);
+  CHECK(strstr(benchmark_frontier, "leaf=64") != NULL);
+  CHECK(strstr(benchmark_frontier, "base=") != NULL);
+#if defined(_MSC_VER) && defined(_M_X64)
+  CHECK(strstr(benchmark_frontier, "depth=2") != NULL);
+#endif
   CHECK(strstr(benchmark_frontier, "format") != NULL);
   CHECK(strstr(benchmark_frontier, "flags=") != NULL);
   CHECK(strstr(cpu_text, "CPU:") != NULL);
