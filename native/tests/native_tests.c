@@ -272,15 +272,19 @@ static void test_scratch_bigint_oracle(void) {
     CHECK(xray_bigint_set_decimal(&a, roundtrip_input));
     CHECK(mpz_set_str(ga, roundtrip_input, 10) == 0);
     char *roundtrip_text = xray_bigint_get_decimal(&a);
+    char *roundtrip_folded = xray_bigint_get_decimal_folded_probe(&a);
     char *roundtrip_wide = xray_bigint_get_decimal_wide_probe(&a);
     char *roundtrip_oracle = mpz_get_str(NULL, 10, ga);
     CHECK(roundtrip_text != NULL);
+    CHECK(roundtrip_folded != NULL);
     CHECK(roundtrip_wide != NULL);
     CHECK(roundtrip_oracle != NULL);
     CHECK(strcmp(roundtrip_text, roundtrip_oracle) == 0);
+    CHECK(strcmp(roundtrip_folded, roundtrip_oracle) == 0);
     CHECK(strcmp(roundtrip_wide, roundtrip_oracle) == 0);
     free(roundtrip_input);
     free(roundtrip_text);
+    free(roundtrip_folded);
     free(roundtrip_wide);
     free(roundtrip_oracle);
   }
@@ -1049,11 +1053,23 @@ static void test_benchmarks(void) {
   int saw_16384_kernel_probe = 0;
   int saw_square_vs_mul_probe = 0;
   int saw_format_threshold_probe = 0;
+  int saw_format_threshold16_probe = 0;
+  int saw_format_threshold32_probe = 0;
   int saw_format_threshold48_probe = 0;
   int saw_format_threshold64_probe = 0;
+  int saw_format_threshold96_probe = 0;
+  int saw_format_threshold128_probe = 0;
+  int saw_format_threshold1000_probe = 0;
+  int saw_format_threshold4096_probe = 0;
+  int saw_format_threshold8192_probe = 0;
   int saw_format_divider_probe = 0;
+  int saw_format_divider1000_probe = 0;
   int saw_format_divider4096_probe = 0;
   int saw_format_divider8192_probe = 0;
+  int saw_format_folded_probe = 0;
+  int saw_format_folded1000_probe = 0;
+  int saw_format_folded4096_probe = 0;
+  int saw_format_folded8192_probe = 0;
   int saw_format_wide_probe = 0;
   int saw_format_wide1000_probe = 0;
   int saw_format_wide4096_probe = 0;
@@ -1132,10 +1148,17 @@ static void test_benchmarks(void) {
       }
       if (strcmp(report->results[index].operation, "format-threshold") == 0) {
         saw_format_threshold_probe = 1;
-        if (strstr(report->results[index].detail, "threshold=48") != NULL) saw_format_threshold48_probe = 1;
+        if (strstr(report->results[index].detail, "threshold=16") != NULL) saw_format_threshold16_probe = 1;
+        else if (strstr(report->results[index].detail, "threshold=32") != NULL) saw_format_threshold32_probe = 1;
+        else if (strstr(report->results[index].detail, "threshold=48") != NULL) saw_format_threshold48_probe = 1;
         else if (strstr(report->results[index].detail, "threshold=64") != NULL) saw_format_threshold64_probe = 1;
+        else if (strstr(report->results[index].detail, "threshold=96") != NULL) saw_format_threshold96_probe = 1;
+        else if (strstr(report->results[index].detail, "threshold=128") != NULL) saw_format_threshold128_probe = 1;
         else CHECK(0);
-        CHECK(report->results[index].digits == 1000);
+        if (report->results[index].digits == 1000) saw_format_threshold1000_probe = 1;
+        else if (report->results[index].digits == 4096) saw_format_threshold4096_probe = 1;
+        else if (report->results[index].digits == 8192) saw_format_threshold8192_probe = 1;
+        else CHECK(0);
         CHECK(strstr(report->results[index].detail, "candidate=decimal-horner") != NULL);
         CHECK(strstr(report->results[index].detail, "baseline=mpz_get_str") != NULL);
         CHECK(strstr(report->results[index].detail, "featureGate=decimal-format-handoff") != NULL);
@@ -1143,13 +1166,26 @@ static void test_benchmarks(void) {
       }
       if (strcmp(report->results[index].operation, "format-divider") == 0) {
         saw_format_divider_probe = 1;
-        if (report->results[index].digits == 4096) saw_format_divider4096_probe = 1;
+        if (report->results[index].digits == 1000) saw_format_divider1000_probe = 1;
+        else if (report->results[index].digits == 4096) saw_format_divider4096_probe = 1;
         else if (report->results[index].digits == 8192) saw_format_divider8192_probe = 1;
         else CHECK(0);
         CHECK(strstr(report->results[index].detail, "mode=direct128") != NULL);
         CHECK(strstr(report->results[index].detail, "candidate=decimal-horner-direct-divider") != NULL);
         CHECK(strstr(report->results[index].detail, "baseline=current-scratch-format") != NULL);
         CHECK(strstr(report->results[index].detail, "featureGate=decimal-format-divider") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=1") != NULL);
+      }
+      if (strcmp(report->results[index].operation, "format-folded") == 0) {
+        saw_format_folded_probe = 1;
+        if (report->results[index].digits == 1000) saw_format_folded1000_probe = 1;
+        else if (report->results[index].digits == 4096) saw_format_folded4096_probe = 1;
+        else if (report->results[index].digits == 8192) saw_format_folded8192_probe = 1;
+        else CHECK(0);
+        CHECK(strstr(report->results[index].detail, "chunkDigits=9") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=decimal-folded-2p64") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=current-scratch-format") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=decimal-format-folded") != NULL);
         CHECK(strstr(report->results[index].detail, "operandFamilies=1") != NULL);
       }
       if (strcmp(report->results[index].operation, "format-wide") == 0) {
@@ -1323,11 +1359,23 @@ static void test_benchmarks(void) {
   CHECK(saw_16384_kernel_probe);
   CHECK(saw_square_vs_mul_probe);
   CHECK(saw_format_threshold_probe);
+  CHECK(saw_format_threshold16_probe);
+  CHECK(saw_format_threshold32_probe);
   CHECK(saw_format_threshold48_probe);
   CHECK(saw_format_threshold64_probe);
+  CHECK(saw_format_threshold96_probe);
+  CHECK(saw_format_threshold128_probe);
+  CHECK(saw_format_threshold1000_probe);
+  CHECK(saw_format_threshold4096_probe);
+  CHECK(saw_format_threshold8192_probe);
   CHECK(saw_format_divider_probe);
+  CHECK(saw_format_divider1000_probe);
   CHECK(saw_format_divider4096_probe);
   CHECK(saw_format_divider8192_probe);
+  CHECK(saw_format_folded_probe);
+  CHECK(saw_format_folded1000_probe);
+  CHECK(saw_format_folded4096_probe);
+  CHECK(saw_format_folded8192_probe);
   CHECK(saw_format_wide_probe);
   CHECK(saw_format_wide1000_probe);
   CHECK(saw_format_wide4096_probe);
@@ -1387,6 +1435,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "\"operation\":\"format\"") != NULL);
   CHECK(strstr(json, "format-threshold") != NULL);
   CHECK(strstr(json, "format-divider") != NULL);
+  CHECK(strstr(json, "format-folded") != NULL);
   CHECK(strstr(json, "format-wide") != NULL);
   CHECK(strstr(json, "\"operation\":\"square\"") != NULL);
   CHECK(strstr(json, "square-vs-mul") != NULL);
@@ -1419,6 +1468,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "format") != NULL);
   CHECK(strstr(tsv, "format-threshold") != NULL);
   CHECK(strstr(tsv, "format-divider") != NULL);
+  CHECK(strstr(tsv, "format-folded") != NULL);
   CHECK(strstr(tsv, "format-wide") != NULL);
   CHECK(strstr(tsv, "square") != NULL);
   CHECK(strstr(tsv, "square-vs-mul") != NULL);
@@ -1468,6 +1518,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "format") != NULL);
   CHECK(strstr(benchmark_tsv, "format-threshold") != NULL);
   CHECK(strstr(benchmark_tsv, "format-divider") != NULL);
+  CHECK(strstr(benchmark_tsv, "format-folded") != NULL);
   CHECK(strstr(benchmark_tsv, "format-wide") != NULL);
   CHECK(strstr(benchmark_tsv, "square") != NULL);
   CHECK(strstr(benchmark_tsv, "square-vs-mul") != NULL);
@@ -1491,9 +1542,14 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "Largest scratch gaps") != NULL);
   CHECK(strstr(benchmark_frontier, "SCRATCH VS ") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-threshold thr=") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-threshold thr=16") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-threshold thr=32") != NULL);
   CHECK(strstr(benchmark_frontier, "format-threshold thr=48") != NULL);
   CHECK(strstr(benchmark_frontier, "format-threshold thr=64") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-threshold thr=96") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-threshold thr=128") != NULL);
   CHECK(strstr(benchmark_frontier, "format-divider mode=direct128") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-folded") != NULL);
   CHECK(strstr(benchmark_frontier, "format-wide") != NULL);
   CHECK(strstr(benchmark_frontier, "leaf=64") != NULL);
   CHECK(strstr(benchmark_frontier, "base=") != NULL);

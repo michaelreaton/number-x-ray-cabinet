@@ -16,6 +16,8 @@
 #define XRAY_BIGINT_WORD_BITS 64U
 #define XRAY_BIGINT_DECIMAL_CHUNK_BASE 1000000000U
 #define XRAY_BIGINT_DECIMAL_CHUNK_DIGITS 9U
+#define XRAY_BIGINT_DECIMAL_CHUNK_2P64_QUOTIENT UINT64_C(18446744073)
+#define XRAY_BIGINT_DECIMAL_CHUNK_2P64_REMAINDER 709551616U
 #define XRAY_BIGINT_DECIMAL_WIDE_CHUNK_BASE UINT64_C(10000000000000000000)
 #define XRAY_BIGINT_DECIMAL_WIDE_CHUNK_DIGITS 19U
 /* UINT64_MAX / 1e9, matching reciprocal_u32 for the decimal chunk divisor. */
@@ -414,6 +416,53 @@ static int decimal_chunks_from_limbs_horner(uint32_t **chunks_out, size_t *chunk
   return 1;
 }
 
+static uint64_t divmod_u64_decimal_chunk(uint64_t value, uint32_t *remainder) {
+  return divmod_word_u32(
+    0,
+    value,
+    XRAY_BIGINT_DECIMAL_CHUNK_BASE,
+    XRAY_BIGINT_DECIMAL_CHUNK_RECIPROCAL,
+    (value >> 32U) != 0,
+    remainder);
+}
+
+static uint64_t divmod_folded_decimal_chunk(uint64_t low, int overflow, uint32_t *remainder) {
+  if (!overflow) return divmod_u64_decimal_chunk(low, remainder);
+  uint64_t adjusted = low + (uint64_t)XRAY_BIGINT_DECIMAL_CHUNK_2P64_REMAINDER;
+  return XRAY_BIGINT_DECIMAL_CHUNK_2P64_QUOTIENT + divmod_u64_decimal_chunk(adjusted, remainder);
+}
+
+static int decimal_chunks_from_limbs_horner_folded(uint32_t **chunks_out, size_t *chunk_count_out, const XrayScratchBigInt *value) {
+  uint32_t *chunks = NULL;
+  size_t chunk_count = 0;
+  size_t chunk_capacity = 0;
+  if (!reserve_decimal_chunks(&chunks, &chunk_capacity, estimate_decimal_chunk_capacity(value))) return 0;
+  for (size_t remaining = value->count; remaining > 0; --remaining) {
+    uint64_t carry = value->limbs[remaining - 1U];
+    for (size_t index = 0; index < chunk_count; ++index) {
+      uint32_t chunk = chunks[index];
+      uint64_t scaled = (uint64_t)chunk * (uint64_t)XRAY_BIGINT_DECIMAL_CHUNK_2P64_REMAINDER;
+      uint64_t low = scaled + carry;
+      uint32_t remainder = 0;
+      uint64_t carry_delta = divmod_folded_decimal_chunk(low, low < scaled, &remainder);
+      chunks[index] = remainder;
+      carry = (uint64_t)chunk * XRAY_BIGINT_DECIMAL_CHUNK_2P64_QUOTIENT + carry_delta;
+    }
+    while (carry) {
+      uint32_t remainder = 0;
+      carry = divmod_u64_decimal_chunk(carry, &remainder);
+      if (!append_decimal_chunk(&chunks, &chunk_count, &chunk_capacity, remainder)) {
+        free(chunks);
+        return 0;
+      }
+    }
+  }
+  while (chunk_count > 0 && chunks[chunk_count - 1U] == 0) chunk_count--;
+  *chunks_out = chunks;
+  *chunk_count_out = chunk_count;
+  return 1;
+}
+
 static int decimal_wide_chunks_from_limbs_horner(uint64_t **chunks_out, size_t *chunk_count_out, const XrayScratchBigInt *value) {
   uint64_t *chunks = NULL;
   size_t chunk_count = 0;
@@ -614,6 +663,41 @@ static char *get_decimal_with_options(const XrayScratchBigInt *value, size_t hor
   }
   xray_bigint_clear(&copy);
 
+  if (chunk_count == 0 && !append_decimal_chunk(&chunks, &chunk_count, &chunk_capacity, 0)) {
+    free(chunks);
+    return NULL;
+  }
+
+  if (chunk_count > (SIZE_MAX - 1U) / XRAY_BIGINT_DECIMAL_CHUNK_DIGITS) {
+    free(chunks);
+    return NULL;
+  }
+  size_t capacity = chunk_count * XRAY_BIGINT_DECIMAL_CHUNK_DIGITS + 1U;
+  char *text = (char *)calloc(capacity, 1);
+  if (!text) {
+    free(chunks);
+    return NULL;
+  }
+  size_t used = write_u32_decimal(text, chunks[chunk_count - 1]);
+  for (size_t index = chunk_count - 1; index-- > 0;) {
+    write_u32_decimal_padded9(text + used, chunks[index]);
+    used += XRAY_BIGINT_DECIMAL_CHUNK_DIGITS;
+  }
+  free(chunks);
+  return text;
+}
+
+char *xray_bigint_get_decimal_folded_probe(const XrayScratchBigInt *value) {
+  if (!value || value->count == 0) {
+    char *zero = (char *)calloc(2, 1);
+    if (zero) zero[0] = '0';
+    return zero;
+  }
+
+  uint32_t *chunks = NULL;
+  size_t chunk_count = 0;
+  size_t chunk_capacity = 0;
+  if (!decimal_chunks_from_limbs_horner_folded(&chunks, &chunk_count, value)) return NULL;
   if (chunk_count == 0 && !append_decimal_chunk(&chunks, &chunk_count, &chunk_capacity, 0)) {
     free(chunks);
     return NULL;
