@@ -251,6 +251,15 @@ XRAY_API char *xray_bigint_get_decimal_horner_threshold_probe(const XrayScratchB
 XRAY_API char *xray_bigint_get_decimal_divider_probe(const XrayScratchBigInt *value, int use_direct_divider);
 
 /**
+ * Format value through the 19-digit decimal chunk probe route.
+ *
+ * The caller owns the returned string and must release it with xray_free().
+ * This diagnostic route is intended for benchmark comparisons against the
+ * production formatter before any wider decimal chunk policy is promoted.
+ */
+XRAY_API char *xray_bigint_get_decimal_wide_probe(const XrayScratchBigInt *value);
+
+/**
  * Multiply with an explicit Karatsuba leaf threshold for benchmarking.
  *
  * out may alias either input. Returns 1 on success and 0 on allocation failure.
