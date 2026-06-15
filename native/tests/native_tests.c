@@ -618,6 +618,7 @@ static void test_benchmarks(void) {
   size_t oracle_only_rows = 0;
   size_t blocked_rows = 0;
   int saw_8192_scratch = 0;
+  int saw_8192_kernel_probe = 0;
   for (size_t index = 0; index < report->result_count; ++index) {
     if (strcmp(report->results[index].category, "scratch-vs-gmp") == 0) {
       scratch_rows++;
@@ -644,6 +645,7 @@ static void test_benchmarks(void) {
       else blocked_rows++;
     } else if (strcmp(report->results[index].category, "kernel-probe") == 0) {
       kernel_rows++;
+      if (report->results[index].digits == 8192) saw_8192_kernel_probe = 1;
       CHECK(report->results[index].passed);
       CHECK(report->results[index].scratch_us > 0);
       CHECK(report->results[index].gmp_us > 0);
@@ -687,6 +689,7 @@ static void test_benchmarks(void) {
   CHECK(strcmp(xray_scratch_adoption_for_result(&unstable), "oracle-only") == 0);
   CHECK(scratch_rows >= 40);
   CHECK(saw_8192_scratch);
+  CHECK(saw_8192_kernel_probe);
   CHECK(kernel_rows >= 4);
   CHECK(report->scratch_count == scratch_rows);
   CHECK(report->replacement_ready_count == replacement_ready_rows);
