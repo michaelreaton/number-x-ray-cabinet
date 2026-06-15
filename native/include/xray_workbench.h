@@ -133,6 +133,54 @@ XRAY_API int xray_bigint_mul(XrayScratchBigInt *out, const XrayScratchBigInt *le
 XRAY_API int xray_bigint_square(XrayScratchBigInt *out, const XrayScratchBigInt *value);
 
 /**
+ * Add two non-negative decimal integers and return a decimal string.
+ *
+ * This convenience API is intended for FFI and plugin-style consumers that do
+ * not want to manage XrayScratchBigInt storage directly. Inputs accept the same
+ * separators as xray_bigint_set_decimal(). The caller owns the returned string
+ * and must release it with xray_free(). Returns NULL for invalid input or
+ * allocation failure.
+ */
+XRAY_API char *xray_bigint_add_decimal(const char *left_decimal, const char *right_decimal);
+
+/**
+ * Subtract two non-negative decimal integers and return a decimal string.
+ *
+ * Inputs accept the same separators as xray_bigint_set_decimal(). The caller
+ * owns the returned string and must release it with xray_free(). Returns NULL
+ * for invalid input, allocation failure, or a negative result.
+ */
+XRAY_API char *xray_bigint_sub_decimal(const char *left_decimal, const char *right_decimal);
+
+/**
+ * Multiply two non-negative decimal integers and return a decimal string.
+ *
+ * Inputs accept the same separators as xray_bigint_set_decimal(). The caller
+ * owns the returned string and must release it with xray_free(). Returns NULL
+ * for invalid input or allocation failure.
+ */
+XRAY_API char *xray_bigint_mul_decimal(const char *left_decimal, const char *right_decimal);
+
+/**
+ * Square a non-negative decimal integer and return a decimal string.
+ *
+ * The input accepts the same separators as xray_bigint_set_decimal(). The
+ * caller owns the returned string and must release it with xray_free(). Returns
+ * NULL for invalid input or allocation failure.
+ */
+XRAY_API char *xray_bigint_square_decimal(const char *decimal);
+
+/**
+ * Compare two non-negative decimal integers.
+ *
+ * Inputs accept the same separators as xray_bigint_set_decimal(). On success,
+ * *comparison receives -1, 0, or 1 for left < right, left == right, or
+ * left > right. Returns 1 on success and 0 for invalid input or a NULL
+ * comparison pointer.
+ */
+XRAY_API int xray_bigint_compare_decimal(const char *left_decimal, const char *right_decimal, int *comparison);
+
+/**
  * Compute a square with an explicit Karatsuba threshold for benchmarking.
  *
  * This is a diagnostic probe, not the stable production route. Returns 1 on

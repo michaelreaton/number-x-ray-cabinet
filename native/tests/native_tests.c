@@ -357,6 +357,82 @@ static void test_scratch_bigint_oracle(void) {
   xray_bigint_clear(&quotient);
 }
 
+static void check_decimal_string_matches_mpz(const char *actual, const mpz_t expected) {
+  char *expected_text = mpz_get_str(NULL, 10, expected);
+  CHECK(actual != NULL);
+  CHECK(expected_text != NULL);
+  CHECK(strcmp(actual, expected_text) == 0);
+  free(expected_text);
+}
+
+static void test_decimal_ffi_helpers(void) {
+  mpz_t left, right, expected;
+  mpz_inits(left, right, expected, NULL);
+  CHECK(mpz_set_str(left, "123456789012345678901234567890", 10) == 0);
+  CHECK(mpz_set_str(right, "98765432109876543210", 10) == 0);
+
+  char *sum = xray_bigint_add_decimal(
+    "123,456,789,012,345,678,901,234,567,890",
+    "98_765 432109876543210");
+  mpz_add(expected, left, right);
+  check_decimal_string_matches_mpz(sum, expected);
+  xray_free(sum);
+
+  char *difference = xray_bigint_sub_decimal(
+    "123,456,789,012,345,678,901,234,567,890",
+    "98_765 432109876543210");
+  mpz_sub(expected, left, right);
+  check_decimal_string_matches_mpz(difference, expected);
+  xray_free(difference);
+
+  char *product = xray_bigint_mul_decimal(
+    "123,456,789,012,345,678,901,234,567,890",
+    "98_765 432109876543210");
+  mpz_mul(expected, left, right);
+  check_decimal_string_matches_mpz(product, expected);
+  xray_free(product);
+
+  char *square = xray_bigint_square_decimal("4 294 967 296");
+  mpz_set_str(left, "4294967296", 10);
+  mpz_mul(expected, left, left);
+  check_decimal_string_matches_mpz(square, expected);
+  xray_free(square);
+
+  int comparison = 99;
+  CHECK(xray_bigint_compare_decimal("001_000", "1000", &comparison));
+  CHECK(comparison == 0);
+  CHECK(xray_bigint_compare_decimal("999", "1000", &comparison));
+  CHECK(comparison == -1);
+  CHECK(xray_bigint_compare_decimal("1001", "1000", &comparison));
+  CHECK(comparison == 1);
+
+  CHECK(xray_bigint_add_decimal("12x", "1") == NULL);
+  CHECK(xray_bigint_sub_decimal("1", "2") == NULL);
+  CHECK(!xray_bigint_compare_decimal("12x", "1", &comparison));
+  CHECK(!xray_bigint_compare_decimal("1", "1", NULL));
+
+  char *large_left = make_pattern_decimal(1000U, "98765432101234567890");
+  char *large_right = make_pattern_decimal(1000U, "12345678900987654321");
+  CHECK(large_left != NULL);
+  CHECK(large_right != NULL);
+  CHECK(mpz_set_str(left, large_left, 10) == 0);
+  CHECK(mpz_set_str(right, large_right, 10) == 0);
+
+  char *large_sum = xray_bigint_add_decimal(large_left, large_right);
+  mpz_add(expected, left, right);
+  check_decimal_string_matches_mpz(large_sum, expected);
+  xray_free(large_sum);
+
+  char *large_product = xray_bigint_mul_decimal(large_left, large_right);
+  mpz_mul(expected, left, right);
+  check_decimal_string_matches_mpz(large_product, expected);
+  xray_free(large_product);
+
+  free(large_left);
+  free(large_right);
+  mpz_clears(left, right, expected, NULL);
+}
+
 static void test_scratch_bigint_oracle_sweep(void) {
   const char *values[] = {
     "0",
@@ -1350,6 +1426,7 @@ int main(void) {
   test_exact_expression_parser();
   test_cpu_feature_detection();
   test_scratch_bigint_oracle();
+  test_decimal_ffi_helpers();
   test_scratch_bigint_oracle_sweep();
   test_scratch_bigint_large_mul_oracle();
   test_scratch_bigint_square_oracle();

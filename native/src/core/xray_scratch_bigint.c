@@ -1319,6 +1319,77 @@ int xray_bigint_square(XrayScratchBigInt *out, const XrayScratchBigInt *value) {
   return square_dispatch_threshold(out, value, XRAY_BIGINT_KARATSUBA_THRESHOLD);
 }
 
+typedef int (*XrayBigintBinaryOp)(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right);
+
+static char *decimal_binary_result(const char *left_decimal, const char *right_decimal, XrayBigintBinaryOp op) {
+  if (!op) return NULL;
+  XrayScratchBigInt left;
+  XrayScratchBigInt right;
+  XrayScratchBigInt out;
+  xray_bigint_init(&left);
+  xray_bigint_init(&right);
+  xray_bigint_init(&out);
+
+  char *result = NULL;
+  if (xray_bigint_set_decimal(&left, left_decimal) &&
+      xray_bigint_set_decimal(&right, right_decimal) &&
+      op(&out, &left, &right)) {
+    result = xray_bigint_get_decimal(&out);
+  }
+
+  xray_bigint_clear(&left);
+  xray_bigint_clear(&right);
+  xray_bigint_clear(&out);
+  return result;
+}
+
+char *xray_bigint_add_decimal(const char *left_decimal, const char *right_decimal) {
+  return decimal_binary_result(left_decimal, right_decimal, xray_bigint_add);
+}
+
+char *xray_bigint_sub_decimal(const char *left_decimal, const char *right_decimal) {
+  return decimal_binary_result(left_decimal, right_decimal, xray_bigint_sub);
+}
+
+char *xray_bigint_mul_decimal(const char *left_decimal, const char *right_decimal) {
+  return decimal_binary_result(left_decimal, right_decimal, xray_bigint_mul);
+}
+
+char *xray_bigint_square_decimal(const char *decimal) {
+  XrayScratchBigInt value;
+  XrayScratchBigInt out;
+  xray_bigint_init(&value);
+  xray_bigint_init(&out);
+
+  char *result = NULL;
+  if (xray_bigint_set_decimal(&value, decimal) && xray_bigint_square(&out, &value)) {
+    result = xray_bigint_get_decimal(&out);
+  }
+
+  xray_bigint_clear(&value);
+  xray_bigint_clear(&out);
+  return result;
+}
+
+int xray_bigint_compare_decimal(const char *left_decimal, const char *right_decimal, int *comparison) {
+  if (!comparison) return 0;
+  XrayScratchBigInt left;
+  XrayScratchBigInt right;
+  xray_bigint_init(&left);
+  xray_bigint_init(&right);
+
+  int ok = 0;
+  if (xray_bigint_set_decimal(&left, left_decimal) &&
+      xray_bigint_set_decimal(&right, right_decimal)) {
+    *comparison = xray_bigint_compare(&left, &right);
+    ok = 1;
+  }
+
+  xray_bigint_clear(&left);
+  xray_bigint_clear(&right);
+  return ok;
+}
+
 int xray_bigint_square_karatsuba_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t threshold) {
   if (!out || !value) return 0;
   size_t active_threshold = threshold >= 2U ? threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;

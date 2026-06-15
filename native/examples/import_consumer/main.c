@@ -20,14 +20,17 @@ int main(void) {
 
   char *text = ok ? xray_bigint_get_decimal(&sum) : NULL;
   ok = ok && text && strcmp(text, "10000000000000000001") == 0;
+  char *ffi_sum = ok ? xray_bigint_add_decimal("10,000_000 000,000_000 000", "1") : NULL;
+  ok = ok && ffi_sum && strcmp(ffi_sum, "10000000000000000001") == 0;
 
   if (ok) {
-    printf("NumberXRay::core import ok: %s\n", text);
+    printf("NumberXRay::core import ok: %s\n", ffi_sum);
   } else {
     fprintf(stderr, "NumberXRay::core import smoke failed\n");
   }
 
   xray_free(text);
+  xray_free(ffi_sum);
   xray_bigint_clear(&value);
   xray_bigint_clear(&one);
   xray_bigint_clear(&sum);
