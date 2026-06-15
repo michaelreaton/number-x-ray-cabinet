@@ -134,12 +134,15 @@ typedef struct XrayBenchmarkResult {
   unsigned long long gmp_us;
   double speed_ratio;
   double max_allowed_speed_ratio;
+  double worst_pair_ratio;
+  size_t stable_sample_count;
+  size_t sample_count;
   char adoption[32];
   int parity_verified;
   int replacement_ready;
   unsigned long elapsed_ms;
   int passed;
-  char detail[256];
+  char detail[384];
 } XrayBenchmarkResult;
 
 typedef struct XrayCpuFeatures {

@@ -232,7 +232,7 @@ static void append_benchmark_json(JsonBuffer *buffer, const XrayBenchmarkReport 
     jb_append(buffer, ",\"status\":"); jb_string(buffer, report->results[index].status);
     jb_append(buffer, ",\"adoption\":"); jb_string(buffer, report->results[index].adoption);
     jb_printf(buffer,
-      ",\"digits\":%zu,\"passed\":%s,\"parityVerified\":%s,\"replacementReady\":%s,\"scratchUs\":%llu,\"gmpUs\":%llu,\"speedRatio\":%.6f,\"maxAllowedSpeedRatio\":%.6f,\"elapsedMs\":%lu,\"detail\":",
+      ",\"digits\":%zu,\"passed\":%s,\"parityVerified\":%s,\"replacementReady\":%s,\"scratchUs\":%llu,\"gmpUs\":%llu,\"speedRatio\":%.6f,\"maxAllowedSpeedRatio\":%.6f,\"worstPairRatio\":%.6f,\"stableSampleCount\":%zu,\"sampleCount\":%zu,\"elapsedMs\":%lu,\"detail\":",
       report->results[index].digits,
       report->results[index].passed ? "true" : "false",
       report->results[index].parity_verified ? "true" : "false",
@@ -241,6 +241,9 @@ static void append_benchmark_json(JsonBuffer *buffer, const XrayBenchmarkReport 
       report->results[index].gmp_us,
       report->results[index].speed_ratio,
       report->results[index].max_allowed_speed_ratio,
+      report->results[index].worst_pair_ratio,
+      report->results[index].stable_sample_count,
+      report->results[index].sample_count,
       report->results[index].elapsed_ms);
     jb_string(buffer, report->results[index].detail);
     jb_append(buffer, "}");
@@ -315,7 +318,7 @@ char *xray_benchmark_report_json(const XrayBenchmarkReport *report) {
 char *xray_benchmark_report_tsv(const XrayBenchmarkReport *report) {
   JsonBuffer buffer = {0};
   jb_append(&buffer,
-    "category\tname\toperation\tdigits\tstatus\tpassed\tparityVerified\treplacementReady\tadoption\tscratchUs\tgmpUs\tspeedRatio\tmaxAllowedSpeedRatio\telapsedMs\tdetail\n");
+    "category\tname\toperation\tdigits\tstatus\tpassed\tparityVerified\treplacementReady\tadoption\tscratchUs\tgmpUs\tspeedRatio\tmaxAllowedSpeedRatio\tworstPairRatio\tstableSampleCount\tsampleCount\telapsedMs\tdetail\n");
   if (!report) return jb_take(&buffer);
   for (size_t index = 0; index < report->result_count; ++index) {
     const XrayBenchmarkResult *row = &report->results[index];
@@ -331,11 +334,14 @@ char *xray_benchmark_report_tsv(const XrayBenchmarkReport *report) {
       row->parity_verified ? "true" : "false",
       row->replacement_ready ? "true" : "false");
     append_tsv_field(&buffer, row->adoption);
-    jb_printf(&buffer, "\t%llu\t%llu\t%.6f\t%.6f\t%lu\t",
+    jb_printf(&buffer, "\t%llu\t%llu\t%.6f\t%.6f\t%.6f\t%zu\t%zu\t%lu\t",
       row->scratch_us,
       row->gmp_us,
       row->speed_ratio,
       row->max_allowed_speed_ratio,
+      row->worst_pair_ratio,
+      row->stable_sample_count,
+      row->sample_count,
       row->elapsed_ms);
     append_tsv_field(&buffer, row->detail);
     jb_append(&buffer, "\n");

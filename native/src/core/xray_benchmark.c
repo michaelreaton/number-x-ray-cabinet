@@ -14,6 +14,7 @@
 #define XRAY_BENCH_SAMPLES 5
 #define XRAY_KERNEL_SAMPLES 5
 #define XRAY_MUL_OPERAND_FAMILIES 2
+#define XRAY_SCRATCH_REQUIRED_STABLE_SAMPLES 4
 
 static volatile unsigned long long kernel_probe_sink = 0;
 
@@ -46,7 +47,12 @@ static void append_result(XrayBenchmarkReport *report, const XrayBenchmarkResult
 const char *xray_scratch_adoption_for_result(const XrayBenchmarkResult *result) {
   if (!result || !result->parity_verified) return "blocked-output-mismatch";
   double limit = result->max_allowed_speed_ratio > 0.0 ? result->max_allowed_speed_ratio : 1.0;
-  if (result->speed_ratio <= limit) return "allowed";
+  if (result->speed_ratio <= limit) {
+    size_t required = result->sample_count < XRAY_SCRATCH_REQUIRED_STABLE_SAMPLES ?
+      result->sample_count :
+      XRAY_SCRATCH_REQUIRED_STABLE_SAMPLES;
+    if (required == 0 || result->stable_sample_count >= required) return "allowed";
+  }
   return "oracle-only";
 }
 
@@ -83,6 +89,32 @@ static double median_paired_ratio(const unsigned long long *numerator, const uns
     ratios[pos] = value;
   }
   return ratios[count / 2];
+}
+
+static double max_paired_ratio(const unsigned long long *numerator, const unsigned long long *denominator, size_t count) {
+  double worst = 0.0;
+  if (!numerator || !denominator || count == 0) return 0.0;
+  for (size_t index = 0; index < count; ++index) {
+    double ratio = (double)(numerator[index] ? numerator[index] : 1ULL) /
+      (double)(denominator[index] ? denominator[index] : 1ULL);
+    if (ratio > worst) worst = ratio;
+  }
+  return worst;
+}
+
+static size_t paired_ratio_wins(
+  const unsigned long long *numerator,
+  const unsigned long long *denominator,
+  size_t count,
+  double limit) {
+  size_t wins = 0;
+  if (!numerator || !denominator || count == 0) return 0;
+  for (size_t index = 0; index < count; ++index) {
+    double ratio = (double)(numerator[index] ? numerator[index] : 1ULL) /
+      (double)(denominator[index] ? denominator[index] : 1ULL);
+    if (ratio <= limit) wins++;
+  }
+  return wins;
 }
 
 static void fill_kernel_u32(uint32_t *words, size_t count, uint32_t seed) {
@@ -479,7 +511,10 @@ static void append_perf_result(
   int parity,
   unsigned long long scratch_us,
   unsigned long long gmp_us,
-  double paired_ratio) {
+  double paired_ratio,
+  size_t stable_sample_count,
+  size_t sample_count,
+  double worst_pair_ratio) {
   XrayBenchmarkResult result;
   memset(&result, 0, sizeof(result));
   snprintf(result.name, sizeof(result.name), "scratch %s %zu digits", operation, digits);
@@ -490,6 +525,9 @@ static void append_perf_result(
   result.gmp_us = gmp_us ? gmp_us : 1;
   result.speed_ratio = paired_ratio > 0.0 ? paired_ratio : (double)result.scratch_us / (double)result.gmp_us;
   result.max_allowed_speed_ratio = 1.0;
+  result.stable_sample_count = stable_sample_count;
+  result.sample_count = sample_count;
+  result.worst_pair_ratio = worst_pair_ratio;
   result.parity_verified = parity;
   const char *adoption = xray_scratch_adoption_for_result(&result);
   result.replacement_ready = strcmp(adoption, "allowed") == 0;
@@ -499,14 +537,17 @@ static void append_perf_result(
   snprintf(result.status, sizeof(result.status), "%s",
     !parity ? "failed" : (result.replacement_ready ? "replacement-ready" : "parity"));
   snprintf(result.detail, sizeof(result.detail),
-    "operation=%s digits=%zu operandFamilies=%zu samples=%u scratchUs=%llu gmpUs=%llu ratio=%.3f ratioMethod=paired-median maxAllowedRatio=%.1f adoption=%s",
+    "operation=%s digits=%zu operandFamilies=%zu samples=%zu stablePairs=%zu/%zu scratchUs=%llu gmpUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median maxAllowedRatio=%.1f adoption=%s",
     operation,
     digits,
     operand_families,
-    XRAY_BENCH_SAMPLES,
+    sample_count,
+    stable_sample_count,
+    sample_count,
     result.scratch_us,
     result.gmp_us,
     result.speed_ratio,
+    result.worst_pair_ratio,
     result.max_allowed_speed_ratio,
     result.adoption);
   append_result(report, &result);
@@ -588,7 +629,18 @@ static void run_scratch_parse_case(XrayBenchmarkReport *report, size_t digits) {
   unsigned long long scratch_us = median_samples(scratch_samples, XRAY_BENCH_SAMPLES);
   unsigned long long gmp_us = median_samples(gmp_samples, XRAY_BENCH_SAMPLES);
   double paired_ratio = median_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES);
-  append_perf_result(report, "parse", digits, 1, parity, scratch_us, gmp_us, paired_ratio);
+  append_perf_result(
+    report,
+    "parse",
+    digits,
+    1,
+    parity,
+    scratch_us,
+    gmp_us,
+    paired_ratio,
+    paired_ratio_wins(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES, 1.0),
+    XRAY_BENCH_SAMPLES,
+    max_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES));
 
   mpz_clear(gmp);
   xray_bigint_clear(&scratch);
@@ -644,7 +696,18 @@ static void run_scratch_binary_case(XrayBenchmarkReport *report, const char *ope
   unsigned long long scratch_us = median_samples(scratch_samples, XRAY_BENCH_SAMPLES);
   unsigned long long gmp_us = median_samples(gmp_samples, XRAY_BENCH_SAMPLES);
   double paired_ratio = median_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES);
-  append_perf_result(report, operation, digits, 1, parity, scratch_us, gmp_us, paired_ratio);
+  append_perf_result(
+    report,
+    operation,
+    digits,
+    1,
+    parity,
+    scratch_us,
+    gmp_us,
+    paired_ratio,
+    paired_ratio_wins(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES, 1.0),
+    XRAY_BENCH_SAMPLES,
+    max_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES));
 
   mpz_clears(ga, gb, gout, NULL);
   xray_bigint_clear(&a);
@@ -796,7 +859,10 @@ static void run_scratch_mul_case(XrayBenchmarkReport *report, size_t digits) {
     parity,
     median_samples(scratch_samples, XRAY_BENCH_SAMPLES),
     median_samples(gmp_samples, XRAY_BENCH_SAMPLES),
-    median_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES));
+    median_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES),
+    paired_ratio_wins(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES, 1.0),
+    XRAY_BENCH_SAMPLES,
+    max_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES));
 
   for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
     mpz_clears(ga[family], gb[family], gout[family], NULL);
@@ -849,7 +915,18 @@ static void run_scratch_divmod_case(XrayBenchmarkReport *report, size_t digits) 
   unsigned long long scratch_us = median_samples(scratch_samples, XRAY_BENCH_SAMPLES);
   unsigned long long gmp_us = median_samples(gmp_samples, XRAY_BENCH_SAMPLES);
   double paired_ratio = median_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES);
-  append_perf_result(report, "divmod-u32", digits, 1, parity, scratch_us, gmp_us, paired_ratio);
+  append_perf_result(
+    report,
+    "divmod-u32",
+    digits,
+    1,
+    parity,
+    scratch_us,
+    gmp_us,
+    paired_ratio,
+    paired_ratio_wins(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES, 1.0),
+    XRAY_BENCH_SAMPLES,
+    max_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES));
 
   mpz_clears(ga, gquot, NULL);
   xray_bigint_clear(&a);
@@ -904,7 +981,18 @@ static void run_scratch_modular_case(XrayBenchmarkReport *report, const char *op
   unsigned long long scratch_us = median_samples(scratch_samples, XRAY_BENCH_SAMPLES);
   unsigned long long gmp_us = median_samples(gmp_samples, XRAY_BENCH_SAMPLES);
   double paired_ratio = median_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES);
-  append_perf_result(report, operation, digits, 1, parity, scratch_us, gmp_us, paired_ratio);
+  append_perf_result(
+    report,
+    operation,
+    digits,
+    1,
+    parity,
+    scratch_us,
+    gmp_us,
+    paired_ratio,
+    paired_ratio_wins(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES, 1.0),
+    XRAY_BENCH_SAMPLES,
+    max_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES));
 
   mpz_clears(ga, gmodulus, gout, NULL);
   xray_bigint_clear(&a);

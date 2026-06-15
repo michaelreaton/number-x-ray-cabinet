@@ -53,9 +53,10 @@ Until both gates pass, reports and documentation must label the scratch bigint l
 Benchmark JSON exposes that rule per operation-size row:
 
 - `parityVerified`: scratch output exactly matched the GMP/MPIR oracle
-- `replacementReady`: parity passed and scratch timing was less than or equal to the GMP/MPIR timing for that row
+- `replacementReady`: parity passed, scratch paired-median timing was less than or equal to GMP/MPIR, and at least 4 of 5 same-run paired samples also favored scratch
 - `scratchUs` and `gmpUs`: median local timings from the current machine
 - `speedRatio`: median of paired scratch/GMP sample ratios, not a cherry-picked independent best-time division; a ratio below `1.0` means scratch was faster for that row
+- `stableSampleCount`, `sampleCount`, and `worstPairRatio`: the stability guard that keeps a noisy benchmark row from being promoted on one lucky median
 
 Rows with parity but without `replacementReady` are useful migration evidence, but the production path must remain GMP-backed.
 
