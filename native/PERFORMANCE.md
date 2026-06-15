@@ -156,3 +156,33 @@ above tiny inputs and ends before the 8192 digit row. A later route scout may
 try an MSVC-only bounded path for approximately 150 to 4096 digit operands, but
 40 digit and 8192+ operands must stay on the current production path unless new
 evidence changes those rows.
+
+## 2026-06-15: Bounded Unroll4 Production Route
+
+Final corrected run: `runs/20260615-055050-c4b04caf`
+
+The production `mul` path was routed through the unroll4 leaf only on MSVC x64
+when operands are not tiny, not too large, and not strongly unbalanced
+(`8 <= min limbs`, `max limbs <= 256`, and `min * 3 >= max * 2`).
+
+Production `mul` rows:
+
+- 40 digits: ratio `0.792`, stable `5/5`, `replacement-ready`
+- 150 digits: ratio `0.636`, stable `5/5`, `replacement-ready`
+- 1000 digits: ratio `0.649`, stable `5/5`, `replacement-ready`
+- 4096 digits: ratio `0.825`, stable `5/5`, `replacement-ready`
+- 8192 digits: ratio `1.156`, stable `0/5`, `oracle-only`
+
+Route probe rows against the scalar threshold baseline:
+
+- 40 digits: ratio `1.203`, stable `1/5`, `observe-only`
+- 150 digits: ratio `0.979`, stable `4/5`, `candidate-faster`
+- 1000 digits: ratio `0.722`, stable `5/5`, `candidate-faster`
+- 4096 digits: ratio `0.862`, stable `5/5`, `candidate-faster`
+- 8192 digits: ratio `0.787`, stable `3/5`, `observe-only`
+
+Decision: keep the bounded route. It improves the 4096 digit production
+adoption row without routing the 8192 digit case, and it preserves the small
+40 digit row by keeping it outside the route. The scalar-threshold probe remains
+in the benchmark so future changes can still compare the route against the
+non-routed path.

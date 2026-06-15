@@ -19,6 +19,8 @@
 #define XRAY_BIGINT_PARSE_CHUNK_BASE UINT64_C(10000000000000000000)
 #define XRAY_BIGINT_PARSE_CHUNK_DIGITS 19U
 #define XRAY_BIGINT_KARATSUBA_THRESHOLD 64U
+#define XRAY_BIGINT_UNROLL4_ROUTE_MIN_LIMBS 8U
+#define XRAY_BIGINT_UNROLL4_ROUTE_MAX_LIMBS 256U
 #define XRAY_BIGINT_FERMAT_65537 65537U
 
 static const uint64_t parse_decimal_powers[] = {
@@ -942,6 +944,17 @@ static int mul_toom3_probe_internal(
 }
 
 static int mul_dispatch(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  size_t left_count = left ? left->count : 0;
+  size_t right_count = right ? right->count : 0;
+  size_t max_count = left_count > right_count ? left_count : right_count;
+  size_t min_count = left_count < right_count ? left_count : right_count;
+  if (min_count >= XRAY_BIGINT_UNROLL4_ROUTE_MIN_LIMBS &&
+      max_count <= XRAY_BIGINT_UNROLL4_ROUTE_MAX_LIMBS &&
+      min_count * 3U >= max_count * 2U) {
+    return mul_dispatch_threshold_mode(out, left, right, XRAY_BIGINT_KARATSUBA_THRESHOLD, 1);
+  }
+#endif
   return mul_dispatch_threshold(out, left, right, XRAY_BIGINT_KARATSUBA_THRESHOLD);
 }
 
