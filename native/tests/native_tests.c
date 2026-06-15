@@ -647,12 +647,20 @@ static void test_benchmarks(void) {
       CHECK(report->results[index].gmp_us > 0);
       CHECK(report->results[index].speed_ratio > 0.0);
       CHECK(report->results[index].max_allowed_speed_ratio == 0.98);
+      CHECK(report->results[index].sample_count == 5);
+      CHECK(report->results[index].stable_sample_count <= report->results[index].sample_count);
       CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
+      CHECK(strstr(report->results[index].detail, "stablePairs=") != NULL);
+      CHECK(strstr(report->results[index].detail, "worstPairRatio=") != NULL);
       CHECK(strstr(report->results[index].detail, "featureGate=") != NULL);
       CHECK(strstr(report->results[index].detail, "gmpClue=") != NULL);
       CHECK(strstr(report->results[index].detail, "adoption=") != NULL);
       if (strcmp(report->results[index].operation, "mul-threshold") == 0) {
         CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+      }
+      if (strcmp(report->results[index].adoption, "promote-candidate") == 0) {
+        CHECK(report->results[index].stable_sample_count >= 4);
+        CHECK(report->results[index].speed_ratio <= report->results[index].max_allowed_speed_ratio);
       }
       CHECK(strstr(report->results[index].adoption, "promote-candidate") != NULL ||
         strstr(report->results[index].adoption, "observe-only") != NULL ||
