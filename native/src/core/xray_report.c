@@ -203,6 +203,15 @@ static void append_benchmark_json(JsonBuffer *buffer, const XrayBenchmarkReport 
   jb_append(buffer, "]}");
 }
 
+static void append_tsv_field(JsonBuffer *buffer, const char *text) {
+  if (!text) return;
+  for (const unsigned char *p = (const unsigned char *)text; *p; ++p) {
+    char ch[2] = {(char)*p, 0};
+    if (*p == '\t' || *p == '\r' || *p == '\n') ch[0] = ' ';
+    jb_append(buffer, ch);
+  }
+}
+
 static void append_expression_json(JsonBuffer *buffer, const XrayExpressionResult *expression) {
   jb_append(buffer, "\"expression\":{");
   jb_append(buffer, "\"raw\":"); jb_string(buffer, expression ? expression->raw : NULL);
@@ -255,6 +264,37 @@ char *xray_benchmark_report_json(const XrayBenchmarkReport *report) {
   jb_append(&buffer, "{");
   append_benchmark_json(&buffer, report);
   jb_append(&buffer, "}");
+  return jb_take(&buffer);
+}
+
+char *xray_benchmark_report_tsv(const XrayBenchmarkReport *report) {
+  JsonBuffer buffer = {0};
+  jb_append(&buffer,
+    "category\tname\toperation\tdigits\tstatus\tpassed\tparityVerified\treplacementReady\tadoption\tscratchUs\tgmpUs\tspeedRatio\tmaxAllowedSpeedRatio\telapsedMs\tdetail\n");
+  if (!report) return jb_take(&buffer);
+  for (size_t index = 0; index < report->result_count; ++index) {
+    const XrayBenchmarkResult *row = &report->results[index];
+    append_tsv_field(&buffer, row->category);
+    jb_append(&buffer, "\t");
+    append_tsv_field(&buffer, row->name);
+    jb_append(&buffer, "\t");
+    append_tsv_field(&buffer, row->operation);
+    jb_printf(&buffer, "\t%zu\t", row->digits);
+    append_tsv_field(&buffer, row->status);
+    jb_printf(&buffer, "\t%s\t%s\t%s\t",
+      row->passed ? "true" : "false",
+      row->parity_verified ? "true" : "false",
+      row->replacement_ready ? "true" : "false");
+    append_tsv_field(&buffer, row->adoption);
+    jb_printf(&buffer, "\t%llu\t%llu\t%.6f\t%.6f\t%lu\t",
+      row->scratch_us,
+      row->gmp_us,
+      row->speed_ratio,
+      row->max_allowed_speed_ratio,
+      row->elapsed_ms);
+    append_tsv_field(&buffer, row->detail);
+    jb_append(&buffer, "\n");
+  }
   return jb_take(&buffer);
 }
 

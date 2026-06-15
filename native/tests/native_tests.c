@@ -22,6 +22,34 @@ static void check_scratch_matches_mpz(const XrayScratchBigInt *actual, const mpz
   free(expected_text);
 }
 
+static char *test_path_join(const char *dir, const char *name) {
+  size_t dir_length = dir ? strlen(dir) : 0;
+  size_t name_length = name ? strlen(name) : 0;
+  char *path = (char *)calloc(dir_length + name_length + 2, 1);
+  CHECK(path != NULL);
+  snprintf(path, dir_length + name_length + 2, "%s/%s", dir ? dir : ".", name ? name : "");
+  return path;
+}
+
+static char *read_text_file(const char *path) {
+  FILE *file = NULL;
+#ifdef _WIN32
+  if (fopen_s(&file, path, "rb") != 0) file = NULL;
+#else
+  file = fopen(path, "rb");
+#endif
+  CHECK(file != NULL);
+  CHECK(fseek(file, 0, SEEK_END) == 0);
+  long length = ftell(file);
+  CHECK(length >= 0);
+  CHECK(fseek(file, 0, SEEK_SET) == 0);
+  char *text = (char *)calloc((size_t)length + 1, 1);
+  CHECK(text != NULL);
+  if (length) CHECK(fread(text, 1, (size_t)length, file) == (size_t)length);
+  fclose(file);
+  return text;
+}
+
 static void test_parse_messy_input(void) {
   mpz_t value;
   mpz_init(value);
@@ -357,6 +385,7 @@ static void test_workspace_and_gnfs_artifacts(void) {
   CHECK(report.gnfs.stage_count == 7);
   CHECK(strstr(report.json, "\"expression\"") != NULL);
   CHECK(strstr(report.json, "\"gnfsReport\"") != NULL);
+  CHECK(strstr(report.events_jsonl, "\"stage\":\"benchmark\",\"status\":\"skipped\"") != NULL);
   xray_workbench_report_clear(&report);
 }
 
@@ -389,25 +418,32 @@ static void test_large_nonhit_does_not_false_solve(void) {
 }
 
 static void test_benchmarks(void) {
-  XrayBenchmarkReport report;
-  CHECK(xray_benchmark_run(&report));
-  CHECK(report.result_count >= 32);
-  CHECK(report.passed_count == report.result_count);
+  XrayRunConfig config = xray_run_default_config();
+  snprintf(config.workspace_root, sizeof(config.workspace_root), "native-test-runs");
+  config.enable_factor = 0;
+  config.enable_cyclotomic = 0;
+  config.enable_gnfs_stage_proof = 0;
+  config.enable_benchmark = 1;
+  XrayWorkbenchReport workbench;
+  CHECK(xray_workbench_run("10403", &config, &workbench));
+  XrayBenchmarkReport *report = &workbench.benchmark;
+  CHECK(report->result_count >= 32);
+  CHECK(report->passed_count == report->result_count);
   size_t scratch_rows = 0;
   size_t replacement_ready_rows = 0;
   size_t oracle_only_rows = 0;
   size_t blocked_rows = 0;
-  for (size_t index = 0; index < report.result_count; ++index) {
-    if (strcmp(report.results[index].category, "scratch-vs-gmp") == 0) {
+  for (size_t index = 0; index < report->result_count; ++index) {
+    if (strcmp(report->results[index].category, "scratch-vs-gmp") == 0) {
       scratch_rows++;
-      CHECK(report.results[index].parity_verified);
-      CHECK(report.results[index].scratch_us > 0);
-      CHECK(report.results[index].gmp_us > 0);
-      CHECK(report.results[index].speed_ratio > 0.0);
-      CHECK(report.results[index].max_allowed_speed_ratio == 1.0);
-      const char *adoption = xray_scratch_adoption_for_result(&report.results[index]);
-      CHECK(strcmp(report.results[index].adoption, adoption) == 0);
-      CHECK(report.results[index].replacement_ready == (strcmp(adoption, "allowed") == 0));
+      CHECK(report->results[index].parity_verified);
+      CHECK(report->results[index].scratch_us > 0);
+      CHECK(report->results[index].gmp_us > 0);
+      CHECK(report->results[index].speed_ratio > 0.0);
+      CHECK(report->results[index].max_allowed_speed_ratio == 1.0);
+      const char *adoption = xray_scratch_adoption_for_result(&report->results[index]);
+      CHECK(strcmp(report->results[index].adoption, adoption) == 0);
+      CHECK(report->results[index].replacement_ready == (strcmp(adoption, "allowed") == 0));
       if (strcmp(adoption, "allowed") == 0) replacement_ready_rows++;
       else if (strcmp(adoption, "oracle-only") == 0) oracle_only_rows++;
       else blocked_rows++;
@@ -417,12 +453,12 @@ static void test_benchmarks(void) {
   memset(&mismatch, 0, sizeof(mismatch));
   CHECK(strcmp(xray_scratch_adoption_for_result(&mismatch), "blocked-output-mismatch") == 0);
   CHECK(scratch_rows >= 24);
-  CHECK(report.scratch_count == scratch_rows);
-  CHECK(report.replacement_ready_count == replacement_ready_rows);
-  CHECK(report.oracle_only_count == oracle_only_rows);
-  CHECK(report.blocked_count == blocked_rows);
-  CHECK(report.scratch_count == report.replacement_ready_count + report.oracle_only_count + report.blocked_count);
-  char *json = xray_benchmark_report_json(&report);
+  CHECK(report->scratch_count == scratch_rows);
+  CHECK(report->replacement_ready_count == replacement_ready_rows);
+  CHECK(report->oracle_only_count == oracle_only_rows);
+  CHECK(report->blocked_count == blocked_rows);
+  CHECK(report->scratch_count == report->replacement_ready_count + report->oracle_only_count + report->blocked_count);
+  char *json = xray_benchmark_report_json(report);
   CHECK(json != NULL);
   CHECK(strstr(json, "\"replacementReady\"") != NULL);
   CHECK(strstr(json, "\"scratchRows\"") != NULL);
@@ -433,7 +469,31 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "\"maxAllowedSpeedRatio\"") != NULL);
   CHECK(strstr(json, "\"scratchUs\"") != NULL);
   free(json);
-  xray_benchmark_report_clear(&report);
+  char *tsv = xray_benchmark_report_tsv(report);
+  CHECK(tsv != NULL);
+  CHECK(strstr(tsv, "category\tname\toperation") != NULL);
+  CHECK(strstr(tsv, "factor-benchmark") != NULL);
+  CHECK(strstr(tsv, "cyclotomic-benchmark") != NULL);
+  CHECK(strstr(tsv, "scratch-vs-gmp") != NULL);
+  CHECK(strstr(tsv, "replacement-ready") != NULL || strstr(tsv, "parity") != NULL);
+  free(tsv);
+
+  CHECK(workbench.run_dir != NULL);
+  CHECK(workbench.events_jsonl != NULL);
+  CHECK(strstr(workbench.events_jsonl, "\"stage\":\"benchmark\"") != NULL);
+  char *benchmark_json_path = test_path_join(workbench.run_dir, "benchmark.json");
+  char *benchmark_tsv_path = test_path_join(workbench.run_dir, "benchmark.tsv");
+  char *benchmark_json = read_text_file(benchmark_json_path);
+  char *benchmark_tsv = read_text_file(benchmark_tsv_path);
+  CHECK(strstr(benchmark_json, "\"benchmarkReport\"") != NULL);
+  CHECK(strstr(benchmark_json, "\"scratchRows\"") != NULL);
+  CHECK(strstr(benchmark_tsv, "scratch-vs-gmp") != NULL);
+  CHECK(strstr(benchmark_tsv, "speedRatio") != NULL);
+  free(benchmark_json_path);
+  free(benchmark_tsv_path);
+  free(benchmark_json);
+  free(benchmark_tsv);
+  xray_workbench_report_clear(&workbench);
 }
 
 int main(void) {

@@ -103,6 +103,7 @@ static char *events_jsonl(const XrayWorkbenchReport *report) {
     "{\"stage\":\"expression\",\"status\":\"%s\",\"detail\":\"%s\"}\n"
     "{\"stage\":\"factor\",\"status\":\"%s\",\"detail\":\"factors=%zu unresolved=%zu productVerified=%s\"}\n"
     "{\"stage\":\"cyclotomic\",\"status\":\"complete\",\"detail\":\"scanned=%zu exact=%zu\"}\n"
+    "{\"stage\":\"benchmark\",\"status\":\"%s\",\"detail\":\"passed=%zu/%zu scratch=%zu replacementReady=%zu oracleOnly=%zu blocked=%zu\"}\n"
     "{\"stage\":\"gnfs\",\"status\":\"%s\",\"detail\":\"stages=%zu\"}\n",
     report->expression.ok ? "complete" : "invalid",
     report->expression.ok ? "exact integer expression evaluated" : (report->expression.error ? report->expression.error : "invalid"),
@@ -112,6 +113,13 @@ static char *events_jsonl(const XrayWorkbenchReport *report) {
     report->factor.product_verified ? "true" : "false",
     report->cyclotomic.scanned,
     report->cyclotomic.exact_matches,
+    report->benchmark.result_count ? "complete" : "skipped",
+    report->benchmark.passed_count,
+    report->benchmark.result_count,
+    report->benchmark.scratch_count,
+    report->benchmark.replacement_ready_count,
+    report->benchmark.oracle_only_count,
+    report->benchmark.blocked_count,
     report->gnfs.status[0] ? report->gnfs.status : "skipped",
     report->gnfs.stage_count);
   return events;
@@ -175,10 +183,22 @@ int xray_workbench_run(const char *raw_input, const XrayRunConfig *config_input,
   if (report->run_dir) {
     char *events_path = path_for(report->run_dir, "events.jsonl");
     char *report_path = path_for(report->run_dir, "report.json");
+    char *benchmark_json_path = path_for(report->run_dir, "benchmark.json");
+    char *benchmark_tsv_path = path_for(report->run_dir, "benchmark.tsv");
     write_text_file(events_path, report->events_jsonl);
     write_text_file(report_path, report->json);
+    if (config.enable_benchmark) {
+      char *benchmark_json = xray_benchmark_report_json(&report->benchmark);
+      char *benchmark_tsv = xray_benchmark_report_tsv(&report->benchmark);
+      write_text_file(benchmark_json_path, benchmark_json);
+      write_text_file(benchmark_tsv_path, benchmark_tsv);
+      free(benchmark_json);
+      free(benchmark_tsv);
+    }
     free(events_path);
     free(report_path);
+    free(benchmark_json_path);
+    free(benchmark_tsv_path);
   }
   mpz_clear(value);
   return expression_ok;

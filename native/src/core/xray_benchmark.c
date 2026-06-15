@@ -47,6 +47,8 @@ static void run_factor_case(XrayBenchmarkReport *report, const char *name, const
   XrayBenchmarkResult result;
   memset(&result, 0, sizeof(result));
   snprintf(result.name, sizeof(result.name), "%s", name);
+  snprintf(result.category, sizeof(result.category), "factor-benchmark");
+  snprintf(result.operation, sizeof(result.operation), "factor-solve");
   unsigned long started = xray_now_ms();
   XrayFactorConfig config = xray_factor_default_config();
   config.time_budget_ms = budget_ms;
@@ -68,6 +70,8 @@ static void run_cyclo_case(XrayBenchmarkReport *report, const char *name, unsign
   XrayBenchmarkResult result;
   memset(&result, 0, sizeof(result));
   snprintf(result.name, sizeof(result.name), "%s", name);
+  snprintf(result.category, sizeof(result.category), "cyclotomic-benchmark");
+  snprintf(result.operation, sizeof(result.operation), "cyclotomic-eval");
   unsigned long started = xray_now_ms();
   mpz_t base, actual, expected;
   mpz_inits(base, actual, expected, NULL);
