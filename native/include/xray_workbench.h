@@ -29,6 +29,7 @@ int xray_bigint_mul(XrayScratchBigInt *out, const XrayScratchBigInt *left, const
 int xray_bigint_square(XrayScratchBigInt *out, const XrayScratchBigInt *value);
 int xray_bigint_square_karatsuba_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t threshold);
 char *xray_bigint_get_decimal_horner_threshold_probe(const XrayScratchBigInt *value, size_t horner_min_limbs);
+char *xray_bigint_get_decimal_divider_probe(const XrayScratchBigInt *value, int use_direct_divider);
 int xray_bigint_mul_with_threshold(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t threshold);
 int xray_bigint_mul_toom3_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold);
 int xray_bigint_mul_toom3_unroll4_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold);
