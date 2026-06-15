@@ -31,7 +31,7 @@ Measurable native objectives:
 - emit JSON reports with factors, unresolved cofactors, proof status, timings, limits, and source notes
 - keep large challenge fixtures explicitly unresolved unless exact factors are found and product verification passes
 
-See [`native/README.md`](native/README.md) for build instructions. GTK4 is optional at configure time: the math core, CLI, and tests still build when GTK4 development headers are unavailable.
+See [`native/README.md`](native/README.md) for build and import instructions. GTK4 is optional at configure time: the math core, CLI, and tests still build when GTK4 development headers are unavailable.
 
 Open `index.html` directly in a browser, or host the folder as a static site.
 
