@@ -535,6 +535,45 @@ static uint64_t kernel_muladd_u64_msvc_carry_unroll4(uint64_t *out, const uint64
   return carry;
 }
 
+static uint64_t kernel_muladd_u64_msvc_carry_unroll8(uint64_t *out, const uint64_t *existing, const uint64_t *right, uint64_t multiplier, size_t limbs) {
+  uint64_t carry = 0;
+  size_t index = 0;
+#define XRAY_MULADD_UNROLL8_STEP(offset) do { \
+    unsigned __int64 high = 0; \
+    unsigned __int64 low = _umul128(right[index + (offset)], multiplier, &high); \
+    unsigned __int64 sum = 0; \
+    unsigned char carry_out = _addcarry_u64(0, low, existing[index + (offset)], &sum); \
+    high += carry_out; \
+    carry_out = _addcarry_u64(0, sum, carry, &sum); \
+    high += carry_out; \
+    out[index + (offset)] = (uint64_t)sum; \
+    carry = (uint64_t)high; \
+  } while (0)
+  for (; index + 8U <= limbs; index += 8U) {
+    XRAY_MULADD_UNROLL8_STEP(0U);
+    XRAY_MULADD_UNROLL8_STEP(1U);
+    XRAY_MULADD_UNROLL8_STEP(2U);
+    XRAY_MULADD_UNROLL8_STEP(3U);
+    XRAY_MULADD_UNROLL8_STEP(4U);
+    XRAY_MULADD_UNROLL8_STEP(5U);
+    XRAY_MULADD_UNROLL8_STEP(6U);
+    XRAY_MULADD_UNROLL8_STEP(7U);
+  }
+#undef XRAY_MULADD_UNROLL8_STEP
+  for (; index < limbs; ++index) {
+    unsigned __int64 high = 0;
+    unsigned __int64 low = _umul128(right[index], multiplier, &high);
+    unsigned __int64 sum = 0;
+    unsigned char carry_out = _addcarry_u64(0, low, existing[index], &sum);
+    high += carry_out;
+    carry_out = _addcarry_u64(0, sum, carry, &sum);
+    high += carry_out;
+    out[index] = (uint64_t)sum;
+    carry = (uint64_t)high;
+  }
+  return carry;
+}
+
 static uint64_t kernel_muladd_u64_bmi2_adx(uint64_t *out, const uint64_t *existing, const uint64_t *right, uint64_t multiplier, size_t limbs) {
   uint64_t carry = 0;
   for (size_t index = 0; index < limbs; ++index) {
@@ -551,7 +590,7 @@ static uint64_t kernel_muladd_u64_bmi2_adx(uint64_t *out, const uint64_t *existi
   return carry;
 }
 
-static void run_kernel_probe_muladd_unroll_case(XrayBenchmarkReport *report, size_t bits) {
+static void run_kernel_probe_muladd_unroll_case(XrayBenchmarkReport *report, size_t bits, unsigned int unroll) {
   size_t limbs = bits / 64U;
   uint64_t *existing = (uint64_t *)calloc(limbs, sizeof(uint64_t));
   uint64_t *right = (uint64_t *)calloc(limbs, sizeof(uint64_t));
@@ -566,7 +605,9 @@ static void run_kernel_probe_muladd_unroll_case(XrayBenchmarkReport *report, siz
   fill_kernel_u64(right, limbs, UINT64_C(0x589965cc75374cc3));
   uint64_t multiplier = UINT64_C(0x9e3779b97f4a7c15);
   uint64_t baseline_carry = kernel_muladd_u64_msvc_carry(baseline, existing, right, multiplier, limbs);
-  uint64_t candidate_carry = kernel_muladd_u64_msvc_carry_unroll4(candidate, existing, right, multiplier, limbs);
+  uint64_t candidate_carry = unroll == 8U ?
+    kernel_muladd_u64_msvc_carry_unroll8(candidate, existing, right, multiplier, limbs) :
+    kernel_muladd_u64_msvc_carry_unroll4(candidate, existing, right, multiplier, limbs);
   int parity = baseline_carry == candidate_carry && memcmp(baseline, candidate, sizeof(uint64_t) * limbs) == 0;
 
   unsigned int iterations = kernel_iterations(bits);
@@ -582,18 +623,24 @@ static void run_kernel_probe_muladd_unroll_case(XrayBenchmarkReport *report, siz
 
     unsigned long long candidate_started = xray_now_us();
     for (unsigned int index = 0; index < iterations; ++index) {
-      candidate_carry = kernel_muladd_u64_msvc_carry_unroll4(candidate, existing, right, multiplier + index + sample, limbs);
+      candidate_carry = unroll == 8U ?
+        kernel_muladd_u64_msvc_carry_unroll8(candidate, existing, right, multiplier + index + sample, limbs) :
+        kernel_muladd_u64_msvc_carry_unroll4(candidate, existing, right, multiplier + index + sample, limbs);
       kernel_probe_sink ^= candidate[(index + sample) % limbs] ^ candidate_carry;
     }
     candidate_samples[sample] = xray_now_us() - candidate_started;
   }
 
   char name[72];
-  snprintf(name, sizeof(name), "kernel muladd unroll4 %zu-bit", bits);
+  snprintf(name, sizeof(name), "kernel muladd unroll%u %zu-bit", unroll == 8U ? 8U : 4U, bits);
+  char operation[32];
+  snprintf(operation, sizeof(operation), "muladd-unroll%u", unroll == 8U ? 8U : 4U);
+  char candidate_name[64];
+  snprintf(candidate_name, sizeof(candidate_name), "_umul128+_addcarry_u64-unroll%u", unroll == 8U ? 8U : 4U);
   append_kernel_probe_result(
     report,
     name,
-    "muladd-unroll4",
+    operation,
     bits,
     parity,
     median_samples(candidate_samples, XRAY_KERNEL_SAMPLES),
@@ -602,7 +649,7 @@ static void run_kernel_probe_muladd_unroll_case(XrayBenchmarkReport *report, siz
     paired_ratio_wins(candidate_samples, baseline_samples, XRAY_KERNEL_SAMPLES, 0.98),
     XRAY_KERNEL_SAMPLES,
     max_paired_ratio(candidate_samples, baseline_samples, XRAY_KERNEL_SAMPLES),
-    "_umul128+_addcarry_u64-unroll4",
+    candidate_name,
     "_umul128+_addcarry_u64",
     "msvc-x64-loop-schedule",
     "gmpAddmulScheduling");
@@ -1566,7 +1613,8 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     run_kernel_probe_intrinsic_case(report, "sub-carry", bit_sizes[index]);
 #endif
 #if XRAY_HAS_MSVC_BMI2_ADX_INTRINSICS
-    run_kernel_probe_muladd_unroll_case(report, bit_sizes[index]);
+    run_kernel_probe_muladd_unroll_case(report, bit_sizes[index], 4U);
+    run_kernel_probe_muladd_unroll_case(report, bit_sizes[index], 8U);
     run_kernel_probe_muladd_bmi2_adx_case(report, bit_sizes[index]);
 #endif
   }
