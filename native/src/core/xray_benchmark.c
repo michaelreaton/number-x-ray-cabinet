@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define XRAY_BENCH_SAMPLES 3
+#define XRAY_BENCH_SAMPLES 5
 
 static void append_result(XrayBenchmarkReport *report, const XrayBenchmarkResult *result) {
   XrayBenchmarkResult *next = (XrayBenchmarkResult *)realloc(report->results, sizeof(XrayBenchmarkResult) * (report->result_count + 1));
@@ -27,23 +27,20 @@ const char *xray_scratch_adoption_for_result(const XrayBenchmarkResult *result) 
   return "oracle-only";
 }
 
-static unsigned long long median3(unsigned long long a, unsigned long long b, unsigned long long c) {
-  if (a > b) {
-    unsigned long long tmp = a;
-    a = b;
-    b = tmp;
+static unsigned long long median_samples(const unsigned long long *samples, size_t count) {
+  unsigned long long sorted[XRAY_BENCH_SAMPLES] = {0};
+  if (!samples || count == 0 || count > XRAY_BENCH_SAMPLES) return 0;
+  for (size_t index = 0; index < count; ++index) sorted[index] = samples[index];
+  for (size_t index = 1; index < count; ++index) {
+    unsigned long long value = sorted[index];
+    size_t pos = index;
+    while (pos > 0 && sorted[pos - 1] > value) {
+      sorted[pos] = sorted[pos - 1];
+      pos--;
+    }
+    sorted[pos] = value;
   }
-  if (b > c) {
-    unsigned long long tmp = b;
-    b = c;
-    c = tmp;
-  }
-  if (a > b) {
-    unsigned long long tmp = a;
-    a = b;
-    b = tmp;
-  }
-  return b;
+  return sorted[count / 2];
 }
 
 static void run_factor_case(XrayBenchmarkReport *report, const char *name, const char *input, const char *expected_status, unsigned long budget_ms) {
@@ -193,8 +190,8 @@ static void run_scratch_parse_case(XrayBenchmarkReport *report, size_t digits) {
     free(scratch_text);
     free(gmp_text);
   }
-  unsigned long long scratch_us = median3(scratch_samples[0], scratch_samples[1], scratch_samples[2]);
-  unsigned long long gmp_us = median3(gmp_samples[0], gmp_samples[1], gmp_samples[2]);
+  unsigned long long scratch_us = median_samples(scratch_samples, XRAY_BENCH_SAMPLES);
+  unsigned long long gmp_us = median_samples(gmp_samples, XRAY_BENCH_SAMPLES);
   append_perf_result(report, "parse", digits, parity, scratch_us, gmp_us);
 
   mpz_clear(gmp);
@@ -248,8 +245,8 @@ static void run_scratch_binary_case(XrayBenchmarkReport *report, const char *ope
     free(scratch_text);
     free(gmp_text);
   }
-  unsigned long long scratch_us = median3(scratch_samples[0], scratch_samples[1], scratch_samples[2]);
-  unsigned long long gmp_us = median3(gmp_samples[0], gmp_samples[1], gmp_samples[2]);
+  unsigned long long scratch_us = median_samples(scratch_samples, XRAY_BENCH_SAMPLES);
+  unsigned long long gmp_us = median_samples(gmp_samples, XRAY_BENCH_SAMPLES);
   append_perf_result(report, operation, digits, parity, scratch_us, gmp_us);
 
   mpz_clears(ga, gb, gout, NULL);
@@ -298,8 +295,8 @@ static void run_scratch_divmod_case(XrayBenchmarkReport *report, size_t digits) 
     free(scratch_text);
     free(gmp_text);
   }
-  unsigned long long scratch_us = median3(scratch_samples[0], scratch_samples[1], scratch_samples[2]);
-  unsigned long long gmp_us = median3(gmp_samples[0], gmp_samples[1], gmp_samples[2]);
+  unsigned long long scratch_us = median_samples(scratch_samples, XRAY_BENCH_SAMPLES);
+  unsigned long long gmp_us = median_samples(gmp_samples, XRAY_BENCH_SAMPLES);
   append_perf_result(report, "divmod-u32", digits, parity, scratch_us, gmp_us);
 
   mpz_clears(ga, gquot, NULL);
@@ -352,8 +349,8 @@ static void run_scratch_modular_case(XrayBenchmarkReport *report, const char *op
     gmp_samples[sample] = xray_now_us() - gmp_started;
     parity = parity && ok && scratch_result == (uint32_t)gmp_result;
   }
-  unsigned long long scratch_us = median3(scratch_samples[0], scratch_samples[1], scratch_samples[2]);
-  unsigned long long gmp_us = median3(gmp_samples[0], gmp_samples[1], gmp_samples[2]);
+  unsigned long long scratch_us = median_samples(scratch_samples, XRAY_BENCH_SAMPLES);
+  unsigned long long gmp_us = median_samples(gmp_samples, XRAY_BENCH_SAMPLES);
   append_perf_result(report, operation, digits, parity, scratch_us, gmp_us);
 
   mpz_clears(ga, gmodulus, gout, NULL);
