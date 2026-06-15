@@ -38,6 +38,7 @@
   ],
   "memory": {
     "allocator": "system malloc/free",
+    "freeFunction": "xray_free",
     "callerFrees": true
   }
 }

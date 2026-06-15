@@ -1,7 +1,6 @@
 #include "number_xray.h"
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 int main(void) {
@@ -26,7 +25,7 @@ int main(void) {
     fprintf(stderr, "NumberXRay::core import smoke failed\n");
   }
 
-  free(text);
+  xray_free(text);
   xray_bigint_clear(&value);
   xray_bigint_clear(&one);
   xray_bigint_clear(&sum);

@@ -110,6 +110,29 @@ static void test_parse_messy_input(void) {
   mpz_clear(value);
 }
 
+static void test_public_allocator_contract(void) {
+  xray_free(NULL);
+
+  XrayScratchBigInt value;
+  xray_bigint_init(&value);
+  CHECK(xray_bigint_set_decimal(&value, "1,234,567"));
+  char *decimal = xray_bigint_get_decimal(&value);
+  CHECK(decimal != NULL);
+  CHECK(strcmp(decimal, "1234567") == 0);
+  xray_free(decimal);
+  xray_bigint_clear(&value);
+
+  mpz_t parsed;
+  mpz_init(parsed);
+  char *normalized = NULL;
+  char *error = NULL;
+  CHECK(xray_parse_integer("10_403", parsed, &normalized, &error));
+  CHECK(strcmp(normalized, "10403") == 0);
+  xray_free(normalized);
+  xray_free(error);
+  mpz_clear(parsed);
+}
+
 static void test_exact_expression_parser(void) {
   mpz_t value, expected;
   mpz_inits(value, expected, NULL);
@@ -1316,6 +1339,7 @@ static void test_benchmarks(void) {
 
 int main(void) {
   test_parse_messy_input();
+  test_public_allocator_contract();
   test_exact_expression_parser();
   test_cpu_feature_detection();
   test_scratch_bigint_oracle();

@@ -55,6 +55,7 @@ foreach(expected
     "\"coverage\": \"all exported XRAY_API functions\""
     "\"cmakeTarget\": \"NumberXRay::core\""
     "\"pkgConfig\": \"number-xray\""
+    "\"freeFunction\": \"xray_free\""
     "\"cmakeTarget\": \"GMP::GMP\"")
   string(FIND "${sdk_manifest}" "${expected}" expected_index)
   if(expected_index LESS 0)

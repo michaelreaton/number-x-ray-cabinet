@@ -32,6 +32,16 @@ typedef struct XrayScratchBigInt {
 } XrayScratchBigInt;
 
 /**
+ * Release memory returned by Number X-Ray allocation-returning API calls.
+ *
+ * Pass pointers returned by functions such as xray_bigint_get_decimal(),
+ * xray_preview_decimal(), xray_*_report_json(), and
+ * xray_cpu_features_summary(). Passing NULL is allowed. Use this instead of
+ * plain free() across shared-library or foreign-language boundaries.
+ */
+XRAY_API void xray_free(void *ptr);
+
+/**
  * Initialize an empty scratch bigint.
  *
  * Call this before passing a value to any other xray_bigint_* function. The
@@ -60,8 +70,8 @@ XRAY_API int xray_bigint_set_decimal(XrayScratchBigInt *value, const char *decim
 /**
  * Format a scratch bigint as a newly allocated decimal string.
  *
- * The caller owns the returned string and must release it with free(). Returns
- * NULL on allocation failure.
+ * The caller owns the returned string and must release it with xray_free().
+ * Returns NULL on allocation failure.
  */
 XRAY_API char *xray_bigint_get_decimal(const XrayScratchBigInt *value);
 
@@ -117,16 +127,16 @@ XRAY_API int xray_bigint_square_karatsuba_probe(XrayScratchBigInt *out, const Xr
 /**
  * Format value using an explicit Horner handoff threshold for benchmarking.
  *
- * The caller owns the returned string and must release it with free(). This is
- * a diagnostic probe and may not match the production route's threshold.
+ * The caller owns the returned string and must release it with xray_free().
+ * This is a diagnostic probe and may not match the production route's threshold.
  */
 XRAY_API char *xray_bigint_get_decimal_horner_threshold_probe(const XrayScratchBigInt *value, size_t horner_min_limbs);
 
 /**
  * Format value while forcing or disabling the direct divider probe route.
  *
- * The caller owns the returned string and must release it with free(). This is
- * intended for benchmark comparisons.
+ * The caller owns the returned string and must release it with xray_free().
+ * This is intended for benchmark comparisons.
  */
 XRAY_API char *xray_bigint_get_decimal_divider_probe(const XrayScratchBigInt *value, int use_direct_divider);
 
@@ -435,9 +445,10 @@ XRAY_API XrayRunConfig xray_run_default_config(void);
  * Parse messy decimal integer text into an initialized GMP integer.
  *
  * out must already be initialized with mpz_init(). On success, *normalized is a
- * newly allocated canonical decimal string that the caller must free(). On
- * failure, *error_message is a newly allocated explanation that the caller must
- * free(). Either output pointer may be NULL if the caller does not need it.
+ * newly allocated canonical decimal string that the caller must release with
+ * xray_free(). On failure, *error_message is a newly allocated explanation that
+ * the caller must release with xray_free(). Either output pointer may be NULL
+ * if the caller does not need it.
  */
 XRAY_API int xray_parse_integer(const char *raw, mpz_t out, char **normalized, char **error_message);
 
@@ -460,7 +471,7 @@ XRAY_API void xray_expression_result_clear(XrayExpressionResult *result);
  * Return a newly allocated shortened decimal preview of value.
  *
  * max_chars bounds the preview length. The caller owns the returned string and
- * must release it with free().
+ * must release it with xray_free().
  */
 XRAY_API char *xray_preview_decimal(const mpz_t value, size_t max_chars);
 
@@ -487,7 +498,7 @@ XRAY_API void xray_cpu_features_detect(XrayCpuFeatures *features);
 /**
  * Format CPU feature information as a newly allocated one-line summary.
  *
- * The caller owns the returned string and must release it with free().
+ * The caller owns the returned string and must release it with xray_free().
  */
 XRAY_API char *xray_cpu_features_summary(const XrayCpuFeatures *features);
 
@@ -571,7 +582,7 @@ XRAY_API void xray_factor_report_clear(XrayFactorReport *report);
 /**
  * Serialize a factor report as newly allocated JSON.
  *
- * The caller owns the returned string and must release it with free().
+ * The caller owns the returned string and must release it with xray_free().
  */
 XRAY_API char *xray_factor_report_json(const XrayFactorReport *report);
 
@@ -604,7 +615,7 @@ XRAY_API void xray_cyclotomic_report_clear(XrayCyclotomicReport *report);
 /**
  * Serialize a cyclotomic report as newly allocated JSON.
  *
- * The caller owns the returned string and must release it with free().
+ * The caller owns the returned string and must release it with xray_free().
  */
 XRAY_API char *xray_cyclotomic_report_json(const XrayCyclotomicReport *report);
 
@@ -625,21 +636,21 @@ XRAY_API void xray_benchmark_report_clear(XrayBenchmarkReport *report);
 /**
  * Serialize a benchmark report as newly allocated JSON.
  *
- * The caller owns the returned string and must release it with free().
+ * The caller owns the returned string and must release it with xray_free().
  */
 XRAY_API char *xray_benchmark_report_json(const XrayBenchmarkReport *report);
 
 /**
  * Serialize benchmark rows as newly allocated TSV text.
  *
- * The caller owns the returned string and must release it with free().
+ * The caller owns the returned string and must release it with xray_free().
  */
 XRAY_API char *xray_benchmark_report_tsv(const XrayBenchmarkReport *report);
 
 /**
  * Format the benchmark frontier summary as newly allocated text.
  *
- * The caller owns the returned string and must release it with free().
+ * The caller owns the returned string and must release it with xray_free().
  */
 XRAY_API char *xray_benchmark_frontier_text(const XrayBenchmarkReport *report);
 
@@ -680,7 +691,7 @@ XRAY_API void xray_workbench_report_clear(XrayWorkbenchReport *report);
 /**
  * Serialize a full workbench report as newly allocated JSON.
  *
- * The caller owns the returned string and must release it with free().
+ * The caller owns the returned string and must release it with xray_free().
  */
 XRAY_API char *xray_workbench_full_report_json(const XrayWorkbenchReport *report);
 
@@ -688,7 +699,7 @@ XRAY_API char *xray_workbench_full_report_json(const XrayWorkbenchReport *report
  * Serialize selected factor/cyclotomic/benchmark reports as workbench JSON.
  *
  * Any argument may be NULL. The caller owns the returned string and must
- * release it with free().
+ * release it with xray_free().
  */
 XRAY_API char *xray_workbench_report_json(const XrayFactorReport *factor, const XrayCyclotomicReport *cyclotomic, const XrayBenchmarkReport *benchmark);
 
