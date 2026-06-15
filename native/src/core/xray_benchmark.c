@@ -19,6 +19,8 @@
 #endif
 
 #define XRAY_BENCH_SAMPLES 5
+#define XRAY_BENCH_DEEP_SAMPLES 9
+#define XRAY_BENCH_MAX_SAMPLES 9
 #define XRAY_KERNEL_SAMPLES 5
 #define XRAY_MUL_OPERAND_FAMILIES 2
 #define XRAY_SCRATCH_REQUIRED_STABLE_SAMPLES 4
@@ -65,8 +67,8 @@ const char *xray_scratch_adoption_for_result(const XrayBenchmarkResult *result) 
 }
 
 static unsigned long long median_samples(const unsigned long long *samples, size_t count) {
-  unsigned long long sorted[XRAY_BENCH_SAMPLES] = {0};
-  if (!samples || count == 0 || count > XRAY_BENCH_SAMPLES) return 0;
+  unsigned long long sorted[XRAY_BENCH_MAX_SAMPLES] = {0};
+  if (!samples || count == 0 || count > XRAY_BENCH_MAX_SAMPLES) return 0;
   for (size_t index = 0; index < count; ++index) sorted[index] = samples[index];
   for (size_t index = 1; index < count; ++index) {
     unsigned long long value = sorted[index];
@@ -81,8 +83,8 @@ static unsigned long long median_samples(const unsigned long long *samples, size
 }
 
 static double median_paired_ratio(const unsigned long long *numerator, const unsigned long long *denominator, size_t count) {
-  double ratios[XRAY_BENCH_SAMPLES] = {0.0};
-  if (!numerator || !denominator || count == 0 || count > XRAY_BENCH_SAMPLES) return 0.0;
+  double ratios[XRAY_BENCH_MAX_SAMPLES] = {0.0};
+  if (!numerator || !denominator || count == 0 || count > XRAY_BENCH_MAX_SAMPLES) return 0.0;
   for (size_t index = 0; index < count; ++index) {
     ratios[index] = (double)(numerator[index] ? numerator[index] : 1ULL) /
       (double)(denominator[index] ? denominator[index] : 1ULL);
@@ -1065,6 +1067,8 @@ static void append_mul_unroll4_vs_scratch_probe_result(
 
 static void append_mul_unroll4_vs_gmp_probe_result(
   XrayBenchmarkReport *report,
+  const char *operation_name,
+  const char *name_prefix,
   size_t digits,
   size_t leaf_threshold,
   size_t operand_families,
@@ -1076,10 +1080,12 @@ static void append_mul_unroll4_vs_gmp_probe_result(
   size_t sample_count,
   double worst_pair_ratio) {
   XrayBenchmarkResult result;
+  const char *operation = operation_name ? operation_name : "mul-unroll4-vs-gmp";
+  const char *prefix = name_prefix ? name_prefix : "kernel mul unroll4 versus GMP";
   memset(&result, 0, sizeof(result));
-  snprintf(result.name, sizeof(result.name), "kernel mul unroll4 versus GMP leaf %zu limbs %zu digits", leaf_threshold, digits);
+  snprintf(result.name, sizeof(result.name), "%s leaf %zu limbs %zu digits", prefix, leaf_threshold, digits);
   snprintf(result.category, sizeof(result.category), "kernel-probe");
-  snprintf(result.operation, sizeof(result.operation), "mul-unroll4-vs-gmp");
+  snprintf(result.operation, sizeof(result.operation), "%s", operation);
   result.digits = digits;
   result.scratch_us = candidate_us ? candidate_us : 1;
   result.gmp_us = gmp_us ? gmp_us : 1;
@@ -1099,7 +1105,8 @@ static void append_mul_unroll4_vs_gmp_probe_result(
   result.passed = parity;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=mul-unroll4-vs-gmp digits=%zu leafThreshold=%zu operandFamilies=%zu samples=%zu stablePairs=%zu/%zu unroll4Us=%llu gmpUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median max=%.2f candidate=_umul128+_addcarry_u64-unroll4-full baseline=mpz_mul featureGate=msvc-x64-full-mul-schedule gmpClue=mpn-mul/addmul-thresholds adoption=%s",
+    "op=%s digits=%zu leafThreshold=%zu operandFamilies=%zu samples=%zu stablePairs=%zu/%zu unroll4Us=%llu gmpUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median max=%.2f candidate=_umul128+_addcarry_u64-unroll4-full baseline=mpz_mul featureGate=msvc-x64-full-mul-schedule gmpClue=mpn-mul/addmul-thresholds adoption=%s",
+    operation,
     digits,
     leaf_threshold,
     operand_families,
@@ -1581,7 +1588,13 @@ static void run_mul_unroll4_vs_scratch_probe_case(XrayBenchmarkReport *report, s
 #endif
 
 #if XRAY_HAS_MSVC_BMI2_ADX_INTRINSICS
-static void run_mul_unroll4_vs_gmp_probe_case(XrayBenchmarkReport *report, size_t digits, size_t leaf_threshold) {
+static void run_mul_unroll4_vs_gmp_probe_case_samples(
+  XrayBenchmarkReport *report,
+  size_t digits,
+  size_t leaf_threshold,
+  size_t sample_count,
+  const char *operation_name,
+  const char *name_prefix) {
   char *left_text[XRAY_MUL_OPERAND_FAMILIES] = {0};
   char *right_text[XRAY_MUL_OPERAND_FAMILIES] = {0};
   XrayScratchBigInt a[XRAY_MUL_OPERAND_FAMILIES];
@@ -1592,6 +1605,7 @@ static void run_mul_unroll4_vs_gmp_probe_case(XrayBenchmarkReport *report, size_
   mpz_t gout[XRAY_MUL_OPERAND_FAMILIES];
 
   unsigned int iterations = perf_iterations("mul", digits);
+  if (sample_count == 0 || sample_count > XRAY_BENCH_MAX_SAMPLES) sample_count = XRAY_BENCH_SAMPLES;
   int ok = 1;
   for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
     xray_bigint_init(&a[family]);
@@ -1609,10 +1623,10 @@ static void run_mul_unroll4_vs_gmp_probe_case(XrayBenchmarkReport *report, size_
       mpz_set_str(gb[family], right_text[family], 10) == 0;
   }
 
-  unsigned long long candidate_samples[XRAY_BENCH_SAMPLES] = {0};
-  unsigned long long gmp_samples[XRAY_BENCH_SAMPLES] = {0};
+  unsigned long long candidate_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
   int parity = 1;
-  for (unsigned int sample = 0; sample < XRAY_BENCH_SAMPLES; ++sample) {
+  for (size_t sample = 0; sample < sample_count; ++sample) {
     if ((sample % 2U) == 0U) {
       unsigned long long candidate_started = xray_now_us();
       for (unsigned int index = 0; ok && index < iterations; ++index) {
@@ -1658,16 +1672,18 @@ static void run_mul_unroll4_vs_gmp_probe_case(XrayBenchmarkReport *report, size_
 
   append_mul_unroll4_vs_gmp_probe_result(
     report,
+    operation_name,
+    name_prefix,
     digits,
     leaf_threshold,
     XRAY_MUL_OPERAND_FAMILIES,
     parity,
-    median_samples(candidate_samples, XRAY_BENCH_SAMPLES),
-    median_samples(gmp_samples, XRAY_BENCH_SAMPLES),
-    median_paired_ratio(candidate_samples, gmp_samples, XRAY_BENCH_SAMPLES),
-    paired_ratio_wins(candidate_samples, gmp_samples, XRAY_BENCH_SAMPLES, 0.98),
-    XRAY_BENCH_SAMPLES,
-    max_paired_ratio(candidate_samples, gmp_samples, XRAY_BENCH_SAMPLES));
+    median_samples(candidate_samples, sample_count),
+    median_samples(gmp_samples, sample_count),
+    median_paired_ratio(candidate_samples, gmp_samples, sample_count),
+    paired_ratio_wins(candidate_samples, gmp_samples, sample_count, 0.98),
+    sample_count,
+    max_paired_ratio(candidate_samples, gmp_samples, sample_count));
 
   for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
     mpz_clears(ga[family], gb[family], gout[family], NULL);
@@ -1677,6 +1693,26 @@ static void run_mul_unroll4_vs_gmp_probe_case(XrayBenchmarkReport *report, size_
     free(left_text[family]);
     free(right_text[family]);
   }
+}
+
+static void run_mul_unroll4_vs_gmp_probe_case(XrayBenchmarkReport *report, size_t digits, size_t leaf_threshold) {
+  run_mul_unroll4_vs_gmp_probe_case_samples(
+    report,
+    digits,
+    leaf_threshold,
+    XRAY_BENCH_SAMPLES,
+    "mul-unroll4-vs-gmp",
+    "kernel mul unroll4 versus GMP");
+}
+
+static void run_mul_unroll4_deep_vs_gmp_probe_case(XrayBenchmarkReport *report, size_t digits, size_t leaf_threshold) {
+  run_mul_unroll4_vs_gmp_probe_case_samples(
+    report,
+    digits,
+    leaf_threshold,
+    XRAY_BENCH_DEEP_SAMPLES,
+    "mul-unroll4-deep-vs-gmp",
+    "kernel mul unroll4 deep versus GMP");
 }
 #endif
 
@@ -1937,6 +1973,10 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
   for (size_t digit_index = 0; digit_index < sizeof(unroll_digits) / sizeof(unroll_digits[0]); ++digit_index) {
     run_mul_unroll4_vs_scratch_probe_case(report, unroll_digits[digit_index], 64);
     run_mul_unroll4_vs_gmp_probe_case(report, unroll_digits[digit_index], 64);
+  }
+  const size_t unroll_deep_digits[] = {4096, 8192};
+  for (size_t digit_index = 0; digit_index < sizeof(unroll_deep_digits) / sizeof(unroll_deep_digits[0]); ++digit_index) {
+    run_mul_unroll4_deep_vs_gmp_probe_case(report, unroll_deep_digits[digit_index], 64);
   }
 #endif
 }
