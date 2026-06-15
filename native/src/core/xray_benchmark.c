@@ -2346,6 +2346,59 @@ static void run_scratch_mul_case(XrayBenchmarkReport *report, size_t digits) {
   }
 }
 
+static void run_scratch_square_case(XrayBenchmarkReport *report, size_t digits) {
+  char *text = benchmark_decimal(digits, 31, 1);
+  if (!text) return;
+  unsigned int iterations = perf_iterations("mul", digits);
+  XrayScratchBigInt a, scratch_out;
+  xray_bigint_init(&a);
+  xray_bigint_init(&scratch_out);
+  mpz_t ga, gout;
+  mpz_inits(ga, gout, NULL);
+  int ok = xray_bigint_set_decimal(&a, text) && mpz_set_str(ga, text, 10) == 0;
+
+  unsigned long long scratch_samples[XRAY_BENCH_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_SAMPLES] = {0};
+  int parity = 1;
+  for (unsigned int sample = 0; sample < XRAY_BENCH_SAMPLES; ++sample) {
+    unsigned long long scratch_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      ok = xray_bigint_square(&scratch_out, &a);
+    }
+    scratch_samples[sample] = xray_now_us() - scratch_started;
+
+    unsigned long long gmp_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      mpz_mul(gout, ga, ga);
+    }
+    gmp_samples[sample] = xray_now_us() - gmp_started;
+
+    char *scratch_text = xray_bigint_get_decimal(&scratch_out);
+    char *gmp_text = mpz_get_str(NULL, 10, gout);
+    parity = parity && ok && scratch_text && gmp_text && strcmp(scratch_text, gmp_text) == 0;
+    free(scratch_text);
+    free(gmp_text);
+  }
+
+  append_perf_result(
+    report,
+    "square",
+    digits,
+    1,
+    parity,
+    median_samples(scratch_samples, XRAY_BENCH_SAMPLES),
+    median_samples(gmp_samples, XRAY_BENCH_SAMPLES),
+    median_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES),
+    paired_ratio_wins(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES, 1.0),
+    XRAY_BENCH_SAMPLES,
+    max_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES));
+
+  mpz_clears(ga, gout, NULL);
+  xray_bigint_clear(&a);
+  xray_bigint_clear(&scratch_out);
+  free(text);
+}
+
 static void run_scratch_divmod_case(XrayBenchmarkReport *report, size_t digits) {
   char *text = benchmark_decimal(digits, 17, 1);
   if (!text) return;
@@ -2482,8 +2535,10 @@ static void run_scratch_bigint_gates(XrayBenchmarkReport *report) {
     run_scratch_modular_case(report, "powmod-u32", sizes[index]);
     run_scratch_divmod_case(report, sizes[index]);
     run_scratch_mul_case(report, sizes[index]);
+    run_scratch_square_case(report, sizes[index]);
   }
   run_scratch_mul_case(report, 16384);
+  run_scratch_square_case(report, 16384);
 }
 
 static void run_kernel_probes(XrayBenchmarkReport *report) {

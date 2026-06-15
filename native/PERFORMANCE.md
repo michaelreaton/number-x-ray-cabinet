@@ -485,3 +485,37 @@ CLI benchmark:
 Decision: reject recursive leaf 96 as a route candidate. The deep gate shows it
 does not beat GMP, and the broader recursive experiment still has high
 worst-pair variance even when a five-sample scout row looks attractive.
+
+## 2026-06-15: Specialized Square Basecase Probe
+
+Runs: `native-test-runs/20260615-083151-c4b04caf` and
+`runs/20260615-082901-c4b04caf`
+
+GMP documents squaring as a separate basecase path because the off-diagonal
+cross-products can be computed once and doubled instead of doing a full
+rectangular multiply (`https://gmplib.org/manual/Basecase-Multiplication.html`).
+The scratch engine now has an oracle-tested
+`xray_bigint_square` primitive and emits `square` rows in the benchmark ladder,
+but the production multiply route is unchanged.
+
+CTest benchmark:
+
+- 40 digits: ratio `1.038`, stable `0/5`, `oracle-only`
+- 150 digits: ratio `0.676`, stable `5/5`, `allowed`
+- 1000 digits: ratio `0.874`, stable `5/5`, `allowed`
+- 4096 digits: ratio `1.500`, stable `0/5`, `oracle-only`
+- 8192 digits: ratio `2.500`, stable `0/5`, `oracle-only`
+- 16384 digits: ratio `2.673`, stable `0/5`, `oracle-only`
+
+CLI benchmark:
+
+- 40 digits: ratio `1.000`, stable `3/5`, `oracle-only`
+- 150 digits: ratio `0.725`, stable `5/5`, `allowed`
+- 1000 digits: ratio `0.849`, stable `4/5`, `allowed`
+- 4096 digits: ratio `1.469`, stable `0/5`, `oracle-only`
+- 8192 digits: ratio `2.095`, stable `0/5`, `oracle-only`
+- 16384 digits: ratio `3.101`, stable `0/5`, `oracle-only`
+
+Decision: keep square as a proved primitive and benchmark row, but do not route
+large multiplication through it. It only wins in the bounded schoolbook-size
+middle and loses badly once Karatsuba/Toom-style multiplication should dominate.

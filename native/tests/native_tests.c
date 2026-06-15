@@ -405,6 +405,68 @@ static void test_scratch_bigint_large_mul_oracle(void) {
   free(right_text);
 }
 
+static void test_scratch_bigint_square_oracle(void) {
+  const char *small_cases[] = {"0", "1", "18446744073709551616", "340282366920938463463374607431768211455"};
+  for (size_t index = 0; index < sizeof(small_cases) / sizeof(small_cases[0]); ++index) {
+    XrayScratchBigInt value, square;
+    xray_bigint_init(&value);
+    xray_bigint_init(&square);
+    mpz_t gvalue, gsquare;
+    mpz_inits(gvalue, gsquare, NULL);
+
+    CHECK(xray_bigint_set_decimal(&value, small_cases[index]));
+    CHECK(mpz_set_str(gvalue, small_cases[index], 10) == 0);
+    mpz_mul(gsquare, gvalue, gvalue);
+    CHECK(xray_bigint_square(&square, &value));
+    check_scratch_matches_mpz(&square, gsquare);
+
+    CHECK(xray_bigint_square(&value, &value));
+    check_scratch_matches_mpz(&value, gsquare);
+
+    mpz_clears(gvalue, gsquare, NULL);
+    xray_bigint_clear(&value);
+    xray_bigint_clear(&square);
+  }
+
+  XrayScratchBigInt mersenne, mersenne_square;
+  xray_bigint_init(&mersenne);
+  xray_bigint_init(&mersenne_square);
+  mpz_t gmersenne, gmersenne_square;
+  mpz_inits(gmersenne, gmersenne_square, NULL);
+  mpz_ui_pow_ui(gmersenne, 2U, 512U);
+  mpz_sub_ui(gmersenne, gmersenne, 1U);
+  char *mersenne_text = mpz_get_str(NULL, 10, gmersenne);
+  mpz_mul(gmersenne_square, gmersenne, gmersenne);
+  CHECK(xray_bigint_set_decimal(&mersenne, mersenne_text));
+  CHECK(xray_bigint_square(&mersenne_square, &mersenne));
+  check_scratch_matches_mpz(&mersenne_square, gmersenne_square);
+  free(mersenne_text);
+  mpz_clears(gmersenne, gmersenne_square, NULL);
+  xray_bigint_clear(&mersenne);
+  xray_bigint_clear(&mersenne_square);
+
+  char *large_text = make_pattern_decimal(2200, "13579135791357924680");
+  XrayScratchBigInt large, square;
+  xray_bigint_init(&large);
+  xray_bigint_init(&square);
+  mpz_t glarge, gsquare;
+  mpz_inits(glarge, gsquare, NULL);
+
+  CHECK(xray_bigint_set_decimal(&large, large_text));
+  CHECK(mpz_set_str(glarge, large_text, 10) == 0);
+  mpz_mul(gsquare, glarge, glarge);
+  CHECK(xray_bigint_square(&square, &large));
+  check_scratch_matches_mpz(&square, gsquare);
+
+  CHECK(xray_bigint_square(&large, &large));
+  check_scratch_matches_mpz(&large, gsquare);
+
+  mpz_clears(glarge, gsquare, NULL);
+  xray_bigint_clear(&large);
+  xray_bigint_clear(&square);
+  free(large_text);
+}
+
 static void test_scratch_bigint_karatsuba_middle_signs(void) {
   const uint64_t cases[][4] = {
     {3, 9, 5, 11},
@@ -780,6 +842,7 @@ static void test_benchmarks(void) {
   size_t blocked_rows = 0;
   int saw_8192_scratch = 0;
   int saw_16384_scratch_mul = 0;
+  int saw_scratch_square = 0;
   int saw_8192_kernel_probe = 0;
   int saw_16384_kernel_probe = 0;
   int saw_toom3_probe = 0;
@@ -811,6 +874,7 @@ static void test_benchmarks(void) {
       CHECK(report->results[index].stable_sample_count <= report->results[index].sample_count);
       if (report->results[index].digits == 8192) saw_8192_scratch = 1;
       if (report->results[index].digits == 16384 && strcmp(report->results[index].operation, "mul") == 0) saw_16384_scratch_mul = 1;
+      if (strcmp(report->results[index].operation, "square") == 0) saw_scratch_square = 1;
       CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
       CHECK(strstr(report->results[index].detail, "stablePairs=") != NULL);
       CHECK(strstr(report->results[index].detail, "worstPairRatio=") != NULL);
@@ -986,6 +1050,7 @@ static void test_benchmarks(void) {
   CHECK(scratch_rows >= 40);
   CHECK(saw_8192_scratch);
   CHECK(saw_16384_scratch_mul);
+  CHECK(saw_scratch_square);
   CHECK(saw_8192_kernel_probe);
   CHECK(saw_16384_kernel_probe);
   CHECK(saw_toom3_probe);
@@ -1031,6 +1096,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "\"maxAllowedSpeedRatio\"") != NULL);
   CHECK(strstr(json, "\"scratchUs\"") != NULL);
   CHECK(strstr(json, "mul-toom3") != NULL);
+  CHECK(strstr(json, "\"operation\":\"square\"") != NULL);
   CHECK(strstr(json, "mul-toom3-vs-scratch") != NULL);
 #if defined(_MSC_VER) && defined(_M_X64)
   CHECK(strstr(json, "mul-toom3-unroll4-vs-scratch") != NULL);
@@ -1055,6 +1121,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "kernel-probe") != NULL);
   CHECK(strstr(tsv, "gmpClue=") != NULL);
   CHECK(strstr(tsv, "mul-toom3") != NULL);
+  CHECK(strstr(tsv, "square") != NULL);
   CHECK(strstr(tsv, "mul-toom3-vs-scratch") != NULL);
 #if defined(_MSC_VER) && defined(_M_X64)
   CHECK(strstr(tsv, "mul-toom3-unroll4-vs-scratch") != NULL);
@@ -1088,6 +1155,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "scratch-vs-gmp") != NULL);
   CHECK(strstr(benchmark_tsv, "kernel-probe") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-toom3") != NULL);
+  CHECK(strstr(benchmark_tsv, "square") != NULL);
 #if defined(_MSC_VER) && defined(_M_X64)
   CHECK(strstr(benchmark_tsv, "mul-toom3-unroll4-vs-scratch") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-toom3-unroll4-vs-gmp") != NULL);
@@ -1117,6 +1185,7 @@ int main(void) {
   test_scratch_bigint_oracle();
   test_scratch_bigint_oracle_sweep();
   test_scratch_bigint_large_mul_oracle();
+  test_scratch_bigint_square_oracle();
   test_scratch_bigint_karatsuba_middle_signs();
   test_scratch_bigint_mul_thresholds();
   test_scratch_bigint_toom3_probe_oracle();
