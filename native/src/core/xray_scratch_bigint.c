@@ -202,13 +202,17 @@ int xray_bigint_compare(const XrayScratchBigInt *left, const XrayScratchBigInt *
 
 int xray_bigint_add(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
   if (!out || !left || !right) return 0;
-  size_t max_count = left->count > right->count ? left->count : right->count;
-  if (!reserve_limbs(out, max_count + 1)) return 0;
+  const XrayScratchBigInt *longer = left;
+  const XrayScratchBigInt *shorter = right;
+  if (right->count > left->count) {
+    longer = right;
+    shorter = left;
+  }
+  if (!reserve_limbs(out, longer->count + 1)) return 0;
   uint64_t carry = 0;
-  for (size_t index = 0; index < max_count; ++index) {
-    uint64_t sum = carry;
-    if (index < left->count) sum += left->limbs[index];
-    if (index < right->count) sum += right->limbs[index];
+  size_t index = 0;
+  for (; index < shorter->count; ++index) {
+    uint64_t sum = (uint64_t)left->limbs[index] + right->limbs[index] + carry;
     if (sum >= XRAY_BIGINT_BASE) {
       out->limbs[index] = (uint32_t)(sum - XRAY_BIGINT_BASE);
       carry = 1;
@@ -217,7 +221,17 @@ int xray_bigint_add(XrayScratchBigInt *out, const XrayScratchBigInt *left, const
       carry = 0;
     }
   }
-  out->count = max_count;
+  for (; index < longer->count; ++index) {
+    uint64_t sum = (uint64_t)longer->limbs[index] + carry;
+    if (sum >= XRAY_BIGINT_BASE) {
+      out->limbs[index] = (uint32_t)(sum - XRAY_BIGINT_BASE);
+      carry = 1;
+    } else {
+      out->limbs[index] = (uint32_t)sum;
+      carry = 0;
+    }
+  }
+  out->count = longer->count;
   if (carry) out->limbs[out->count++] = (uint32_t)carry;
   normalize(out);
   return 1;
@@ -228,14 +242,25 @@ int xray_bigint_sub(XrayScratchBigInt *out, const XrayScratchBigInt *left, const
   if (xray_bigint_compare(left, right) < 0) return 0;
   if (!reserve_limbs(out, left->count ? left->count : 1)) return 0;
   uint64_t borrow = 0;
-  for (size_t index = 0; index < left->count; ++index) {
+  size_t index = 0;
+  for (; index < right->count; ++index) {
     uint64_t lhs = left->limbs[index];
-    uint64_t rhs = borrow + (index < right->count ? right->limbs[index] : 0U);
+    uint64_t rhs = (uint64_t)right->limbs[index] + borrow;
     if (lhs < rhs) {
       out->limbs[index] = (uint32_t)(lhs + XRAY_BIGINT_BASE - rhs);
       borrow = 1;
     } else {
       out->limbs[index] = (uint32_t)(lhs - rhs);
+      borrow = 0;
+    }
+  }
+  for (; index < left->count; ++index) {
+    uint64_t lhs = left->limbs[index];
+    if (lhs < borrow) {
+      out->limbs[index] = XRAY_BIGINT_BASE - 1U;
+      borrow = 1;
+    } else {
+      out->limbs[index] = (uint32_t)(lhs - borrow);
       borrow = 0;
     }
   }

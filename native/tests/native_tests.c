@@ -114,6 +114,41 @@ static void test_scratch_bigint_oracle(void) {
   free(oracle_difference);
   free(oracle_product);
   free(oracle_quotient);
+
+  CHECK(xray_bigint_set_decimal(&a, "999999999999999999999999999999"));
+  CHECK(xray_bigint_set_decimal(&b, "1"));
+  CHECK(xray_bigint_add(&sum, &a, &b));
+  mpz_set_str(ga, "999999999999999999999999999999", 10);
+  mpz_set_ui(gb, 1);
+  mpz_add(gsum, ga, gb);
+  char *carry_sum = xray_bigint_get_decimal(&sum);
+  char *oracle_carry_sum = mpz_get_str(NULL, 10, gsum);
+  CHECK(strcmp(carry_sum, oracle_carry_sum) == 0);
+  free(carry_sum);
+  free(oracle_carry_sum);
+
+  CHECK(xray_bigint_sub(&difference, &sum, &b));
+  mpz_sub(gdifference, gsum, gb);
+  char *borrow_difference = xray_bigint_get_decimal(&difference);
+  char *oracle_borrow_difference = mpz_get_str(NULL, 10, gdifference);
+  CHECK(strcmp(borrow_difference, oracle_borrow_difference) == 0);
+  free(borrow_difference);
+  free(oracle_borrow_difference);
+
+  CHECK(xray_bigint_add(&a, &a, &b));
+  char *alias_sum = xray_bigint_get_decimal(&a);
+  char *oracle_alias_sum = mpz_get_str(NULL, 10, gsum);
+  CHECK(strcmp(alias_sum, oracle_alias_sum) == 0);
+  free(alias_sum);
+  free(oracle_alias_sum);
+
+  CHECK(xray_bigint_sub(&a, &a, &b));
+  char *alias_difference = xray_bigint_get_decimal(&a);
+  char *oracle_alias_difference = mpz_get_str(NULL, 10, gdifference);
+  CHECK(strcmp(alias_difference, oracle_alias_difference) == 0);
+  free(alias_difference);
+  free(oracle_alias_difference);
+
   mpz_clears(ga, gb, gsum, gdifference, gproduct, gquotient, gmodulus, ggcd, gpow, gexponent, NULL);
   xray_bigint_clear(&a);
   xray_bigint_clear(&b);
