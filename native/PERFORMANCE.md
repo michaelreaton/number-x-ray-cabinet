@@ -186,3 +186,21 @@ adoption row without routing the 8192 digit case, and it preserves the small
 40 digit row by keeping it outside the route. The scalar-threshold probe remains
 in the benchmark so future changes can still compare the route against the
 non-routed path.
+
+## 2026-06-15: Unroll4 Deep GMP Gate
+
+Run: `runs/20260615-060503-c4b04caf`
+
+The 8192 digit unroll4 rows were noisy across five-sample runs, so the
+benchmark now emits a stricter `mul-unroll4-deep-vs-gmp` gate for the 4096 and
+8192 digit rows using nine paired samples.
+
+- 4096 digits: ratio `0.791`, stable `9/9`, worst pair ratio `0.925`,
+  `candidate-faster`
+- 8192 digits: ratio `1.017`, stable `3/9`, worst pair ratio `1.328`,
+  `gmp-faster`
+
+Decision: keep the production route bounded below the 8192 digit row. The deep
+gate confirms that the 4096 digit route is solid on this laptop, but the 8192
+digit result is still too noisy and sometimes slower than GMP. A future 8192+
+route needs a different algorithmic primitive, not just a wider unroll4 switch.
