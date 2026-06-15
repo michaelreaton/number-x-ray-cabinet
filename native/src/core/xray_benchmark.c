@@ -74,6 +74,16 @@ static unsigned int perf_iterations(const char *operation, size_t digits) {
     if (digits <= 150) return 180;
     return 12;
   }
+  if (strcmp(operation, "powmod-u32") == 0) {
+    if (digits <= 40) return 12000;
+    if (digits <= 150) return 8000;
+    return 2200;
+  }
+  if (strcmp(operation, "mod-u32") == 0 || strcmp(operation, "gcd-u32") == 0) {
+    if (digits <= 40) return 30000;
+    if (digits <= 150) return 10000;
+    return 2200;
+  }
   if (digits <= 40) return 20000;
   if (digits <= 150) return 8000;
   return 1600;
@@ -238,12 +248,62 @@ static void run_scratch_divmod_case(XrayBenchmarkReport *report, size_t digits) 
   free(text);
 }
 
+static void run_scratch_modular_case(XrayBenchmarkReport *report, const char *operation, size_t digits) {
+  char *text = benchmark_decimal(digits, 23, 1);
+  if (!text) return;
+  const uint32_t modulus = 1000000007U;
+  const uint32_t gcd_operand = 65537U;
+  const uint32_t exponent = 65537U;
+  unsigned int iterations = perf_iterations(operation, digits);
+  XrayScratchBigInt a;
+  xray_bigint_init(&a);
+  mpz_t ga, gmodulus, gout;
+  mpz_inits(ga, gmodulus, gout, NULL);
+  int ok = xray_bigint_set_decimal(&a, text) && mpz_set_str(ga, text, 10) == 0;
+  uint32_t scratch_result = 0;
+  unsigned long gmp_result = 0;
+
+  unsigned long long scratch_started = xray_now_us();
+  for (unsigned int index = 0; ok && index < iterations; ++index) {
+    if (strcmp(operation, "mod-u32") == 0) scratch_result = xray_bigint_mod_u32(&a, modulus);
+    else if (strcmp(operation, "gcd-u32") == 0) scratch_result = xray_bigint_gcd_u32(&a, gcd_operand);
+    else scratch_result = xray_bigint_powmod_u32(&a, exponent, modulus);
+  }
+  unsigned long long scratch_us = xray_now_us() - scratch_started;
+
+  unsigned long long gmp_started = xray_now_us();
+  for (unsigned int index = 0; ok && index < iterations; ++index) {
+    if (strcmp(operation, "mod-u32") == 0) {
+      gmp_result = (unsigned long)mpz_tdiv_ui(ga, modulus);
+    } else if (strcmp(operation, "gcd-u32") == 0) {
+      mpz_set_ui(gmodulus, gcd_operand);
+      mpz_gcd(gout, ga, gmodulus);
+      gmp_result = (unsigned long)mpz_get_ui(gout);
+    } else {
+      mpz_set_ui(gmodulus, modulus);
+      mpz_powm_ui(gout, ga, exponent, gmodulus);
+      gmp_result = (unsigned long)mpz_get_ui(gout);
+    }
+  }
+  unsigned long long gmp_us = xray_now_us() - gmp_started;
+
+  int parity = ok && scratch_result == (uint32_t)gmp_result;
+  append_perf_result(report, operation, digits, parity, scratch_us, gmp_us);
+
+  mpz_clears(ga, gmodulus, gout, NULL);
+  xray_bigint_clear(&a);
+  free(text);
+}
+
 static void run_scratch_bigint_gates(XrayBenchmarkReport *report) {
   const size_t sizes[] = {40, 150, 1000};
   for (size_t index = 0; index < sizeof(sizes) / sizeof(sizes[0]); ++index) {
     run_scratch_parse_case(report, sizes[index]);
     run_scratch_binary_case(report, "add", sizes[index]);
     run_scratch_binary_case(report, "sub", sizes[index]);
+    run_scratch_modular_case(report, "mod-u32", sizes[index]);
+    run_scratch_modular_case(report, "gcd-u32", sizes[index]);
+    run_scratch_modular_case(report, "powmod-u32", sizes[index]);
     run_scratch_divmod_case(report, sizes[index]);
     if (sizes[index] <= 150) run_scratch_binary_case(report, "mul", sizes[index]);
   }

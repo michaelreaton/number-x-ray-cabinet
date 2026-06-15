@@ -72,14 +72,19 @@ static void test_scratch_bigint_oracle(void) {
   char *difference_text = xray_bigint_get_decimal(&difference);
   char *product_text = xray_bigint_get_decimal(&product);
   char *quotient_text = xray_bigint_get_decimal(&quotient);
-  mpz_t ga, gb, gsum, gdifference, gproduct, gquotient;
-  mpz_inits(ga, gb, gsum, gdifference, gproduct, gquotient, NULL);
+  mpz_t ga, gb, gsum, gdifference, gproduct, gquotient, gmodulus, ggcd, gpow, gexponent;
+  mpz_inits(ga, gb, gsum, gdifference, gproduct, gquotient, gmodulus, ggcd, gpow, gexponent, NULL);
   mpz_set_str(ga, "123456789012345678901234567890", 10);
   mpz_set_str(gb, "98765432109876543210", 10);
   mpz_add(gsum, ga, gb);
   mpz_sub(gdifference, ga, gb);
   mpz_mul(gproduct, ga, gb);
   unsigned long oracle_rem = mpz_tdiv_q_ui(gquotient, ga, 65537U);
+  mpz_set_ui(gmodulus, 1000000007U);
+  mpz_set_ui(gexponent, 12345U);
+  mpz_powm(gpow, ga, gexponent, gmodulus);
+  mpz_set_ui(gmodulus, 65537U);
+  mpz_gcd(ggcd, ga, gmodulus);
   char *oracle_sum = mpz_get_str(NULL, 10, gsum);
   char *oracle_difference = mpz_get_str(NULL, 10, gdifference);
   char *oracle_product = mpz_get_str(NULL, 10, gproduct);
@@ -90,6 +95,8 @@ static void test_scratch_bigint_oracle(void) {
   CHECK(strcmp(quotient_text, oracle_quotient) == 0);
   CHECK(rem == (uint32_t)oracle_rem);
   CHECK(xray_bigint_mod_u32(&a, 65537U) == (uint32_t)oracle_rem);
+  CHECK(xray_bigint_gcd_u32(&a, 65537U) == (uint32_t)mpz_get_ui(ggcd));
+  CHECK(xray_bigint_powmod_u32(&a, 12345U, 1000000007U) == (uint32_t)mpz_get_ui(gpow));
   CHECK(!xray_bigint_is_zero(&a));
   free(sum_text);
   free(difference_text);
@@ -99,7 +106,7 @@ static void test_scratch_bigint_oracle(void) {
   free(oracle_difference);
   free(oracle_product);
   free(oracle_quotient);
-  mpz_clears(ga, gb, gsum, gdifference, gproduct, gquotient, NULL);
+  mpz_clears(ga, gb, gsum, gdifference, gproduct, gquotient, gmodulus, ggcd, gpow, gexponent, NULL);
   xray_bigint_clear(&a);
   xray_bigint_clear(&b);
   xray_bigint_clear(&sum);
@@ -246,7 +253,7 @@ static void test_large_nonhit_does_not_false_solve(void) {
 static void test_benchmarks(void) {
   XrayBenchmarkReport report;
   CHECK(xray_benchmark_run(&report));
-  CHECK(report.result_count >= 20);
+  CHECK(report.result_count >= 32);
   CHECK(report.passed_count == report.result_count);
   size_t scratch_rows = 0;
   for (size_t index = 0; index < report.result_count; ++index) {
@@ -258,7 +265,7 @@ static void test_benchmarks(void) {
       CHECK(report.results[index].speed_ratio > 0.0);
     }
   }
-  CHECK(scratch_rows >= 14);
+  CHECK(scratch_rows >= 23);
   char *json = xray_benchmark_report_json(&report);
   CHECK(json != NULL);
   CHECK(strstr(json, "\"replacementReady\"") != NULL);

@@ -29,6 +29,8 @@ int xray_bigint_mul(XrayScratchBigInt *out, const XrayScratchBigInt *left, const
 int xray_bigint_compare(const XrayScratchBigInt *left, const XrayScratchBigInt *right);
 uint32_t xray_bigint_mod_u32(const XrayScratchBigInt *value, uint32_t modulus);
 int xray_bigint_divmod_u32(XrayScratchBigInt *quotient, uint32_t *remainder, const XrayScratchBigInt *value, uint32_t divisor);
+uint32_t xray_bigint_gcd_u32(const XrayScratchBigInt *value, uint32_t other);
+uint32_t xray_bigint_powmod_u32(const XrayScratchBigInt *base, uint32_t exponent, uint32_t modulus);
 
 typedef struct XrayFactorConfig {
   unsigned long trial_limit;

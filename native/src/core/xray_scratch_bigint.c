@@ -251,3 +251,30 @@ int xray_bigint_divmod_u32(XrayScratchBigInt *quotient, uint32_t *remainder, con
   if (remainder) *remainder = (uint32_t)rem;
   return 1;
 }
+
+static uint32_t gcd_u32(uint32_t a, uint32_t b) {
+  while (b) {
+    uint32_t next = a % b;
+    a = b;
+    b = next;
+  }
+  return a;
+}
+
+uint32_t xray_bigint_gcd_u32(const XrayScratchBigInt *value, uint32_t other) {
+  if (other == 0) return 0;
+  return gcd_u32(xray_bigint_mod_u32(value, other), other);
+}
+
+uint32_t xray_bigint_powmod_u32(const XrayScratchBigInt *base, uint32_t exponent, uint32_t modulus) {
+  if (!base || modulus == 0) return 0;
+  uint64_t result = 1 % modulus;
+  uint64_t factor = xray_bigint_mod_u32(base, modulus);
+  uint32_t power = exponent;
+  while (power) {
+    if (power & 1U) result = (result * factor) % modulus;
+    factor = (factor * factor) % modulus;
+    power >>= 1;
+  }
+  return (uint32_t)result;
+}
