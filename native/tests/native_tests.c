@@ -278,6 +278,7 @@ static void test_scratch_bigint_oracle(void) {
   free(oracle_product);
   free(oracle_quotient);
 
+  XrayBigIntRouteConfig route = xray_bigint_route_config();
   const size_t format_roundtrip_sizes[] = {40U, 150U, 1000U, 4096U, 8192U};
   for (size_t index = 0; index < sizeof(format_roundtrip_sizes) / sizeof(format_roundtrip_sizes[0]); ++index) {
     char *roundtrip_input = make_pattern_decimal(format_roundtrip_sizes[index], "97531864208642135790");
@@ -285,24 +286,28 @@ static void test_scratch_bigint_oracle(void) {
     CHECK(xray_bigint_set_decimal(&a, roundtrip_input));
     CHECK(mpz_set_str(ga, roundtrip_input, 10) == 0);
     char *roundtrip_text = xray_bigint_get_decimal(&a);
+    char *roundtrip_legacy = xray_bigint_get_decimal_horner_threshold_probe(&a, route.decimal_horner_min_limbs);
     char *roundtrip_folded = xray_bigint_get_decimal_folded_probe(&a);
     char *roundtrip_pair = xray_bigint_get_decimal_pair_writer_probe(&a);
     char *roundtrip_folded_pair = xray_bigint_get_decimal_folded_pair_writer_probe(&a);
     char *roundtrip_wide = xray_bigint_get_decimal_wide_probe(&a);
     char *roundtrip_oracle = mpz_get_str(NULL, 10, ga);
     CHECK(roundtrip_text != NULL);
+    CHECK(roundtrip_legacy != NULL);
     CHECK(roundtrip_folded != NULL);
     CHECK(roundtrip_pair != NULL);
     CHECK(roundtrip_folded_pair != NULL);
     CHECK(roundtrip_wide != NULL);
     CHECK(roundtrip_oracle != NULL);
     CHECK(strcmp(roundtrip_text, roundtrip_oracle) == 0);
+    CHECK(strcmp(roundtrip_legacy, roundtrip_oracle) == 0);
     CHECK(strcmp(roundtrip_folded, roundtrip_oracle) == 0);
     CHECK(strcmp(roundtrip_pair, roundtrip_oracle) == 0);
     CHECK(strcmp(roundtrip_folded_pair, roundtrip_oracle) == 0);
     CHECK(strcmp(roundtrip_wide, roundtrip_oracle) == 0);
     free(roundtrip_input);
     free(roundtrip_text);
+    free(roundtrip_legacy);
     free(roundtrip_folded);
     free(roundtrip_pair);
     free(roundtrip_folded_pair);
@@ -1567,6 +1572,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "\"scratchRouteConfig\"") != NULL);
   CHECK(strstr(json, "\"karatsubaThresholdLimbs\"") != NULL);
   CHECK(strstr(json, "\"decimalHornerMinLimbs\"") != NULL);
+  CHECK(strstr(json, "\"decimalPairWriterPolicy\"") != NULL);
   CHECK(strstr(json, "\"mulUnroll4RouteEnabled\"") != NULL);
   CHECK(strstr(json, "\"cpu\"") != NULL);
   CHECK(strstr(json, "kernel-probe") != NULL);
@@ -1666,6 +1672,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_json, "\"baselineBackendLibrary\"") != NULL);
   CHECK(strstr(benchmark_json, "\"scratchRouteConfig\"") != NULL);
   CHECK(strstr(benchmark_json, "\"mulUnroll4RouteMaxLimbs\"") != NULL);
+  CHECK(strstr(benchmark_json, "\"decimalPairWriterPolicy\"") != NULL);
   CHECK(strstr(benchmark_json, "\"msvcUint128Helpers\"") != NULL);
   CHECK(strstr(benchmark_json, "\"scratchRows\"") != NULL);
   CHECK(strstr(benchmark_tsv, "scratch-vs-gmp") != NULL);
@@ -1698,6 +1705,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "BENCHMARK FRONTIER") != NULL);
   CHECK(strstr(benchmark_frontier, "Baseline backend:") != NULL);
   CHECK(strstr(benchmark_frontier, "Bigint route:") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-pair-writer=small<=8 or horner 48..54 limbs") != NULL);
   CHECK(strstr(benchmark_frontier, "FRONTIER SUMMARY") != NULL);
   CHECK(strstr(benchmark_frontier, "Largest scratch gaps") != NULL);
   CHECK(strstr(benchmark_frontier, "SCRATCH VS ") != NULL);

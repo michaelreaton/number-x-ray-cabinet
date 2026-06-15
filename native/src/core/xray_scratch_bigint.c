@@ -23,6 +23,8 @@
 /* UINT64_MAX / 1e9, matching reciprocal_u32 for the decimal chunk divisor. */
 #define XRAY_BIGINT_DECIMAL_CHUNK_RECIPROCAL UINT64_C(18446744073)
 #define XRAY_BIGINT_DECIMAL_HORNER_MIN_LIMBS 48U
+#define XRAY_BIGINT_DECIMAL_PAIR_WRITER_SMALL_MAX_LIMBS 8U
+#define XRAY_BIGINT_DECIMAL_PAIR_WRITER_HORNER_MAX_LIMBS 54U
 #define XRAY_BIGINT_PARSE_CHUNK_BASE UINT64_C(10000000000000000000)
 #define XRAY_BIGINT_PARSE_CHUNK_DIGITS 19U
 #define XRAY_BIGINT_KARATSUBA_THRESHOLD 64U
@@ -751,6 +753,13 @@ static char *get_decimal_with_options(const XrayScratchBigInt *value, size_t hor
   return get_decimal_with_options_writer(value, horner_min_limbs, use_direct_divider, 0);
 }
 
+static int use_decimal_pair_writer_route(const XrayScratchBigInt *value) {
+  size_t limbs = value ? value->count : 0;
+  return limbs <= XRAY_BIGINT_DECIMAL_PAIR_WRITER_SMALL_MAX_LIMBS ||
+    (limbs >= XRAY_BIGINT_DECIMAL_HORNER_MIN_LIMBS &&
+     limbs <= XRAY_BIGINT_DECIMAL_PAIR_WRITER_HORNER_MAX_LIMBS);
+}
+
 char *xray_bigint_get_decimal_folded_probe(const XrayScratchBigInt *value) {
   if (!value || value->count == 0) {
     char *zero = (char *)calloc(2, 1);
@@ -838,7 +847,11 @@ char *xray_bigint_get_decimal_wide_probe(const XrayScratchBigInt *value) {
 }
 
 char *xray_bigint_get_decimal(const XrayScratchBigInt *value) {
-  return get_decimal_with_options(value, XRAY_BIGINT_DECIMAL_HORNER_MIN_LIMBS, 0);
+  return get_decimal_with_options_writer(
+    value,
+    XRAY_BIGINT_DECIMAL_HORNER_MIN_LIMBS,
+    0,
+    use_decimal_pair_writer_route(value));
 }
 
 char *xray_bigint_get_decimal_horner_threshold_probe(const XrayScratchBigInt *value, size_t horner_min_limbs) {
