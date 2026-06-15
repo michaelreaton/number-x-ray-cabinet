@@ -180,12 +180,27 @@ if(XRAY_EXPECT_SHARED)
       "\"cmakeTarget\": \"NumberXRay::core_shared\""
       "\"pkgConfig\": \"number-xray-shared\""
       "\"libDir\": \"${XRAY_INSTALL_LIBDIR}\""
-      "\"binDir\": \"${XRAY_INSTALL_BINDIR}\"")
+      "\"binDir\": \"${XRAY_INSTALL_BINDIR}\""
+      "\"languageBindings\""
+      "\"pythonCtypes\""
+      "\"path\": \"${XRAY_INSTALL_DATADIR}/number-xray/python/number_xray_ctypes.py\""
+      "\"smokeTest\": \"${XRAY_INSTALL_DATADIR}/number-xray/python/smoke.py\""
+      "\"stdlibOnly\": true"
+      "\"requiresSharedLibrary\": true")
     string(FIND "${sdk_manifest}" "${expected}" expected_index)
     if(expected_index LESS 0)
       message(FATAL_ERROR "NumberXRay SDK manifest is missing expected shared entry: ${expected}")
     endif()
   endforeach()
+
+  set(python_ctypes_file "${install_prefix}/${XRAY_INSTALL_DATADIR}/number-xray/python/number_xray_ctypes.py")
+  set(python_smoke_file "${install_prefix}/${XRAY_INSTALL_DATADIR}/number-xray/python/smoke.py")
+  if(NOT EXISTS "${python_ctypes_file}")
+    message(FATAL_ERROR "NumberXRay install smoke did not install Python ctypes loader: ${python_ctypes_file}")
+  endif()
+  if(NOT EXISTS "${python_smoke_file}")
+    message(FATAL_ERROR "NumberXRay install smoke did not install Python ctypes smoke test: ${python_smoke_file}")
+  endif()
 else()
   set(shared_pkgconfig_file "${install_prefix}/${XRAY_INSTALL_LIBDIR}/pkgconfig/number-xray-shared.pc")
   if(EXISTS "${shared_pkgconfig_file}")
@@ -194,6 +209,10 @@ else()
   string(FIND "${sdk_manifest}" "\"coreShared\"" shared_manifest_index)
   if(NOT shared_manifest_index LESS 0)
     message(FATAL_ERROR "NumberXRay static-only SDK manifest unexpectedly advertises coreShared.")
+  endif()
+  string(FIND "${sdk_manifest}" "\"pythonCtypes\"" python_manifest_index)
+  if(NOT python_manifest_index LESS 0)
+    message(FATAL_ERROR "NumberXRay static-only SDK manifest unexpectedly advertises Python ctypes binding.")
   endif()
 endif()
 
@@ -280,4 +299,34 @@ endfunction()
 xray_run_consumer(number_xray_import_consumer)
 if(XRAY_EXPECT_SHARED)
   xray_run_consumer(number_xray_import_consumer_shared)
+
+  find_program(PYTHON3_EXECUTABLE NAMES python3 python)
+  if(PYTHON3_EXECUTABLE)
+    if(WIN32)
+      set(python_path "${install_prefix}/${XRAY_INSTALL_BINDIR}")
+      set(python_dll_dirs "${install_prefix}/${XRAY_INSTALL_BINDIR}")
+      if(DEFINED XRAY_GMP_RUNTIME_DIR AND XRAY_GMP_RUNTIME_DIR)
+        set(python_path "${python_path};${XRAY_GMP_RUNTIME_DIR}")
+        set(python_dll_dirs "${python_dll_dirs};${XRAY_GMP_RUNTIME_DIR}")
+      endif()
+      set(python_path "${python_path};$ENV{PATH}")
+      execute_process(
+        COMMAND "${CMAKE_COMMAND}" -E env
+          "PATH=${python_path}"
+          "NUMBER_XRAY_EXTRA_DLL_DIRS=${python_dll_dirs}"
+          "${PYTHON3_EXECUTABLE}" "${python_smoke_file}" "${install_prefix}"
+        RESULT_VARIABLE python_result
+      )
+    else()
+      execute_process(
+        COMMAND "${PYTHON3_EXECUTABLE}" "${python_smoke_file}" "${install_prefix}"
+        RESULT_VARIABLE python_result
+      )
+    endif()
+    if(NOT python_result EQUAL 0)
+      message(FATAL_ERROR "NumberXRay Python ctypes smoke failed: ${python_result}")
+    endif()
+  else()
+    message(WARNING "Python interpreter not found; skipping NumberXRay ctypes smoke.")
+  endif()
 endif()

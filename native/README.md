@@ -118,6 +118,24 @@ runs the standard proof stages with the benchmark ladder disabled so scripts do
 not accidentally trigger a long local benchmark; use `xray_workbench_run()` with
 a custom `XrayRunConfig` when benchmark evidence is part of the run.
 
+Shared-library installs also include a zero-dependency Python ctypes helper for
+tools that want to call the C ABI before writing a full binding:
+
+```python
+from number_xray_ctypes import load
+
+xray = load("C:/number-xray-sdk")
+print(xray.backend_info())
+print(xray.add_decimal("10,403", "1"))
+print(xray.factor_solve("10_403")["status"])
+```
+
+The helper lives under `<prefix>/share/number-xray/python/`; add that directory
+to `PYTHONPATH` before importing it. It reads the SDK manifest to locate the
+shared library. On Windows, set
+`NUMBER_XRAY_EXTRA_DLL_DIRS` when the GMP/MPIR runtime DLL lives outside the SDK
+`bin` directory.
+
 For speed comparisons, GMP and MPIR are treated as compatible oracle backends,
 not as identical performance baselines. Windows vcpkg builds usually benchmark
 against MPIR, while Linux/macOS builds usually benchmark against GMP. Benchmark
@@ -154,6 +172,7 @@ the installed SDK manifest:
 <prefix>/share/number-xray/number-xray-sdk.json
 <prefix>/share/number-xray/number-xray-api.json
 <prefix>/share/number-xray/number-xray-api.md
+<prefix>/share/number-xray/python/number_xray_ctypes.py
 ```
 
 It records the public header, library name, CMake package/target, pkg-config
@@ -165,7 +184,8 @@ short summary, full cleaned Doxygen text, and ownership hint. Binding
 generators should read `apiDocumentation.catalog` first, then use
 `apiDocumentation.referenceMarkdown` for a generated human reference, or
 `apiDocumentation.functionReferenceHeader` when they need the original comments
-and struct definitions.
+and struct definitions. Shared-library installs also advertise the Python
+ctypes helper in `languageBindings.pythonCtypes`.
 
 Consumers still need GMP or MPIR available at configure/build time; the CMake
 package recreates the `GMP::GMP` dependency target from `GMP_ROOT`, vcpkg, or

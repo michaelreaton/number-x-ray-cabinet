@@ -238,6 +238,7 @@ if(XRAY_INSTALL)
   )
 
   set(XRAY_SDK_SHARED_LIBRARY_JSON "")
+  set(XRAY_SDK_PYTHON_CTYPES_JSON "")
   if(TARGET xray_core_shared)
     configure_file(
       "${CMAKE_CURRENT_SOURCE_DIR}/cmake/number-xray-shared.pc.in"
@@ -256,6 +257,15 @@ if(XRAY_INSTALL)
       \"cmakeTarget\": \"NumberXRay::core_shared\",
       \"pkgConfig\": \"number-xray-shared\"
     }")
+    set(XRAY_SDK_PYTHON_CTYPES_JSON ",
+  \"languageBindings\": {
+    \"pythonCtypes\": {
+      \"path\": \"${CMAKE_INSTALL_DATADIR}/number-xray/python/number_xray_ctypes.py\",
+      \"smokeTest\": \"${CMAKE_INSTALL_DATADIR}/number-xray/python/smoke.py\",
+      \"stdlibOnly\": true,
+      \"requiresSharedLibrary\": true
+    }
+  }")
   endif()
 
   configure_file(
@@ -292,6 +302,14 @@ if(XRAY_INSTALL)
     "${XRAY_API_REFERENCE_PATH}"
     DESTINATION "${CMAKE_INSTALL_DATADIR}/number-xray"
   )
+
+  if(TARGET xray_core_shared)
+    install(FILES
+      "${CMAKE_CURRENT_SOURCE_DIR}/examples/python_ctypes/number_xray_ctypes.py"
+      "${CMAKE_CURRENT_SOURCE_DIR}/examples/python_ctypes/smoke.py"
+      DESTINATION "${CMAKE_INSTALL_DATADIR}/number-xray/python"
+    )
+  endif()
 endif()
 
 if(XRAY_BUILD_CLI)
