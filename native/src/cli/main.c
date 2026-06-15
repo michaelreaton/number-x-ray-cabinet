@@ -18,7 +18,11 @@ int main(int argc, char **argv) {
   int print_frontier = 0;
 
   for (int index = 1; index < argc; ++index) {
-    if (strcmp(argv[index], "--bench") == 0) run_bench = 1;
+    if (strcmp(argv[index], "--help") == 0 || strcmp(argv[index], "-h") == 0) {
+      usage(argv[0]);
+      return 0;
+    }
+    else if (strcmp(argv[index], "--bench") == 0) run_bench = 1;
     else if (strcmp(argv[index], "--bench-frontier") == 0) {
       run_bench = 1;
       print_frontier = 1;
