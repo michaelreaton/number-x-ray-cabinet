@@ -9,15 +9,20 @@ static const char *rsa260(void) {
 }
 
 static void usage(const char *argv0) {
-  fprintf(stderr, "Usage: %s [--bench] [--rsa260] [exact-integer-expression]\n", argv0);
+  fprintf(stderr, "Usage: %s [--bench|--bench-frontier] [--rsa260] [exact-integer-expression]\n", argv0);
 }
 
 int main(int argc, char **argv) {
   const char *input = "10403";
   int run_bench = 0;
+  int print_frontier = 0;
 
   for (int index = 1; index < argc; ++index) {
     if (strcmp(argv[index], "--bench") == 0) run_bench = 1;
+    else if (strcmp(argv[index], "--bench-frontier") == 0) {
+      run_bench = 1;
+      print_frontier = 1;
+    }
     else if (strcmp(argv[index], "--rsa260") == 0) input = rsa260();
     else if (argv[index][0] == '-') {
       usage(argv[0]);
@@ -37,7 +42,13 @@ int main(int argc, char **argv) {
 
   XrayWorkbenchReport report;
   xray_workbench_run(input, &config, &report);
-  if (report.json) {
+  if (print_frontier) {
+    char *frontier = xray_benchmark_frontier_text(&report.benchmark);
+    if (frontier) {
+      puts(frontier);
+      free(frontier);
+    }
+  } else if (report.json) {
     puts(report.json);
   }
 
