@@ -62,6 +62,14 @@ static void test_scratch_bigint_oracle(void) {
   xray_bigint_init(&quotient);
   CHECK(xray_bigint_set_decimal(&a, "123456789012345678901234567890"));
   CHECK(xray_bigint_set_decimal(&b, "98765432109876543210"));
+  CHECK(xray_bigint_set_decimal(&quotient, "000,123_456 789"));
+  char *messy_text = xray_bigint_get_decimal(&quotient);
+  CHECK(strcmp(messy_text, "123456789") == 0);
+  free(messy_text);
+  CHECK(xray_bigint_set_decimal(&quotient, "000_000"));
+  CHECK(xray_bigint_is_zero(&quotient));
+  CHECK(!xray_bigint_set_decimal(&quotient, "12x34"));
+  CHECK(!xray_bigint_set_decimal(&quotient, "   "));
   CHECK(xray_bigint_add(&sum, &a, &b));
   CHECK(xray_bigint_sub(&difference, &a, &b));
   CHECK(xray_bigint_mul(&product, &a, &b));

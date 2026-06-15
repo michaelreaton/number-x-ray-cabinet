@@ -96,41 +96,37 @@ static int add_small_inplace(XrayScratchBigInt *value, uint32_t addend) {
 int xray_bigint_set_decimal(XrayScratchBigInt *value, const char *decimal) {
   if (!value || !decimal) return 0;
   value->count = 0;
-  size_t raw_length = strlen(decimal);
-  char *digits = (char *)calloc(raw_length + 1, 1);
-  if (!digits) return 0;
-  size_t used = 0;
+  size_t digit_count = 0;
   for (const unsigned char *p = (const unsigned char *)decimal; *p; ++p) {
     if (*p == ',' || *p == '_' || isspace(*p)) continue;
-    if (!isdigit(*p)) {
-      free(digits);
-      return 0;
+    if (!isdigit(*p)) return 0;
+    digit_count++;
+  }
+  if (!digit_count) return 0;
+
+  size_t chunks = (digit_count + XRAY_BIGINT_BASE_DIGITS - 1U) / XRAY_BIGINT_BASE_DIGITS;
+  if (!reserve_limbs(value, chunks ? chunks : 1)) return 0;
+
+  uint32_t limb = 0;
+  uint32_t multiplier = 1;
+  unsigned int limb_digits = 0;
+  size_t pos = strlen(decimal);
+  while (pos > 0) {
+    unsigned char ch = (unsigned char)decimal[--pos];
+    if (ch == ',' || ch == '_' || isspace(ch)) continue;
+    limb += (uint32_t)(ch - '0') * multiplier;
+    limb_digits++;
+    if (limb_digits == XRAY_BIGINT_BASE_DIGITS) {
+      value->limbs[value->count++] = limb;
+      limb = 0;
+      multiplier = 1;
+      limb_digits = 0;
+    } else {
+      multiplier *= 10U;
     }
-    digits[used++] = (char)*p;
   }
-  if (!used) {
-    free(digits);
-    return 0;
-  }
+  if (limb_digits) value->limbs[value->count++] = limb;
 
-  size_t chunks = (used + XRAY_BIGINT_BASE_DIGITS - 1U) / XRAY_BIGINT_BASE_DIGITS;
-  if (!reserve_limbs(value, chunks ? chunks : 1)) {
-    free(digits);
-    return 0;
-  }
-
-  size_t end = used;
-  while (end > 0) {
-    size_t start = end > XRAY_BIGINT_BASE_DIGITS ? end - XRAY_BIGINT_BASE_DIGITS : 0;
-    uint32_t limb = 0;
-    for (size_t index = start; index < end; ++index) {
-      limb = limb * 10U + (uint32_t)(digits[index] - '0');
-    }
-    value->limbs[value->count++] = limb;
-    end = start;
-  }
-
-  free(digits);
   normalize(value);
   return 1;
 }
