@@ -11,5 +11,6 @@
 #include "xray_workbench.h"
 
 #define NUMBER_XRAY_VERSION XRAY_VERSION
+#define NUMBER_XRAY_ABI_VERSION XRAY_ABI_VERSION
 
 #endif

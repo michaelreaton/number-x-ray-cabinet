@@ -81,6 +81,11 @@ the function documentation says the pointer is borrowed. Report structs that
 receive heap fields have matching `*_clear()` functions, and those clearers are
 part of the documented API contract.
 
+Bindings and plugin-style loaders should check the runtime library they loaded:
+`xray_version()` returns the borrowed version string, and `xray_abi_version()`
+returns the C ABI version. The stable wrapper header also exposes
+`NUMBER_XRAY_VERSION` and `NUMBER_XRAY_ABI_VERSION` for compile-time checks.
+
 CTest enforces that documentation contract with `xray_api_doc_coverage`, which
 fails the build if a new exported `XRAY_API` function is added without a
 preceding Doxygen block.
@@ -100,10 +105,10 @@ the installed SDK manifest:
 ```
 
 It records the public header, library name, CMake package/target, pkg-config
-name, documented header locations, install-relative include/lib/bin
-directories, and GMP/MPIR dependency. Tools that generate bindings should read
-`apiDocumentation.functionReferenceHeader` from the manifest and parse the
-`XRAY_API` declarations there.
+name, documented header locations, ABI/runtime probe functions,
+install-relative include/lib/bin directories, and GMP/MPIR dependency. Tools
+that generate bindings should read `apiDocumentation.functionReferenceHeader`
+from the manifest and parse the `XRAY_API` declarations there.
 
 Consumers still need GMP or MPIR available at configure/build time; the CMake
 package recreates the `GMP::GMP` dependency target from `GMP_ROOT`, vcpkg, or

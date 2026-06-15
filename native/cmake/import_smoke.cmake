@@ -53,6 +53,8 @@ foreach(expected
     "\"public\": \"number_xray.h\""
     "\"functionReferenceHeader\": \"xray_workbench.h\""
     "\"coverage\": \"all exported XRAY_API functions\""
+    "\"versionFunction\": \"xray_version\""
+    "\"abiVersionFunction\": \"xray_abi_version\""
     "\"cmakeTarget\": \"NumberXRay::core\""
     "\"pkgConfig\": \"number-xray\""
     "\"freeFunction\": \"xray_free\""
