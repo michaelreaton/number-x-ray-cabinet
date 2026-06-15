@@ -59,6 +59,7 @@ foreach(expected
     "\"functionReferenceHeader\": \"xray_workbench.h\""
     "\"catalog\": \"number-xray-api.json\""
     "\"catalogSchemaVersion\": 2"
+    "\"referenceMarkdown\": \"number-xray-api.md\""
     "\"coverage\": \"all exported XRAY_API functions\""
     "\"versionFunction\": \"xray_version\""
     "\"abiVersionFunction\": \"xray_abi_version\""
@@ -128,6 +129,41 @@ string(FIND "${api_catalog}" "\"functionCount\": ${api_count}" count_index)
 if(count_index LESS 0)
   message(FATAL_ERROR "NumberXRay API catalog functionCount does not match source header count: ${api_count}")
 endif()
+
+set(api_reference_file "${install_prefix}/${XRAY_INSTALL_DATADIR}/number-xray/number-xray-api.md")
+if(NOT EXISTS "${api_reference_file}")
+  message(FATAL_ERROR "NumberXRay install smoke did not install API reference: ${api_reference_file}")
+endif()
+file(READ "${api_reference_file}" api_reference)
+foreach(expected
+    "# Number X-Ray C API Reference"
+    "Generated from `xray_workbench.h`"
+    "## Runtime"
+    "### `xray_bignum_backend_name`"
+    "### `xray_bigint_add_decimal`"
+    "| `left_decimal` | `const char *` |"
+    "Ownership: `caller-owned:xray_free`"
+    "### `xray_factor_solve_json`"
+    "### `xray_benchmark_run`"
+    "### `xray_workbench_run_json`"
+    "Function count: ${api_count}")
+  string(FIND "${api_reference}" "${expected}" expected_index)
+  if(expected_index LESS 0)
+    message(FATAL_ERROR "NumberXRay API reference is missing expected entry: ${expected}")
+  endif()
+endforeach()
+foreach(line IN LISTS source_header_lines)
+  string(STRIP "${line}" declaration)
+  if(declaration MATCHES "^XRAY_API[ \t].*\\(")
+    string(REGEX REPLACE "^XRAY_API[ \t]+" "" signature "${declaration}")
+    string(REGEX REPLACE "\\(.*$" "" prefix "${signature}")
+    string(REGEX REPLACE ".*[ \t\\*]([A-Za-z_][A-Za-z0-9_]*)$" "\\1" name "${prefix}")
+    string(FIND "${api_reference}" "### `${name}`" name_index)
+    if(name_index LESS 0)
+      message(FATAL_ERROR "NumberXRay API reference is missing exported function: ${name}")
+    endif()
+  endif()
+endforeach()
 
 if(XRAY_EXPECT_SHARED)
   set(shared_pkgconfig_file "${install_prefix}/${XRAY_INSTALL_LIBDIR}/pkgconfig/number-xray-shared.pc")
