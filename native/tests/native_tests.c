@@ -224,6 +224,18 @@ static void test_scratch_bigint_oracle(void) {
   CHECK(xray_bigint_mul(&b, &a, &b));
   check_scratch_matches_mpz(&b, gproduct);
 
+  CHECK(xray_bigint_set_decimal(&a, "18446744073709551615"));
+  CHECK(xray_bigint_set_decimal(&b, "1"));
+  CHECK(xray_bigint_add(&sum, &a, &b));
+  mpz_set_str(ga, "18446744073709551615", 10);
+  mpz_set_ui(gb, 1);
+  mpz_add(gsum, ga, gb);
+  check_scratch_matches_mpz(&sum, gsum);
+
+  CHECK(xray_bigint_sub(&difference, &sum, &b));
+  mpz_sub(gdifference, gsum, gb);
+  check_scratch_matches_mpz(&difference, gdifference);
+
   mpz_clears(ga, gb, gsum, gdifference, gproduct, gquotient, gmodulus, ggcd, gpow, gexponent, NULL);
   xray_bigint_clear(&a);
   xray_bigint_clear(&b);

@@ -150,6 +150,35 @@ static uint64_t mul_high_u64(uint64_t left, uint64_t right) {
 #endif
 }
 
+static unsigned char add_with_carry_u64(uint64_t left, uint64_t right, unsigned char carry, uint64_t *out) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  unsigned __int64 word = 0;
+  unsigned char next = _addcarry_u64(carry, left, right, &word);
+  *out = (uint64_t)word;
+  return next;
+#else
+  uint64_t sum = left + right;
+  uint64_t carry_from_sum = sum < left;
+  uint64_t with_carry = sum + (uint64_t)carry;
+  *out = with_carry;
+  return (unsigned char)(carry_from_sum || (with_carry < sum));
+#endif
+}
+
+static unsigned char sub_with_borrow_u64(uint64_t left, uint64_t right, unsigned char borrow, uint64_t *out) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  unsigned __int64 word = 0;
+  unsigned char next = _subborrow_u64(borrow, left, right, &word);
+  *out = (uint64_t)word;
+  return next;
+#else
+  uint64_t subtrahend = right + (uint64_t)borrow;
+  uint64_t borrow_from_add = subtrahend < right;
+  *out = left - subtrahend;
+  return (unsigned char)(borrow_from_add || (left < subtrahend));
+#endif
+}
+
 static uint64_t reciprocal_u32(uint32_t divisor) {
   if (divisor == 1U) return 0;
   uint64_t reciprocal = UINT64_MAX / divisor;
@@ -298,19 +327,13 @@ int xray_bigint_add(XrayScratchBigInt *out, const XrayScratchBigInt *left, const
     shorter = left;
   }
   if (!reserve_limbs(out, longer->count + 1)) return 0;
-  uint64_t carry = 0;
+  unsigned char carry = 0;
   size_t index = 0;
   for (; index < shorter->count; ++index) {
-    uint64_t sum = left->limbs[index] + right->limbs[index];
-    uint64_t carry_from_sum = sum < left->limbs[index];
-    uint64_t with_carry = sum + carry;
-    out->limbs[index] = with_carry;
-    carry = carry_from_sum || (with_carry < sum);
+    carry = add_with_carry_u64(left->limbs[index], right->limbs[index], carry, &out->limbs[index]);
   }
   for (; index < longer->count; ++index) {
-    uint64_t sum = longer->limbs[index] + carry;
-    out->limbs[index] = sum;
-    carry = sum < longer->limbs[index];
+    carry = add_with_carry_u64(longer->limbs[index], 0, carry, &out->limbs[index]);
   }
   out->count = longer->count;
   if (carry) out->limbs[out->count++] = carry;
@@ -324,19 +347,13 @@ int xray_bigint_sub(XrayScratchBigInt *out, const XrayScratchBigInt *left, const
   if (ordering == 0) return set_u32(out, 0);
   if (right->count == 0) return xray_bigint_copy(out, left);
   if (!reserve_limbs(out, left->count ? left->count : 1)) return 0;
-  uint64_t borrow = 0;
+  unsigned char borrow = 0;
   size_t index = 0;
   for (; index < right->count; ++index) {
-    uint64_t lhs = left->limbs[index];
-    uint64_t rhs = right->limbs[index] + borrow;
-    uint64_t borrow_from_add = rhs < right->limbs[index];
-    out->limbs[index] = lhs - rhs;
-    borrow = borrow_from_add || (lhs < rhs);
+    borrow = sub_with_borrow_u64(left->limbs[index], right->limbs[index], borrow, &out->limbs[index]);
   }
   for (; index < left->count; ++index) {
-    uint64_t lhs = left->limbs[index];
-    out->limbs[index] = lhs - borrow;
-    borrow = lhs < borrow;
+    borrow = sub_with_borrow_u64(left->limbs[index], 0, borrow, &out->limbs[index]);
   }
   out->count = left->count;
   normalize(out);
