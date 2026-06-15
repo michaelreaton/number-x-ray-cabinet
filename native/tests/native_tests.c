@@ -124,6 +124,10 @@ static void test_scratch_bigint_oracle(void) {
   char *messy_text = xray_bigint_get_decimal(&quotient);
   CHECK(strcmp(messy_text, "123456789") == 0);
   free(messy_text);
+  CHECK(xray_bigint_set_decimal(&quotient, "10,000_000 000,000_000 000"));
+  messy_text = xray_bigint_get_decimal(&quotient);
+  CHECK(strcmp(messy_text, "10000000000000000000") == 0);
+  free(messy_text);
   CHECK(xray_bigint_set_decimal(&quotient, "000_000"));
   CHECK(xray_bigint_is_zero(&quotient));
   CHECK(!xray_bigint_set_decimal(&quotient, "12x34"));
@@ -244,7 +248,7 @@ static void test_scratch_bigint_oracle_sweep(void) {
     "80852963074185296307418529630741852963074185296307418529630741852963074185296307418529630741852963074185296307418529630741852963074185296307418529630741852963074185296307",
     NULL
   };
-  const uint32_t divisors[] = {1U, 2U, 3U, 65537U, 1000000007U};
+  const uint32_t divisors[] = {1U, 2U, 3U, 5U, 65535U, 65537U, 1000000007U, 2147483649U, 4294967295U};
 
   XrayScratchBigInt a, b, out, quotient;
   xray_bigint_init(&a);

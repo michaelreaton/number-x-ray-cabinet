@@ -118,17 +118,46 @@ static uint64_t mul_add_word(uint64_t existing, uint64_t left, uint64_t right, u
 #endif
 }
 
-static uint64_t divmod_word_u32(uint32_t high, uint64_t low, uint32_t divisor, int use_high_half, uint32_t *remainder) {
+static uint64_t mul_high_u64(uint64_t left, uint64_t right) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  unsigned __int64 high = 0;
+  (void)_umul128(left, right, &high);
+  return (uint64_t)high;
+#else
+  return (uint64_t)(((__uint128_t)left * (__uint128_t)right) >> 64);
+#endif
+}
+
+static uint64_t reciprocal_u32(uint32_t divisor) {
+  if (divisor == 1U) return 0;
+  uint64_t reciprocal = UINT64_MAX / divisor;
+  if (UINT64_MAX % divisor == (uint64_t)divisor - 1ULL) reciprocal++;
+  return reciprocal;
+}
+
+static uint32_t divmod_half_u32(uint32_t high, uint32_t low, uint32_t divisor, uint64_t reciprocal, uint32_t *remainder) {
+  if (divisor == 1U) {
+    if (remainder) *remainder = 0;
+    return low;
+  }
+  uint64_t numerator = ((uint64_t)high << 32U) | low;
+  uint64_t quotient = mul_high_u64(numerator, reciprocal);
+  uint64_t rem = numerator - quotient * divisor;
+  while (rem >= divisor) {
+    rem -= divisor;
+    quotient++;
+  }
+  if (remainder) *remainder = (uint32_t)rem;
+  return (uint32_t)quotient;
+}
+
+static uint64_t divmod_word_u32(uint32_t high, uint64_t low, uint32_t divisor, uint64_t reciprocal, int use_high_half, uint32_t *remainder) {
   uint32_t quotient_high = 0;
   uint32_t rem = high;
   if (use_high_half) {
-    uint64_t current = ((uint64_t)high << 32U) | (uint32_t)(low >> 32U);
-    quotient_high = (uint32_t)(current / divisor);
-    rem = (uint32_t)(current % divisor);
+    quotient_high = divmod_half_u32(high, (uint32_t)(low >> 32U), divisor, reciprocal, &rem);
   }
-  uint64_t current = ((uint64_t)rem << 32U) | (uint32_t)low;
-  uint32_t quotient_low = (uint32_t)(current / divisor);
-  rem = (uint32_t)(current % divisor);
+  uint32_t quotient_low = divmod_half_u32(rem, (uint32_t)low, divisor, reciprocal, &rem);
   if (remainder) *remainder = rem;
   return ((uint64_t)quotient_high << 32U) | quotient_low;
 }
@@ -344,10 +373,11 @@ int xray_bigint_mul(XrayScratchBigInt *out, const XrayScratchBigInt *left, const
 uint32_t xray_bigint_mod_u32(const XrayScratchBigInt *value, uint32_t modulus) {
   if (!value || modulus == 0) return 0;
   uint32_t remainder = 0;
+  uint64_t reciprocal = reciprocal_u32(modulus);
   for (size_t remaining = value->count; remaining > 0; --remaining) {
     size_t index = remaining - 1;
     int use_high_half = index + 1 != value->count || (value->limbs[index] >> 32U) != 0;
-    divmod_word_u32(remainder, value->limbs[index], modulus, use_high_half, &remainder);
+    divmod_word_u32(remainder, value->limbs[index], modulus, reciprocal, use_high_half, &remainder);
   }
   return remainder;
 }
@@ -356,10 +386,11 @@ int xray_bigint_divmod_u32(XrayScratchBigInt *quotient, uint32_t *remainder, con
   if (!quotient || !value || divisor == 0) return 0;
   if (!reserve_limbs(quotient, value->count ? value->count : 1)) return 0;
   uint32_t rem = 0;
+  uint64_t reciprocal = reciprocal_u32(divisor);
   for (size_t remaining = value->count; remaining > 0; --remaining) {
     size_t index = remaining - 1;
     int use_high_half = index + 1 != value->count || (value->limbs[index] >> 32U) != 0;
-    quotient->limbs[index] = divmod_word_u32(rem, value->limbs[index], divisor, use_high_half, &rem);
+    quotient->limbs[index] = divmod_word_u32(rem, value->limbs[index], divisor, reciprocal, use_high_half, &rem);
   }
   quotient->count = value->count;
   normalize(quotient);
