@@ -92,13 +92,15 @@ static void benchmark_display_operation(const XrayBenchmarkResult *row, char *ou
       }
     }
   }
-  if (strcmp(row->operation, "mul-toom3") == 0) {
+  if (strcmp(row->operation, "mul-toom3") == 0 || strcmp(row->operation, "mul-toom3-vs-scratch") == 0) {
     const char *threshold = strstr(row->detail, "leafThreshold=");
     if (threshold) {
       char *end = NULL;
       unsigned long limbs = strtoul(threshold + strlen("leafThreshold="), &end, 10);
       if (end && end != threshold + strlen("leafThreshold=")) {
-        snprintf(out, out_size, "mul Toom-3 leaf %lu", limbs);
+        snprintf(out, out_size, "%s %lu",
+          strcmp(row->operation, "mul-toom3-vs-scratch") == 0 ? "Toom-3 vs scratch leaf" : "mul Toom-3 leaf",
+          limbs);
         return;
       }
     }
