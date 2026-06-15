@@ -450,3 +450,38 @@ CLI benchmark:
 Decision: reject recursive leaf 64 as a route candidate. The deep gate shows it
 does not beat GMP consistently. Leaf 96 had a noisy five-sample win in the CLI
 run, but it needs its own deep gate before it can become more than a scout row.
+
+## 2026-06-15: Recursive Toom-3 Leaf 96 Deep Gate
+
+Run: `runs/20260615-081355-c4b04caf`
+
+The leaf 96 recursive row also looked noisy in prior runs, so the benchmark now
+emits a second `mul-toom3-u4-rec-deep-vs-gmp` row at the 16384 digit frontier.
+Both recursive leaf thresholds are now checked with nine paired samples before
+they can influence any production route.
+
+CTest benchmark:
+
+- 16384 digits, leaf 64, depth 2: ratio `1.099`, stable `2/5`,
+  `observe-only`
+- 16384 digits, leaf 96, depth 2: ratio `1.103`, stable `1/5`,
+  `observe-only`
+- 16384 digits, leaf 64, depth 2 deep gate: ratio `1.080`, stable `0/9`,
+  worst pair ratio `1.452`, `observe-only`
+- 16384 digits, leaf 96, depth 2 deep gate: ratio `1.093`, stable `1/9`,
+  worst pair ratio `1.183`, `observe-only`
+
+CLI benchmark:
+
+- 16384 digits, leaf 64, depth 2: ratio `0.856`, stable `4/5`,
+  `promote-candidate`
+- 16384 digits, leaf 96, depth 2: ratio `1.040`, stable `2/5`,
+  `observe-only`
+- 16384 digits, leaf 64, depth 2 deep gate: ratio `0.977`, stable `5/9`,
+  worst pair ratio `1.567`, `observe-only`
+- 16384 digits, leaf 96, depth 2 deep gate: ratio `1.103`, stable `2/9`,
+  worst pair ratio `1.387`, `observe-only`
+
+Decision: reject recursive leaf 96 as a route candidate. The deep gate shows it
+does not beat GMP, and the broader recursive experiment still has high
+worst-pair variance even when a five-sample scout row looks attractive.
