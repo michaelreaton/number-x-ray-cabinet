@@ -215,3 +215,23 @@ gate supports the existing 4096 production window, but it is not stable enough
 to justify widening the route, and the 8192 digit result is still too noisy and
 sometimes slower than GMP. A future 8192+ route needs a different algorithmic
 primitive, not just a wider unroll4 switch.
+
+## 2026-06-15: Add/Sub Measurement Floor
+
+Run: `runs/20260615-062215-c4b04caf`
+
+The add/sub scratch rows were sometimes flipping adoption at 4096 and 8192
+digits because the sample windows were only a few hundred microseconds. The
+benchmark now uses a higher add/sub iteration floor for 1000+ digit operands.
+This does not change the scratch bigint implementation; it only lengthens the
+measurement window.
+
+- 4096 digit add: ratio `0.745`, stable `5/5`, `replacement-ready`
+- 4096 digit sub: ratio `0.743`, stable `5/5`, `replacement-ready`
+- 8192 digit add: ratio `0.799`, stable `5/5`, `replacement-ready`
+- 8192 digit sub: ratio `0.818`, stable `5/5`, `replacement-ready`
+
+Decision: keep the higher iteration floor. The benchmark still finishes in
+about ten seconds locally while removing noisy large add/sub oracle-only
+flips. Remaining scratch oracle-only rows are parse at 4096/8192 digits and
+multiply at 8192 digits.
