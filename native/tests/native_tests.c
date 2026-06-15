@@ -224,6 +224,22 @@ static void test_scratch_bigint_oracle(void) {
   free(oracle_product);
   free(oracle_quotient);
 
+  const size_t format_roundtrip_sizes[] = {40U, 150U, 1000U, 4096U, 8192U};
+  for (size_t index = 0; index < sizeof(format_roundtrip_sizes) / sizeof(format_roundtrip_sizes[0]); ++index) {
+    char *roundtrip_input = make_pattern_decimal(format_roundtrip_sizes[index], "97531864208642135790");
+    CHECK(roundtrip_input != NULL);
+    CHECK(xray_bigint_set_decimal(&a, roundtrip_input));
+    CHECK(mpz_set_str(ga, roundtrip_input, 10) == 0);
+    char *roundtrip_text = xray_bigint_get_decimal(&a);
+    char *roundtrip_oracle = mpz_get_str(NULL, 10, ga);
+    CHECK(roundtrip_text != NULL);
+    CHECK(roundtrip_oracle != NULL);
+    CHECK(strcmp(roundtrip_text, roundtrip_oracle) == 0);
+    free(roundtrip_input);
+    free(roundtrip_text);
+    free(roundtrip_oracle);
+  }
+
   CHECK(xray_bigint_set_decimal(&a, "999999999999999999999999999999"));
   CHECK(xray_bigint_set_decimal(&b, "1"));
   CHECK(xray_bigint_add(&sum, &a, &b));
