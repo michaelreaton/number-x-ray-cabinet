@@ -159,17 +159,21 @@ static void benchmark_display_operation(const XrayBenchmarkResult *row, char *ou
       }
     }
   }
-  if (strcmp(row->operation, "mul-toom3-u4-rec-vs-gmp") == 0) {
+  if (strcmp(row->operation, "mul-toom3-u4-rec-vs-gmp") == 0 ||
+      strcmp(row->operation, "mul-toom3-u4-rec-deep-vs-gmp") == 0) {
     const char *threshold = strstr(row->detail, "leafThreshold=");
     if (threshold) {
       char *end = NULL;
       unsigned long limbs = strtoul(threshold + strlen("leafThreshold="), &end, 10);
       if (end && end != threshold + strlen("leafThreshold=")) {
-        snprintf(out, out_size, "recursive Toom-3+unroll4 vs GMP leaf %lu", limbs);
+        snprintf(out, out_size, "%s %lu",
+          strcmp(row->operation, "mul-toom3-u4-rec-deep-vs-gmp") == 0 ? "recursive Toom-3+unroll4 deep vs GMP leaf" : "recursive Toom-3+unroll4 vs GMP leaf",
+          limbs);
         return;
       }
     }
-    snprintf(out, out_size, "recursive Toom-3+unroll4 vs GMP");
+    snprintf(out, out_size, "%s",
+      strcmp(row->operation, "mul-toom3-u4-rec-deep-vs-gmp") == 0 ? "recursive Toom-3+unroll4 deep vs GMP" : "recursive Toom-3+unroll4 vs GMP");
     return;
   }
   if (strcmp(row->operation, "mul-toom3") == 0 || strcmp(row->operation, "mul-toom3-vs-scratch") == 0) {

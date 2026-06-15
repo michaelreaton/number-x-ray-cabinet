@@ -420,3 +420,33 @@ Decision: keep the recursive probe, but do not route it or add a deep gate yet.
 The leaf 64 result was promising in one run and disappeared in the canonical
 CLI benchmark. This points to benchmark noise or operand-shape sensitivity, not
 a proven GMP replacement.
+
+## 2026-06-15: Recursive Toom-3 + Unroll4 Deep Gate
+
+Run: `runs/20260615-080354-c4b04caf`
+
+The recursive leaf 64 row produced contradictory five-sample results, so the
+benchmark now emits `mul-toom3-u4-rec-deep-vs-gmp` for the 16384 digit frontier
+with nine paired samples.
+
+CTest benchmark:
+
+- 16384 digits, leaf 64, depth 2: ratio `1.092`, stable `1/5`,
+  `observe-only`
+- 16384 digits, leaf 96, depth 2: ratio `1.103`, stable `1/5`,
+  `observe-only`
+- 16384 digits, leaf 64, depth 2 deep gate: ratio `1.135`, stable `0/9`,
+  worst pair ratio `1.724`, `observe-only`
+
+CLI benchmark:
+
+- 16384 digits, leaf 64, depth 2: ratio `1.016`, stable `2/5`,
+  `observe-only`
+- 16384 digits, leaf 96, depth 2: ratio `0.872`, stable `4/5`,
+  `promote-candidate`
+- 16384 digits, leaf 64, depth 2 deep gate: ratio `1.061`, stable `2/9`,
+  worst pair ratio `1.451`, `observe-only`
+
+Decision: reject recursive leaf 64 as a route candidate. The deep gate shows it
+does not beat GMP consistently. Leaf 96 had a noisy five-sample win in the CLI
+run, but it needs its own deep gate before it can become more than a scout row.
