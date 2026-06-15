@@ -19,6 +19,20 @@ class NumberXRayLoadError(RuntimeError):
     """Raised when the installed SDK manifest or shared library cannot load."""
 
 
+class XrayBigIntRouteConfig(ctypes.Structure):
+    """ctypes mirror of the C ``XrayBigIntRouteConfig`` value type."""
+
+    _fields_ = [
+        ("word_bits", ctypes.c_uint),
+        ("karatsuba_threshold_limbs", ctypes.c_size_t),
+        ("decimal_horner_min_limbs", ctypes.c_size_t),
+        ("mul_unroll4_route_min_limbs", ctypes.c_size_t),
+        ("mul_unroll4_route_max_limbs", ctypes.c_size_t),
+        ("mul_unroll4_route_enabled", ctypes.c_int),
+        ("msvc_uint128_helpers", ctypes.c_int),
+    ]
+
+
 def _encode(text: str) -> bytes:
     return text.encode("utf-8")
 
@@ -129,6 +143,8 @@ class NumberXRayLibrary:
         self._lib.xray_bignum_backend_version.restype = ctypes.c_char_p
         self._lib.xray_bignum_backend_library.argtypes = []
         self._lib.xray_bignum_backend_library.restype = ctypes.c_char_p
+        self._lib.xray_bigint_route_config.argtypes = []
+        self._lib.xray_bigint_route_config.restype = XrayBigIntRouteConfig
         self._lib.xray_free.argtypes = [ctypes.c_void_p]
         self._lib.xray_free.restype = None
 
@@ -186,6 +202,18 @@ class NumberXRayLibrary:
             "library": self._borrowed_string(self._lib.xray_bignum_backend_library()),
         }
 
+    def bigint_route_config(self) -> Dict[str, Union[int, bool]]:
+        route = self._lib.xray_bigint_route_config()
+        return {
+            "wordBits": int(route.word_bits),
+            "karatsubaThresholdLimbs": int(route.karatsuba_threshold_limbs),
+            "decimalHornerMinLimbs": int(route.decimal_horner_min_limbs),
+            "mulUnroll4RouteMinLimbs": int(route.mul_unroll4_route_min_limbs),
+            "mulUnroll4RouteMaxLimbs": int(route.mul_unroll4_route_max_limbs),
+            "mulUnroll4RouteEnabled": bool(route.mul_unroll4_route_enabled),
+            "msvcUint128Helpers": bool(route.msvc_uint128_helpers),
+        }
+
     def add_decimal(self, left: str, right: str) -> Optional[str]:
         return self._owned_string(self._lib.xray_bigint_add_decimal, left, right)
 
@@ -240,4 +268,10 @@ if __name__ == "__main__":
     print(f"Number X-Ray {library.version()} ABI {library.abi_version()}")
     backend = library.backend_info()
     print(f"Backend: {backend['name']} {backend['version']} ({backend['library']})")
+    route = library.bigint_route_config()
+    print(
+        "Bigint route: "
+        f"word={route['wordBits']}b "
+        f"karatsuba>={route['karatsubaThresholdLimbs']} limbs"
+    )
     print(f"10,403 + 1 = {library.add_decimal('10,403', '1')}")

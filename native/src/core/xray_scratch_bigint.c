@@ -49,6 +49,23 @@ static const uint64_t parse_decimal_powers[] = {
   UINT64_C(10000000000000000000)
 };
 
+XrayBigIntRouteConfig xray_bigint_route_config(void) {
+  XrayBigIntRouteConfig config;
+  config.word_bits = XRAY_BIGINT_WORD_BITS;
+  config.karatsuba_threshold_limbs = XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  config.decimal_horner_min_limbs = XRAY_BIGINT_DECIMAL_HORNER_MIN_LIMBS;
+  config.mul_unroll4_route_min_limbs = XRAY_BIGINT_UNROLL4_ROUTE_MIN_LIMBS;
+  config.mul_unroll4_route_max_limbs = XRAY_BIGINT_UNROLL4_ROUTE_MAX_LIMBS;
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  config.mul_unroll4_route_enabled = 1;
+  config.msvc_uint128_helpers = 1;
+#else
+  config.mul_unroll4_route_enabled = 0;
+  config.msvc_uint128_helpers = 0;
+#endif
+  return config;
+}
+
 void xray_bigint_init(XrayScratchBigInt *value) {
   if (!value) return;
   value->limbs = NULL;

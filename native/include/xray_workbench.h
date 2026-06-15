@@ -32,6 +32,16 @@ typedef struct XrayScratchBigInt {
   size_t capacity;
 } XrayScratchBigInt;
 
+typedef struct XrayBigIntRouteConfig {
+  unsigned int word_bits;
+  size_t karatsuba_threshold_limbs;
+  size_t decimal_horner_min_limbs;
+  size_t mul_unroll4_route_min_limbs;
+  size_t mul_unroll4_route_max_limbs;
+  int mul_unroll4_route_enabled;
+  int msvc_uint128_helpers;
+} XrayBigIntRouteConfig;
+
 /**
  * Return the runtime Number X-Ray version string for the loaded library.
  *
@@ -72,6 +82,16 @@ XRAY_API const char *xray_bignum_backend_version(void);
  * must not be freed.
  */
 XRAY_API const char *xray_bignum_backend_library(void);
+
+/**
+ * Return compile-time scratch bigint production routing thresholds.
+ *
+ * Values are limb counts for the currently loaded library. Benchmark reports
+ * and foreign-language bindings can use this to explain which scratch bigint
+ * routes were eligible during a run, instead of assuming MPIR/GMP-compatible
+ * baselines and Number X-Ray scratch routes are interchangeable.
+ */
+XRAY_API XrayBigIntRouteConfig xray_bigint_route_config(void);
 
 /**
  * Release memory returned by Number X-Ray allocation-returning API calls.

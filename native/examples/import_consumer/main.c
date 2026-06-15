@@ -10,6 +10,7 @@ int main(void) {
   xray_bigint_init(&value);
   xray_bigint_init(&one);
   xray_bigint_init(&sum);
+  XrayBigIntRouteConfig route = xray_bigint_route_config();
 
   int ok = strcmp(NUMBER_XRAY_VERSION, XRAY_VERSION) == 0 &&
     strcmp(xray_version(), NUMBER_XRAY_VERSION) == 0 &&
@@ -20,6 +21,11 @@ int main(void) {
     xray_bignum_backend_version()[0] &&
     xray_bignum_backend_library() &&
     xray_bignum_backend_library()[0] &&
+    route.word_bits == 64u &&
+    route.karatsuba_threshold_limbs > 0 &&
+    route.decimal_horner_min_limbs > 0 &&
+    route.mul_unroll4_route_min_limbs <= route.mul_unroll4_route_max_limbs &&
+    (!route.mul_unroll4_route_enabled || route.msvc_uint128_helpers) &&
     xray_bigint_set_decimal(&value, "10,000_000 000,000_000 000") &&
     xray_bigint_set_decimal(&one, "1") &&
     xray_bigint_add(&sum, &value, &one);
