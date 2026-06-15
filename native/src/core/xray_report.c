@@ -362,6 +362,54 @@ static void benchmark_row_label(const XrayBenchmarkResult *row, char *out, size_
   snprintf(out, out_size, "%s", row->name[0] ? row->name : row->operation);
 }
 
+static int benchmark_detail_value(const XrayBenchmarkResult *row, const char *key, char *out, size_t out_size) {
+  if (!row || !key || !out || out_size == 0) return 0;
+  out[0] = '\0';
+  size_t key_len = strlen(key);
+  const char *cursor = row->detail;
+  while ((cursor = strstr(cursor, key)) != NULL) {
+    if ((cursor == row->detail || cursor[-1] == ' ') && cursor[key_len] == '=') {
+      const char *value = cursor + key_len + 1U;
+      size_t length = 0;
+      while (value[length] && value[length] != ' ') length++;
+      if (length >= out_size) length = out_size - 1U;
+      memcpy(out, value, length);
+      out[length] = '\0';
+      return 1;
+    }
+    cursor += key_len;
+  }
+  return 0;
+}
+
+static void append_label_token(char *label, size_t label_size, const char *prefix, const char *value) {
+  if (!label || !prefix || !value || !value[0] || label_size == 0) return;
+  size_t used = strlen(label);
+  if (used >= label_size - 1U) return;
+  snprintf(label + used, label_size - used, " %s%s", prefix, value);
+}
+
+static void benchmark_frontier_label(const XrayBenchmarkResult *row, char *out, size_t out_size) {
+  benchmark_row_label(row, out, out_size);
+  if (!row || strcmp(row->category, "kernel-probe") != 0) return;
+
+  if (row->operation[0]) snprintf(out, out_size, "%s", row->operation);
+
+  char value[48];
+  if (benchmark_detail_value(row, "threshold", value, sizeof(value))) {
+    append_label_token(out, out_size, "thr=", value);
+  }
+  if (benchmark_detail_value(row, "leafThreshold", value, sizeof(value))) {
+    append_label_token(out, out_size, "leaf=", value);
+  }
+  if (benchmark_detail_value(row, "depthLimit", value, sizeof(value))) {
+    append_label_token(out, out_size, "depth=", value);
+  }
+  if (benchmark_detail_value(row, "baseline", value, sizeof(value))) {
+    append_label_token(out, out_size, "base=", value);
+  }
+}
+
 char *xray_benchmark_frontier_text(const XrayBenchmarkReport *report) {
   if (!report || !report->result_count) {
     char *empty = (char *)calloc(256, 1);
@@ -426,7 +474,7 @@ char *xray_benchmark_frontier_text(const XrayBenchmarkReport *report) {
     for (size_t index = 0; index < near_count; ++index) {
       const XrayBenchmarkResult *row = near_wins[index];
       char label[80];
-      benchmark_row_label(row, label, sizeof(label));
+      benchmark_frontier_label(row, label, sizeof(label));
       jb_printf(&buffer,
         "  %-24s %5zu digits   ratio %.3f   stable %zu/%zu   %s\n",
         label,
@@ -444,7 +492,7 @@ char *xray_benchmark_frontier_text(const XrayBenchmarkReport *report) {
   for (size_t index = 0; index < sizeof(top_gaps) / sizeof(top_gaps[0]) && top_gaps[index]; ++index) {
     const XrayBenchmarkResult *row = top_gaps[index];
     char label[80];
-    benchmark_row_label(row, label, sizeof(label));
+    benchmark_frontier_label(row, label, sizeof(label));
     jb_printf(&buffer,
       "  %-24s %5zu digits   ratio %.3f   stable %zu/%zu   %s\n",
       label,
@@ -463,7 +511,7 @@ char *xray_benchmark_frontier_text(const XrayBenchmarkReport *report) {
     const XrayBenchmarkResult *row = &report->results[index];
     if (strcmp(row->category, "scratch-vs-gmp") != 0) continue;
     char label[80];
-    benchmark_row_label(row, label, sizeof(label));
+    benchmark_frontier_label(row, label, sizeof(label));
     jb_printf(&buffer,
       "%-24s   %6zu   %-12s   %-5s   %10llu   %8llu   %5.2f   %3zu/%-3zu\n",
       label,
@@ -485,7 +533,7 @@ char *xray_benchmark_frontier_text(const XrayBenchmarkReport *report) {
     const XrayBenchmarkResult *row = &report->results[index];
     if (strcmp(row->category, "kernel-probe") != 0) continue;
     char label[80];
-    benchmark_row_label(row, label, sizeof(label));
+    benchmark_frontier_label(row, label, sizeof(label));
     jb_printf(&buffer,
       "%-40s   %6zu   %-16s   %-20s   %5.2f   %3zu/%-3zu\n",
       label,
