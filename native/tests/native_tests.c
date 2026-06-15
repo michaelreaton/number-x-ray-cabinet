@@ -886,6 +886,9 @@ static void test_benchmarks(void) {
   int saw_8192_kernel_probe = 0;
   int saw_16384_kernel_probe = 0;
   int saw_square_vs_mul_probe = 0;
+  int saw_format_threshold_probe = 0;
+  int saw_format_threshold48_probe = 0;
+  int saw_format_threshold64_probe = 0;
   int saw_square_karatsuba_vs_mul_probe = 0;
   int saw_square_karatsuba_vs_gmp_probe = 0;
   int saw_toom3_probe = 0;
@@ -957,6 +960,17 @@ static void test_benchmarks(void) {
       CHECK(strstr(report->results[index].detail, "adoption=") != NULL);
       if (strcmp(report->results[index].operation, "mul-threshold") == 0) {
         CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+      }
+      if (strcmp(report->results[index].operation, "format-threshold") == 0) {
+        saw_format_threshold_probe = 1;
+        if (strstr(report->results[index].detail, "threshold=48") != NULL) saw_format_threshold48_probe = 1;
+        else if (strstr(report->results[index].detail, "threshold=64") != NULL) saw_format_threshold64_probe = 1;
+        else CHECK(0);
+        CHECK(report->results[index].digits == 1000);
+        CHECK(strstr(report->results[index].detail, "candidate=decimal-horner") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=mpz_get_str") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=decimal-format-handoff") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=1") != NULL);
       }
       if (strcmp(report->results[index].operation, "square-vs-mul") == 0) {
         saw_square_vs_mul_probe = 1;
@@ -1116,6 +1130,9 @@ static void test_benchmarks(void) {
   CHECK(saw_8192_kernel_probe);
   CHECK(saw_16384_kernel_probe);
   CHECK(saw_square_vs_mul_probe);
+  CHECK(saw_format_threshold_probe);
+  CHECK(saw_format_threshold48_probe);
+  CHECK(saw_format_threshold64_probe);
   CHECK(saw_square_karatsuba_vs_mul_probe);
   CHECK(saw_square_karatsuba_vs_gmp_probe);
   CHECK(saw_toom3_probe);
@@ -1162,6 +1179,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "\"scratchUs\"") != NULL);
   CHECK(strstr(json, "mul-toom3") != NULL);
   CHECK(strstr(json, "\"operation\":\"format\"") != NULL);
+  CHECK(strstr(json, "format-threshold") != NULL);
   CHECK(strstr(json, "\"operation\":\"square\"") != NULL);
   CHECK(strstr(json, "square-vs-mul") != NULL);
   CHECK(strstr(json, "square-karatsuba-vs-mul") != NULL);
@@ -1191,6 +1209,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "gmpClue=") != NULL);
   CHECK(strstr(tsv, "mul-toom3") != NULL);
   CHECK(strstr(tsv, "format") != NULL);
+  CHECK(strstr(tsv, "format-threshold") != NULL);
   CHECK(strstr(tsv, "square") != NULL);
   CHECK(strstr(tsv, "square-vs-mul") != NULL);
   CHECK(strstr(tsv, "square-karatsuba-vs-mul") != NULL);
@@ -1231,6 +1250,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "kernel-probe") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-toom3") != NULL);
   CHECK(strstr(benchmark_tsv, "format") != NULL);
+  CHECK(strstr(benchmark_tsv, "format-threshold") != NULL);
   CHECK(strstr(benchmark_tsv, "square") != NULL);
   CHECK(strstr(benchmark_tsv, "square-vs-mul") != NULL);
   CHECK(strstr(benchmark_tsv, "square-karatsuba-vs-mul") != NULL);
@@ -1251,6 +1271,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "Largest scratch gaps") != NULL);
   CHECK(strstr(benchmark_frontier, "SCRATCH VS GMP") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-threshold thr=") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-threshold thr=48") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-threshold thr=64") != NULL);
   CHECK(strstr(benchmark_frontier, "leaf=64") != NULL);
   CHECK(strstr(benchmark_frontier, "base=") != NULL);
 #if defined(_MSC_VER) && defined(_M_X64)
