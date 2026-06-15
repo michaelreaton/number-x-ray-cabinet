@@ -1,6 +1,5 @@
 #include "xray_workbench.h"
 
-#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,18 +16,30 @@
 #define XRAY_BIGINT_WORD_BITS 64U
 #define XRAY_BIGINT_DECIMAL_CHUNK_BASE 1000000000U
 #define XRAY_BIGINT_DECIMAL_CHUNK_DIGITS 9U
+#define XRAY_BIGINT_PARSE_CHUNK_BASE UINT64_C(10000000000000000000)
+#define XRAY_BIGINT_PARSE_CHUNK_DIGITS 19U
 
-static const uint32_t decimal_powers[] = {
-  1U,
-  10U,
-  100U,
-  1000U,
-  10000U,
-  100000U,
-  1000000U,
-  10000000U,
-  100000000U,
-  1000000000U
+static const uint64_t parse_decimal_powers[] = {
+  UINT64_C(1),
+  UINT64_C(10),
+  UINT64_C(100),
+  UINT64_C(1000),
+  UINT64_C(10000),
+  UINT64_C(100000),
+  UINT64_C(1000000),
+  UINT64_C(10000000),
+  UINT64_C(100000000),
+  UINT64_C(1000000000),
+  UINT64_C(10000000000),
+  UINT64_C(100000000000),
+  UINT64_C(1000000000000),
+  UINT64_C(10000000000000),
+  UINT64_C(100000000000000),
+  UINT64_C(1000000000000000),
+  UINT64_C(10000000000000000),
+  UINT64_C(100000000000000000),
+  UINT64_C(1000000000000000000),
+  UINT64_C(10000000000000000000)
 };
 
 void xray_bigint_init(XrayScratchBigInt *value) {
@@ -68,6 +79,17 @@ static int set_u32(XrayScratchBigInt *value, uint32_t small) {
   return 1;
 }
 
+static int set_u64(XrayScratchBigInt *value, uint64_t small) {
+  if (!reserve_limbs(value, 1)) return 0;
+  value->limbs[0] = small;
+  value->count = small ? 1 : 0;
+  return 1;
+}
+
+static int is_ascii_space(unsigned char ch) {
+  return ch == ' ' || (ch >= '\t' && ch <= '\r');
+}
+
 int xray_bigint_is_zero(const XrayScratchBigInt *value) {
   return !value || value->count == 0;
 }
@@ -85,10 +107,10 @@ int xray_bigint_copy(XrayScratchBigInt *out, const XrayScratchBigInt *value) {
   return 1;
 }
 
-static uint64_t mul_add_small_word(uint64_t word, uint32_t multiplier, uint64_t carry, uint64_t *out) {
+static uint64_t mul_add_small_word(uint64_t word, uint64_t multiplier, uint64_t carry, uint64_t *out) {
 #if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
   unsigned __int64 high = 0;
-  unsigned __int64 low = _umul128(word, (uint64_t)multiplier, &high);
+  unsigned __int64 low = _umul128(word, multiplier, &high);
   unsigned __int64 sum = low + carry;
   if (sum < low) high++;
   *out = (uint64_t)sum;
@@ -162,8 +184,8 @@ static uint64_t divmod_word_u32(uint32_t high, uint64_t low, uint32_t divisor, u
   return ((uint64_t)quotient_high << 32U) | quotient_low;
 }
 
-static int mul_add_small_inplace(XrayScratchBigInt *value, uint32_t multiplier, uint32_t addend) {
-  if (value->count == 0 || multiplier == 0) return set_u32(value, addend);
+static int mul_add_small_inplace(XrayScratchBigInt *value, uint64_t multiplier, uint64_t addend) {
+  if (value->count == 0 || multiplier == 0) return set_u64(value, addend);
   if (!reserve_limbs(value, value->count + 1)) return 0;
   uint64_t carry = addend;
   for (size_t index = 0; index < value->count; ++index) {
@@ -177,23 +199,26 @@ int xray_bigint_set_decimal(XrayScratchBigInt *value, const char *decimal) {
   if (!value || !decimal) return 0;
   value->count = 0;
   size_t digit_count = 0;
-  uint32_t chunk = 0;
+  uint64_t chunk = 0;
   unsigned int chunk_digits = 0;
   for (const unsigned char *p = (const unsigned char *)decimal; *p; ++p) {
-    if (*p == ',' || *p == '_' || isspace(*p)) continue;
-    if (!isdigit(*p)) return 0;
+    unsigned char ch = *p;
+    if (ch < '0' || ch > '9') {
+      if (ch == ',' || ch == '_' || is_ascii_space(ch)) continue;
+      return 0;
+    }
     digit_count++;
-    chunk = chunk * 10U + (uint32_t)(*p - '0');
+    chunk = chunk * 10U + (uint64_t)(ch - '0');
     chunk_digits++;
-    if (chunk_digits == XRAY_BIGINT_DECIMAL_CHUNK_DIGITS) {
-      if (!mul_add_small_inplace(value, XRAY_BIGINT_DECIMAL_CHUNK_BASE, chunk)) return 0;
+    if (chunk_digits == XRAY_BIGINT_PARSE_CHUNK_DIGITS) {
+      if (!mul_add_small_inplace(value, XRAY_BIGINT_PARSE_CHUNK_BASE, chunk)) return 0;
       chunk = 0;
       chunk_digits = 0;
     }
   }
   if (!digit_count) return 0;
   if (chunk_digits) {
-    if (!mul_add_small_inplace(value, decimal_powers[chunk_digits], chunk)) return 0;
+    if (!mul_add_small_inplace(value, parse_decimal_powers[chunk_digits], chunk)) return 0;
   }
   return 1;
 }
