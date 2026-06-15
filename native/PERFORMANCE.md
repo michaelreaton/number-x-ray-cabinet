@@ -686,3 +686,34 @@ Restored 9 digit formatter CLI benchmark:
 Decision: do not adopt the 19 digit formatter. Keep decimal formatting measured
 as an oracle-only row until a new algorithm beats `mpz_get_str` locally with
 stable same-run ratios.
+
+## 2026-06-15: Manual Decimal Chunk Writer
+
+Runs: `native-test-runs/20260615-093548-c4b04caf` and
+`runs/20260615-093650-c4b04caf`
+
+The previous formatter called `snprintf` once per 9 digit output chunk after the
+division pass. This change keeps the same chunking and division algorithm, but
+writes the leading chunk and padded 9 digit chunks with small fixed-width loops.
+It is a local overhead cleanup, not a new base-conversion algorithm.
+
+CTest benchmark:
+
+- 40 digits: ratio `0.934`, stable `3/5`, `oracle-only`
+- 150 digits: ratio `1.113`, stable `0/5`, `oracle-only`
+- 1000 digits: ratio `2.304`, stable `0/5`, `oracle-only`
+- 4096 digits: ratio `4.927`, stable `0/5`, `oracle-only`
+- 8192 digits: ratio `5.641`, stable `0/5`, `oracle-only`
+
+CLI benchmark:
+
+- 40 digits: ratio `0.834`, stable `3/5`, `oracle-only`
+- 150 digits: ratio `1.056`, stable `2/5`, `oracle-only`
+- 1000 digits: ratio `2.299`, stable `0/5`, `oracle-only`
+- 4096 digits: ratio `4.410`, stable `0/5`, `oracle-only`
+- 8192 digits: ratio `4.590`, stable `0/5`, `oracle-only`
+
+Decision: keep the manual chunk writer because it improves the measured format
+rows without changing arithmetic or output shape. Formatting remains
+oracle-only; the next meaningful step is an algorithmic conversion change rather
+than more output-copy tuning.
