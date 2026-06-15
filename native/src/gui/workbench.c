@@ -545,6 +545,31 @@ static void set_run_status(AppState *app, const char *factor, const char *proof,
   set_label_if(app->bench_label, bench);
 }
 
+static void cpu_gate_summary(char *out, size_t out_size, int compact) {
+  if (!out || out_size == 0) return;
+  XrayCpuFeatures cpu;
+  xray_cpu_features_detect(&cpu);
+  int avx = cpu.avx && cpu.avx_os_enabled;
+  int avx2 = cpu.avx2 && cpu.avx_os_enabled;
+  int avx512 = cpu.avx512f && cpu.avx512_os_enabled;
+  if (compact) {
+    snprintf(out, out_size,
+      "CPU gates: AVX2 %s | BMI2 %s | ADX %s",
+      avx2 ? "on" : "off",
+      cpu.bmi2 ? "on" : "off",
+      cpu.adx ? "on" : "off");
+  } else {
+    snprintf(out, out_size,
+      "CPU: %uT | AVX %s | AVX2 %s | AVX512 %s | BMI2 %s | ADX %s",
+      cpu.logical_cpus,
+      avx ? "on" : "off",
+      avx2 ? "on" : "off",
+      avx512 ? "on" : "off",
+      cpu.bmi2 ? "on" : "off",
+      cpu.adx ? "on" : "off");
+  }
+}
+
 static const char *live_stage(unsigned int pulse) {
   static const char *stages[] = {
     "Ingest",
@@ -1496,10 +1521,12 @@ void xray_workbench_activate(GtkApplication *application, gpointer user_data) {
   GtkWidget *right_spacer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
   gtk_widget_set_hexpand(right_spacer, TRUE);
   gtk_box_append(GTK_BOX(topbar), right_spacer);
+  char cpu_status[128];
+  cpu_gate_summary(cpu_status, sizeof(cpu_status), 0);
   gtk_box_append(GTK_BOX(topbar), label_with_width("●", "status-dot", 2, FALSE));
-  gtk_box_append(GTK_BOX(topbar), label_with_width("Engine: Twin Parity v1.7.3", "top-status", 26, FALSE));
+  gtk_box_append(GTK_BOX(topbar), label_with_width("Engine: Native proof v0.1", "top-status", 28, FALSE));
   gtk_box_append(GTK_BOX(topbar), label_with_width("|", "micro", 2, FALSE));
-  gtk_box_append(GTK_BOX(topbar), label_with_width("Precision: 512-bit", "top-status", 20, FALSE));
+  gtk_box_append(GTK_BOX(topbar), label_with_width(cpu_status, "top-status", 56, FALSE));
   gtk_box_append(GTK_BOX(topbar), label_with_width("⚙", "settings-glyph", 2, FALSE));
   gtk_box_append(GTK_BOX(root), topbar);
 
@@ -1589,13 +1616,15 @@ void xray_workbench_activate(GtkApplication *application, gpointer user_data) {
   GtkWidget *status_spacer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
   gtk_widget_set_hexpand(status_spacer, TRUE);
   gtk_box_append(GTK_BOX(statusbar), status_spacer);
+  char compact_cpu_status[96];
+  cpu_gate_summary(compact_cpu_status, sizeof(compact_cpu_status), 1);
   gtk_box_append(GTK_BOX(statusbar), label_with_width("Threads: 12", "micro", 14, FALSE));
   gtk_box_append(GTK_BOX(statusbar), label_with_width("|", "micro", 2, FALSE));
-  gtk_box_append(GTK_BOX(statusbar), label_with_width("CPU: 18%", "micro", 12, FALSE));
+  gtk_box_append(GTK_BOX(statusbar), label_with_width(compact_cpu_status, "micro", 38, FALSE));
   gtk_box_append(GTK_BOX(statusbar), label_with_width("|", "micro", 2, FALSE));
-  gtk_box_append(GTK_BOX(statusbar), label_with_width("RAM: 4.6 GB / 16 GB", "micro", 22, FALSE));
+  gtk_box_append(GTK_BOX(statusbar), label_with_width("RAM budget: 16 GB", "micro", 18, FALSE));
   gtk_box_append(GTK_BOX(statusbar), label_with_width("|", "micro", 2, FALSE));
-  gtk_box_append(GTK_BOX(statusbar), label_with_width("Elapsed: 00:00:20", "micro", 20, FALSE));
+  gtk_box_append(GTK_BOX(statusbar), label_with_width("Elapsed: ready", "micro", 16, FALSE));
   gtk_box_append(GTK_BOX(statusbar), label_with_width("●", "status-dot", 2, FALSE));
   gtk_box_append(GTK_BOX(root), statusbar);
 
