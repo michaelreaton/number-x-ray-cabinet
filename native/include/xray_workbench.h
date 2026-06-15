@@ -136,6 +136,15 @@ XRAY_API void xray_bigint_clear(XrayScratchBigInt *value);
 XRAY_API int xray_bigint_set_decimal(XrayScratchBigInt *value, const char *decimal);
 
 /**
+ * Parse a non-negative decimal integer using a diagnostic chunk size.
+ *
+ * chunk_digits must be between 1 and 19. This probe exists for benchmark
+ * tournaments and external tooling that wants to compare decimal ingestion
+ * strategies without changing the production parser route.
+ */
+XRAY_API int xray_bigint_set_decimal_chunk_probe(XrayScratchBigInt *value, const char *decimal, unsigned int chunk_digits);
+
+/**
  * Format a scratch bigint as a newly allocated decimal string.
  *
  * The caller owns the returned string and must release it with xray_free().
