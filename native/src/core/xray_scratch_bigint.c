@@ -142,6 +142,35 @@ static uint64_t mul_add_word(uint64_t existing, uint64_t left, uint64_t right, u
 #endif
 }
 
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+static uint64_t mul_add_word_unroll4_row(uint64_t *target, const uint64_t *right, uint64_t left, size_t count) {
+  unsigned __int64 carry = 0;
+  size_t index = 0;
+#define XRAY_MULADD_UNROLL4_STEP(offset) do { \
+    unsigned __int64 high = 0; \
+    unsigned __int64 low = _umul128(left, right[index + (offset)], &high); \
+    unsigned __int64 sum = 0; \
+    unsigned char carry_out = _addcarry_u64(0, low, target[index + (offset)], &sum); \
+    high += carry_out; \
+    carry_out = _addcarry_u64(0, sum, carry, &sum); \
+    high += carry_out; \
+    target[index + (offset)] = (uint64_t)sum; \
+    carry = high; \
+  } while (0)
+  for (; index + 4U <= count; index += 4U) {
+    XRAY_MULADD_UNROLL4_STEP(0U);
+    XRAY_MULADD_UNROLL4_STEP(1U);
+    XRAY_MULADD_UNROLL4_STEP(2U);
+    XRAY_MULADD_UNROLL4_STEP(3U);
+  }
+  for (; index < count; ++index) {
+    XRAY_MULADD_UNROLL4_STEP(0U);
+  }
+#undef XRAY_MULADD_UNROLL4_STEP
+  return (uint64_t)carry;
+}
+#endif
+
 static uint64_t mul_high_u64(uint64_t left, uint64_t right) {
 #if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
   unsigned __int64 high = 0;
@@ -381,7 +410,7 @@ int xray_bigint_sub(XrayScratchBigInt *out, const XrayScratchBigInt *left, const
   return borrow == 0;
 }
 
-static int mul_schoolbook(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
+static int mul_schoolbook_mode(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, int use_unroll4) {
   if (!out || !left || !right) return 0;
   if (left->count == 0 || right->count == 0) return set_u32(out, 0);
   const XrayScratchBigInt *outer = left;
@@ -405,8 +434,17 @@ static int mul_schoolbook(XrayScratchBigInt *out, const XrayScratchBigInt *left,
 
   for (size_t i = 1; i < outer->count; ++i) {
     carry = 0;
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+    if (use_unroll4) {
+      carry = mul_add_word_unroll4_row(out->limbs + i, inner->limbs, outer->limbs[i], inner->count);
+    } else
+#else
+    (void)use_unroll4;
+#endif
+    {
     for (size_t j = 0; j < inner->count; ++j) {
       carry = mul_add_word(out->limbs[i + j], outer->limbs[i], inner->limbs[j], carry, &out->limbs[i + j]);
+    }
     }
     size_t pos = i + inner->count;
     while (carry) {
@@ -418,6 +456,10 @@ static int mul_schoolbook(XrayScratchBigInt *out, const XrayScratchBigInt *left,
   }
   normalize(out);
   return 1;
+}
+
+static int mul_schoolbook(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
+  return mul_schoolbook_mode(out, left, right, 0);
 }
 
 static int slice_bigint(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t offset, size_t count) {
@@ -494,16 +536,17 @@ static void clear_many_bigints(
   xray_bigint_clear(sum_b);
 }
 
+static int mul_dispatch_threshold_mode(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t threshold, int use_unroll4);
 static int mul_dispatch_threshold(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t threshold);
 
-static int mul_karatsuba_threshold(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t threshold) {
+static int mul_karatsuba_threshold_mode(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t threshold, int use_unroll4) {
   size_t left_count = left ? left->count : 0;
   size_t right_count = right ? right->count : 0;
   size_t max_count = left_count > right_count ? left_count : right_count;
   size_t min_count = left_count < right_count ? left_count : right_count;
   size_t active_threshold = threshold >= 2U ? threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
   if (max_count < active_threshold || min_count * 2U < max_count) {
-    return mul_schoolbook(out, left, right);
+    return mul_schoolbook_mode(out, left, right, use_unroll4);
   }
 
   size_t split = max_count / 2U;
@@ -524,11 +567,11 @@ static int mul_karatsuba_threshold(XrayScratchBigInt *out, const XrayScratchBigI
     slice_bigint(&a1, left, split, left_count > split ? left_count - split : 0) &&
     slice_bigint(&b0, right, 0, split) &&
     slice_bigint(&b1, right, split, right_count > split ? right_count - split : 0) &&
-    mul_dispatch_threshold(&z0, &a0, &b0, active_threshold) &&
-    mul_dispatch_threshold(&z2, &a1, &b1, active_threshold) &&
+    mul_dispatch_threshold_mode(&z0, &a0, &b0, active_threshold, use_unroll4) &&
+    mul_dispatch_threshold_mode(&z2, &a1, &b1, active_threshold, use_unroll4) &&
     abs_diff_bigint(&sum_a, &a1, &a0, &a_order) &&
     abs_diff_bigint(&sum_b, &b1, &b0, &b_order) &&
-    mul_dispatch_threshold(&z1, &sum_a, &sum_b, active_threshold) &&
+    mul_dispatch_threshold_mode(&z1, &sum_a, &sum_b, active_threshold, use_unroll4) &&
     xray_bigint_add(&sum_a, &z0, &z2) &&
     (((a_order >= 0) == (b_order >= 0)) ? xray_bigint_sub(&z1, &sum_a, &z1) : xray_bigint_add(&z1, &sum_a, &z1));
 
@@ -543,6 +586,14 @@ static int mul_karatsuba_threshold(XrayScratchBigInt *out, const XrayScratchBigI
 
   clear_many_bigints(&a0, &a1, &b0, &b1, &z0, &z1, &z2, &sum_a, &sum_b);
   return ok;
+}
+
+static int mul_karatsuba_threshold(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t threshold) {
+  return mul_karatsuba_threshold_mode(out, left, right, threshold, 0);
+}
+
+static int mul_dispatch_threshold_mode(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t threshold, int use_unroll4) {
+  return mul_karatsuba_threshold_mode(out, left, right, threshold, use_unroll4);
 }
 
 static int mul_dispatch_threshold(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t threshold) {
@@ -933,6 +984,28 @@ int xray_bigint_mul_toom3_probe(XrayScratchBigInt *out, const XrayScratchBigInt 
     return ok;
   }
   return mul_toom3_probe_internal(out, left, right, active_threshold);
+}
+
+int xray_bigint_mul_unroll4_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (!out || !left || !right) return 0;
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  if (out == left || out == right) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = mul_dispatch_threshold_mode(&temp, left, right, active_threshold, 1);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return mul_dispatch_threshold_mode(out, left, right, active_threshold, 1);
+#else
+  (void)out;
+  (void)left;
+  (void)right;
+  (void)leaf_threshold;
+  return 0;
+#endif
 }
 
 uint32_t xray_bigint_mod_u32(const XrayScratchBigInt *value, uint32_t modulus) {

@@ -98,3 +98,21 @@ scheduling helps:
 Decision: keep the width probe, but prefer unroll4 as the current scheduling
 candidate. Wider unroll did not improve the small row and lost to unroll4 on
 both measured sizes in this run.
+
+## 2026-06-15: Unroll4 Full-Shape Probe
+
+Run: `runs/20260615-052029-c4b04caf`
+
+`mul-unroll4-vs-scratch` threaded the four-limb `_umul128`/`_addcarry_u64`
+schedule through the full scratch multiply path and compared it directly with
+current scratch multiply:
+
+- 1000 digits: ratio `0.85`, stable `5/5`, `candidate-faster`
+- 4096 digits: ratio `0.84`, stable `4/5`, `candidate-faster`
+- 8192 digits: ratio `0.90`, stable `3/5`, `observe-only`
+
+Decision: keep the probe, but do not route production multiply through it yet.
+The 1000 and 4096 digit rows cleared the same-run gate, but the 8192 digit row
+missed the 4 of 5 stability requirement. The same run also showed the raw
+muladd primitive rows as noisy or slower, so the next step is confirmation and
+carry-scheduling work rather than adoption.

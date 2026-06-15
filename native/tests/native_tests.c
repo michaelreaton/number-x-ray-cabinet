@@ -506,6 +506,43 @@ static void test_scratch_bigint_toom3_probe_oracle(void) {
   free(right_text);
 }
 
+static void test_scratch_bigint_unroll4_probe_oracle(void) {
+  char *left_text = make_pattern_decimal(1800, "80852963074185296307");
+  char *right_text = make_pattern_decimal(1800, "27182818284590452353");
+  XrayScratchBigInt a, b, product, alias;
+  xray_bigint_init(&a);
+  xray_bigint_init(&b);
+  xray_bigint_init(&product);
+  xray_bigint_init(&alias);
+  mpz_t ga, gb, gproduct;
+  mpz_inits(ga, gb, gproduct, NULL);
+
+  CHECK(xray_bigint_set_decimal(&a, left_text));
+  CHECK(xray_bigint_set_decimal(&b, right_text));
+  CHECK(mpz_set_str(ga, left_text, 10) == 0);
+  CHECK(mpz_set_str(gb, right_text, 10) == 0);
+  mpz_mul(gproduct, ga, gb);
+
+#if defined(_MSC_VER) && defined(_M_X64)
+  CHECK(xray_bigint_mul_unroll4_probe(&product, &a, &b, 64));
+  check_scratch_matches_mpz(&product, gproduct);
+
+  CHECK(xray_bigint_copy(&alias, &a));
+  CHECK(xray_bigint_mul_unroll4_probe(&alias, &alias, &b, 64));
+  check_scratch_matches_mpz(&alias, gproduct);
+#else
+  CHECK(!xray_bigint_mul_unroll4_probe(&product, &a, &b, 64));
+#endif
+
+  xray_bigint_clear(&a);
+  xray_bigint_clear(&b);
+  xray_bigint_clear(&product);
+  xray_bigint_clear(&alias);
+  mpz_clears(ga, gb, gproduct, NULL);
+  free(left_text);
+  free(right_text);
+}
+
 static void test_scratch_bigint_toom3_minus_one_signs(void) {
   XrayScratchBigInt a, b, product;
   xray_bigint_init(&a);
@@ -695,6 +732,7 @@ static void test_benchmarks(void) {
   int saw_muladd_bmi2_adx_probe = 0;
   int saw_muladd_unroll_probe = 0;
   int saw_muladd_unroll8_probe = 0;
+  int saw_mul_unroll4_vs_scratch_probe = 0;
   for (size_t index = 0; index < report->result_count; ++index) {
     if (strcmp(report->results[index].category, "scratch-vs-gmp") == 0) {
       scratch_rows++;
@@ -752,6 +790,14 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "featureGate=internal-promotion") != NULL);
         CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
       }
+      if (strcmp(report->results[index].operation, "mul-unroll4-vs-scratch") == 0) {
+        saw_mul_unroll4_vs_scratch_probe = 1;
+        CHECK(strstr(report->results[index].detail, "leafThreshold=") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=_umul128+_addcarry_u64-unroll4-full") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=current-scratch-mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=msvc-x64-full-mul-schedule") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+      }
       if (strcmp(report->results[index].operation, "muladd-bmi2-adx") == 0) {
         saw_muladd_bmi2_adx_probe = 1;
         CHECK(strstr(report->results[index].detail, "candidate=_mulx_u64+_addcarryx_u64") != NULL);
@@ -803,6 +849,7 @@ static void test_benchmarks(void) {
 #if defined(_MSC_VER) && defined(_M_X64)
   CHECK(saw_muladd_unroll_probe);
   CHECK(saw_muladd_unroll8_probe);
+  CHECK(saw_mul_unroll4_vs_scratch_probe);
   if (report->cpu.bmi2 && report->cpu.adx) CHECK(saw_muladd_bmi2_adx_probe);
 #endif
   CHECK(kernel_rows >= 4);
@@ -833,6 +880,7 @@ static void test_benchmarks(void) {
 #if defined(_MSC_VER) && defined(_M_X64)
   CHECK(strstr(json, "muladd-unroll4") != NULL);
   CHECK(strstr(json, "muladd-unroll8") != NULL);
+  CHECK(strstr(json, "mul-unroll4-vs-scratch") != NULL);
   if (report->cpu.bmi2 && report->cpu.adx) CHECK(strstr(json, "muladd-bmi2-adx") != NULL);
 #endif
   free(json);
@@ -849,6 +897,7 @@ static void test_benchmarks(void) {
 #if defined(_MSC_VER) && defined(_M_X64)
   CHECK(strstr(tsv, "muladd-unroll4") != NULL);
   CHECK(strstr(tsv, "muladd-unroll8") != NULL);
+  CHECK(strstr(tsv, "mul-unroll4-vs-scratch") != NULL);
   if (report->cpu.bmi2 && report->cpu.adx) CHECK(strstr(tsv, "muladd-bmi2-adx") != NULL);
 #endif
   CHECK(strstr(tsv, "replacement-ready") != NULL || strstr(tsv, "parity") != NULL);
@@ -895,6 +944,7 @@ int main(void) {
   test_scratch_bigint_karatsuba_middle_signs();
   test_scratch_bigint_mul_thresholds();
   test_scratch_bigint_toom3_probe_oracle();
+  test_scratch_bigint_unroll4_probe_oracle();
   test_scratch_bigint_toom3_minus_one_signs();
   test_ambiguous_input_rejected();
   test_factor_solver_exact();
