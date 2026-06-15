@@ -137,6 +137,12 @@ static void test_runtime_version_contract(void) {
   CHECK(strcmp(xray_version(), XRAY_VERSION) == 0);
   CHECK(xray_abi_version() == XRAY_ABI_VERSION);
   CHECK(xray_abi_version() >= 1u);
+  CHECK(xray_bignum_backend_name() != NULL);
+  CHECK(xray_bignum_backend_name()[0] != '\0');
+  CHECK(xray_bignum_backend_version() != NULL);
+  CHECK(xray_bignum_backend_version()[0] != '\0');
+  CHECK(xray_bignum_backend_library() != NULL);
+  CHECK(xray_bignum_backend_library()[0] != '\0');
 }
 
 static void test_exact_expression_parser(void) {
@@ -1330,6 +1336,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "\"sampleCount\"") != NULL);
   CHECK(strstr(json, "\"worstPairRatio\"") != NULL);
   CHECK(strstr(json, "\"baselineBackend\"") != NULL);
+  CHECK(strstr(json, "\"baselineBackendVersion\"") != NULL);
+  CHECK(strstr(json, "\"baselineBackendLibrary\"") != NULL);
   CHECK(strstr(json, "\"cpu\"") != NULL);
   CHECK(strstr(json, "kernel-probe") != NULL);
   CHECK(strstr(json, "\"avx\"") != NULL);
@@ -1412,6 +1420,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_json, "\"benchmarkReport\"") != NULL);
   CHECK(strstr(benchmark_json, "\"cpu\"") != NULL);
   CHECK(strstr(benchmark_json, "\"baselineBackend\"") != NULL);
+  CHECK(strstr(benchmark_json, "\"baselineBackendVersion\"") != NULL);
+  CHECK(strstr(benchmark_json, "\"baselineBackendLibrary\"") != NULL);
   CHECK(strstr(benchmark_json, "\"scratchRows\"") != NULL);
   CHECK(strstr(benchmark_tsv, "scratch-vs-gmp") != NULL);
   CHECK(strstr(benchmark_tsv, "kernel-probe") != NULL);

@@ -121,8 +121,11 @@ a custom `XrayRunConfig` when benchmark evidence is part of the run.
 For speed comparisons, GMP and MPIR are treated as compatible oracle backends,
 not as identical performance baselines. Windows vcpkg builds usually benchmark
 against MPIR, while Linux/macOS builds usually benchmark against GMP. Benchmark
-JSON records the configured `baselineBackend`, and human-readable frontier text
-prints the same backend name so local speed claims are not over-generalized.
+JSON records `baselineBackend`, `baselineBackendVersion`, and
+`baselineBackendLibrary`, and human-readable frontier text prints the same
+backend identity so local speed claims are not over-generalized. Consumers can
+also call `xray_bignum_backend_name()`, `xray_bignum_backend_version()`, and
+`xray_bignum_backend_library()` to label their own benchmark reports.
 
 CTest enforces that documentation contract with `xray_api_doc_coverage`, which
 fails the build if a new exported `XRAY_API` function is added without a
@@ -153,8 +156,8 @@ the installed SDK manifest:
 
 It records the public header, library name, CMake package/target, pkg-config
 names for installed static/shared libraries, documented header locations,
-ABI/runtime probe functions, install-relative include/lib/bin directories, and
-GMP/MPIR dependency. Tools that generate bindings should read
+ABI/runtime/backend probe functions, install-relative include/lib/bin
+directories, and GMP/MPIR dependency. Tools that generate bindings should read
 `apiDocumentation.functionReferenceHeader` from the manifest and parse the
 `XRAY_API` declarations there.
 

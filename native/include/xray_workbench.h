@@ -48,6 +48,32 @@ XRAY_API const char *xray_version(void);
 XRAY_API unsigned int xray_abi_version(void);
 
 /**
+ * Return the configured GMP-compatible bignum backend name.
+ *
+ * Typical values are "GMP" on Linux/macOS and "MPIR" on Windows vcpkg builds.
+ * The returned pointer is borrowed static storage and must not be freed.
+ */
+XRAY_API const char *xray_bignum_backend_name(void);
+
+/**
+ * Return the configured GMP-compatible backend runtime version string.
+ *
+ * MPIR builds return the MPIR compile-time version when exposed by the
+ * compatibility header. GMP builds return GMP_VERSION. The returned pointer is
+ * borrowed static storage and must not be freed.
+ */
+XRAY_API const char *xray_bignum_backend_version(void);
+
+/**
+ * Return the configured GMP-compatible backend library basename.
+ *
+ * Examples include "mpir.lib" on Windows vcpkg MPIR and "libgmp.so" on many
+ * Unix-like GMP builds. The returned pointer is borrowed static storage and
+ * must not be freed.
+ */
+XRAY_API const char *xray_bignum_backend_library(void);
+
+/**
  * Release memory returned by Number X-Ray allocation-returning API calls.
  *
  * Pass pointers returned by functions such as xray_bigint_get_decimal(),

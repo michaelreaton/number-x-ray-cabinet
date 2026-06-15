@@ -20,6 +20,13 @@
     "versionFunction": "xray_version",
     "abiVersionFunction": "xray_abi_version"
   },
+  "bignumBackend": {
+    "name": "@XRAY_GMP_BACKEND_NAME@",
+    "library": "@XRAY_GMP_LIBRARY_NAME@",
+    "nameFunction": "xray_bignum_backend_name",
+    "versionFunction": "xray_bignum_backend_version",
+    "libraryFunction": "xray_bignum_backend_library"
+  },
   "libraries": {
     "core": {
       "name": "xray_core",
