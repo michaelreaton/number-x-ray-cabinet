@@ -5,6 +5,9 @@ endif()
 if(NOT XRAY_CONFIG)
   set(XRAY_CONFIG Release)
 endif()
+if(NOT DEFINED XRAY_INSTALL_LIBDIR OR NOT XRAY_INSTALL_LIBDIR)
+  set(XRAY_INSTALL_LIBDIR lib)
+endif()
 
 if(WIN32 AND XRAY_GENERATOR MATCHES "Visual Studio")
   # Visual Studio generators select the matching toolset; stale shell state can
@@ -25,6 +28,11 @@ execute_process(
 )
 if(NOT install_result EQUAL 0)
   message(FATAL_ERROR "NumberXRay install smoke failed during install step: ${install_result}")
+endif()
+
+set(pkgconfig_file "${install_prefix}/${XRAY_INSTALL_LIBDIR}/pkgconfig/number-xray.pc")
+if(NOT EXISTS "${pkgconfig_file}")
+  message(FATAL_ERROR "NumberXRay install smoke did not install pkg-config metadata: ${pkgconfig_file}")
 endif()
 
 set(configure_command
