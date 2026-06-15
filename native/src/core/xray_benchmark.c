@@ -126,21 +126,25 @@ static void append_perf_result(
   result.scratch_us = scratch_us ? scratch_us : 1;
   result.gmp_us = gmp_us ? gmp_us : 1;
   result.speed_ratio = (double)result.scratch_us / (double)result.gmp_us;
+  result.max_allowed_speed_ratio = 1.0;
   result.parity_verified = parity;
   result.replacement_ready = parity && result.scratch_us <= result.gmp_us;
+  snprintf(result.adoption, sizeof(result.adoption), "%s",
+    !parity ? "blocked-output-mismatch" : (result.replacement_ready ? "allowed" : "oracle-only"));
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   result.passed = parity;
   snprintf(result.status, sizeof(result.status), "%s",
     !parity ? "failed" : (result.replacement_ready ? "replacement-ready" : "parity"));
   snprintf(result.detail, sizeof(result.detail),
-    "operation=%s digits=%zu samples=%u scratchUs=%llu gmpUs=%llu ratio=%.3f gate=%s",
+    "operation=%s digits=%zu samples=%u scratchUs=%llu gmpUs=%llu ratio=%.3f maxAllowedRatio=%.1f adoption=%s",
     operation,
     digits,
     XRAY_BENCH_SAMPLES,
     result.scratch_us,
     result.gmp_us,
     result.speed_ratio,
-    result.replacement_ready ? "replace-allowed" : "keep-gmp");
+    result.max_allowed_speed_ratio,
+    result.adoption);
   append_result(report, &result);
 }
 

@@ -271,12 +271,16 @@ static void test_benchmarks(void) {
       CHECK(report.results[index].scratch_us > 0);
       CHECK(report.results[index].gmp_us > 0);
       CHECK(report.results[index].speed_ratio > 0.0);
+      CHECK(report.results[index].max_allowed_speed_ratio == 1.0);
+      CHECK(strcmp(report.results[index].adoption, report.results[index].replacement_ready ? "allowed" : "oracle-only") == 0);
     }
   }
   CHECK(scratch_rows >= 23);
   char *json = xray_benchmark_report_json(&report);
   CHECK(json != NULL);
   CHECK(strstr(json, "\"replacementReady\"") != NULL);
+  CHECK(strstr(json, "\"adoption\"") != NULL);
+  CHECK(strstr(json, "\"maxAllowedSpeedRatio\"") != NULL);
   CHECK(strstr(json, "\"scratchUs\"") != NULL);
   free(json);
   xray_benchmark_report_clear(&report);

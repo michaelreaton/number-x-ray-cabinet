@@ -180,8 +180,9 @@ static void append_benchmark_json(JsonBuffer *buffer, const XrayBenchmarkReport 
     jb_append(buffer, ",\"category\":"); jb_string(buffer, report->results[index].category);
     jb_append(buffer, ",\"operation\":"); jb_string(buffer, report->results[index].operation);
     jb_append(buffer, ",\"status\":"); jb_string(buffer, report->results[index].status);
+    jb_append(buffer, ",\"adoption\":"); jb_string(buffer, report->results[index].adoption);
     jb_printf(buffer,
-      ",\"digits\":%zu,\"passed\":%s,\"parityVerified\":%s,\"replacementReady\":%s,\"scratchUs\":%llu,\"gmpUs\":%llu,\"speedRatio\":%.6f,\"elapsedMs\":%lu,\"detail\":",
+      ",\"digits\":%zu,\"passed\":%s,\"parityVerified\":%s,\"replacementReady\":%s,\"scratchUs\":%llu,\"gmpUs\":%llu,\"speedRatio\":%.6f,\"maxAllowedSpeedRatio\":%.6f,\"elapsedMs\":%lu,\"detail\":",
       report->results[index].digits,
       report->results[index].passed ? "true" : "false",
       report->results[index].parity_verified ? "true" : "false",
@@ -189,6 +190,7 @@ static void append_benchmark_json(JsonBuffer *buffer, const XrayBenchmarkReport 
       report->results[index].scratch_us,
       report->results[index].gmp_us,
       report->results[index].speed_ratio,
+      report->results[index].max_allowed_speed_ratio,
       report->results[index].elapsed_ms);
     jb_string(buffer, report->results[index].detail);
     jb_append(buffer, "}");

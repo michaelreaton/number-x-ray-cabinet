@@ -132,6 +132,8 @@ typedef struct XrayBenchmarkResult {
   unsigned long long scratch_us;
   unsigned long long gmp_us;
   double speed_ratio;
+  double max_allowed_speed_ratio;
+  char adoption[32];
   int parity_verified;
   int replacement_ready;
   unsigned long elapsed_ms;
