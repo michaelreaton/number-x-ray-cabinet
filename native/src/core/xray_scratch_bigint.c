@@ -463,6 +463,16 @@ static int add_shifted_inplace(XrayScratchBigInt *out, const XrayScratchBigInt *
   return 1;
 }
 
+static int abs_diff_bigint(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *left,
+  const XrayScratchBigInt *right,
+  int *ordering) {
+  int compare = xray_bigint_compare(left, right);
+  if (ordering) *ordering = compare;
+  return compare >= 0 ? xray_bigint_sub(out, left, right) : xray_bigint_sub(out, right, left);
+}
+
 static void clear_many_bigints(
   XrayScratchBigInt *a0,
   XrayScratchBigInt *a1,
@@ -507,17 +517,19 @@ static int mul_karatsuba(XrayScratchBigInt *out, const XrayScratchBigInt *left, 
   xray_bigint_init(&sum_a);
   xray_bigint_init(&sum_b);
 
+  int a_order = 0;
+  int b_order = 0;
   int ok = slice_bigint(&a0, left, 0, split) &&
     slice_bigint(&a1, left, split, left_count > split ? left_count - split : 0) &&
     slice_bigint(&b0, right, 0, split) &&
     slice_bigint(&b1, right, split, right_count > split ? right_count - split : 0) &&
     mul_dispatch(&z0, &a0, &b0) &&
     mul_dispatch(&z2, &a1, &b1) &&
-    xray_bigint_add(&sum_a, &a0, &a1) &&
-    xray_bigint_add(&sum_b, &b0, &b1) &&
+    abs_diff_bigint(&sum_a, &a1, &a0, &a_order) &&
+    abs_diff_bigint(&sum_b, &b1, &b0, &b_order) &&
     mul_dispatch(&z1, &sum_a, &sum_b) &&
-    xray_bigint_sub(&z1, &z1, &z0) &&
-    xray_bigint_sub(&z1, &z1, &z2);
+    xray_bigint_add(&sum_a, &z0, &z2) &&
+    (((a_order >= 0) == (b_order >= 0)) ? xray_bigint_sub(&z1, &sum_a, &z1) : xray_bigint_add(&z1, &sum_a, &z1));
 
   if (ok) {
     out->count = 0;
