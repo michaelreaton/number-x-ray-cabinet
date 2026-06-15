@@ -477,6 +477,64 @@ static uint64_t kernel_muladd_u64_msvc_carry(uint64_t *out, const uint64_t *exis
   return carry;
 }
 
+static uint64_t kernel_muladd_u64_msvc_carry_unroll4(uint64_t *out, const uint64_t *existing, const uint64_t *right, uint64_t multiplier, size_t limbs) {
+  uint64_t carry = 0;
+  size_t index = 0;
+  for (; index + 4U <= limbs; index += 4U) {
+    unsigned __int64 high0 = 0;
+    unsigned __int64 low0 = _umul128(right[index], multiplier, &high0);
+    unsigned __int64 sum0 = 0;
+    unsigned char carry_out0 = _addcarry_u64(0, low0, existing[index], &sum0);
+    high0 += carry_out0;
+    carry_out0 = _addcarry_u64(0, sum0, carry, &sum0);
+    high0 += carry_out0;
+    out[index] = (uint64_t)sum0;
+    carry = (uint64_t)high0;
+
+    unsigned __int64 high1 = 0;
+    unsigned __int64 low1 = _umul128(right[index + 1U], multiplier, &high1);
+    unsigned __int64 sum1 = 0;
+    unsigned char carry_out1 = _addcarry_u64(0, low1, existing[index + 1U], &sum1);
+    high1 += carry_out1;
+    carry_out1 = _addcarry_u64(0, sum1, carry, &sum1);
+    high1 += carry_out1;
+    out[index + 1U] = (uint64_t)sum1;
+    carry = (uint64_t)high1;
+
+    unsigned __int64 high2 = 0;
+    unsigned __int64 low2 = _umul128(right[index + 2U], multiplier, &high2);
+    unsigned __int64 sum2 = 0;
+    unsigned char carry_out2 = _addcarry_u64(0, low2, existing[index + 2U], &sum2);
+    high2 += carry_out2;
+    carry_out2 = _addcarry_u64(0, sum2, carry, &sum2);
+    high2 += carry_out2;
+    out[index + 2U] = (uint64_t)sum2;
+    carry = (uint64_t)high2;
+
+    unsigned __int64 high3 = 0;
+    unsigned __int64 low3 = _umul128(right[index + 3U], multiplier, &high3);
+    unsigned __int64 sum3 = 0;
+    unsigned char carry_out3 = _addcarry_u64(0, low3, existing[index + 3U], &sum3);
+    high3 += carry_out3;
+    carry_out3 = _addcarry_u64(0, sum3, carry, &sum3);
+    high3 += carry_out3;
+    out[index + 3U] = (uint64_t)sum3;
+    carry = (uint64_t)high3;
+  }
+  for (; index < limbs; ++index) {
+    unsigned __int64 high = 0;
+    unsigned __int64 low = _umul128(right[index], multiplier, &high);
+    unsigned __int64 sum = 0;
+    unsigned char carry_out = _addcarry_u64(0, low, existing[index], &sum);
+    high += carry_out;
+    carry_out = _addcarry_u64(0, sum, carry, &sum);
+    high += carry_out;
+    out[index] = (uint64_t)sum;
+    carry = (uint64_t)high;
+  }
+  return carry;
+}
+
 static uint64_t kernel_muladd_u64_bmi2_adx(uint64_t *out, const uint64_t *existing, const uint64_t *right, uint64_t multiplier, size_t limbs) {
   uint64_t carry = 0;
   for (size_t index = 0; index < limbs; ++index) {
@@ -491,6 +549,65 @@ static uint64_t kernel_muladd_u64_bmi2_adx(uint64_t *out, const uint64_t *existi
     carry = (uint64_t)high;
   }
   return carry;
+}
+
+static void run_kernel_probe_muladd_unroll_case(XrayBenchmarkReport *report, size_t bits) {
+  size_t limbs = bits / 64U;
+  uint64_t *existing = (uint64_t *)calloc(limbs, sizeof(uint64_t));
+  uint64_t *right = (uint64_t *)calloc(limbs, sizeof(uint64_t));
+  uint64_t *baseline = (uint64_t *)calloc(limbs, sizeof(uint64_t));
+  uint64_t *candidate = (uint64_t *)calloc(limbs, sizeof(uint64_t));
+  if (!existing || !right || !baseline || !candidate) {
+    free(existing); free(right); free(baseline); free(candidate);
+    return;
+  }
+
+  fill_kernel_u64(existing, limbs, UINT64_C(0x8cb92ba72f3d8dd7));
+  fill_kernel_u64(right, limbs, UINT64_C(0x589965cc75374cc3));
+  uint64_t multiplier = UINT64_C(0x9e3779b97f4a7c15);
+  uint64_t baseline_carry = kernel_muladd_u64_msvc_carry(baseline, existing, right, multiplier, limbs);
+  uint64_t candidate_carry = kernel_muladd_u64_msvc_carry_unroll4(candidate, existing, right, multiplier, limbs);
+  int parity = baseline_carry == candidate_carry && memcmp(baseline, candidate, sizeof(uint64_t) * limbs) == 0;
+
+  unsigned int iterations = kernel_iterations(bits);
+  unsigned long long candidate_samples[XRAY_KERNEL_SAMPLES] = {0};
+  unsigned long long baseline_samples[XRAY_KERNEL_SAMPLES] = {0};
+  for (unsigned int sample = 0; sample < XRAY_KERNEL_SAMPLES; ++sample) {
+    unsigned long long baseline_started = xray_now_us();
+    for (unsigned int index = 0; index < iterations; ++index) {
+      baseline_carry = kernel_muladd_u64_msvc_carry(baseline, existing, right, multiplier + index + sample, limbs);
+      kernel_probe_sink ^= baseline[(index + sample) % limbs] ^ baseline_carry;
+    }
+    baseline_samples[sample] = xray_now_us() - baseline_started;
+
+    unsigned long long candidate_started = xray_now_us();
+    for (unsigned int index = 0; index < iterations; ++index) {
+      candidate_carry = kernel_muladd_u64_msvc_carry_unroll4(candidate, existing, right, multiplier + index + sample, limbs);
+      kernel_probe_sink ^= candidate[(index + sample) % limbs] ^ candidate_carry;
+    }
+    candidate_samples[sample] = xray_now_us() - candidate_started;
+  }
+
+  char name[72];
+  snprintf(name, sizeof(name), "kernel muladd unroll4 %zu-bit", bits);
+  append_kernel_probe_result(
+    report,
+    name,
+    "muladd-unroll4",
+    bits,
+    parity,
+    median_samples(candidate_samples, XRAY_KERNEL_SAMPLES),
+    median_samples(baseline_samples, XRAY_KERNEL_SAMPLES),
+    median_paired_ratio(candidate_samples, baseline_samples, XRAY_KERNEL_SAMPLES),
+    paired_ratio_wins(candidate_samples, baseline_samples, XRAY_KERNEL_SAMPLES, 0.98),
+    XRAY_KERNEL_SAMPLES,
+    max_paired_ratio(candidate_samples, baseline_samples, XRAY_KERNEL_SAMPLES),
+    "_umul128+_addcarry_u64-unroll4",
+    "_umul128+_addcarry_u64",
+    "msvc-x64-loop-schedule",
+    "gmpAddmulScheduling");
+
+  free(existing); free(right); free(baseline); free(candidate);
 }
 
 static void run_kernel_probe_muladd_bmi2_adx_case(XrayBenchmarkReport *report, size_t bits) {
@@ -1449,6 +1566,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     run_kernel_probe_intrinsic_case(report, "sub-carry", bit_sizes[index]);
 #endif
 #if XRAY_HAS_MSVC_BMI2_ADX_INTRINSICS
+    run_kernel_probe_muladd_unroll_case(report, bit_sizes[index]);
     run_kernel_probe_muladd_bmi2_adx_case(report, bit_sizes[index]);
 #endif
   }

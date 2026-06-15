@@ -67,3 +67,18 @@ Decision: rejected and not merged. The primitive win did not survive the current
 Karatsuba/schoolbook operation shape. Future BMI2/ADX work should not be a simple
 single-chain replacement; it should test a GMP-style addmul design with better
 carry scheduling before touching production routing.
+
+## 2026-06-15: Muladd Unroll Scheduling Probe
+
+Run: `runs/20260615-045717-c4b04caf`
+
+`muladd-unroll4` compared a four-limb unrolled `_umul128`/`_addcarry_u64`
+multiply-accumulate loop with the scalar `_umul128`/`_addcarry_u64` loop:
+
+- 617 digits: ratio `0.93`, stable `3/5`, `observe-only`
+- 4933 digits: ratio `0.64`, stable `4/5`, `candidate-faster`
+
+Decision: keep the probe. The larger row suggests loop scheduling can matter
+more than swapping to BMI2/ADX alone. Production multiply should still remain
+unchanged until a full multiply route proves exact parity and a stable same-run
+win.
