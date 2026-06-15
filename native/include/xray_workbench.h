@@ -251,6 +251,15 @@ XRAY_API char *xray_bigint_get_decimal_horner_threshold_probe(const XrayScratchB
 XRAY_API char *xray_bigint_get_decimal_divider_probe(const XrayScratchBigInt *value, int use_direct_divider);
 
 /**
+ * Format value through the folded 2^64-to-1e9 decimal chunk probe route.
+ *
+ * The caller owns the returned string and must release it with xray_free().
+ * This diagnostic route compares an alternate constant-divisor decomposition
+ * against the production formatter.
+ */
+XRAY_API char *xray_bigint_get_decimal_folded_probe(const XrayScratchBigInt *value);
+
+/**
  * Format value through the 19-digit decimal chunk probe route.
  *
  * The caller owns the returned string and must release it with xray_free().
