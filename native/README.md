@@ -50,6 +50,10 @@ add_subdirectory(path/to/number-x-ray-cabinet/native)
 target_link_libraries(my_tool PRIVATE NumberXRay::core)
 ```
 
+`NumberXRay::core` is the static library target. Builds enable the shared
+library by default as `NumberXRay::core_shared`; disable it with
+`-DXRAY_BUILD_SHARED=OFF` when a static-only SDK is desired.
+
 For an installed SDK-style integration, install the native package first:
 
 ```powershell
@@ -61,11 +65,21 @@ Then consume it from another CMake project:
 ```cmake
 find_package(NumberXRay CONFIG REQUIRED)
 target_link_libraries(my_tool PRIVATE NumberXRay::core)
+# Or, when the SDK was installed with XRAY_BUILD_SHARED=ON:
+target_link_libraries(my_tool PRIVATE NumberXRay::core_shared)
 ```
 
 Include `number_xray.h` for the public API. The older `xray_workbench.h`
 header remains installed, but `number_xray.h` is the stable tool-facing entry
 point.
+
+Every exported `XRAY_API` function is documented directly in the installed
+headers with Doxygen-style comments. Use `number_xray.h` as the public entry
+header and `xray_workbench.h` as the full function reference. Returned `char *`
+values are owned by the caller and must be released with `free()` unless the
+function documentation says the pointer is borrowed. Report structs that
+receive heap fields have matching `*_clear()` functions, and those clearers are
+part of the documented API contract.
 
 Non-CMake tools can discover compiler and linker flags from the installed
 pkg-config file on platforms that use pkg-config:
@@ -82,7 +96,10 @@ the installed SDK manifest:
 ```
 
 It records the public header, library name, CMake package/target, pkg-config
-name, install-relative include/lib directories, and GMP/MPIR dependency.
+name, documented header locations, install-relative include/lib/bin
+directories, and GMP/MPIR dependency. Tools that generate bindings should read
+`apiDocumentation.functionReferenceHeader` from the manifest and parse the
+`XRAY_API` declarations there.
 
 Consumers still need GMP or MPIR available at configure/build time; the CMake
 package recreates the `GMP::GMP` dependency target from `GMP_ROOT`, vcpkg, or

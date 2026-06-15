@@ -9,6 +9,12 @@
     "compatibility": "xray_workbench.h",
     "includeDir": "@CMAKE_INSTALL_INCLUDEDIR@"
   },
+  "apiDocumentation": {
+    "format": "doxygen-comments",
+    "entryHeader": "number_xray.h",
+    "functionReferenceHeader": "xray_workbench.h",
+    "coverage": "all exported XRAY_API functions"
+  },
   "libraries": {
     "core": {
       "name": "xray_core",
@@ -16,7 +22,7 @@
       "libDir": "@CMAKE_INSTALL_LIBDIR@",
       "cmakeTarget": "NumberXRay::core",
       "pkgConfig": "number-xray"
-    }
+    }@XRAY_SDK_SHARED_LIBRARY_JSON@
   },
   "cmake": {
     "package": "NumberXRay",
