@@ -13,9 +13,21 @@
 
 #define XRAY_BENCH_SAMPLES 5
 #define XRAY_KERNEL_SAMPLES 5
-#define XRAY_MUL_THRESHOLD_OPERAND_FAMILIES 2
+#define XRAY_MUL_OPERAND_FAMILIES 2
 
 static volatile unsigned long long kernel_probe_sink = 0;
+
+typedef struct XrayMulOperandFamily {
+  unsigned int left_seed;
+  unsigned int right_seed;
+  int left_high_lead;
+  int right_high_lead;
+} XrayMulOperandFamily;
+
+static const XrayMulOperandFamily mul_operand_families[XRAY_MUL_OPERAND_FAMILIES] = {
+  {5, 11, 1, 0},
+  {29, 37, 1, 1}
+};
 
 static void append_result(XrayBenchmarkReport *report, const XrayBenchmarkResult *result) {
   XrayBenchmarkResult *next = (XrayBenchmarkResult *)realloc(report->results, sizeof(XrayBenchmarkResult) * (report->result_count + 1));
@@ -463,6 +475,7 @@ static void append_perf_result(
   XrayBenchmarkReport *report,
   const char *operation,
   size_t digits,
+  size_t operand_families,
   int parity,
   unsigned long long scratch_us,
   unsigned long long gmp_us,
@@ -486,9 +499,10 @@ static void append_perf_result(
   snprintf(result.status, sizeof(result.status), "%s",
     !parity ? "failed" : (result.replacement_ready ? "replacement-ready" : "parity"));
   snprintf(result.detail, sizeof(result.detail),
-    "operation=%s digits=%zu samples=%u scratchUs=%llu gmpUs=%llu ratio=%.3f ratioMethod=paired-median maxAllowedRatio=%.1f adoption=%s",
+    "operation=%s digits=%zu operandFamilies=%zu samples=%u scratchUs=%llu gmpUs=%llu ratio=%.3f ratioMethod=paired-median maxAllowedRatio=%.1f adoption=%s",
     operation,
     digits,
+    operand_families,
     XRAY_BENCH_SAMPLES,
     result.scratch_us,
     result.gmp_us,
@@ -574,7 +588,7 @@ static void run_scratch_parse_case(XrayBenchmarkReport *report, size_t digits) {
   unsigned long long scratch_us = median_samples(scratch_samples, XRAY_BENCH_SAMPLES);
   unsigned long long gmp_us = median_samples(gmp_samples, XRAY_BENCH_SAMPLES);
   double paired_ratio = median_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES);
-  append_perf_result(report, "parse", digits, parity, scratch_us, gmp_us, paired_ratio);
+  append_perf_result(report, "parse", digits, 1, parity, scratch_us, gmp_us, paired_ratio);
 
   mpz_clear(gmp);
   xray_bigint_clear(&scratch);
@@ -630,7 +644,7 @@ static void run_scratch_binary_case(XrayBenchmarkReport *report, const char *ope
   unsigned long long scratch_us = median_samples(scratch_samples, XRAY_BENCH_SAMPLES);
   unsigned long long gmp_us = median_samples(gmp_samples, XRAY_BENCH_SAMPLES);
   double paired_ratio = median_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES);
-  append_perf_result(report, operation, digits, parity, scratch_us, gmp_us, paired_ratio);
+  append_perf_result(report, operation, digits, 1, parity, scratch_us, gmp_us, paired_ratio);
 
   mpz_clears(ga, gb, gout, NULL);
   xray_bigint_clear(&a);
@@ -641,34 +655,24 @@ static void run_scratch_binary_case(XrayBenchmarkReport *report, const char *ope
 }
 
 static void run_mul_threshold_probe_case(XrayBenchmarkReport *report, size_t digits, size_t threshold) {
-  const struct {
-    unsigned int left_seed;
-    unsigned int right_seed;
-    int left_high_lead;
-    int right_high_lead;
-  } families[XRAY_MUL_THRESHOLD_OPERAND_FAMILIES] = {
-    {5, 11, 1, 0},
-    {29, 37, 1, 1}
-  };
-
-  char *left_text[XRAY_MUL_THRESHOLD_OPERAND_FAMILIES] = {0};
-  char *right_text[XRAY_MUL_THRESHOLD_OPERAND_FAMILIES] = {0};
-  XrayScratchBigInt a[XRAY_MUL_THRESHOLD_OPERAND_FAMILIES];
-  XrayScratchBigInt b[XRAY_MUL_THRESHOLD_OPERAND_FAMILIES];
-  XrayScratchBigInt scratch_out[XRAY_MUL_THRESHOLD_OPERAND_FAMILIES];
-  mpz_t ga[XRAY_MUL_THRESHOLD_OPERAND_FAMILIES];
-  mpz_t gb[XRAY_MUL_THRESHOLD_OPERAND_FAMILIES];
-  mpz_t gout[XRAY_MUL_THRESHOLD_OPERAND_FAMILIES];
+  char *left_text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  char *right_text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  XrayScratchBigInt a[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt b[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt scratch_out[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t ga[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gb[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gout[XRAY_MUL_OPERAND_FAMILIES];
 
   unsigned int iterations = perf_iterations("mul", digits);
   int ok = 1;
-  for (size_t family = 0; family < XRAY_MUL_THRESHOLD_OPERAND_FAMILIES; ++family) {
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
     xray_bigint_init(&a[family]);
     xray_bigint_init(&b[family]);
     xray_bigint_init(&scratch_out[family]);
     mpz_inits(ga[family], gb[family], gout[family], NULL);
-    left_text[family] = benchmark_decimal(digits, families[family].left_seed, families[family].left_high_lead);
-    right_text[family] = benchmark_decimal(digits, families[family].right_seed, families[family].right_high_lead);
+    left_text[family] = benchmark_decimal(digits, mul_operand_families[family].left_seed, mul_operand_families[family].left_high_lead);
+    right_text[family] = benchmark_decimal(digits, mul_operand_families[family].right_seed, mul_operand_families[family].right_high_lead);
     ok = ok &&
       left_text[family] &&
       right_text[family] &&
@@ -684,7 +688,7 @@ static void run_mul_threshold_probe_case(XrayBenchmarkReport *report, size_t dig
   for (unsigned int sample = 0; sample < XRAY_BENCH_SAMPLES; ++sample) {
     unsigned long long scratch_started = xray_now_us();
     for (unsigned int index = 0; ok && index < iterations; ++index) {
-      for (size_t family = 0; ok && family < XRAY_MUL_THRESHOLD_OPERAND_FAMILIES; ++family) {
+      for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
         ok = xray_bigint_mul_with_threshold(&scratch_out[family], &a[family], &b[family], threshold);
       }
     }
@@ -692,13 +696,13 @@ static void run_mul_threshold_probe_case(XrayBenchmarkReport *report, size_t dig
 
     unsigned long long gmp_started = xray_now_us();
     for (unsigned int index = 0; ok && index < iterations; ++index) {
-      for (size_t family = 0; family < XRAY_MUL_THRESHOLD_OPERAND_FAMILIES; ++family) {
+      for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
         mpz_mul(gout[family], ga[family], gb[family]);
       }
     }
     gmp_samples[sample] = xray_now_us() - gmp_started;
 
-    for (size_t family = 0; family < XRAY_MUL_THRESHOLD_OPERAND_FAMILIES; ++family) {
+    for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
       char *scratch_text = xray_bigint_get_decimal(&scratch_out[family]);
       char *gmp_text = mpz_get_str(NULL, 10, gout[family]);
       parity = parity && ok && scratch_text && gmp_text && strcmp(scratch_text, gmp_text) == 0;
@@ -711,13 +715,90 @@ static void run_mul_threshold_probe_case(XrayBenchmarkReport *report, size_t dig
     report,
     digits,
     threshold,
-    XRAY_MUL_THRESHOLD_OPERAND_FAMILIES,
+    XRAY_MUL_OPERAND_FAMILIES,
     parity,
     median_samples(scratch_samples, XRAY_BENCH_SAMPLES),
     median_samples(gmp_samples, XRAY_BENCH_SAMPLES),
     median_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES));
 
-  for (size_t family = 0; family < XRAY_MUL_THRESHOLD_OPERAND_FAMILIES; ++family) {
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    mpz_clears(ga[family], gb[family], gout[family], NULL);
+    xray_bigint_clear(&a[family]);
+    xray_bigint_clear(&b[family]);
+    xray_bigint_clear(&scratch_out[family]);
+    free(left_text[family]);
+    free(right_text[family]);
+  }
+}
+
+static void run_scratch_mul_case(XrayBenchmarkReport *report, size_t digits) {
+  char *left_text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  char *right_text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  XrayScratchBigInt a[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt b[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt scratch_out[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t ga[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gb[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gout[XRAY_MUL_OPERAND_FAMILIES];
+
+  unsigned int iterations = perf_iterations("mul", digits);
+  int ok = 1;
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    xray_bigint_init(&a[family]);
+    xray_bigint_init(&b[family]);
+    xray_bigint_init(&scratch_out[family]);
+    mpz_inits(ga[family], gb[family], gout[family], NULL);
+    left_text[family] = benchmark_decimal(digits, mul_operand_families[family].left_seed, mul_operand_families[family].left_high_lead);
+    right_text[family] = benchmark_decimal(digits, mul_operand_families[family].right_seed, mul_operand_families[family].right_high_lead);
+    ok = ok &&
+      left_text[family] &&
+      right_text[family] &&
+      xray_bigint_set_decimal(&a[family], left_text[family]) &&
+      xray_bigint_set_decimal(&b[family], right_text[family]) &&
+      mpz_set_str(ga[family], left_text[family], 10) == 0 &&
+      mpz_set_str(gb[family], right_text[family], 10) == 0;
+  }
+
+  unsigned long long scratch_samples[XRAY_BENCH_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_SAMPLES] = {0};
+  int parity = 1;
+  for (unsigned int sample = 0; sample < XRAY_BENCH_SAMPLES; ++sample) {
+    unsigned long long scratch_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+        ok = xray_bigint_mul(&scratch_out[family], &a[family], &b[family]);
+      }
+    }
+    scratch_samples[sample] = xray_now_us() - scratch_started;
+
+    unsigned long long gmp_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+        mpz_mul(gout[family], ga[family], gb[family]);
+      }
+    }
+    gmp_samples[sample] = xray_now_us() - gmp_started;
+
+    for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+      char *scratch_text = xray_bigint_get_decimal(&scratch_out[family]);
+      char *gmp_text = mpz_get_str(NULL, 10, gout[family]);
+      parity = parity && ok && scratch_text && gmp_text && strcmp(scratch_text, gmp_text) == 0;
+      free(scratch_text);
+      free(gmp_text);
+    }
+  }
+
+  append_perf_result(
+    report,
+    "mul",
+    digits,
+    XRAY_MUL_OPERAND_FAMILIES,
+    parity,
+    median_samples(scratch_samples, XRAY_BENCH_SAMPLES),
+    median_samples(gmp_samples, XRAY_BENCH_SAMPLES),
+    median_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES));
+
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
     mpz_clears(ga[family], gb[family], gout[family], NULL);
     xray_bigint_clear(&a[family]);
     xray_bigint_clear(&b[family]);
@@ -768,7 +849,7 @@ static void run_scratch_divmod_case(XrayBenchmarkReport *report, size_t digits) 
   unsigned long long scratch_us = median_samples(scratch_samples, XRAY_BENCH_SAMPLES);
   unsigned long long gmp_us = median_samples(gmp_samples, XRAY_BENCH_SAMPLES);
   double paired_ratio = median_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES);
-  append_perf_result(report, "divmod-u32", digits, parity, scratch_us, gmp_us, paired_ratio);
+  append_perf_result(report, "divmod-u32", digits, 1, parity, scratch_us, gmp_us, paired_ratio);
 
   mpz_clears(ga, gquot, NULL);
   xray_bigint_clear(&a);
@@ -823,7 +904,7 @@ static void run_scratch_modular_case(XrayBenchmarkReport *report, const char *op
   unsigned long long scratch_us = median_samples(scratch_samples, XRAY_BENCH_SAMPLES);
   unsigned long long gmp_us = median_samples(gmp_samples, XRAY_BENCH_SAMPLES);
   double paired_ratio = median_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES);
-  append_perf_result(report, operation, digits, parity, scratch_us, gmp_us, paired_ratio);
+  append_perf_result(report, operation, digits, 1, parity, scratch_us, gmp_us, paired_ratio);
 
   mpz_clears(ga, gmodulus, gout, NULL);
   xray_bigint_clear(&a);
@@ -840,7 +921,7 @@ static void run_scratch_bigint_gates(XrayBenchmarkReport *report) {
     run_scratch_modular_case(report, "gcd-u32", sizes[index]);
     run_scratch_modular_case(report, "powmod-u32", sizes[index]);
     run_scratch_divmod_case(report, sizes[index]);
-    run_scratch_binary_case(report, "mul", sizes[index]);
+    run_scratch_mul_case(report, sizes[index]);
   }
 }
 

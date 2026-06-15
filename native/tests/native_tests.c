@@ -626,6 +626,7 @@ static void test_benchmarks(void) {
       CHECK(report->results[index].speed_ratio > 0.0);
       CHECK(report->results[index].max_allowed_speed_ratio == 1.0);
       CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
+      CHECK(strstr(report->results[index].detail, strcmp(report->results[index].operation, "mul") == 0 ? "operandFamilies=2" : "operandFamilies=1") != NULL);
       const char *adoption = xray_scratch_adoption_for_result(&report->results[index]);
       CHECK(strcmp(report->results[index].adoption, adoption) == 0);
       CHECK(report->results[index].replacement_ready == (strcmp(adoption, "allowed") == 0));
