@@ -162,6 +162,45 @@ static void test_runtime_version_contract(void) {
   xray_free(build_summary);
 }
 
+static void test_benchmark_tsv_comparison(void) {
+  const char *header =
+    "category\tname\toperation\tdigits\tstatus\tpassed\tparityVerified\treplacementReady\tadoption\tscratchUs\tgmpUs\tspeedRatio\tmaxAllowedSpeedRatio\tworstPairRatio\tstableSampleCount\tsampleCount\telapsedMs\tdetail\tbuildConfig\tipo\tcompiler\tcompilerVersion\n";
+  const char *left_rows =
+    "scratch-vs-gmp\tscratch parse 1000 digits\tparse\t1000\treplacement-ready\ttrue\ttrue\ttrue\tallowed\t10\t20\t0.500000\t1.000000\t0.700000\t5\t5\t1\tdetail\tRelease\tfalse\tMSVC\t1929\n"
+    "kernel-probe\tkernel mul threshold 64 limbs 4096 digits\tmul-threshold\t4096\tcandidate-faster\ttrue\ttrue\ttrue\tpromote-candidate\t30\t40\t0.750000\t0.980000\t0.900000\t5\t5\t1\tdetail\tRelease\tfalse\tMSVC\t1929\n"
+    "policy-gate\tpolicy gate format preinv 1000 digits\tformat-policy-safety\t1000\tpolicy-ready\ttrue\ttrue\ttrue\tpromotion-ready\t50\t60\t0.800000\t0.980000\t0.950000\t2\t2\t1\tdetail\tRelease\tfalse\tMSVC\t1929\n";
+  const char *right_rows =
+    "scratch-vs-gmp\tscratch parse 1000 digits\tparse\t1000\treplacement-ready\ttrue\ttrue\ttrue\tallowed\t12\t20\t0.600000\t1.000000\t0.800000\t5\t5\t1\tdetail\tRelease\ttrue\tMSVC\t1929\n"
+    "kernel-probe\tkernel mul threshold 64 limbs 4096 digits\tmul-threshold\t4096\tcandidate-no-margin\ttrue\ttrue\tfalse\tobserve-only\t30\t40\t0.760000\t0.980000\t1.400000\t4\t5\t1\tdetail\tRelease\ttrue\tMSVC\t1929\n"
+    "policy-gate\tpolicy gate format preinv 1000 digits\tformat-policy-safety\t1000\tworst-pair-regression\ttrue\ttrue\tfalse\tobserve-only\t50\t60\t0.790000\t0.980000\t1.200000\t2\t2\t1\tdetail\tRelease\ttrue\tMSVC\t1929\n";
+  size_t left_len = strlen(header) + strlen(left_rows) + 1U;
+  size_t right_len = strlen(header) + strlen(right_rows) + 1U;
+  char *left = (char *)calloc(left_len, 1);
+  char *right = (char *)calloc(right_len, 1);
+  CHECK(left != NULL);
+  CHECK(right != NULL);
+  snprintf(left, left_len, "%s%s", header, left_rows);
+  snprintf(right, right_len, "%s%s", header, right_rows);
+
+  char *review = xray_benchmark_compare_tsv_text(left, right);
+  CHECK(review != NULL);
+  CHECK(strstr(review, "BENCHMARK CROSS-BUILD REVIEW") != NULL);
+  CHECK(strstr(review, "Left:  buildConfig=Release ipo=false compiler=MSVC 1929") != NULL);
+  CHECK(strstr(review, "Right: buildConfig=Release ipo=true compiler=MSVC 1929") != NULL);
+  CHECK(strstr(review, "matched=3") != NULL);
+  CHECK(strstr(review, "bothReady=1") != NULL);
+  CHECK(strstr(review, "oneBuildOnly=2") != NULL);
+  CHECK(strstr(review, "worstPairRejected=2") != NULL);
+  CHECK(strstr(review, "Both-build ready rows") != NULL);
+  CHECK(strstr(review, "Ready in one build only") != NULL);
+  CHECK(strstr(review, "Median wins rejected by worst-pair safety") != NULL);
+  CHECK(strstr(review, "mul-threshold") != NULL);
+  CHECK(strstr(review, "format-policy-safety") != NULL);
+  xray_free(review);
+  free(left);
+  free(right);
+}
+
 static void test_exact_expression_parser(void) {
   mpz_t value, expected;
   mpz_inits(value, expected, NULL);
@@ -3400,6 +3439,7 @@ int main(void) {
   test_parse_messy_input();
   test_public_allocator_contract();
   test_runtime_version_contract();
+  test_benchmark_tsv_comparison();
   test_exact_expression_parser();
   test_cpu_feature_detection();
   test_scratch_bigint_oracle();

@@ -310,12 +310,16 @@ Primary references: [GMP multiplication algorithms](https://gmplib.org/manual/Mu
 native\build\Release\xray_cli.exe --help
 native\build\Release\xray_cli.exe --bench 10403
 native\build\Release\xray_cli.exe --bench-frontier 10403
+native\build\Release\xray_cli.exe --bench-compare native\build-release\native-test-runs\<run>\benchmark.tsv native\build-ltcg\native-test-runs\<run>\benchmark.tsv
 native\build\Release\xray_cli.exe --rsa260
 ```
 
 The CLI emits the same reproducible JSON shape used by the GTK app. Use
 `--bench-frontier` when you want stdout to show the human-readable benchmark
-frontier while still writing the full run artifacts:
+frontier while still writing the full run artifacts. Use `--bench-compare` to
+review two benchmark TSV artifacts, such as Release versus `/GL`, and surface
+rows that are ready in both builds, ready in only one build, or rejected by
+worst-pair safety:
 
 - `factorReport`
 - `cyclotomicReport`
