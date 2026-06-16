@@ -84,6 +84,24 @@ static char *jb_take(JsonBuffer *buffer) {
   return data;
 }
 
+#define XRAY_BENCHMARK_STATUS_LIMIT 8U
+
+static void benchmark_frontier_label(const XrayBenchmarkResult *row, char *out, size_t out_size);
+static void benchmark_insert_ratio_sorted(
+  const XrayBenchmarkResult **rows,
+  size_t capacity,
+  size_t *count,
+  const XrayBenchmarkResult *candidate,
+  int ascending);
+static void benchmark_collect_measurable_status(
+  const XrayBenchmarkReport *report,
+  const XrayBenchmarkResult **better_now,
+  size_t better_now_capacity,
+  size_t *better_now_count,
+  const XrayBenchmarkResult **still_working,
+  size_t still_working_capacity,
+  size_t *still_working_count);
+
 static void append_factor_json(JsonBuffer *buffer, const XrayFactorReport *report) {
   jb_append(buffer, "\"factorReport\":{");
   jb_append(buffer, "\"input\":"); jb_string(buffer, report->input);
@@ -264,6 +282,58 @@ static void append_benchmark_lane_json(JsonBuffer *buffer, const XrayBenchmarkLa
   jb_append(buffer, "}}");
 }
 
+static void append_benchmark_status_entry_json(JsonBuffer *buffer, const XrayBenchmarkResult *row, int faster) {
+  char label[80];
+  benchmark_frontier_label(row, label, sizeof(label));
+  double multiple = row && row->speed_ratio > 0.0 ? row->speed_ratio : 0.0;
+  if (faster && multiple > 0.0) multiple = 1.0 / multiple;
+  jb_append(buffer, "{");
+  jb_append(buffer, "\"label\":"); jb_string(buffer, label);
+  jb_append(buffer, ",\"operation\":"); jb_string(buffer, row ? row->operation : "");
+  jb_append(buffer, ",\"name\":"); jb_string(buffer, row ? row->name : "");
+  jb_append(buffer, ",\"status\":"); jb_string(buffer, row ? row->status : "");
+  jb_append(buffer, ",\"adoption\":"); jb_string(buffer, row ? row->adoption : "");
+  jb_append(buffer, ",\"comparison\":"); jb_string(buffer, faster ? "faster" : "slower");
+  if (faster) jb_printf(buffer, ",\"speedup\":%.6f", multiple);
+  else jb_printf(buffer, ",\"slowdown\":%.6f", multiple);
+  jb_printf(buffer,
+    ",\"digits\":%zu,\"speedRatio\":%.6f,\"worstPairRatio\":%.6f,\"stableSampleCount\":%zu,\"sampleCount\":%zu,\"scratchUs\":%llu,\"backendUs\":%llu}",
+    row ? row->digits : 0,
+    row ? row->speed_ratio : 0.0,
+    row ? row->worst_pair_ratio : 0.0,
+    row ? row->stable_sample_count : 0,
+    row ? row->sample_count : 0,
+    row ? row->scratch_us : 0,
+    row ? row->gmp_us : 0);
+}
+
+static void append_benchmark_measurable_status_json(JsonBuffer *buffer, const XrayBenchmarkReport *report) {
+  const XrayBenchmarkResult *better_now[XRAY_BENCHMARK_STATUS_LIMIT] = {0};
+  const XrayBenchmarkResult *still_working[XRAY_BENCHMARK_STATUS_LIMIT] = {0};
+  size_t better_now_count = 0;
+  size_t still_working_count = 0;
+  benchmark_collect_measurable_status(
+    report,
+    better_now,
+    XRAY_BENCHMARK_STATUS_LIMIT,
+    &better_now_count,
+    still_working,
+    XRAY_BENCHMARK_STATUS_LIMIT,
+    &still_working_count);
+
+  jb_printf(buffer, "\"measurableStatus\":{\"limit\":%u,\"betterNow\":[", XRAY_BENCHMARK_STATUS_LIMIT);
+  for (size_t index = 0; index < better_now_count; ++index) {
+    if (index) jb_append(buffer, ",");
+    append_benchmark_status_entry_json(buffer, better_now[index], 1);
+  }
+  jb_append(buffer, "],\"stillWorking\":[");
+  for (size_t index = 0; index < still_working_count; ++index) {
+    if (index) jb_append(buffer, ",");
+    append_benchmark_status_entry_json(buffer, still_working[index], 0);
+  }
+  jb_append(buffer, "]}");
+}
+
 static void append_benchmark_json(JsonBuffer *buffer, const XrayBenchmarkReport *report) {
   jb_append(buffer, "\"benchmarkReport\":{");
   append_cpu_json(buffer, "cpu", report ? &report->cpu : NULL);
@@ -279,6 +349,8 @@ static void append_benchmark_json(JsonBuffer *buffer, const XrayBenchmarkReport 
   append_bigint_route_config_json(buffer);
   jb_append(buffer, ",");
   append_benchmark_lane_json(buffer, report ? &report->lanes : NULL);
+  jb_append(buffer, ",");
+  append_benchmark_measurable_status_json(buffer, report);
   jb_printf(buffer,
     ",\"passed\":%zu,\"total\":%zu,\"scratchRows\":%zu,\"replacementReadyRows\":%zu,\"oracleOnlyRows\":%zu,\"blockedRows\":%zu,\"elapsedMs\":%lu,\"results\":[",
     report->passed_count,
@@ -538,6 +610,36 @@ static void benchmark_insert_ratio_sorted(
   }
 }
 
+static void benchmark_collect_measurable_status(
+  const XrayBenchmarkReport *report,
+  const XrayBenchmarkResult **better_now,
+  size_t better_now_capacity,
+  size_t *better_now_count,
+  const XrayBenchmarkResult **still_working,
+  size_t still_working_capacity,
+  size_t *still_working_count
+) {
+  if (better_now_count) *better_now_count = 0;
+  if (still_working_count) *still_working_count = 0;
+  if (better_now) {
+    for (size_t slot = 0; slot < better_now_capacity; ++slot) better_now[slot] = NULL;
+  }
+  if (still_working) {
+    for (size_t slot = 0; slot < still_working_capacity; ++slot) still_working[slot] = NULL;
+  }
+  if (!report) return;
+
+  for (size_t index = 0; index < report->result_count; ++index) {
+    const XrayBenchmarkResult *row = &report->results[index];
+    if (strcmp(row->category, "scratch-vs-gmp") != 0 || !row->parity_verified || row->speed_ratio <= 0.0) continue;
+    if (row->replacement_ready) {
+      benchmark_insert_ratio_sorted(better_now, better_now_capacity, better_now_count, row, 1);
+    } else {
+      benchmark_insert_ratio_sorted(still_working, still_working_capacity, still_working_count, row, 0);
+    }
+  }
+}
+
 static void append_benchmark_status_row(
   JsonBuffer *buffer,
   const XrayBenchmarkResult *row,
@@ -576,32 +678,23 @@ char *xray_benchmark_frontier_text(const XrayBenchmarkReport *report) {
   const XrayBenchmarkResult *near_wins[5] = {0};
   const XrayBenchmarkResult *top_gaps[5] = {0};
   const XrayBenchmarkResult *worst_pair_regressions[8] = {0};
-  const XrayBenchmarkResult *better_now[8] = {0};
-  const XrayBenchmarkResult *still_working[8] = {0};
+  const XrayBenchmarkResult *better_now[XRAY_BENCHMARK_STATUS_LIMIT] = {0};
+  const XrayBenchmarkResult *still_working[XRAY_BENCHMARK_STATUS_LIMIT] = {0};
   size_t near_count = 0;
   size_t worst_pair_count = 0;
   size_t better_now_count = 0;
   size_t still_working_count = 0;
+  benchmark_collect_measurable_status(
+    report,
+    better_now,
+    sizeof(better_now) / sizeof(better_now[0]),
+    &better_now_count,
+    still_working,
+    sizeof(still_working) / sizeof(still_working[0]),
+    &still_working_count);
 
   for (size_t index = 0; index < report->result_count; ++index) {
     const XrayBenchmarkResult *row = &report->results[index];
-    if (strcmp(row->category, "scratch-vs-gmp") == 0 && row->parity_verified && row->speed_ratio > 0.0) {
-      if (row->replacement_ready) {
-        benchmark_insert_ratio_sorted(
-          better_now,
-          sizeof(better_now) / sizeof(better_now[0]),
-          &better_now_count,
-          row,
-          1);
-      } else {
-        benchmark_insert_ratio_sorted(
-          still_working,
-          sizeof(still_working) / sizeof(still_working[0]),
-          &still_working_count,
-          row,
-          0);
-      }
-    }
     if (row->parity_verified &&
         !row->replacement_ready &&
         row->speed_ratio > 0.0 &&

@@ -3330,6 +3330,14 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "\"lanes\"") != NULL);
   CHECK(strstr(json, "\"promotionReady\"") != NULL);
   CHECK(strstr(json, "\"safetyRejected\"") != NULL);
+  CHECK(strstr(json, "\"measurableStatus\"") != NULL);
+  CHECK(strstr(json, "\"betterNow\"") != NULL);
+  CHECK(strstr(json, "\"stillWorking\"") != NULL);
+  CHECK(strstr(json, "\"speedup\"") != NULL);
+  CHECK(strstr(json, "\"slowdown\"") != NULL);
+  CHECK(strstr(json, "\"backendUs\"") != NULL);
+  CHECK(strstr(json, "\"comparison\":\"faster\"") != NULL);
+  CHECK(strstr(json, "\"comparison\":\"slower\"") != NULL);
   CHECK(strstr(json, "\"replacementReady\"") != NULL);
   CHECK(strstr(json, "\"stableSampleCount\"") != NULL);
   CHECK(strstr(json, "\"sampleCount\"") != NULL);
@@ -3581,6 +3589,11 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_json, "\"promotionReady\"") != NULL);
   CHECK(strstr(benchmark_json, "\"oracleOnly\"") != NULL);
   CHECK(strstr(benchmark_json, "\"safetyRejected\"") != NULL);
+  CHECK(strstr(benchmark_json, "\"measurableStatus\"") != NULL);
+  CHECK(strstr(benchmark_json, "\"betterNow\"") != NULL);
+  CHECK(strstr(benchmark_json, "\"stillWorking\"") != NULL);
+  CHECK(strstr(benchmark_json, "\"speedup\"") != NULL);
+  CHECK(strstr(benchmark_json, "\"slowdown\"") != NULL);
   CHECK(strstr(benchmark_json, "\"squareTinySelfMulPolicy\"") != NULL);
   CHECK(strstr(benchmark_json, "\"mulUnroll4RouteMaxLimbs\"") != NULL);
   CHECK(strstr(benchmark_json, "\"decimalPairWriterPolicy\"") != NULL);
