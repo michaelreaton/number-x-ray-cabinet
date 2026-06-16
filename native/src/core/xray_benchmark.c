@@ -2491,6 +2491,22 @@ static char *format_dc_ladder_leaf64_probe(const XrayScratchBigInt *value) {
   return xray_bigint_get_decimal_dc_ladder_probe(value, 64U);
 }
 
+static char *format_dc_direct_leaf8_probe(const XrayScratchBigInt *value) {
+  return xray_bigint_get_decimal_dc_direct_probe(value, 8U);
+}
+
+static char *format_dc_direct_leaf16_probe(const XrayScratchBigInt *value) {
+  return xray_bigint_get_decimal_dc_direct_probe(value, 16U);
+}
+
+static char *format_dc_direct_leaf32_probe(const XrayScratchBigInt *value) {
+  return xray_bigint_get_decimal_dc_direct_probe(value, 32U);
+}
+
+static char *format_dc_direct_leaf64_probe(const XrayScratchBigInt *value) {
+  return xray_bigint_get_decimal_dc_direct_probe(value, 64U);
+}
+
 static void run_format_variant_probe_case(
   XrayBenchmarkReport *report,
   size_t digits,
@@ -3920,6 +3936,12 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     format_dc_ladder_leaf32_probe,
     format_dc_ladder_leaf64_probe
   };
+  XrayFormatProbeFn format_dc_direct_probes[] = {
+    format_dc_direct_leaf8_probe,
+    format_dc_direct_leaf16_probe,
+    format_dc_direct_leaf32_probe,
+    format_dc_direct_leaf64_probe
+  };
   for (size_t digit_index = 0; digit_index < sizeof(format_strategy_digits) / sizeof(format_strategy_digits[0]); ++digit_index) {
     size_t digits = format_strategy_digits[digit_index];
     for (size_t leaf_index = 0; leaf_index < sizeof(format_dc_leaf_chunks) / sizeof(format_dc_leaf_chunks[0]); ++leaf_index) {
@@ -3955,6 +3977,21 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
         "mpn_dc_get_str-powtab-squares",
         19U,
         format_dc_ladder_probes[leaf_index]);
+      snprintf(mode, sizeof(mode), "divide-conquer-direct leafThreshold=%zu", format_dc_leaf_chunks[leaf_index]);
+      snprintf(label, sizeof(label), "format D&C direct leaf %zu", format_dc_leaf_chunks[leaf_index]);
+      run_format_variant_probe_case(
+        report,
+        digits,
+        (unsigned int)(79U + leaf_index),
+        "format-dc-direct",
+        label,
+        mode,
+        "decimal-dc-direct-writer",
+        "current-scratch-format",
+        "decimal-format-dc-direct",
+        "mpn_dc_get_str-output-buffer",
+        19U,
+        format_dc_direct_probes[leaf_index]);
     }
   }
 

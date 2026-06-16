@@ -386,6 +386,18 @@ XRAY_API char *xray_bigint_get_decimal_dc_probe(const XrayScratchBigInt *value, 
 XRAY_API char *xray_bigint_get_decimal_dc_ladder_probe(const XrayScratchBigInt *value, size_t leaf_chunks);
 
 /**
+ * Format value through a ladder-backed divide-and-conquer decimal conversion
+ * probe that writes into one final output buffer.
+ *
+ * leaf_chunks controls when recursion falls back to repeated division by
+ * 10^19. Pass 0 for the default leaf. The caller owns the returned string and
+ * must release it with xray_free(). This diagnostic route tests whether
+ * recursive allocation, concatenation, and padding copies are a material part
+ * of the remaining large-format gap.
+ */
+XRAY_API char *xray_bigint_get_decimal_dc_direct_probe(const XrayScratchBigInt *value, size_t leaf_chunks);
+
+/**
  * Format value through the 19-digit decimal chunk probe route.
  *
  * The caller owns the returned string and must release it with xray_free().
