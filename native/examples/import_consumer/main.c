@@ -17,7 +17,9 @@ int main(void) {
   XrayBigIntRouteConfig route = xray_bigint_route_config();
   XrayBigIntU32ModContext mod_context;
   XrayBigIntDivisorContext divisor_context;
+  XrayBigIntDivisionWorkspace division_workspace;
   xray_bigint_divisor_context_init(&divisor_context);
+  xray_bigint_division_workspace_init(&division_workspace);
 
   int ok = strcmp(NUMBER_XRAY_VERSION, XRAY_VERSION) == 0 &&
     strcmp(xray_version(), NUMBER_XRAY_VERSION) == 0 &&
@@ -37,7 +39,7 @@ int main(void) {
     xray_bigint_set_decimal(&one, "1") &&
     xray_bigint_add(&sum, &value, &one) &&
     xray_bigint_divisor_context_set(&divisor_context, &value) &&
-    xray_bigint_divmod_precomputed(&quotient, &remainder, &sum, &divisor_context) &&
+    xray_bigint_divmod_precomputed_workspace(&quotient, &remainder, &sum, &divisor_context, &division_workspace) &&
     xray_bigint_u32_mod_context_init(&mod_context, 1000000007U) &&
     xray_bigint_mod_u32_precomputed(&value, &mod_context) == xray_bigint_mod_u32(&value, 1000000007U) &&
     xray_bigint_gcd_u32_precomputed(&value, &mod_context) == xray_bigint_gcd_u32(&value, 1000000007U) &&
@@ -65,6 +67,7 @@ int main(void) {
   xray_free(text);
   xray_free(ffi_sum);
   xray_free(factor_json);
+  xray_bigint_division_workspace_clear(&division_workspace);
   xray_bigint_divisor_context_clear(&divisor_context);
   xray_bigint_clear(&value);
   xray_bigint_clear(&one);

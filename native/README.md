@@ -101,6 +101,33 @@ These helpers parse the same messy decimal separators as the struct-based
 scratch bigint API and return newly allocated decimal strings, which makes them
 easier to import from FFI layers before a binding owns the full struct lifecycle.
 
+Tools that repeatedly divide by the same large divisor can use
+`XrayBigIntDivisorContext` and `XrayBigIntDivisionWorkspace` to make that reuse
+explicit:
+
+```c
+XrayBigIntDivisorContext divisor_context;
+XrayBigIntDivisionWorkspace division_workspace;
+xray_bigint_divisor_context_init(&divisor_context);
+xray_bigint_division_workspace_init(&division_workspace);
+
+if (xray_bigint_divisor_context_set(&divisor_context, &divisor)) {
+  xray_bigint_divmod_precomputed_workspace(
+    &quotient,
+    &remainder,
+    &numerator,
+    &divisor_context,
+    &division_workspace);
+}
+
+xray_bigint_division_workspace_clear(&division_workspace);
+xray_bigint_divisor_context_clear(&divisor_context);
+```
+
+This is an explicit importer API, not an automatic production route. Benchmark
+rows with `noAutoRoute=1` remain `observe-only` even when a local run finds an
+interesting median.
+
 Report-producing tools can also start with one-shot JSON helpers before they
 model the C report structs:
 

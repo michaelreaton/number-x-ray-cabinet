@@ -15,6 +15,73 @@ parity plus a stable same-run paired win.
   adjacent-size checks, and a product-like `/GL` build before they can become a
   production route. Independent best/best ratios are not an adoption signal.
 
+## 2026-06-16: Reusable Division Workspace Probe
+
+Runs:
+
+- Release: `native/build-codex-pair-route/native-test-runs/20260616-023849-c4b04caf`
+- `/GL`: `native/build-codex-ltcg/native-test-runs/20260616-024328-c4b04caf`
+
+The scratch bigint API now exposes `XrayBigIntDivisionWorkspace` and
+`xray_bigint_divmod_precomputed_workspace()` for tools that want to reuse
+temporary buffers across repeated divisions by a precomputed divisor. The
+benchmark emits `divmod-workspace` rows that compare workspace reuse against
+the explicit `divmod-precomputed` API in the same run, while still checking
+quotient/remainder parity against `mpz_tdiv_qr`.
+
+Safety update: explicit-only division probes now always report
+`replacementReady=false` and `adoption=observe-only`, even when a local median
+looks good. Their detail keeps `noAutoRoute=1`, so these rows cannot be
+mistaken for a production threshold or automatic route.
+
+Release rows:
+
+- `divmod-dc-power`, 4096 digits, 107 chunks: ratio `1.177`, stable `0/5`,
+  worst pair `1.476`, `observe-only`
+- `divmod-dc-power`, 8192 digits, 215 chunks: ratio `1.523`, stable `0/5`,
+  worst pair `1.670`, `observe-only`
+- `divmod-dc-power`, 16384 digits, 431 chunks: ratio `1.946`, stable `0/5`,
+  worst pair `2.090`, `observe-only`
+- `divmod-precomputed`, 4096 digits, 107 chunks: ratio `0.912`, stable `5/5`,
+  worst pair `0.934`, `replacementReady=false`, `observe-only`
+- `divmod-precomputed`, 8192 digits, 215 chunks: ratio `0.940`, stable `4/5`,
+  worst pair `1.071`, `replacementReady=false`, `observe-only`
+- `divmod-precomputed`, 16384 digits, 431 chunks: ratio `0.945`, stable `5/5`,
+  worst pair `0.963`, `replacementReady=false`, `observe-only`
+- `divmod-workspace`, 4096 digits, 107 chunks: ratio `1.038`, stable `0/5`,
+  worst pair `1.040`, `replacementReady=false`, `observe-only`
+- `divmod-workspace`, 8192 digits, 215 chunks: ratio `0.994`, stable `2/5`,
+  worst pair `1.190`, `replacementReady=false`, `observe-only`
+- `divmod-workspace`, 16384 digits, 431 chunks: ratio `1.012`, stable `2/5`,
+  worst pair `1.077`, `replacementReady=false`, `observe-only`
+
+`/GL` rows:
+
+- `divmod-dc-power`, 4096 digits, 107 chunks: ratio `1.040`, stable `1/5`,
+  worst pair `1.294`, `observe-only`
+- `divmod-dc-power`, 8192 digits, 215 chunks: ratio `1.410`, stable `0/5`,
+  worst pair `1.682`, `observe-only`
+- `divmod-dc-power`, 16384 digits, 431 chunks: ratio `1.786`, stable `0/5`,
+  worst pair `2.140`, `observe-only`
+- `divmod-precomputed`, 4096 digits, 107 chunks: ratio `1.033`, stable `1/5`,
+  worst pair `1.817`, `replacementReady=false`, `observe-only`
+- `divmod-precomputed`, 8192 digits, 215 chunks: ratio `1.024`, stable `1/5`,
+  worst pair `1.087`, `replacementReady=false`, `observe-only`
+- `divmod-precomputed`, 16384 digits, 431 chunks: ratio `1.003`, stable `2/5`,
+  worst pair `1.121`, `replacementReady=false`, `observe-only`
+- `divmod-workspace`, 4096 digits, 107 chunks: ratio `1.017`, stable `1/5`,
+  worst pair `1.135`, `replacementReady=false`, `observe-only`
+- `divmod-workspace`, 8192 digits, 215 chunks: ratio `0.963`, stable `3/5`,
+  worst pair `1.169`, `replacementReady=false`, `observe-only`
+- `divmod-workspace`, 16384 digits, 431 chunks: ratio `1.079`, stable `1/5`,
+  worst pair `1.224`, `replacementReady=false`, `observe-only`
+
+Decision: keep the workspace API for importers and as a diagnostic probe, but
+do not route it. Reusing the temporary numerator/remainder buffers does not
+move the product-like `/GL` division picture. The remaining division gap is not
+mostly allocator churn; it points back to GMP-style quotient digit
+pre-inversion and divide-and-conquer division.
+
 ## 2026-06-16: Precomputed Divisor Context Probe
 
 Runs:
