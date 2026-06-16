@@ -849,6 +849,26 @@ static int divmod_bigint_probe(
   return ok;
 }
 
+int xray_bigint_divmod(
+  XrayScratchBigInt *quotient,
+  XrayScratchBigInt *remainder,
+  const XrayScratchBigInt *numerator,
+  const XrayScratchBigInt *divisor) {
+  if (!quotient || !remainder || quotient == remainder || !numerator || !divisor || divisor->count == 0) return 0;
+  if (quotient == numerator || quotient == divisor || remainder == numerator || remainder == divisor) {
+    XrayScratchBigInt quotient_temp;
+    XrayScratchBigInt remainder_temp;
+    xray_bigint_init(&quotient_temp);
+    xray_bigint_init(&remainder_temp);
+    int ok = divmod_bigint_probe(&quotient_temp, &remainder_temp, numerator, divisor);
+    if (ok) ok = xray_bigint_copy(quotient, &quotient_temp) && xray_bigint_copy(remainder, &remainder_temp);
+    xray_bigint_clear(&quotient_temp);
+    xray_bigint_clear(&remainder_temp);
+    return ok;
+  }
+  return divmod_bigint_probe(quotient, remainder, numerator, divisor);
+}
+
 typedef struct {
   size_t chunks;
   XrayScratchBigInt value;

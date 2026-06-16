@@ -567,13 +567,15 @@ static void test_scratch_bigint_oracle_sweep(void) {
   };
   const uint32_t divisors[] = {1U, 2U, 3U, 5U, 65535U, 65537U, 1000000007U, 2147483649U, 4294967295U};
 
-  XrayScratchBigInt a, b, out, quotient;
+  XrayScratchBigInt a, b, out, quotient, remainder, alias;
   xray_bigint_init(&a);
   xray_bigint_init(&b);
   xray_bigint_init(&out);
   xray_bigint_init(&quotient);
-  mpz_t ga, gb, gout, gquotient, gdivisor, ggcd, gpow;
-  mpz_inits(ga, gb, gout, gquotient, gdivisor, ggcd, gpow, NULL);
+  xray_bigint_init(&remainder);
+  xray_bigint_init(&alias);
+  mpz_t ga, gb, gout, gquotient, gremainder, gdivisor, ggcd, gpow;
+  mpz_inits(ga, gb, gout, gquotient, gremainder, gdivisor, ggcd, gpow, NULL);
 
   for (size_t i = 0; values[i]; ++i) {
     CHECK(xray_bigint_set_decimal(&a, values[i]));
@@ -616,14 +618,42 @@ static void test_scratch_bigint_oracle_sweep(void) {
       } else {
         CHECK(!xray_bigint_sub(&out, &a, &b));
       }
+
+      if (mpz_sgn(gb) != 0) {
+        CHECK(xray_bigint_divmod(&quotient, &remainder, &a, &b));
+        mpz_tdiv_qr(gquotient, gremainder, ga, gb);
+        check_scratch_matches_mpz(&quotient, gquotient);
+        check_scratch_matches_mpz(&remainder, gremainder);
+      } else {
+        CHECK(!xray_bigint_divmod(&quotient, &remainder, &a, &b));
+      }
     }
   }
 
-  mpz_clears(ga, gb, gout, gquotient, gdivisor, ggcd, gpow, NULL);
+  CHECK(xray_bigint_set_decimal(&a, "12345678901234567890123456789012345678901234567890"));
+  CHECK(xray_bigint_set_decimal(&b, "1000000000000000000000000000000"));
+  CHECK(mpz_set_str(ga, "12345678901234567890123456789012345678901234567890", 10) == 0);
+  CHECK(mpz_set_str(gb, "1000000000000000000000000000000", 10) == 0);
+  mpz_tdiv_qr(gquotient, gremainder, ga, gb);
+
+  CHECK(xray_bigint_copy(&alias, &a));
+  CHECK(xray_bigint_divmod(&alias, &remainder, &alias, &b));
+  check_scratch_matches_mpz(&alias, gquotient);
+  check_scratch_matches_mpz(&remainder, gremainder);
+
+  CHECK(xray_bigint_copy(&alias, &b));
+  CHECK(xray_bigint_divmod(&quotient, &alias, &a, &alias));
+  check_scratch_matches_mpz(&quotient, gquotient);
+  check_scratch_matches_mpz(&alias, gremainder);
+  CHECK(!xray_bigint_divmod(&quotient, &quotient, &a, &b));
+
+  mpz_clears(ga, gb, gout, gquotient, gremainder, gdivisor, ggcd, gpow, NULL);
   xray_bigint_clear(&a);
   xray_bigint_clear(&b);
   xray_bigint_clear(&out);
   xray_bigint_clear(&quotient);
+  xray_bigint_clear(&remainder);
+  xray_bigint_clear(&alias);
 }
 
 static void test_scratch_bigint_large_mul_oracle(void) {
@@ -1388,6 +1418,10 @@ static void test_benchmarks(void) {
   int saw_parse_chunk4096_probe = 0;
   int saw_parse_chunk8192_probe = 0;
   int saw_parse_chunk16384_probe = 0;
+  int saw_divmod_dc_power_probe = 0;
+  int saw_divmod_dc_power4096_probe = 0;
+  int saw_divmod_dc_power8192_probe = 0;
+  int saw_divmod_dc_power16384_probe = 0;
   int saw_mul_unroll4_vs_scratch_probe = 0;
   int saw_mul_unroll4_vs_gmp_probe = 0;
   int saw_mul_unroll4_deep_vs_gmp_probe = 0;
@@ -1504,6 +1538,29 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "candidate=decimal-parse-chunk") != NULL);
         CHECK(strstr(report->results[index].detail, "baseline=current-scratch-parse") != NULL);
         CHECK(strstr(report->results[index].detail, "featureGate=decimal-parse-chunk") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=1") != NULL);
+      }
+      if (strcmp(report->results[index].operation, "divmod-dc-power") == 0) {
+        saw_divmod_dc_power_probe = 1;
+        if (report->results[index].digits == 4096) {
+          saw_divmod_dc_power4096_probe = 1;
+          CHECK(strstr(report->results[index].detail, "powerChunks=107") != NULL);
+          CHECK(strstr(report->results[index].detail, "divisorDigits=2034") != NULL);
+        } else if (report->results[index].digits == 8192) {
+          saw_divmod_dc_power8192_probe = 1;
+          CHECK(strstr(report->results[index].detail, "powerChunks=215") != NULL);
+          CHECK(strstr(report->results[index].detail, "divisorDigits=4086") != NULL);
+        } else if (report->results[index].digits == 16384) {
+          saw_divmod_dc_power16384_probe = 1;
+          CHECK(strstr(report->results[index].detail, "powerChunks=431") != NULL);
+          CHECK(strstr(report->results[index].detail, "divisorDigits=8190") != NULL);
+        } else {
+          CHECK(0);
+        }
+        CHECK(strstr(report->results[index].detail, "candidate=scratch-knuth-divmod") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=mpz_tdiv_qr") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=bigint-division-dc-power") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpClue=mpn_tdiv_qr") != NULL);
         CHECK(strstr(report->results[index].detail, "operandFamilies=1") != NULL);
       }
       if (strcmp(report->results[index].operation, "format-threshold") == 0) {
@@ -2228,6 +2285,10 @@ static void test_benchmarks(void) {
   CHECK(saw_parse_chunk4096_probe);
   CHECK(saw_parse_chunk8192_probe);
   CHECK(saw_parse_chunk16384_probe);
+  CHECK(saw_divmod_dc_power_probe);
+  CHECK(saw_divmod_dc_power4096_probe);
+  CHECK(saw_divmod_dc_power8192_probe);
+  CHECK(saw_divmod_dc_power16384_probe);
 #if defined(_MSC_VER) && defined(_M_X64)
   CHECK(saw_toom3_unroll4_vs_scratch_probe);
   CHECK(saw_toom3_unroll4_vs_gmp_probe);
@@ -2281,6 +2342,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "\"maxAllowedSpeedRatio\"") != NULL);
   CHECK(strstr(json, "\"scratchUs\"") != NULL);
   CHECK(strstr(json, "mul-toom3") != NULL);
+  CHECK(strstr(json, "divmod-dc-power") != NULL);
   CHECK(strstr(json, "mul-karatsuba-middle") != NULL);
   CHECK(strstr(json, "karatsuba-sum-middle") != NULL);
   CHECK(strstr(json, "karatsuba-difference-middle") != NULL);
@@ -2349,6 +2411,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "gcd-u32-precompute") != NULL);
   CHECK(strstr(tsv, "powmod-u32-precompute") != NULL);
   CHECK(strstr(tsv, "parse-chunk") != NULL);
+  CHECK(strstr(tsv, "divmod-dc-power") != NULL);
   CHECK(strstr(tsv, "format") != NULL);
   CHECK(strstr(tsv, "format-threshold") != NULL);
   CHECK(strstr(tsv, "format-divider") != NULL);
@@ -2437,6 +2500,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "gcd-u32-precompute") != NULL);
   CHECK(strstr(benchmark_tsv, "powmod-u32-precompute") != NULL);
   CHECK(strstr(benchmark_tsv, "parse-chunk") != NULL);
+  CHECK(strstr(benchmark_tsv, "divmod-dc-power") != NULL);
   CHECK(strstr(benchmark_tsv, "format") != NULL);
   CHECK(strstr(benchmark_tsv, "format-threshold") != NULL);
   CHECK(strstr(benchmark_tsv, "format-divider") != NULL);
@@ -2495,6 +2559,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "gcd-u32-precompute") != NULL);
   CHECK(strstr(benchmark_frontier, "powmod-u32-precompute") != NULL);
   CHECK(strstr(benchmark_frontier, "parse-chunk chunk=") != NULL);
+  CHECK(strstr(benchmark_frontier, "divmod-dc-power chunks=") != NULL);
   CHECK(strstr(benchmark_frontier, "format-threshold thr=16") != NULL);
   CHECK(strstr(benchmark_frontier, "format-threshold thr=32") != NULL);
   CHECK(strstr(benchmark_frontier, "format-threshold thr=40") != NULL);
