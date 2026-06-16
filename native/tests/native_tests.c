@@ -308,6 +308,8 @@ static void test_scratch_bigint_oracle(void) {
     char *roundtrip_folded_hwdiv = xray_bigint_get_decimal_folded_hwdiv_probe(&a);
     char *roundtrip_folded_hwdiv_mixed = xray_bigint_get_decimal_folded_hwdiv_mixed_pair_probe(&a);
     char *roundtrip_divide_1e19 = xray_bigint_get_decimal_divide_1e19_probe(&a);
+    char *roundtrip_dc8 = xray_bigint_get_decimal_dc_probe(&a, 8U);
+    char *roundtrip_dc32 = xray_bigint_get_decimal_dc_probe(&a, 32U);
     char *roundtrip_wide = xray_bigint_get_decimal_wide_probe(&a);
     char *roundtrip_oracle = mpz_get_str(NULL, 10, ga);
     CHECK(roundtrip_text != NULL);
@@ -319,6 +321,8 @@ static void test_scratch_bigint_oracle(void) {
     CHECK(roundtrip_folded_hwdiv != NULL);
     CHECK(roundtrip_folded_hwdiv_mixed != NULL);
     CHECK(roundtrip_divide_1e19 != NULL);
+    CHECK(roundtrip_dc8 != NULL);
+    CHECK(roundtrip_dc32 != NULL);
     CHECK(roundtrip_wide != NULL);
     CHECK(roundtrip_oracle != NULL);
     CHECK(strcmp(roundtrip_text, roundtrip_oracle) == 0);
@@ -330,6 +334,8 @@ static void test_scratch_bigint_oracle(void) {
     CHECK(strcmp(roundtrip_folded_hwdiv, roundtrip_oracle) == 0);
     CHECK(strcmp(roundtrip_folded_hwdiv_mixed, roundtrip_oracle) == 0);
     CHECK(strcmp(roundtrip_divide_1e19, roundtrip_oracle) == 0);
+    CHECK(strcmp(roundtrip_dc8, roundtrip_oracle) == 0);
+    CHECK(strcmp(roundtrip_dc32, roundtrip_oracle) == 0);
     CHECK(strcmp(roundtrip_wide, roundtrip_oracle) == 0);
     free(roundtrip_input);
     free(roundtrip_text);
@@ -341,6 +347,8 @@ static void test_scratch_bigint_oracle(void) {
     free(roundtrip_folded_hwdiv);
     free(roundtrip_folded_hwdiv_mixed);
     free(roundtrip_divide_1e19);
+    free(roundtrip_dc8);
+    free(roundtrip_dc32);
     free(roundtrip_wide);
     free(roundtrip_oracle);
   }
@@ -1202,6 +1210,11 @@ static void test_benchmarks(void) {
   int saw_format_folded_hwdiv_probe = 0;
   int saw_format_hwdiv_mixed_probe = 0;
   int saw_format_divide_1e19_probe = 0;
+  int saw_format_dc_probe = 0;
+  int saw_format_dc_leaf8_probe = 0;
+  int saw_format_dc_leaf16_probe = 0;
+  int saw_format_dc_leaf32_probe = 0;
+  int saw_format_dc_leaf64_probe = 0;
   int saw_format_strategy1000_probe = 0;
   int saw_format_strategy4096_probe = 0;
   int saw_format_strategy8192_probe = 0;
@@ -1441,7 +1454,8 @@ static void test_benchmarks(void) {
       if (strcmp(report->results[index].operation, "format-mixed-writer") == 0 ||
           strcmp(report->results[index].operation, "format-folded-hwdiv") == 0 ||
           strcmp(report->results[index].operation, "format-hwdiv-mixed") == 0 ||
-          strcmp(report->results[index].operation, "format-divide-1e19") == 0) {
+          strcmp(report->results[index].operation, "format-divide-1e19") == 0 ||
+          strcmp(report->results[index].operation, "format-dc") == 0) {
         if (report->results[index].digits == 1000) saw_format_strategy1000_probe = 1;
         else if (report->results[index].digits == 4096) saw_format_strategy4096_probe = 1;
         else if (report->results[index].digits == 8192) saw_format_strategy8192_probe = 1;
@@ -1467,13 +1481,25 @@ static void test_benchmarks(void) {
           CHECK(strstr(report->results[index].detail, "chunkDigits=9") != NULL);
           CHECK(strstr(report->results[index].detail, "candidate=decimal-folded-hwdiv-mixed") != NULL);
           CHECK(strstr(report->results[index].detail, "featureGate=decimal-format-hwdiv-mixed") != NULL);
-        } else {
+        } else if (strcmp(report->results[index].operation, "format-divide-1e19") == 0) {
           saw_format_divide_1e19_probe = 1;
           CHECK(strstr(report->results[index].detail, "mode=divide-copy-by-1e19") != NULL);
           CHECK(strstr(report->results[index].detail, "chunkDigits=19") != NULL);
           CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19") != NULL);
           CHECK(strstr(report->results[index].detail, "featureGate=decimal-format-divide-1e19") != NULL);
           CHECK(strstr(report->results[index].detail, "gmpClue=mpn_sb_get_str-largest-decimal-power") != NULL);
+        } else {
+          saw_format_dc_probe = 1;
+          CHECK(strstr(report->results[index].detail, "mode=divide-conquer") != NULL);
+          CHECK(strstr(report->results[index].detail, "chunkDigits=19") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=decimal-dc-powers") != NULL);
+          CHECK(strstr(report->results[index].detail, "featureGate=decimal-format-dc") != NULL);
+          CHECK(strstr(report->results[index].detail, "gmpClue=mpn_dc_get_str-powtab") != NULL);
+          if (strstr(report->results[index].detail, "leafThreshold=8") != NULL) saw_format_dc_leaf8_probe = 1;
+          else if (strstr(report->results[index].detail, "leafThreshold=16") != NULL) saw_format_dc_leaf16_probe = 1;
+          else if (strstr(report->results[index].detail, "leafThreshold=32") != NULL) saw_format_dc_leaf32_probe = 1;
+          else if (strstr(report->results[index].detail, "leafThreshold=64") != NULL) saw_format_dc_leaf64_probe = 1;
+          else CHECK(0);
         }
       }
       if (strcmp(report->results[index].operation, "square-vs-mul") == 0) {
@@ -1686,6 +1712,11 @@ static void test_benchmarks(void) {
   CHECK(saw_format_folded_hwdiv_probe);
   CHECK(saw_format_hwdiv_mixed_probe);
   CHECK(saw_format_divide_1e19_probe);
+  CHECK(saw_format_dc_probe);
+  CHECK(saw_format_dc_leaf8_probe);
+  CHECK(saw_format_dc_leaf16_probe);
+  CHECK(saw_format_dc_leaf32_probe);
+  CHECK(saw_format_dc_leaf64_probe);
   CHECK(saw_format_strategy1000_probe);
   CHECK(saw_format_strategy4096_probe);
   CHECK(saw_format_strategy8192_probe);
@@ -1785,6 +1816,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "format-folded-hwdiv") != NULL);
   CHECK(strstr(json, "format-hwdiv-mixed") != NULL);
   CHECK(strstr(json, "format-divide-1e19") != NULL);
+  CHECK(strstr(json, "format-dc") != NULL);
   CHECK(strstr(json, "\"operation\":\"square\"") != NULL);
   CHECK(strstr(json, "square-vs-mul") != NULL);
   CHECK(strstr(json, "square-karatsuba-vs-mul") != NULL);
@@ -1827,6 +1859,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "format-folded-hwdiv") != NULL);
   CHECK(strstr(tsv, "format-hwdiv-mixed") != NULL);
   CHECK(strstr(tsv, "format-divide-1e19") != NULL);
+  CHECK(strstr(tsv, "format-dc") != NULL);
   CHECK(strstr(tsv, "square") != NULL);
   CHECK(strstr(tsv, "square-vs-mul") != NULL);
   CHECK(strstr(tsv, "square-karatsuba-vs-mul") != NULL);
@@ -1888,6 +1921,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "format-folded-hwdiv") != NULL);
   CHECK(strstr(benchmark_tsv, "format-hwdiv-mixed") != NULL);
   CHECK(strstr(benchmark_tsv, "format-divide-1e19") != NULL);
+  CHECK(strstr(benchmark_tsv, "format-dc") != NULL);
   CHECK(strstr(benchmark_tsv, "square") != NULL);
   CHECK(strstr(benchmark_tsv, "square-vs-mul") != NULL);
   CHECK(strstr(benchmark_tsv, "square-karatsuba-vs-mul") != NULL);
@@ -1937,6 +1971,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "format-folded-hwdiv") != NULL);
   CHECK(strstr(benchmark_frontier, "format-hwdiv-mixed") != NULL);
   CHECK(strstr(benchmark_frontier, "format-divide-1e19") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-dc") != NULL);
   CHECK(strstr(benchmark_frontier, "leaf=64") != NULL);
   CHECK(strstr(benchmark_frontier, "base=") != NULL);
 #if defined(_MSC_VER) && defined(_M_X64)

@@ -2459,6 +2459,22 @@ static void run_format_pair_writer_probe_case(XrayBenchmarkReport *report, size_
 
 typedef char *(*XrayFormatProbeFn)(const XrayScratchBigInt *value);
 
+static char *format_dc_leaf8_probe(const XrayScratchBigInt *value) {
+  return xray_bigint_get_decimal_dc_probe(value, 8U);
+}
+
+static char *format_dc_leaf16_probe(const XrayScratchBigInt *value) {
+  return xray_bigint_get_decimal_dc_probe(value, 16U);
+}
+
+static char *format_dc_leaf32_probe(const XrayScratchBigInt *value) {
+  return xray_bigint_get_decimal_dc_probe(value, 32U);
+}
+
+static char *format_dc_leaf64_probe(const XrayScratchBigInt *value) {
+  return xray_bigint_get_decimal_dc_probe(value, 64U);
+}
+
 static void run_format_variant_probe_case(
   XrayBenchmarkReport *report,
   size_t digits,
@@ -3874,6 +3890,35 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
       "mpn_sb_get_str-largest-decimal-power",
       19U,
       xray_bigint_get_decimal_divide_1e19_probe);
+  }
+  const size_t format_dc_leaf_chunks[] = {8, 16, 32, 64};
+  XrayFormatProbeFn format_dc_probes[] = {
+    format_dc_leaf8_probe,
+    format_dc_leaf16_probe,
+    format_dc_leaf32_probe,
+    format_dc_leaf64_probe
+  };
+  for (size_t digit_index = 0; digit_index < sizeof(format_strategy_digits) / sizeof(format_strategy_digits[0]); ++digit_index) {
+    size_t digits = format_strategy_digits[digit_index];
+    for (size_t leaf_index = 0; leaf_index < sizeof(format_dc_leaf_chunks) / sizeof(format_dc_leaf_chunks[0]); ++leaf_index) {
+      char mode[64];
+      char label[64];
+      snprintf(mode, sizeof(mode), "divide-conquer leafThreshold=%zu", format_dc_leaf_chunks[leaf_index]);
+      snprintf(label, sizeof(label), "format D&C leaf %zu", format_dc_leaf_chunks[leaf_index]);
+      run_format_variant_probe_case(
+        report,
+        digits,
+        (unsigned int)(53U + leaf_index),
+        "format-dc",
+        label,
+        mode,
+        "decimal-dc-powers",
+        "current-scratch-format",
+        "decimal-format-dc",
+        "mpn_dc_get_str-powtab",
+        19U,
+        format_dc_probes[leaf_index]);
+    }
   }
 
   const size_t digits[] = {512, 1000, 2048, 4096, 8192, 16384};
