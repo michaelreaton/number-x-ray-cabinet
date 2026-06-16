@@ -149,6 +149,17 @@ static void test_runtime_version_contract(void) {
   CHECK(route.decimal_horner_min_limbs > 0);
   CHECK(route.mul_unroll4_route_min_limbs <= route.mul_unroll4_route_max_limbs);
   if (route.mul_unroll4_route_enabled) CHECK(route.msvc_uint128_helpers);
+  XrayBuildInfo build;
+  xray_build_info_detect(&build);
+  CHECK(build.compiler[0] != '\0');
+  CHECK(build.compiler_version[0] != '\0');
+  CHECK(build.build_config[0] != '\0');
+  CHECK(build.cmake_generator[0] != '\0');
+  char *build_summary = xray_build_info_summary(&build);
+  CHECK(build_summary != NULL);
+  CHECK(strstr(build_summary, "Build: compiler=") != NULL);
+  CHECK(strstr(build_summary, "ipo=") != NULL);
+  xray_free(build_summary);
 }
 
 static void test_exact_expression_parser(void) {
@@ -2944,6 +2955,12 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "\"baselineBackend\"") != NULL);
   CHECK(strstr(json, "\"baselineBackendVersion\"") != NULL);
   CHECK(strstr(json, "\"baselineBackendLibrary\"") != NULL);
+  CHECK(strstr(json, "\"build\"") != NULL);
+  CHECK(strstr(json, "\"compiler\"") != NULL);
+  CHECK(strstr(json, "\"compilerVersion\"") != NULL);
+  CHECK(strstr(json, "\"buildConfig\"") != NULL);
+  CHECK(strstr(json, "\"interproceduralOptimization\"") != NULL);
+  CHECK(strstr(json, "\"compileTargetAvx2\"") != NULL);
   CHECK(strstr(json, "\"scratchRouteConfig\"") != NULL);
   CHECK(strstr(json, "\"karatsubaThresholdLimbs\"") != NULL);
   CHECK(strstr(json, "\"squareTinySelfMulPolicy\"") != NULL);
@@ -3058,6 +3075,7 @@ static void test_benchmarks(void) {
   char *tsv = xray_benchmark_report_tsv(report);
   CHECK(tsv != NULL);
   CHECK(strstr(tsv, "category\tname\toperation") != NULL);
+  CHECK(strstr(tsv, "buildConfig\tipo\tcompiler\tcompilerVersion") != NULL);
   CHECK(strstr(tsv, "factor-benchmark") != NULL);
   CHECK(strstr(tsv, "cyclotomic-benchmark") != NULL);
   CHECK(strstr(tsv, "scratch-vs-gmp") != NULL);
@@ -3162,6 +3180,9 @@ static void test_benchmarks(void) {
   char *cpu_text = read_text_file(cpu_path);
   CHECK(strstr(benchmark_json, "\"benchmarkReport\"") != NULL);
   CHECK(strstr(benchmark_json, "\"cpu\"") != NULL);
+  CHECK(strstr(benchmark_json, "\"build\"") != NULL);
+  CHECK(strstr(benchmark_json, "\"compiler\"") != NULL);
+  CHECK(strstr(benchmark_json, "\"interproceduralOptimization\"") != NULL);
   CHECK(strstr(benchmark_json, "\"baselineBackend\"") != NULL);
   CHECK(strstr(benchmark_json, "\"baselineBackendVersion\"") != NULL);
   CHECK(strstr(benchmark_json, "\"baselineBackendLibrary\"") != NULL);
@@ -3172,6 +3193,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_json, "\"msvcUint128Helpers\"") != NULL);
   CHECK(strstr(benchmark_json, "\"scratchRows\"") != NULL);
   CHECK(strstr(benchmark_tsv, "scratch-vs-gmp") != NULL);
+  CHECK(strstr(benchmark_tsv, "buildConfig\tipo\tcompiler\tcompilerVersion") != NULL);
   CHECK(strstr(benchmark_tsv, "kernel-probe") != NULL);
   CHECK(strstr(benchmark_tsv, "policy-probe") != NULL);
   CHECK(strstr(benchmark_tsv, "policy-gate") != NULL);
@@ -3264,6 +3286,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "worstPairRatio") != NULL);
   CHECK(strstr(benchmark_tsv, "ratioMethod=paired-median") != NULL);
   CHECK(strstr(benchmark_frontier, "BENCHMARK FRONTIER") != NULL);
+  CHECK(strstr(benchmark_frontier, "Build: compiler=") != NULL);
+  CHECK(strstr(benchmark_frontier, "ipo=") != NULL);
   CHECK(strstr(benchmark_frontier, "Baseline backend:") != NULL);
   CHECK(strstr(benchmark_frontier, "Bigint route:") != NULL);
   CHECK(strstr(benchmark_frontier, "square-self-mul<=8 limbs") != NULL);

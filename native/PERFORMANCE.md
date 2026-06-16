@@ -20,6 +20,36 @@ parity plus a stable same-run paired win.
   `noAutoRoute=1`, `replacementReady=false`, and `adoption=observe-only` until a
   dedicated forced-neighbor safety row passes.
 
+## 2026-06-16: Benchmark Build Fingerprint
+
+Runs:
+
+- Release: `native/build-codex-pair-route/native-test-runs/20260616-110823-c4b04caf`
+- `/GL`: `native/build-codex-ltcg/native-test-runs/20260616-111404-c4b04caf`
+
+Benchmark JSON, TSV, and `benchmark_frontier.txt` now identify the loaded
+library's compiler and build posture. This makes broad tournaments
+self-describing instead of relying on artifact folder names or memory of the
+build command.
+
+Release fingerprint:
+
+- compiler `MSVC 1929 full=192930159`
+- config `Release`
+- IPO/LTO `false`
+- compile target `scalar` (`compileTargetAvx2=false`)
+
+`/GL` fingerprint:
+
+- compiler `MSVC 1929 full=192930159`
+- config `Release`
+- IPO/LTO `true`
+- compile target `scalar` (`compileTargetAvx2=false`)
+
+Decision: treat build fingerprint as required context for AVX/BMI/ADX,
+threshold, and static/dynamic precompute tournaments. A row is not comparable
+without CPU features plus compiler/build metadata.
+
 ## 2026-06-16: Frontier Report Shows Worst-Pair Rejections
 
 Runs:

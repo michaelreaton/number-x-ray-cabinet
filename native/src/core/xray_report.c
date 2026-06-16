@@ -212,6 +212,31 @@ static void append_cpu_json(JsonBuffer *buffer, const char *key, const XrayCpuFe
     cpu->adx ? "true" : "false");
 }
 
+static void append_build_json(JsonBuffer *buffer, const char *key) {
+  XrayBuildInfo build;
+  xray_build_info_detect(&build);
+  jb_append(buffer, "\"");
+  jb_append(buffer, key ? key : "build");
+  jb_append(buffer, "\":{");
+  jb_append(buffer, "\"compiler\":"); jb_string(buffer, build.compiler);
+  jb_append(buffer, ",\"compilerVersion\":"); jb_string(buffer, build.compiler_version);
+  jb_append(buffer, ",\"buildConfig\":"); jb_string(buffer, build.build_config);
+  jb_append(buffer, ",\"cmakeGenerator\":"); jb_string(buffer, build.cmake_generator);
+  jb_append(buffer, ",\"cmakeGeneratorPlatform\":"); jb_string(buffer, build.cmake_generator_platform);
+  jb_append(buffer, ",\"cmakeGeneratorToolset\":"); jb_string(buffer, build.cmake_generator_toolset);
+  jb_printf(buffer,
+    ",\"interproceduralOptimization\":%s,\"debugBuild\":%s,\"ndebugBuild\":%s,\"compileTargetAvx\":%s,\"compileTargetAvx2\":%s,\"compileTargetAvx512f\":%s,\"msvc\":%s,\"clang\":%s,\"gcc\":%s}",
+    build.interprocedural_optimization ? "true" : "false",
+    build.debug_build ? "true" : "false",
+    build.ndebug_build ? "true" : "false",
+    build.compile_target_avx ? "true" : "false",
+    build.compile_target_avx2 ? "true" : "false",
+    build.compile_target_avx512f ? "true" : "false",
+    build.msvc ? "true" : "false",
+    build.clang ? "true" : "false",
+    build.gcc ? "true" : "false");
+}
+
 static void append_bigint_route_config_json(JsonBuffer *buffer) {
   XrayBigIntRouteConfig route = xray_bigint_route_config();
   jb_printf(buffer,
@@ -228,6 +253,8 @@ static void append_bigint_route_config_json(JsonBuffer *buffer) {
 static void append_benchmark_json(JsonBuffer *buffer, const XrayBenchmarkReport *report) {
   jb_append(buffer, "\"benchmarkReport\":{");
   append_cpu_json(buffer, "cpu", report ? &report->cpu : NULL);
+  jb_append(buffer, ",");
+  append_build_json(buffer, "build");
   jb_append(buffer, ",\"baselineBackend\":");
   jb_string(buffer, xray_bignum_backend_name());
   jb_append(buffer, ",\"baselineBackendVersion\":");
@@ -354,8 +381,10 @@ char *xray_benchmark_report_json(const XrayBenchmarkReport *report) {
 
 char *xray_benchmark_report_tsv(const XrayBenchmarkReport *report) {
   JsonBuffer buffer = {0};
+  XrayBuildInfo build;
+  xray_build_info_detect(&build);
   jb_append(&buffer,
-    "category\tname\toperation\tdigits\tstatus\tpassed\tparityVerified\treplacementReady\tadoption\tscratchUs\tgmpUs\tspeedRatio\tmaxAllowedSpeedRatio\tworstPairRatio\tstableSampleCount\tsampleCount\telapsedMs\tdetail\n");
+    "category\tname\toperation\tdigits\tstatus\tpassed\tparityVerified\treplacementReady\tadoption\tscratchUs\tgmpUs\tspeedRatio\tmaxAllowedSpeedRatio\tworstPairRatio\tstableSampleCount\tsampleCount\telapsedMs\tdetail\tbuildConfig\tipo\tcompiler\tcompilerVersion\n");
   if (!report) return jb_take(&buffer);
   for (size_t index = 0; index < report->result_count; ++index) {
     const XrayBenchmarkResult *row = &report->results[index];
@@ -381,6 +410,12 @@ char *xray_benchmark_report_tsv(const XrayBenchmarkReport *report) {
       row->sample_count,
       row->elapsed_ms);
     append_tsv_field(&buffer, row->detail);
+    jb_append(&buffer, "\t");
+    append_tsv_field(&buffer, build.build_config);
+    jb_printf(&buffer, "\t%s\t", build.interprocedural_optimization ? "true" : "false");
+    append_tsv_field(&buffer, build.compiler);
+    jb_append(&buffer, "\t");
+    append_tsv_field(&buffer, build.compiler_version);
     jb_append(&buffer, "\n");
   }
   return jb_take(&buffer);
@@ -526,8 +561,10 @@ char *xray_benchmark_frontier_text(const XrayBenchmarkReport *report) {
   }
 
   char *cpu_summary = xray_cpu_features_summary(&report->cpu);
+  char *build_summary = xray_build_info_summary(NULL);
   jb_append(&buffer, "BENCHMARK FRONTIER\n");
   jb_printf(&buffer, "%s\n", cpu_summary ? cpu_summary : "CPU: unavailable");
+  jb_printf(&buffer, "%s\n", build_summary ? build_summary : "Build: unavailable");
   jb_printf(&buffer, "Baseline backend: %s %s (%s)\n",
     xray_bignum_backend_name(),
     xray_bignum_backend_version(),
@@ -543,6 +580,7 @@ char *xray_benchmark_frontier_text(const XrayBenchmarkReport *report) {
     route.mul_unroll4_route_max_limbs,
     route.msvc_uint128_helpers ? "yes" : "no");
   free(cpu_summary);
+  free(build_summary);
   jb_printf(&buffer,
     "Passed: %zu/%zu   Scratch rows: %zu   Replacement-ready: %zu   Oracle-only: %zu   Blocked: %zu   Elapsed: %lums\n\n",
     report->passed_count,
@@ -712,6 +750,8 @@ char *xray_workbench_full_report_json(const XrayWorkbenchReport *report) {
   jb_append(&buffer, "\"version\":"); jb_string(&buffer, XRAY_VERSION);
   jb_append(&buffer, ",\"runDir\":"); jb_string(&buffer, report ? report->run_dir : NULL);
   jb_append(&buffer, ",");
+  append_build_json(&buffer, "build");
+  jb_append(&buffer, ",");
   append_cpu_json(&buffer, "cpu", report ? &report->cpu : NULL);
   jb_append(&buffer, ",\"sourceNotes\":[");
   jb_string(&buffer, "Built from Payam's MY GFN2 page (https://amathz.com/my_gfn.html): Number X-Ray runs cyclotomic construction backward and labels evidence unless exact verification passes.");
@@ -749,6 +789,8 @@ char *xray_workbench_report_json(const XrayFactorReport *factor, const XrayCyclo
   jb_append(&buffer, "{");
   jb_append(&buffer, "\"app\":\"Number X-Ray Workbench\",");
   jb_append(&buffer, "\"version\":"); jb_string(&buffer, XRAY_VERSION);
+  jb_append(&buffer, ",");
+  append_build_json(&buffer, "build");
   jb_append(&buffer, ",");
   XrayCpuFeatures cpu;
   xray_cpu_features_detect(&cpu);
