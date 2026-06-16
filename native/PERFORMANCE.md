@@ -20,6 +20,44 @@ parity plus a stable same-run paired win.
   `noAutoRoute=1`, `replacementReady=false`, and `adoption=observe-only` until a
   dedicated forced-neighbor safety row passes.
 
+## 2026-06-16: Frontier Report Shows Worst-Pair Rejections
+
+Runs:
+
+- Release: `native/build-codex-pair-route/native-test-runs/20260616-104009-c4b04caf`
+- `/GL`: `native/build-codex-ltcg/native-test-runs/20260616-104558-c4b04caf`
+
+The workspace `benchmark_frontier.txt` now includes a sorted "median wins
+rejected by worst-pair safety" section and prints `Worst` beside `Ratio` in the
+scratch, policy, policy-gate, and kernel-probe tables. This makes the
+human-readable report match the benchmark adoption gate instead of requiring a
+separate TSV inspection.
+
+Release rows surfaced by the new frontier section:
+
+- `gcd-u32-precompute`, 150 digits: ratio `0.942`, worst pair `4.018`, stable
+  `3/5`, `observe-only`
+- `square-vs-mul`, 150 digits: ratio `0.958`, worst pair `2.208`, stable
+  `3/5`, `observe-only`
+- `mul-threshold`, 8192 digits: ratio `0.966`, worst pair `2.002`, stable
+  `3/5`, `observe-only`
+
+`/GL` rows surfaced by the new frontier section:
+
+- `mod-u32-precompute`, 512 digits: ratio `0.998`, worst pair `2.904`, stable
+  `2/5`, `observe-only`
+- `format-pair-writer`, 150 digits: ratio `0.812`, worst pair `2.516`, stable
+  `3/5`, `observe-only`
+- `square-karatsuba-vs-mul`, 16384 digits: ratio `0.780`, worst pair `2.508`,
+  stable `3/5`, `observe-only`
+- safety `preinv10e19-pairs-window768-1000`, 1000 digits: ratio `0.793`, worst
+  pair `1.138`, stable `2/2`, `worst-pair-regression`
+
+Decision: use the frontier report, not only raw TSV, when reviewing broad
+tournaments. Any candidate with a median win and a worst pair above `1.0` stays
+diagnostic until the paired samples are stable in both Release and product-like
+`/GL`.
+
 ## 2026-06-16: Worst-Pair Readiness Gate
 
 Runs:

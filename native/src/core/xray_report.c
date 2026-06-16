@@ -479,10 +479,28 @@ char *xray_benchmark_frontier_text(const XrayBenchmarkReport *report) {
   JsonBuffer buffer = {0};
   const XrayBenchmarkResult *near_wins[5] = {0};
   const XrayBenchmarkResult *top_gaps[5] = {0};
+  const XrayBenchmarkResult *worst_pair_regressions[8] = {0};
   size_t near_count = 0;
+  size_t worst_pair_count = 0;
 
   for (size_t index = 0; index < report->result_count; ++index) {
     const XrayBenchmarkResult *row = &report->results[index];
+    if (row->parity_verified &&
+        !row->replacement_ready &&
+        row->speed_ratio > 0.0 &&
+        row->speed_ratio < 1.0 &&
+        row->worst_pair_ratio > 1.0) {
+      for (size_t slot = 0; slot < sizeof(worst_pair_regressions) / sizeof(worst_pair_regressions[0]); ++slot) {
+        if (!worst_pair_regressions[slot] || row->worst_pair_ratio > worst_pair_regressions[slot]->worst_pair_ratio) {
+          for (size_t move = sizeof(worst_pair_regressions) / sizeof(worst_pair_regressions[0]) - 1; move > slot; --move) {
+            worst_pair_regressions[move] = worst_pair_regressions[move - 1];
+          }
+          worst_pair_regressions[slot] = row;
+          if (worst_pair_count < sizeof(worst_pair_regressions) / sizeof(worst_pair_regressions[0])) worst_pair_count++;
+          break;
+        }
+      }
+    }
     if (strcmp(row->category, "scratch-vs-gmp") != 0 || row->replacement_ready) continue;
     if (row->parity_verified && row->speed_ratio > 0.0 && row->speed_ratio <= 1.10) {
       for (size_t slot = 0; slot < sizeof(near_wins) / sizeof(near_wins[0]); ++slot) {
@@ -572,19 +590,39 @@ char *xray_benchmark_frontier_text(const XrayBenchmarkReport *report) {
       row->adoption);
   }
 
+  if (worst_pair_count) {
+    jb_append(&buffer, "Median wins rejected by worst-pair safety:\n");
+    for (size_t index = 0; index < worst_pair_count; ++index) {
+      const XrayBenchmarkResult *row = worst_pair_regressions[index];
+      char label[80];
+      benchmark_frontier_label(row, label, sizeof(label));
+      jb_printf(&buffer,
+        "  %-40s %5zu digits   ratio %.3f   worst %.3f   stable %zu/%zu   %s\n",
+        label,
+        row->digits,
+        row->speed_ratio,
+        row->worst_pair_ratio,
+        row->stable_sample_count,
+        row->sample_count,
+        row->adoption);
+    }
+  } else {
+    jb_append(&buffer, "Median wins rejected by worst-pair safety: none in this run\n");
+  }
+
   jb_append(&buffer,
     "\nSCRATCH VS ");
   jb_append(&buffer, xray_bignum_backend_name());
   jb_append(&buffer,
-    "\nOperation                  Digits   Adoption       Ready    ScratchUs   BackendUs   Ratio   Stable\n"
-    "------------------------   ------   ------------   -----   ----------   --------   -----   ------\n");
+    "\nOperation                  Digits   Adoption       Ready    ScratchUs   BackendUs   Ratio   Worst   Stable\n"
+    "------------------------   ------   ------------   -----   ----------   --------   -----   -----   ------\n");
   for (size_t index = 0; index < report->result_count; ++index) {
     const XrayBenchmarkResult *row = &report->results[index];
     if (strcmp(row->category, "scratch-vs-gmp") != 0) continue;
     char label[80];
     benchmark_frontier_label(row, label, sizeof(label));
     jb_printf(&buffer,
-      "%-24s   %6zu   %-12s   %-5s   %10llu   %8llu   %5.2f   %3zu/%-3zu\n",
+      "%-24s   %6zu   %-12s   %-5s   %10llu   %8llu   %5.2f   %5.2f   %3zu/%-3zu\n",
       label,
       row->digits,
       row->adoption,
@@ -592,21 +630,22 @@ char *xray_benchmark_frontier_text(const XrayBenchmarkReport *report) {
       row->scratch_us,
       row->gmp_us,
       row->speed_ratio,
+      row->worst_pair_ratio,
       row->stable_sample_count,
       row->sample_count);
   }
 
   jb_append(&buffer,
     "\nPRODUCT POLICY PROBES\n"
-    "Policy                                    Digits   Status           Adoption          CandidateUs   BackendUs   Ratio   Stable\n"
-    "----------------------------------------   ------   --------------   ---------------   -----------   --------   -----   ------\n");
+    "Policy                                    Digits   Status           Adoption          CandidateUs   BackendUs   Ratio   Worst   Stable\n"
+    "----------------------------------------   ------   --------------   ---------------   -----------   --------   -----   -----   ------\n");
   for (size_t index = 0; index < report->result_count; ++index) {
     const XrayBenchmarkResult *row = &report->results[index];
     if (strcmp(row->category, "policy-probe") != 0) continue;
     char label[80];
     benchmark_frontier_label(row, label, sizeof(label));
     jb_printf(&buffer,
-      "%-40s   %6zu   %-14s   %-15s   %11llu   %8llu   %5.2f   %3zu/%-3zu\n",
+      "%-40s   %6zu   %-14s   %-15s   %11llu   %8llu   %5.2f   %5.2f   %3zu/%-3zu\n",
       label,
       row->digits,
       row->status,
@@ -614,52 +653,55 @@ char *xray_benchmark_frontier_text(const XrayBenchmarkReport *report) {
       row->scratch_us,
       row->gmp_us,
       row->speed_ratio,
+      row->worst_pair_ratio,
       row->stable_sample_count,
       row->sample_count);
   }
 
   jb_append(&buffer,
     "\nPRODUCT POLICY THRESHOLD GATES\n"
-    "Gate                                      Digits   Status                Adoption          WorstRatio   StableSizes\n"
-    "----------------------------------------   ------   ------------------   ---------------   ----------   -----------\n");
+    "Gate                                      Digits   Status                Adoption          Ratio   Worst   StableSizes\n"
+    "----------------------------------------   ------   ------------------   ---------------   -----   -----   -----------\n");
   for (size_t index = 0; index < report->result_count; ++index) {
     const XrayBenchmarkResult *row = &report->results[index];
     if (strcmp(row->category, "policy-gate") != 0) continue;
     char label[80];
     benchmark_frontier_label(row, label, sizeof(label));
     jb_printf(&buffer,
-      "%-40s   %6zu   %-18s   %-15s   %10.3f   %3zu/%-3zu\n",
+      "%-40s   %6zu   %-18s   %-15s   %5.2f   %5.2f   %3zu/%-3zu\n",
       label,
       row->digits,
       row->status,
       row->adoption,
       row->speed_ratio,
+      row->worst_pair_ratio,
       row->stable_sample_count,
       row->sample_count);
   }
 
   jb_append(&buffer,
     "\nKERNEL PROBES\n"
-    "Operation                                  Digits   Status              Adoption               Ratio   Stable\n"
-    "----------------------------------------   ------   ----------------   --------------------   -----   ------\n");
+    "Operation                                  Digits   Status              Adoption               Ratio   Worst   Stable\n"
+    "----------------------------------------   ------   ----------------   --------------------   -----   -----   ------\n");
   for (size_t index = 0; index < report->result_count; ++index) {
     const XrayBenchmarkResult *row = &report->results[index];
     if (strcmp(row->category, "kernel-probe") != 0) continue;
     char label[80];
     benchmark_frontier_label(row, label, sizeof(label));
     jb_printf(&buffer,
-      "%-40s   %6zu   %-16s   %-20s   %5.2f   %3zu/%-3zu\n",
+      "%-40s   %6zu   %-16s   %-20s   %5.2f   %5.2f   %3zu/%-3zu\n",
       label,
       row->digits,
       row->status,
       row->adoption,
       row->speed_ratio,
+      row->worst_pair_ratio,
       row->stable_sample_count,
       row->sample_count);
   }
 
   jb_append(&buffer,
-    "\nRule: replacements require exact parity, a same-run paired-median speed win inside the configured gate, and enough paired-sample wins. Ordinary five-sample rows require 4 stable wins; deep nine-sample rows require 8. Threshold policy gates must also pass a forced adjacent-size candidate check before promotion.\n");
+    "\nRule: replacements require exact parity, a same-run paired-median speed win inside the configured gate, no worst-pair regression above 1.0, and enough paired-sample wins. Ordinary five-sample rows require 4 stable wins; deep nine-sample rows require 8. Threshold policy gates must also pass a forced adjacent-size candidate check before promotion.\n");
   return jb_take(&buffer);
 }
 
