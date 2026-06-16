@@ -54,6 +54,24 @@ typedef struct XrayBigIntRouteConfig {
   int msvc_uint128_helpers;
 } XrayBigIntRouteConfig;
 
+typedef struct XrayBuildInfo {
+  char compiler[48];
+  char compiler_version[80];
+  char build_config[32];
+  char cmake_generator[96];
+  char cmake_generator_platform[48];
+  char cmake_generator_toolset[64];
+  int interprocedural_optimization;
+  int debug_build;
+  int ndebug_build;
+  int compile_target_avx;
+  int compile_target_avx2;
+  int compile_target_avx512f;
+  int msvc;
+  int clang;
+  int gcc;
+} XrayBuildInfo;
+
 typedef struct XrayBigIntU32ModContext {
   uint32_t modulus;
   uint64_t reciprocal;
@@ -112,12 +130,30 @@ XRAY_API const char *xray_bignum_backend_library(void);
 XRAY_API XrayBigIntRouteConfig xray_bigint_route_config(void);
 
 /**
+ * Fill build and compiler metadata for the loaded Number X-Ray library.
+ *
+ * This is compile-time/build-system metadata, not CPU feature detection. Use it
+ * with xray_cpu_features_detect() when comparing benchmark artifacts across
+ * Release, LTO, AVX-targeted, or compiler-specific runs.
+ */
+XRAY_API void xray_build_info_detect(XrayBuildInfo *info);
+
+/**
+ * Format build and compiler metadata as a newly allocated one-line summary.
+ *
+ * Passing NULL is allowed. The caller owns the returned string and must release
+ * it with xray_free().
+ */
+XRAY_API char *xray_build_info_summary(const XrayBuildInfo *info);
+
+/**
  * Release memory returned by Number X-Ray allocation-returning API calls.
  *
  * Pass pointers returned by functions such as xray_bigint_get_decimal(),
  * xray_preview_decimal(), xray_*_report_json(), and
- * xray_cpu_features_summary(). Passing NULL is allowed. Use this instead of
- * plain free() across shared-library or foreign-language boundaries.
+ * xray_cpu_features_summary() or xray_build_info_summary(). Passing NULL is
+ * allowed. Use this instead of plain free() across shared-library or
+ * foreign-language boundaries.
  */
 XRAY_API void xray_free(void *ptr);
 
