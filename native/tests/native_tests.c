@@ -1612,6 +1612,8 @@ static void test_benchmarks(void) {
   int saw_format_policy_gate_preinv10e19_pairs_window768_960 = 0;
   int saw_format_policy_gate_preinv10e19_window896_1000 = 0;
   int saw_format_policy_gate_preinv10e19_pairs_window896_1000 = 0;
+  int saw_format_policy_deep_gate_preinv10e19_pairs_window768_960 = 0;
+  int saw_format_policy_deep_gate_preinv10e19_pairs_window896_1000 = 0;
   int saw_divmod_preinv_qhat_safety_gate = 0;
   int saw_mul_policy_safety_toom_leaf48_gate = 0;
   int saw_mul_policy_safety_toom_rec_gate = 0;
@@ -2774,17 +2776,45 @@ static void test_benchmarks(void) {
       CHECK(strstr(report->results[index].detail, "forcedCandidate=yes") != NULL);
       CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
       CHECK(strstr(report->results[index].detail, "adoption=") != NULL);
-      if (strcmp(report->results[index].operation, "format-policy-safety") == 0) {
+      if (strcmp(report->results[index].operation, "format-policy-safety") == 0 ||
+          strcmp(report->results[index].operation, "format-policy-deep-safety") == 0) {
+        int is_deep_format_gate = strcmp(report->results[index].operation, "format-policy-deep-safety") == 0;
         CHECK(report->results[index].sample_count == 2);
-        CHECK(strstr(report->results[index].detail, "op=format-policy-safety") != NULL);
+        CHECK(strstr(
+          report->results[index].detail,
+          is_deep_format_gate ? "op=format-policy-deep-safety" : "op=format-policy-safety") != NULL);
         CHECK(strstr(report->results[index].detail, "neighborStable=") != NULL);
         CHECK(strstr(report->results[index].detail, "gateStable=") != NULL);
+        CHECK(strstr(report->results[index].detail, is_deep_format_gate ? "requiredStablePairs=8/9" : "requiredStablePairs=4/5") != NULL);
         CHECK(strstr(report->results[index].detail, "neighborRatio=") != NULL);
         CHECK(strstr(report->results[index].detail, "gateRatio=") != NULL);
         CHECK(strstr(report->results[index].detail, "baseline=mpz_get_str") != NULL);
         CHECK(strstr(report->results[index].detail, "featureGate=threshold-neighbor") != NULL);
         CHECK(strstr(report->results[index].detail, "gmpClue=product-codegen") != NULL);
-        if (strstr(report->results[index].detail, "policy=direct-ge4096-leaf8") != NULL) {
+        if (strstr(report->results[index].detail, "policy=deep-preinv10e19-pairs-window768-960") != NULL) {
+          saw_format_policy_deep_gate_preinv10e19_pairs_window768_960 = 1;
+          CHECK(is_deep_format_gate);
+          CHECK(strstr(report->results[index].detail, "neighbor=768") != NULL);
+          CHECK(strstr(report->results[index].detail, "gate=960") != NULL);
+          CHECK(strstr(report->results[index].detail, "min=768") != NULL);
+          CHECK(strstr(report->results[index].detail, "max=960") != NULL);
+          CHECK(strstr(report->results[index].detail, "leaf=0") != NULL);
+          CHECK(strstr(report->results[index].detail, "neighborStable=") != NULL);
+          CHECK(strstr(report->results[index].detail, "/9") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv-pair-writer") != NULL);
+        } else if (strstr(report->results[index].detail, "policy=deep-preinv10e19-pairs-window896-1000") != NULL) {
+          saw_format_policy_deep_gate_preinv10e19_pairs_window896_1000 = 1;
+          CHECK(is_deep_format_gate);
+          CHECK(strstr(report->results[index].detail, "neighbor=896") != NULL);
+          CHECK(strstr(report->results[index].detail, "gate=1000") != NULL);
+          CHECK(strstr(report->results[index].detail, "min=896") != NULL);
+          CHECK(strstr(report->results[index].detail, "max=1000") != NULL);
+          CHECK(strstr(report->results[index].detail, "leaf=0") != NULL);
+          CHECK(strstr(report->results[index].detail, "neighborStable=") != NULL);
+          CHECK(strstr(report->results[index].detail, "/9") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv-pair-writer") != NULL);
+        } else if (strstr(report->results[index].detail, "policy=direct-ge4096-leaf8") != NULL) {
+          CHECK(!is_deep_format_gate);
           saw_format_policy_gate_direct4096 = 1;
           CHECK(strstr(report->results[index].detail, "neighbor=3072") != NULL);
           CHECK(strstr(report->results[index].detail, "gate=4096") != NULL);
@@ -2792,6 +2822,7 @@ static void test_benchmarks(void) {
           CHECK(strstr(report->results[index].detail, "leaf=8") != NULL);
           CHECK(strstr(report->results[index].detail, "candidate=decimal-dc-direct-writer") != NULL);
         } else if (strstr(report->results[index].detail, "policy=direct-ge8192-leaf16") != NULL) {
+          CHECK(!is_deep_format_gate);
           saw_format_policy_gate_direct8192 = 1;
           CHECK(strstr(report->results[index].detail, "neighbor=6144") != NULL);
           CHECK(strstr(report->results[index].detail, "gate=8192") != NULL);
@@ -2799,6 +2830,7 @@ static void test_benchmarks(void) {
           CHECK(strstr(report->results[index].detail, "leaf=16") != NULL);
           CHECK(strstr(report->results[index].detail, "candidate=decimal-dc-direct-writer") != NULL);
         } else if (strstr(report->results[index].detail, "policy=static-ge4096-l16") != NULL) {
+          CHECK(!is_deep_format_gate);
           saw_format_policy_gate_static4096 = 1;
           CHECK(strstr(report->results[index].detail, "neighbor=3072") != NULL);
           CHECK(strstr(report->results[index].detail, "gate=4096") != NULL);
@@ -2806,6 +2838,7 @@ static void test_benchmarks(void) {
           CHECK(strstr(report->results[index].detail, "leaf=16") != NULL);
           CHECK(strstr(report->results[index].detail, "candidate=dc-static-direct") != NULL);
         } else if (strstr(report->results[index].detail, "policy=static-ge8192-l8") != NULL) {
+          CHECK(!is_deep_format_gate);
           saw_format_policy_gate_static8192 = 1;
           CHECK(strstr(report->results[index].detail, "neighbor=6144") != NULL);
           CHECK(strstr(report->results[index].detail, "gate=8192") != NULL);
@@ -2813,6 +2846,7 @@ static void test_benchmarks(void) {
           CHECK(strstr(report->results[index].detail, "leaf=8") != NULL);
           CHECK(strstr(report->results[index].detail, "candidate=dc-static-direct") != NULL);
         } else if (strstr(report->results[index].detail, "policy=workspace-ge4096-leaf16") != NULL) {
+          CHECK(!is_deep_format_gate);
           saw_format_policy_gate_workspace4096 = 1;
           CHECK(strstr(report->results[index].detail, "neighbor=3072") != NULL);
           CHECK(strstr(report->results[index].detail, "gate=4096") != NULL);
@@ -2820,6 +2854,7 @@ static void test_benchmarks(void) {
           CHECK(strstr(report->results[index].detail, "leaf=16") != NULL);
           CHECK(strstr(report->results[index].detail, "candidate=decimal-dc-direct-workspace") != NULL);
         } else if (strstr(report->results[index].detail, "policy=preinv-ge4096-leaf8") != NULL) {
+          CHECK(!is_deep_format_gate);
           saw_format_policy_gate_preinv4096 = 1;
           CHECK(strstr(report->results[index].detail, "neighbor=3072") != NULL);
           CHECK(strstr(report->results[index].detail, "gate=4096") != NULL);
@@ -2827,6 +2862,7 @@ static void test_benchmarks(void) {
           CHECK(strstr(report->results[index].detail, "leaf=8") != NULL);
           CHECK(strstr(report->results[index].detail, "candidate=decimal-dc-direct-preinv-qhat") != NULL);
         } else if (strstr(report->results[index].detail, "policy=preinv-ge8192-leaf16") != NULL) {
+          CHECK(!is_deep_format_gate);
           saw_format_policy_gate_preinv8192 = 1;
           CHECK(strstr(report->results[index].detail, "neighbor=6144") != NULL);
           CHECK(strstr(report->results[index].detail, "gate=8192") != NULL);
@@ -2834,6 +2870,7 @@ static void test_benchmarks(void) {
           CHECK(strstr(report->results[index].detail, "leaf=16") != NULL);
           CHECK(strstr(report->results[index].detail, "candidate=decimal-dc-direct-preinv-qhat") != NULL);
         } else if (strstr(report->results[index].detail, "policy=preinv-ge16384-leaf16") != NULL) {
+          CHECK(!is_deep_format_gate);
           saw_format_policy_gate_preinv16384 = 1;
           CHECK(strstr(report->results[index].detail, "neighbor=12288") != NULL);
           CHECK(strstr(report->results[index].detail, "gate=16384") != NULL);
@@ -2841,6 +2878,7 @@ static void test_benchmarks(void) {
           CHECK(strstr(report->results[index].detail, "leaf=16") != NULL);
           CHECK(strstr(report->results[index].detail, "candidate=decimal-dc-direct-preinv-qhat") != NULL);
         } else if (strstr(report->results[index].detail, "policy=preinv10e19-window768-1000") != NULL) {
+          CHECK(!is_deep_format_gate);
           saw_format_policy_gate_preinv10e19_window = 1;
           CHECK(strstr(report->results[index].detail, "neighbor=768") != NULL);
           CHECK(strstr(report->results[index].detail, "gate=1000") != NULL);
@@ -2849,6 +2887,7 @@ static void test_benchmarks(void) {
           CHECK(strstr(report->results[index].detail, "leaf=0") != NULL);
           CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv") != NULL);
         } else if (strstr(report->results[index].detail, "policy=preinv10e19-pairs-window768-1000") != NULL) {
+          CHECK(!is_deep_format_gate);
           saw_format_policy_gate_preinv10e19_pairs_window = 1;
           CHECK(strstr(report->results[index].detail, "neighbor=768") != NULL);
           CHECK(strstr(report->results[index].detail, "gate=1000") != NULL);
@@ -2857,6 +2896,7 @@ static void test_benchmarks(void) {
           CHECK(strstr(report->results[index].detail, "leaf=0") != NULL);
           CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv-pair-writer") != NULL);
         } else if (strstr(report->results[index].detail, "policy=preinv10e19-window768-896") != NULL) {
+          CHECK(!is_deep_format_gate);
           saw_format_policy_gate_preinv10e19_window768_896 = 1;
           CHECK(strstr(report->results[index].detail, "neighbor=768") != NULL);
           CHECK(strstr(report->results[index].detail, "gate=896") != NULL);
@@ -2865,6 +2905,7 @@ static void test_benchmarks(void) {
           CHECK(strstr(report->results[index].detail, "leaf=0") != NULL);
           CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv") != NULL);
         } else if (strstr(report->results[index].detail, "policy=preinv10e19-pairs-window768-896") != NULL) {
+          CHECK(!is_deep_format_gate);
           saw_format_policy_gate_preinv10e19_pairs_window768_896 = 1;
           CHECK(strstr(report->results[index].detail, "neighbor=768") != NULL);
           CHECK(strstr(report->results[index].detail, "gate=896") != NULL);
@@ -2873,6 +2914,7 @@ static void test_benchmarks(void) {
           CHECK(strstr(report->results[index].detail, "leaf=0") != NULL);
           CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv-pair-writer") != NULL);
         } else if (strstr(report->results[index].detail, "policy=preinv10e19-window768-960") != NULL) {
+          CHECK(!is_deep_format_gate);
           saw_format_policy_gate_preinv10e19_window768_960 = 1;
           CHECK(strstr(report->results[index].detail, "neighbor=768") != NULL);
           CHECK(strstr(report->results[index].detail, "gate=960") != NULL);
@@ -2881,6 +2923,7 @@ static void test_benchmarks(void) {
           CHECK(strstr(report->results[index].detail, "leaf=0") != NULL);
           CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv") != NULL);
         } else if (strstr(report->results[index].detail, "policy=preinv10e19-pairs-window768-960") != NULL) {
+          CHECK(!is_deep_format_gate);
           saw_format_policy_gate_preinv10e19_pairs_window768_960 = 1;
           CHECK(strstr(report->results[index].detail, "neighbor=768") != NULL);
           CHECK(strstr(report->results[index].detail, "gate=960") != NULL);
@@ -2889,6 +2932,7 @@ static void test_benchmarks(void) {
           CHECK(strstr(report->results[index].detail, "leaf=0") != NULL);
           CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv-pair-writer") != NULL);
         } else if (strstr(report->results[index].detail, "policy=preinv10e19-window896-1000") != NULL) {
+          CHECK(!is_deep_format_gate);
           saw_format_policy_gate_preinv10e19_window896_1000 = 1;
           CHECK(strstr(report->results[index].detail, "neighbor=896") != NULL);
           CHECK(strstr(report->results[index].detail, "gate=1000") != NULL);
@@ -2897,6 +2941,7 @@ static void test_benchmarks(void) {
           CHECK(strstr(report->results[index].detail, "leaf=0") != NULL);
           CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv") != NULL);
         } else if (strstr(report->results[index].detail, "policy=preinv10e19-pairs-window896-1000") != NULL) {
+          CHECK(!is_deep_format_gate);
           saw_format_policy_gate_preinv10e19_pairs_window896_1000 = 1;
           CHECK(strstr(report->results[index].detail, "neighbor=896") != NULL);
           CHECK(strstr(report->results[index].detail, "gate=1000") != NULL);
@@ -3127,6 +3172,8 @@ static void test_benchmarks(void) {
   CHECK(saw_format_policy_gate_preinv10e19_pairs_window768_960);
   CHECK(saw_format_policy_gate_preinv10e19_window896_1000);
   CHECK(saw_format_policy_gate_preinv10e19_pairs_window896_1000);
+  CHECK(saw_format_policy_deep_gate_preinv10e19_pairs_window768_960);
+  CHECK(saw_format_policy_deep_gate_preinv10e19_pairs_window896_1000);
   CHECK(saw_divmod_preinv_qhat_safety_gate);
   CHECK(saw_mul_policy_safety_toom_leaf48_gate);
   CHECK(saw_mul_policy_safety_toom_rec_gate);
@@ -3273,6 +3320,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "policy-probe") != NULL);
   CHECK(strstr(json, "policy-gate") != NULL);
   CHECK(strstr(json, "format-policy-safety") != NULL);
+  CHECK(strstr(json, "format-policy-deep-safety") != NULL);
   CHECK(strstr(json, "\"avx\"") != NULL);
   CHECK(strstr(json, "\"avx2\"") != NULL);
   CHECK(strstr(json, "\"scratchRows\"") != NULL);
@@ -3344,6 +3392,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "preinv-ge16384-leaf16") != NULL);
   CHECK(strstr(json, "preinv10e19-window768-1000") != NULL);
   CHECK(strstr(json, "preinv10e19-pairs-window768-1000") != NULL);
+  CHECK(strstr(json, "deep-preinv10e19-pairs-window768-960") != NULL);
+  CHECK(strstr(json, "deep-preinv10e19-pairs-window896-1000") != NULL);
   CHECK(strstr(json, "decimal-format-policy-workspace") != NULL);
   CHECK(strstr(json, "decimal-format-policy-preinv-qhat") != NULL);
   CHECK(strstr(json, "decimal-format-policy-divide-1e19-preinv") != NULL);
@@ -3383,6 +3433,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "kernel-probe") != NULL);
   CHECK(strstr(tsv, "policy-probe") != NULL);
   CHECK(strstr(tsv, "policy-gate") != NULL);
+  CHECK(strstr(tsv, "format-policy-deep-safety") != NULL);
   CHECK(strstr(tsv, "gmpClue=") != NULL);
   CHECK(strstr(tsv, "mul-toom3") != NULL);
   CHECK(strstr(tsv, "mod-u32-precompute") != NULL);
@@ -3505,6 +3556,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "policy-probe") != NULL);
   CHECK(strstr(benchmark_tsv, "policy-gate") != NULL);
   CHECK(strstr(benchmark_tsv, "format-policy-safety") != NULL);
+  CHECK(strstr(benchmark_tsv, "format-policy-deep-safety") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-toom3") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-karatsuba-middle") != NULL);
   CHECK(strstr(benchmark_tsv, "karatsuba-sum-middle") != NULL);
@@ -3567,6 +3619,9 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "preinv-ge16384-leaf16") != NULL);
   CHECK(strstr(benchmark_tsv, "preinv10e19-window768-1000") != NULL);
   CHECK(strstr(benchmark_tsv, "preinv10e19-pairs-window768-1000") != NULL);
+  CHECK(strstr(benchmark_tsv, "deep-preinv10e19-pairs-window768-960") != NULL);
+  CHECK(strstr(benchmark_tsv, "deep-preinv10e19-pairs-window896-1000") != NULL);
+  CHECK(strstr(benchmark_tsv, "requiredStablePairs=8/9") != NULL);
   CHECK(strstr(benchmark_tsv, "decimal-format-policy-workspace") != NULL);
   CHECK(strstr(benchmark_tsv, "decimal-format-policy-preinv-qhat") != NULL);
   CHECK(strstr(benchmark_tsv, "decimal-format-policy-divide-1e19-preinv") != NULL);
@@ -3672,6 +3727,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "format-policy-safety preinv-ge16384-leaf16") != NULL);
   CHECK(strstr(benchmark_frontier, "format-policy-safety preinv10e19-window768-1000") != NULL);
   CHECK(strstr(benchmark_frontier, "format-policy-safety preinv10e19-pairs-window768-1000") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-policy-deep-safety deep-preinv10e19-pairs-window768-960") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-policy-deep-safety deep-preinv10e19-pairs-window896-1000") != NULL);
   CHECK(strstr(benchmark_frontier, "square-policy current-default") != NULL);
   CHECK(strstr(benchmark_frontier, "square-policy karatsuba-thr96") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-policy current-default") != NULL);
