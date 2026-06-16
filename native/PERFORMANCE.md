@@ -19,6 +19,49 @@ parity plus a stable same-run paired win.
   `noAutoRoute=1`, `replacementReady=false`, and `adoption=observe-only` until a
   dedicated forced-neighbor safety row passes.
 
+## 2026-06-16: Decimal 10^19 Pair Writer Probe Rejected
+
+Runs:
+
+- Release: `native/build-codex-pair-route/native-test-runs/20260616-083834-c4b04caf`
+- `/GL`: `native/build-codex-ltcg/native-test-runs/20260616-084522-c4b04caf`
+
+This pass adds an evidence-only `format-divide-1e19-pairs` row. The candidate
+keeps the same repeated divide-by-10^19 basecase shape as
+`format-divide-1e19`, but emits 19-digit chunks through the existing two-digit
+lookup table instead of one decimal digit at a time. The clue comes from the
+GMP/MPIR `mpn_get_str` comments that call out digit emission inside the
+basecase conversion as a separable optimization area.
+
+Release rows:
+
+- 1000 digits: ratio `2.001`, worst pair `2.465`, stable `0/5`,
+  `baseline-faster`
+- 4096 digits: ratio `3.399`, worst pair `3.679`, stable `0/5`,
+  `baseline-faster`
+- 8192 digits: ratio `4.828`, worst pair `5.597`, stable `0/5`,
+  `baseline-faster`
+- 16384 digits: ratio `6.242`, worst pair `6.692`, stable `0/5`,
+  `baseline-faster`
+
+`/GL` rows:
+
+- 1000 digits: ratio `2.425`, worst pair `2.652`, stable `0/5`,
+  `baseline-faster`
+- 4096 digits: ratio `3.878`, worst pair `4.011`, stable `0/5`,
+  `baseline-faster`
+- 8192 digits: ratio `4.891`, worst pair `5.235`, stable `0/5`,
+  `baseline-faster`
+- 16384 digits: ratio `5.723`, worst pair `6.805`, stable `0/5`,
+  `baseline-faster`
+
+Decision: rejected for production routing. The pair writer sometimes lowers the
+Release ratio versus the older divide-by-10^19 emitter, but `/GL` does not
+confirm the improvement and both builds remain far behind the current formatter.
+Keep the row as a tournament datapoint and move the next search toward the
+larger basecase divide shape or normalized powtab ideas instead of digit
+emission alone.
+
 ## 2026-06-16: Decimal Preinv Policy Gates Rejected
 
 Runs:
