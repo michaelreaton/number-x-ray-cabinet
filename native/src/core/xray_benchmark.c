@@ -7258,6 +7258,39 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     format_policy_divide_1e19_preinv);
   run_format_policy_deep_safety_case(
     report,
+    274U,
+    "deep-preinv10e19-window768-896",
+    "decimal-divide-1e19-preinv",
+    768,
+    896,
+    768,
+    896,
+    0,
+    format_policy_divide_1e19_preinv);
+  run_format_policy_deep_safety_case(
+    report,
+    275U,
+    "deep-preinv10e19-window768-960",
+    "decimal-divide-1e19-preinv",
+    768,
+    960,
+    768,
+    960,
+    0,
+    format_policy_divide_1e19_preinv);
+  run_format_policy_deep_safety_case(
+    report,
+    276U,
+    "deep-preinv10e19-window896-1000",
+    "decimal-divide-1e19-preinv",
+    896,
+    1000,
+    896,
+    1000,
+    0,
+    format_policy_divide_1e19_preinv);
+  run_format_policy_deep_safety_case(
+    report,
     277U,
     "deep-preinv10e19-pairs-window768-896",
     "decimal-divide-1e19-preinv-pair-writer",
