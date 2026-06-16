@@ -19,6 +19,62 @@ parity plus a stable same-run paired win.
   `noAutoRoute=1`, `replacementReady=false`, and `adoption=observe-only` until a
   dedicated forced-neighbor safety row passes.
 
+## 2026-06-16: Integrated Decimal Division Probes
+
+Runs:
+
+- Release: `native/build-codex-pair-route/native-test-runs/20260616-073024-c4b04caf`
+- `/GL`: `native/build-codex-ltcg/native-test-runs/20260616-073937-c4b04caf`
+
+The formatter now has two diagnostic direct-output D&C probes that integrate
+division ideas into the actual decimal formatter shape:
+
+- `format-dc-workspace`: rebuilds the per-split divisor context but reuses
+  caller-owned division workspace.
+- `format-dc-preinv-qhat`: uses the same workspace plus the pre-inverted qhat
+  estimator inside each recursive split.
+
+Both routes are parity-tested against MPIR output in the native tests. Their
+benchmark rows use interleaved alternating timing against the current scratch
+formatter, so they measure route-shape impact instead of an isolated primitive.
+
+Release rows:
+
+- `format-dc-preinv-qhat`, 1000 digits leaf 8: ratio `0.827`, worst pair
+  `1.088`, stable `4/5`
+- `format-dc-preinv-qhat`, 4096 digits leaf 8: ratio `0.930`, worst pair
+  `0.978`, stable `5/5`
+- `format-dc-preinv-qhat`, 8192 digits leaf 8: ratio `1.011`, worst pair
+  `1.064`, stable `1/5`
+- `format-dc-preinv-qhat`, 16384 digits leaf 16: ratio `1.070`, worst pair
+  `1.104`, stable `1/5`
+- `format-dc-workspace`, 4096 digits leaf 8: ratio `0.958`, worst pair
+  `0.998`, stable `4/5`
+- `format-dc-workspace`, 8192 digits leaf 16: ratio `1.019`, worst pair
+  `1.102`, stable `1/5`
+
+`/GL` rows:
+
+- `format-dc-preinv-qhat`, 1000 digits leaf 8: ratio `0.852`, worst pair
+  `0.891`, stable `5/5`
+- `format-dc-preinv-qhat`, 4096 digits leaf 8: ratio `0.823`, worst pair
+  `0.879`, stable `5/5`
+- `format-dc-preinv-qhat`, 8192 digits leaf 16: ratio `0.925`, worst pair
+  `0.984`, stable `4/5`
+- `format-dc-preinv-qhat`, 16384 digits leaf 16: ratio `0.935`, worst pair
+  `0.966`, stable `5/5`
+- `format-dc-workspace`, 4096 digits leaf 16: ratio `0.881`, worst pair
+  `0.918`, stable `5/5`
+- `format-dc-workspace`, 16384 digits leaf 16: ratio `0.916`, worst pair
+  `0.980`, stable `5/5`
+
+Decision: evidence-only. `/GL` strongly suggests that pre-inverted qhat can help
+inside the real formatter, but Release rejects the larger sizes and the
+MPIR-facing `format-policy` rows still report backend-faster for the direct
+D&C policies. Do not promote this into production formatting until the
+candidate has a dedicated MPIR-facing policy gate, forced-neighbor safety row,
+and agreement across Release plus `/GL`.
+
 ## 2026-06-16: Decimal Route Probe Interleaving
 
 Runs:

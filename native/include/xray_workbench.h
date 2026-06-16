@@ -433,6 +433,30 @@ XRAY_API char *xray_bigint_get_decimal_dc_direct_probe(const XrayScratchBigInt *
 XRAY_API char *xray_bigint_get_decimal_dc_static_direct_probe(const XrayScratchBigInt *value, size_t leaf_chunks);
 
 /**
+ * Format value through the direct-output divide-and-conquer probe while using
+ * caller-owned division workspace inside recursive split divisions.
+ *
+ * leaf_chunks controls when recursion falls back to repeated division by
+ * 10^19. Pass 0 for the default leaf. The caller owns the returned string and
+ * must release it with xray_free(). This diagnostic route measures whether
+ * allocator reuse inside D&C division helps the decimal formatter; it is not a
+ * production route by itself.
+ */
+XRAY_API char *xray_bigint_get_decimal_dc_workspace_probe(const XrayScratchBigInt *value, size_t leaf_chunks);
+
+/**
+ * Format value through the direct-output divide-and-conquer probe while using
+ * the pre-inverted qhat division estimator inside recursive split divisions.
+ *
+ * leaf_chunks controls when recursion falls back to repeated division by
+ * 10^19. Pass 0 for the default leaf. The caller owns the returned string and
+ * must release it with xray_free(). This diagnostic route integrates the
+ * preinverse division clue into the formatter shape so benchmarks can reject
+ * or promote it with exact parity evidence.
+ */
+XRAY_API char *xray_bigint_get_decimal_dc_preinv_qhat_probe(const XrayScratchBigInt *value, size_t leaf_chunks);
+
+/**
  * Format value through the 19-digit decimal chunk probe route.
  *
  * The caller owns the returned string and must release it with xray_free().
