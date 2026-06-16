@@ -1304,11 +1304,16 @@ static void test_benchmarks(void) {
   int saw_format_dc_static_direct_leaf8_probe = 0;
   int saw_format_dc_static_direct_leaf16_probe = 0;
   int saw_policy_probe = 0;
+  int saw_policy_gate = 0;
   int saw_format_policy_current = 0;
   int saw_format_policy_direct4096 = 0;
   int saw_format_policy_direct8192 = 0;
   int saw_format_policy_static4096 = 0;
   int saw_format_policy_static8192 = 0;
+  int saw_format_policy_gate_direct4096 = 0;
+  int saw_format_policy_gate_direct8192 = 0;
+  int saw_format_policy_gate_static4096 = 0;
+  int saw_format_policy_gate_static8192 = 0;
   int saw_format_policy1000_probe = 0;
   int saw_format_policy4096_probe = 0;
   int saw_format_policy8192_probe = 0;
@@ -1989,6 +1994,68 @@ static void test_benchmarks(void) {
       CHECK(strstr(report->results[index].adoption, "promotion-ready") != NULL ||
         strstr(report->results[index].adoption, "observe-only") != NULL ||
         strstr(report->results[index].adoption, "blocked-output-mismatch") != NULL);
+    } else if (strcmp(report->results[index].category, "policy-gate") == 0) {
+      saw_policy_gate = 1;
+      CHECK(report->results[index].passed);
+      CHECK(report->results[index].parity_verified);
+      CHECK(report->results[index].scratch_us > 0);
+      CHECK(report->results[index].gmp_us > 0);
+      CHECK(report->results[index].speed_ratio > 0.0);
+      CHECK(report->results[index].max_allowed_speed_ratio == 1.0);
+      CHECK(report->results[index].sample_count == 2);
+      CHECK(report->results[index].stable_sample_count <= report->results[index].sample_count);
+      CHECK(report->results[index].worst_pair_ratio > 0.0);
+      CHECK(strcmp(report->results[index].operation, "format-policy-safety") == 0);
+      CHECK(strstr(report->results[index].detail, "op=format-policy-safety") != NULL);
+      CHECK(strstr(report->results[index].detail, "thresholdSafety=forced-neighbor") != NULL);
+      CHECK(strstr(report->results[index].detail, "forcedCandidate=yes") != NULL);
+      CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
+      CHECK(strstr(report->results[index].detail, "neighborStable=") != NULL);
+      CHECK(strstr(report->results[index].detail, "gateStable=") != NULL);
+      CHECK(strstr(report->results[index].detail, "neighborRatio=") != NULL);
+      CHECK(strstr(report->results[index].detail, "gateRatio=") != NULL);
+      CHECK(strstr(report->results[index].detail, "baseline=mpz_get_str") != NULL);
+      CHECK(strstr(report->results[index].detail, "featureGate=threshold-neighbor") != NULL);
+      CHECK(strstr(report->results[index].detail, "gmpClue=product-codegen") != NULL);
+      CHECK(strstr(report->results[index].detail, "adoption=") != NULL);
+      if (strstr(report->results[index].detail, "policy=direct-ge4096-leaf8") != NULL) {
+        saw_format_policy_gate_direct4096 = 1;
+        CHECK(strstr(report->results[index].detail, "neighbor=3072") != NULL);
+        CHECK(strstr(report->results[index].detail, "gate=4096") != NULL);
+        CHECK(strstr(report->results[index].detail, "min=4096") != NULL);
+        CHECK(strstr(report->results[index].detail, "leaf=8") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=decimal-dc-direct-writer") != NULL);
+      } else if (strstr(report->results[index].detail, "policy=direct-ge8192-leaf16") != NULL) {
+        saw_format_policy_gate_direct8192 = 1;
+        CHECK(strstr(report->results[index].detail, "neighbor=6144") != NULL);
+        CHECK(strstr(report->results[index].detail, "gate=8192") != NULL);
+        CHECK(strstr(report->results[index].detail, "min=8192") != NULL);
+        CHECK(strstr(report->results[index].detail, "leaf=16") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=decimal-dc-direct-writer") != NULL);
+      } else if (strstr(report->results[index].detail, "policy=static-ge4096-l16") != NULL) {
+        saw_format_policy_gate_static4096 = 1;
+        CHECK(strstr(report->results[index].detail, "neighbor=3072") != NULL);
+        CHECK(strstr(report->results[index].detail, "gate=4096") != NULL);
+        CHECK(strstr(report->results[index].detail, "min=4096") != NULL);
+        CHECK(strstr(report->results[index].detail, "leaf=16") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=dc-static-direct") != NULL);
+      } else if (strstr(report->results[index].detail, "policy=static-ge8192-l8") != NULL) {
+        saw_format_policy_gate_static8192 = 1;
+        CHECK(strstr(report->results[index].detail, "neighbor=6144") != NULL);
+        CHECK(strstr(report->results[index].detail, "gate=8192") != NULL);
+        CHECK(strstr(report->results[index].detail, "min=8192") != NULL);
+        CHECK(strstr(report->results[index].detail, "leaf=8") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=dc-static-direct") != NULL);
+      } else {
+        CHECK(0);
+      }
+      if (strcmp(report->results[index].adoption, "promotion-ready") == 0) {
+        CHECK(report->results[index].stable_sample_count == 2);
+        CHECK(report->results[index].speed_ratio <= report->results[index].max_allowed_speed_ratio);
+      }
+      CHECK(strstr(report->results[index].adoption, "promotion-ready") != NULL ||
+        strstr(report->results[index].adoption, "observe-only") != NULL ||
+        strstr(report->results[index].adoption, "blocked-output-mismatch") != NULL);
     }
   }
   XrayBenchmarkResult mismatch;
@@ -2094,6 +2161,11 @@ static void test_benchmarks(void) {
   CHECK(saw_format_policy_direct8192);
   CHECK(saw_format_policy_static4096);
   CHECK(saw_format_policy_static8192);
+  CHECK(saw_policy_gate);
+  CHECK(saw_format_policy_gate_direct4096);
+  CHECK(saw_format_policy_gate_direct8192);
+  CHECK(saw_format_policy_gate_static4096);
+  CHECK(saw_format_policy_gate_static8192);
   CHECK(saw_format_policy1000_probe);
   CHECK(saw_format_policy4096_probe);
   CHECK(saw_format_policy8192_probe);
@@ -2197,6 +2269,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "\"cpu\"") != NULL);
   CHECK(strstr(json, "kernel-probe") != NULL);
   CHECK(strstr(json, "policy-probe") != NULL);
+  CHECK(strstr(json, "policy-gate") != NULL);
+  CHECK(strstr(json, "format-policy-safety") != NULL);
   CHECK(strstr(json, "\"avx\"") != NULL);
   CHECK(strstr(json, "\"avx2\"") != NULL);
   CHECK(strstr(json, "\"scratchRows\"") != NULL);
@@ -2268,6 +2342,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "scratch-vs-gmp") != NULL);
   CHECK(strstr(tsv, "kernel-probe") != NULL);
   CHECK(strstr(tsv, "policy-probe") != NULL);
+  CHECK(strstr(tsv, "policy-gate") != NULL);
   CHECK(strstr(tsv, "gmpClue=") != NULL);
   CHECK(strstr(tsv, "mul-toom3") != NULL);
   CHECK(strstr(tsv, "mod-u32-precompute") != NULL);
@@ -2292,6 +2367,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "dc-static-pow2") != NULL);
   CHECK(strstr(tsv, "dc-static-direct") != NULL);
   CHECK(strstr(tsv, "format-policy") != NULL);
+  CHECK(strstr(tsv, "format-policy-safety") != NULL);
   CHECK(strstr(tsv, "direct-ge4096-leaf8") != NULL);
   CHECK(strstr(tsv, "direct-ge8192-leaf16") != NULL);
   CHECK(strstr(tsv, "static-ge4096-l16") != NULL);
@@ -2351,6 +2427,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "scratch-vs-gmp") != NULL);
   CHECK(strstr(benchmark_tsv, "kernel-probe") != NULL);
   CHECK(strstr(benchmark_tsv, "policy-probe") != NULL);
+  CHECK(strstr(benchmark_tsv, "policy-gate") != NULL);
+  CHECK(strstr(benchmark_tsv, "format-policy-safety") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-toom3") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-karatsuba-middle") != NULL);
   CHECK(strstr(benchmark_tsv, "karatsuba-sum-middle") != NULL);
@@ -2377,6 +2455,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "dc-static-pow2") != NULL);
   CHECK(strstr(benchmark_tsv, "dc-static-direct") != NULL);
   CHECK(strstr(benchmark_tsv, "format-policy") != NULL);
+  CHECK(strstr(benchmark_tsv, "format-policy-safety") != NULL);
   CHECK(strstr(benchmark_tsv, "direct-ge4096-leaf8") != NULL);
   CHECK(strstr(benchmark_tsv, "direct-ge8192-leaf16") != NULL);
   CHECK(strstr(benchmark_tsv, "static-ge4096-l16") != NULL);
@@ -2410,6 +2489,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "Largest scratch gaps") != NULL);
   CHECK(strstr(benchmark_frontier, "SCRATCH VS ") != NULL);
   CHECK(strstr(benchmark_frontier, "PRODUCT POLICY PROBES") != NULL);
+  CHECK(strstr(benchmark_frontier, "PRODUCT POLICY THRESHOLD GATES") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-threshold thr=") != NULL);
   CHECK(strstr(benchmark_frontier, "mod-u32-precompute") != NULL);
   CHECK(strstr(benchmark_frontier, "gcd-u32-precompute") != NULL);
@@ -2446,6 +2526,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "format-policy direct-ge8192-leaf16") != NULL);
   CHECK(strstr(benchmark_frontier, "format-policy static-ge4096-l16") != NULL);
   CHECK(strstr(benchmark_frontier, "format-policy static-ge8192-l8") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-policy-safety direct-ge4096-leaf8") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-policy-safety direct-ge8192-leaf16") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-policy-safety static-ge4096-l16") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-policy-safety static-ge8192-l8") != NULL);
   CHECK(strstr(benchmark_frontier, "square-policy current-default") != NULL);
   CHECK(strstr(benchmark_frontier, "square-policy karatsuba-thr96") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-policy current-default") != NULL);

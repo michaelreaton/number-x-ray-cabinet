@@ -429,7 +429,7 @@ static void append_label_token(char *label, size_t label_size, const char *prefi
 static void benchmark_frontier_label(const XrayBenchmarkResult *row, char *out, size_t out_size) {
   benchmark_row_label(row, out, out_size);
   if (!row) return;
-  if (strcmp(row->category, "policy-probe") == 0) {
+  if (strcmp(row->category, "policy-probe") == 0 || strcmp(row->category, "policy-gate") == 0) {
     if (row->operation[0]) snprintf(out, out_size, "%s", row->operation);
     char value[48];
     if (benchmark_detail_value(row, "policy", value, sizeof(value))) {
@@ -616,6 +616,26 @@ char *xray_benchmark_frontier_text(const XrayBenchmarkReport *report) {
   }
 
   jb_append(&buffer,
+    "\nPRODUCT POLICY THRESHOLD GATES\n"
+    "Gate                                      Digits   Status                Adoption          WorstRatio   StableSizes\n"
+    "----------------------------------------   ------   ------------------   ---------------   ----------   -----------\n");
+  for (size_t index = 0; index < report->result_count; ++index) {
+    const XrayBenchmarkResult *row = &report->results[index];
+    if (strcmp(row->category, "policy-gate") != 0) continue;
+    char label[80];
+    benchmark_frontier_label(row, label, sizeof(label));
+    jb_printf(&buffer,
+      "%-40s   %6zu   %-18s   %-15s   %10.3f   %3zu/%-3zu\n",
+      label,
+      row->digits,
+      row->status,
+      row->adoption,
+      row->speed_ratio,
+      row->stable_sample_count,
+      row->sample_count);
+  }
+
+  jb_append(&buffer,
     "\nKERNEL PROBES\n"
     "Operation                                  Digits   Status              Adoption               Ratio   Stable\n"
     "----------------------------------------   ------   ----------------   --------------------   -----   ------\n");
@@ -636,7 +656,7 @@ char *xray_benchmark_frontier_text(const XrayBenchmarkReport *report) {
   }
 
   jb_append(&buffer,
-    "\nRule: replacements require exact parity, a same-run paired-median speed win inside the configured gate, and enough paired-sample wins. Ordinary five-sample rows require 4 stable wins; deep nine-sample rows require 8.\n");
+    "\nRule: replacements require exact parity, a same-run paired-median speed win inside the configured gate, and enough paired-sample wins. Ordinary five-sample rows require 4 stable wins; deep nine-sample rows require 8. Threshold policy gates must also pass a forced adjacent-size candidate check before promotion.\n");
   return jb_take(&buffer);
 }
 
