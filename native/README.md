@@ -244,6 +244,14 @@ Benchmark JSON exposes that rule per operation-size row:
 
 Rows with parity but without `replacementReady` are useful migration evidence, but the production path must remain GMP-backed.
 
+Threshold and root-size policy scouts have an additional protection: a single
+row cannot become route-ready. Any policy row with a nonzero size gate,
+threshold, or depth limit must report
+`thresholdSafety=requires-forced-neighbor`, `noAutoRoute=1`,
+`replacementReady=false`, and `adoption=observe-only` until a dedicated
+forced-neighbor safety row and a product-like `/GL` run both pass. This keeps a
+one-pocket win from becoming a harmful global default.
+
 Every benchmark run writes three benchmark artifacts in its run folder:
 
 - `benchmark.json`: machine-readable rows, CPU features, timings, gates, and status labels
