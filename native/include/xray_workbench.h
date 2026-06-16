@@ -385,6 +385,26 @@ XRAY_API char *xray_bigint_get_decimal_divide_1e19_probe(const XrayScratchBigInt
 XRAY_API char *xray_bigint_get_decimal_divide_1e19_pair_writer_probe(const XrayScratchBigInt *value);
 
 /**
+ * Format value by repeatedly dividing a copy by 10^19 with a pre-inverted
+ * single-limb divisor estimator.
+ *
+ * The caller owns the returned string and must release it with xray_free().
+ * This diagnostic route tests whether replacing hardware 128/64 division in
+ * the MPIR/GMP-style basecase shape helps on the local CPU.
+ */
+XRAY_API char *xray_bigint_get_decimal_divide_1e19_preinv_probe(const XrayScratchBigInt *value);
+
+/**
+ * Format value by combining the pre-inverted 10^19 divider with the two-digit
+ * lookup chunk writer.
+ *
+ * The caller owns the returned string and must release it with xray_free().
+ * This diagnostic route isolates whether the pre-inverted basecase divider and
+ * reduced digit-emission divisions compound usefully.
+ */
+XRAY_API char *xray_bigint_get_decimal_divide_1e19_preinv_pair_writer_probe(const XrayScratchBigInt *value);
+
+/**
  * Format value through a divide-and-conquer decimal conversion probe.
  *
  * leaf_chunks controls when recursion falls back to repeated division by
