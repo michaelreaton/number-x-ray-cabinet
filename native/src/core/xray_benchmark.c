@@ -329,6 +329,7 @@ typedef struct XrayQhatCase {
   uint64_t divisor_top;
   uint64_t divisor_next;
   uint64_t numerator_next;
+  uint64_t divisor_inverse;
   uint64_t direct_qhat;
   uint64_t direct_rhat;
 } XrayQhatCase;
@@ -364,6 +365,41 @@ static uint64_t bench_divmod_u64_direct(uint64_t high, uint64_t low, uint64_t di
   if (remainder) *remainder = (uint64_t)(numerator % divisor);
   return (uint64_t)(numerator / divisor);
 #endif
+}
+
+static uint64_t bench_invert_limb_u64(uint64_t divisor) {
+  return bench_divmod_u64_direct(UINT64_MAX - divisor, UINT64_MAX, divisor, NULL);
+}
+
+static uint64_t bench_divmod_u64_preinv(
+  uint64_t high,
+  uint64_t low,
+  uint64_t divisor,
+  uint64_t inverse,
+  uint64_t *remainder) {
+  uint64_t qhat = high + bench_mul_high_u64(high, inverse);
+  uint64_t product_high = 0;
+  uint64_t product_low = 0;
+
+  for (;;) {
+    product_high = bench_mul_high_u64(qhat, divisor);
+    product_low = qhat * divisor;
+    if (product_high < high || (product_high == high && product_low <= low)) break;
+    qhat--;
+  }
+
+  uint64_t borrow = low < product_low ? 1U : 0U;
+  uint64_t rem_low = low - product_low;
+  uint64_t rem_high = high - product_high - borrow;
+  while (rem_high || rem_low >= divisor) {
+    uint64_t old_low = rem_low;
+    rem_low -= divisor;
+    if (old_low < divisor) rem_high--;
+    qhat++;
+  }
+
+  if (remainder) *remainder = rem_low;
+  return qhat;
 }
 
 static uint32_t bench_divmod_u32_direct(uint32_t high, uint32_t low, uint32_t divisor, uint32_t *remainder) {
@@ -463,6 +499,11 @@ static void bench_qhat_direct(const XrayQhatCase *item, uint64_t *qhat, uint64_t
   bench_qhat_apply_second_limb_correction(qhat, rhat, item->divisor_top, item->divisor_next, item->numerator_next);
 }
 
+static void bench_qhat_preinv(const XrayQhatCase *item, uint64_t *qhat, uint64_t *rhat) {
+  *qhat = bench_divmod_u64_preinv(item->high, item->low, item->divisor_top, item->divisor_inverse, rhat);
+  bench_qhat_apply_second_limb_correction(qhat, rhat, item->divisor_top, item->divisor_next, item->numerator_next);
+}
+
 static void bench_qhat_u32_limb(const XrayQhatCase *item, uint64_t *qhat, uint64_t *rhat) {
   *qhat = bench_divmod_u64_via_u32(item->high, item->low, item->divisor_top, rhat);
   bench_qhat_apply_second_limb_correction(qhat, rhat, item->divisor_top, item->divisor_next, item->numerator_next);
@@ -489,6 +530,7 @@ static void fill_qhat_cases(XrayQhatCase *items, size_t count) {
     items[index].divisor_top = divisor_top;
     items[index].divisor_next = divisor_next;
     items[index].numerator_next = numerator_next;
+    items[index].divisor_inverse = bench_invert_limb_u64(divisor_top);
     bench_qhat_direct(&items[index], &items[index].direct_qhat, &items[index].direct_rhat);
   }
 }
@@ -531,7 +573,7 @@ static void append_qhat_probe_result(
   result.passed = parity;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=%s cases=%zu passesPerSample=%u samples=%zu stablePairs=%zu/%zu candidateUs=%llu baselineUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median max=%.2f candidate=%s baseline=direct-udiv128-qhat parityTarget=qhat+rhat featureGate=division-qhat-estimator gmpClue=mpn_sbpi1_div_qr-qhat noAutoRoute=1 adoption=%s",
+    "op=%s cases=%zu passesPerSample=%u samples=%zu stablePairs=%zu/%zu candidateUs=%llu baselineUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median max=%.2f candidate=%s baseline=direct-udiv128-qhat parityTarget=qhat+rhat featureGate=division-qhat-estimator gmpClue=mpn_sbpi1_div_qr-qhat precomputeScope=per-divisor noAutoRoute=1 adoption=%s",
     operation,
     case_count,
     passes_per_sample,
@@ -555,8 +597,10 @@ static void run_qhat_estimator_probe_case(XrayBenchmarkReport *report) {
   fill_qhat_cases(items, qhat_case_count);
 
   unsigned long long candidate_samples[XRAY_KERNEL_SAMPLES] = {0};
+  unsigned long long preinv_samples[XRAY_KERNEL_SAMPLES] = {0};
   unsigned long long baseline_samples[XRAY_KERNEL_SAMPLES] = {0};
-  int parity = 1;
+  int u32_parity = 1;
+  int preinv_parity = 1;
   for (unsigned int sample = 0; sample < XRAY_KERNEL_SAMPLES; ++sample) {
     unsigned long long baseline_started = xray_now_us();
     for (unsigned int pass = 0; pass < passes_per_sample; ++pass) {
@@ -569,13 +613,27 @@ static void run_qhat_estimator_probe_case(XrayBenchmarkReport *report) {
     }
     baseline_samples[sample] = xray_now_us() - baseline_started;
 
+    unsigned long long preinv_started = xray_now_us();
+    for (unsigned int pass = 0; pass < passes_per_sample; ++pass) {
+      for (size_t index = 0; index < qhat_case_count; ++index) {
+        uint64_t qhat = 0;
+        uint64_t rhat = 0;
+        bench_qhat_preinv(&items[index], &qhat, &rhat);
+        preinv_parity = preinv_parity &&
+          qhat == items[index].direct_qhat &&
+          rhat == items[index].direct_rhat;
+        kernel_probe_sink ^= qhat ^ rhat;
+      }
+    }
+    preinv_samples[sample] = xray_now_us() - preinv_started;
+
     unsigned long long candidate_started = xray_now_us();
     for (unsigned int pass = 0; pass < passes_per_sample; ++pass) {
       for (size_t index = 0; index < qhat_case_count; ++index) {
         uint64_t qhat = 0;
         uint64_t rhat = 0;
         bench_qhat_u32_limb(&items[index], &qhat, &rhat);
-        parity = parity &&
+        u32_parity = u32_parity &&
           qhat == items[index].direct_qhat &&
           rhat == items[index].direct_rhat;
         kernel_probe_sink ^= qhat ^ rhat;
@@ -590,13 +648,26 @@ static void run_qhat_estimator_probe_case(XrayBenchmarkReport *report) {
     "u32-limb-knuth-qhat",
     qhat_case_count,
     passes_per_sample,
-    parity,
+    u32_parity,
     median_samples(candidate_samples, XRAY_KERNEL_SAMPLES),
     median_samples(baseline_samples, XRAY_KERNEL_SAMPLES),
     median_paired_ratio(candidate_samples, baseline_samples, XRAY_KERNEL_SAMPLES),
     paired_ratio_wins(candidate_samples, baseline_samples, XRAY_KERNEL_SAMPLES, 0.98),
     XRAY_KERNEL_SAMPLES,
     max_paired_ratio(candidate_samples, baseline_samples, XRAY_KERNEL_SAMPLES));
+  append_qhat_probe_result(
+    report,
+    "qhat-preinv",
+    "preinverted-limb-qhat",
+    qhat_case_count,
+    passes_per_sample,
+    preinv_parity,
+    median_samples(preinv_samples, XRAY_KERNEL_SAMPLES),
+    median_samples(baseline_samples, XRAY_KERNEL_SAMPLES),
+    median_paired_ratio(preinv_samples, baseline_samples, XRAY_KERNEL_SAMPLES),
+    paired_ratio_wins(preinv_samples, baseline_samples, XRAY_KERNEL_SAMPLES, 0.98),
+    XRAY_KERNEL_SAMPLES,
+    max_paired_ratio(preinv_samples, baseline_samples, XRAY_KERNEL_SAMPLES));
 
   free(items);
 }

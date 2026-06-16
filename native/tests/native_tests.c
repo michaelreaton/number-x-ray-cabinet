@@ -1444,6 +1444,7 @@ static void test_benchmarks(void) {
   int saw_muladd_bmi2_adx_probe = 0;
   int saw_muladd_unroll_probe = 0;
   int saw_muladd_unroll8_probe = 0;
+  int saw_qhat_preinv_probe = 0;
   int saw_qhat_u32_limb_probe = 0;
   int saw_u32_precompute_probe = 0;
   int saw_mod_u32_precompute_probe = 0;
@@ -1553,6 +1554,23 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "parityTarget=qhat+rhat") != NULL);
         CHECK(strstr(report->results[index].detail, "featureGate=division-qhat-estimator") != NULL);
         CHECK(strstr(report->results[index].detail, "gmpClue=mpn_sbpi1_div_qr-qhat") != NULL);
+        CHECK(strstr(report->results[index].detail, "precomputeScope=per-divisor") != NULL);
+        CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+      }
+      if (strcmp(report->results[index].operation, "qhat-preinv") == 0) {
+        saw_qhat_preinv_probe = 1;
+        CHECK(report->results[index].digits == 0);
+        CHECK(report->results[index].parity_verified);
+        CHECK(!report->results[index].replacement_ready);
+        CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+        CHECK(strstr(report->results[index].detail, "cases=4096") != NULL);
+        CHECK(strstr(report->results[index].detail, "passesPerSample=96") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=preinverted-limb-qhat") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=direct-udiv128-qhat") != NULL);
+        CHECK(strstr(report->results[index].detail, "parityTarget=qhat+rhat") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=division-qhat-estimator") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpClue=mpn_sbpi1_div_qr-qhat") != NULL);
+        CHECK(strstr(report->results[index].detail, "precomputeScope=per-divisor") != NULL);
         CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
       }
       if (strcmp(report->results[index].operation, "mul-karatsuba-middle") == 0) {
@@ -2427,6 +2445,7 @@ static void test_benchmarks(void) {
   CHECK(saw_square_karatsuba_vs_gmp_probe);
   CHECK(saw_toom3_probe);
   CHECK(saw_toom3_vs_scratch_probe);
+  CHECK(saw_qhat_preinv_probe);
   CHECK(saw_qhat_u32_limb_probe);
   CHECK(saw_u32_precompute_probe);
   CHECK(saw_mod_u32_precompute_probe);
@@ -2526,6 +2545,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "divmod-workspace") != NULL);
   CHECK(strstr(json, "bigint-division-workspace") != NULL);
   CHECK(strstr(json, "qhat-u32-limb") != NULL);
+  CHECK(strstr(json, "qhat-preinv") != NULL);
+  CHECK(strstr(json, "preinverted-limb-qhat") != NULL);
   CHECK(strstr(json, "division-qhat-estimator") != NULL);
   CHECK(strstr(json, "mul-karatsuba-middle") != NULL);
   CHECK(strstr(json, "karatsuba-sum-middle") != NULL);
@@ -2707,6 +2728,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "divmod-precomputed") != NULL);
   CHECK(strstr(benchmark_tsv, "divmod-workspace") != NULL);
   CHECK(strstr(benchmark_tsv, "qhat-u32-limb") != NULL);
+  CHECK(strstr(benchmark_tsv, "qhat-preinv") != NULL);
+  CHECK(strstr(benchmark_tsv, "preinverted-limb-qhat") != NULL);
   CHECK(strstr(benchmark_tsv, "direct-udiv128-qhat") != NULL);
   CHECK(strstr(benchmark_tsv, "noAutoRoute=1") != NULL);
   CHECK(strstr(benchmark_tsv, "direct-ge4096-leaf8") != NULL);
@@ -2748,6 +2771,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "gcd-u32-precompute") != NULL);
   CHECK(strstr(benchmark_frontier, "powmod-u32-precompute") != NULL);
   CHECK(strstr(benchmark_frontier, "parse-chunk chunk=") != NULL);
+  CHECK(strstr(benchmark_frontier, "qhat-preinv") != NULL);
   CHECK(strstr(benchmark_frontier, "qhat-u32-limb") != NULL);
   CHECK(strstr(benchmark_frontier, "divmod-dc-power chunks=") != NULL);
   CHECK(strstr(benchmark_frontier, "divmod-precomputed chunks=") != NULL);
