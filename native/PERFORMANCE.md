@@ -19,6 +19,41 @@ parity plus a stable same-run paired win.
   its own. Such rows must report `thresholdSafety=requires-forced-neighbor`,
   `noAutoRoute=1`, `replacementReady=false`, and `adoption=observe-only` until a
   dedicated forced-neighbor safety row passes.
+- Shallow formatter safety rows for the noisy 10^19 preinverse window family
+  must report `deepConfirmation=required`, `replacementReady=false`, and
+  `adoption=observe-only`. Only the explicit `format-policy-deep-safety` rows
+  can be read as single-build promotion evidence, and production routing still
+  requires cross-build confirmation before any default changes.
+
+## 2026-06-16: Shallow Decimal Policy Gates Need Deep Confirmation
+
+Run:
+
+- Release: `native/build-codex-gtk-autodetect2/native-test-runs/20260616-195258-c4b04caf`
+
+This pass fixes a benchmark-reporting weakness exposed by the 10^19
+pre-inverted decimal formatter experiments. A shallow `format-policy-safety`
+row could previously label a bounded 768..1000 digit window as
+`policy-ready/promotion-ready` even when deeper 9-sample safety rows rejected
+the same family. The shallow rows now remain visible as evidence, but any
+`preinv10e19` shallow safety row is capped at `needs-deep-safety`,
+`replacementReady=false`, and `adoption=observe-only`.
+
+Fresh evidence from the run:
+
+- `preinv10e19-window768-1000`: shallow ratio `0.896`, worst `0.981`, stable
+  `2/2`; now `needs-deep-safety`, not promotion-ready.
+- `deep-preinv10e19-window768-1000`: ratio `0.796`, worst `1.126`, stable
+  `2/2`; rejected by worst-pair safety.
+- `deep-preinv10e19-pairs-window768-896`: ratio `0.786`, worst `0.929`, stable
+  `2/2`; single-build promotion evidence only.
+- `deep-preinv10e19-pairs-window768-960`: ratio `0.774`, worst `0.928`, stable
+  `2/2`; single-build promotion evidence only.
+
+Decision: keep the pair-window clue alive, but do not route it into production
+formatting from this Release artifact alone. It needs the same `/GL`
+cross-build and adjacent-window confirmation as other threshold/root-size
+candidates before any default formatter policy changes.
 
 ## 2026-06-16: Cross-Build Benchmark Compare
 

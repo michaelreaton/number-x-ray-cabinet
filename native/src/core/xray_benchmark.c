@@ -1500,6 +1500,13 @@ static void append_arithmetic_policy_probe_result(
   append_result(report, &result);
 }
 
+static int format_policy_safety_requires_deep_confirmation(const char *operation, const char *policy) {
+  return operation &&
+    strcmp(operation, "format-policy-safety") == 0 &&
+    policy &&
+    strstr(policy, "preinv10e19") != NULL;
+}
+
 static void append_format_policy_safety_result(
   XrayBenchmarkReport *report,
   const char *operation,
@@ -1540,7 +1547,10 @@ static void append_format_policy_safety_result(
   int gate_safe = gate_ratio <= result.max_allowed_speed_ratio &&
     gate_stable >= policy_required_stable_samples(sample_count);
   int worst_pair_safe = xray_no_worst_pair_regression(result.worst_pair_ratio);
-  result.replacement_ready = parity && neighbor_safe && gate_safe && worst_pair_safe;
+  int deep_confirmation_required =
+    format_policy_safety_requires_deep_confirmation(result.operation, policy);
+  int safety_ready = parity && neighbor_safe && gate_safe && worst_pair_safe;
+  result.replacement_ready = safety_ready && !deep_confirmation_required;
   snprintf(result.adoption, sizeof(result.adoption), "%s",
     !parity ? "blocked-output-mismatch" : (result.replacement_ready ? "promotion-ready" : "observe-only"));
   snprintf(result.status, sizeof(result.status), "%s",
@@ -1548,12 +1558,13 @@ static void append_format_policy_safety_result(
     (!neighbor_safe ? "neighbor-regression" :
     (!gate_safe ? "gate-regression" :
     (!worst_pair_safe ? "worst-pair-regression" :
-    (result.replacement_ready ? "policy-ready" : "needs-stability")))));
+    (deep_confirmation_required ? "needs-deep-safety" :
+    (result.replacement_ready ? "policy-ready" : "needs-stability"))))));
   result.passed = parity;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   size_t required_stable = policy_required_stable_samples(sample_count);
   snprintf(result.detail, sizeof(result.detail),
-    "op=%s policy=%s gate=%zu neighbor=%zu min=%zu max=%zu leaf=%zu forcedCandidate=yes thresholdSafety=forced-neighbor neighborStable=%zu/%zu gateStable=%zu/%zu requiredStablePairs=%zu/%zu neighborRatio=%.3f gateRatio=%.3f ratioMethod=paired-median candidate=%s baseline=mpz_get_str featureGate=threshold-neighbor gmpClue=product-codegen adoption=%s",
+    "op=%s policy=%s gate=%zu neighbor=%zu min=%zu max=%zu leaf=%zu forcedCandidate=yes thresholdSafety=forced-neighbor deepConfirmation=%s neighborStable=%zu/%zu gateStable=%zu/%zu requiredStablePairs=%zu/%zu neighborRatio=%.3f gateRatio=%.3f ratioMethod=paired-median candidate=%s baseline=mpz_get_str featureGate=threshold-neighbor gmpClue=product-codegen adoption=%s",
     result.operation,
     policy,
     gate_digits,
@@ -1561,6 +1572,7 @@ static void append_format_policy_safety_result(
     min_digits,
     max_digits,
     leaf_chunks,
+    deep_confirmation_required ? "required" : "not-required",
     neighbor_stable,
     sample_count,
     gate_stable,
