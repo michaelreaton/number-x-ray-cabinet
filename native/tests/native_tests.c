@@ -1249,6 +1249,21 @@ static void test_benchmarks(void) {
   int saw_format_policy4096_probe = 0;
   int saw_format_policy8192_probe = 0;
   int saw_format_policy16384_probe = 0;
+  int saw_square_policy_probe = 0;
+  int saw_square_policy_current = 0;
+  int saw_square_policy_thr96 = 0;
+  int saw_square_policy1000_probe = 0;
+  int saw_square_policy4096_probe = 0;
+  int saw_square_policy8192_probe = 0;
+  int saw_square_policy16384_probe = 0;
+  int saw_mul_policy_probe = 0;
+  int saw_mul_policy_current = 0;
+  int saw_mul_policy_toom_leaf48 = 0;
+  int saw_mul_policy_toom_rec = 0;
+  int saw_mul_policy1000_probe = 0;
+  int saw_mul_policy4096_probe = 0;
+  int saw_mul_policy8192_probe = 0;
+  int saw_mul_policy16384_probe = 0;
   int saw_format_strategy1000_probe = 0;
   int saw_format_strategy4096_probe = 0;
   int saw_format_strategy8192_probe = 0;
@@ -1704,34 +1719,114 @@ static void test_benchmarks(void) {
       CHECK(report->results[index].max_allowed_speed_ratio == 1.0);
       CHECK(report->results[index].sample_count == 5);
       CHECK(report->results[index].stable_sample_count <= report->results[index].sample_count);
-      CHECK(strstr(report->results[index].detail, "op=format-policy") != NULL);
+      CHECK(strstr(report->results[index].detail, "-policy") != NULL);
       CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
       CHECK(strstr(report->results[index].detail, "stablePairs=") != NULL);
-      CHECK(strstr(report->results[index].detail, "worstPairRatio=") != NULL);
-      CHECK(strstr(report->results[index].detail, "baseline=mpz_get_str") != NULL);
-      CHECK(strstr(report->results[index].detail, "featureGate=decimal-format-policy") != NULL);
+      CHECK(report->results[index].worst_pair_ratio > 0.0);
+      CHECK(strstr(report->results[index].detail, "featureGate=") != NULL);
       CHECK(strstr(report->results[index].detail, "gmpClue=") != NULL);
-      if (strstr(report->results[index].detail, "policy=current-default") != NULL) {
-        saw_format_policy_current = 1;
-        CHECK(strstr(report->results[index].detail, "candidate=current-scratch-format") != NULL);
-      } else if (strstr(report->results[index].detail, "policy=direct-ge4096-leaf8") != NULL) {
-        saw_format_policy_direct4096 = 1;
-        CHECK(strstr(report->results[index].detail, "minDigits=4096") != NULL);
-        CHECK(strstr(report->results[index].detail, "leafThreshold=8") != NULL);
-        CHECK(strstr(report->results[index].detail, "candidate=decimal-dc-direct-writer") != NULL);
-      } else if (strstr(report->results[index].detail, "policy=direct-ge8192-leaf16") != NULL) {
-        saw_format_policy_direct8192 = 1;
-        CHECK(strstr(report->results[index].detail, "minDigits=8192") != NULL);
-        CHECK(strstr(report->results[index].detail, "leafThreshold=16") != NULL);
-        CHECK(strstr(report->results[index].detail, "candidate=decimal-dc-direct-writer") != NULL);
+      CHECK(strstr(report->results[index].detail, "activeCandidate=") != NULL);
+      if (strcmp(report->results[index].operation, "format-policy") == 0) {
+        CHECK(strstr(report->results[index].detail, "op=format-policy") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=mpz_get_str") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=decimal-format-policy") != NULL);
+        if (strstr(report->results[index].detail, "policy=current-default") != NULL) {
+          saw_format_policy_current = 1;
+          CHECK(strstr(report->results[index].detail, "candidate=current-scratch-format") != NULL);
+          CHECK(strstr(report->results[index].detail, "activeCandidate=current-scratch-format") != NULL);
+        } else if (strstr(report->results[index].detail, "policy=direct-ge4096-leaf8") != NULL) {
+          saw_format_policy_direct4096 = 1;
+          CHECK(strstr(report->results[index].detail, "minDigits=4096") != NULL);
+          CHECK(strstr(report->results[index].detail, "leafThreshold=8") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=decimal-dc-direct-writer") != NULL);
+          if (report->results[index].digits < 4096) {
+            CHECK(strstr(report->results[index].detail, "activeCandidate=current-scratch-format") != NULL);
+          } else {
+            CHECK(strstr(report->results[index].detail, "activeCandidate=decimal-dc-direct-writer") != NULL);
+          }
+        } else if (strstr(report->results[index].detail, "policy=direct-ge8192-leaf16") != NULL) {
+          saw_format_policy_direct8192 = 1;
+          CHECK(strstr(report->results[index].detail, "minDigits=8192") != NULL);
+          CHECK(strstr(report->results[index].detail, "leafThreshold=16") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=decimal-dc-direct-writer") != NULL);
+          if (report->results[index].digits < 8192) {
+            CHECK(strstr(report->results[index].detail, "activeCandidate=current-scratch-format") != NULL);
+          } else {
+            CHECK(strstr(report->results[index].detail, "activeCandidate=decimal-dc-direct-writer") != NULL);
+          }
+        } else {
+          CHECK(0);
+        }
+        if (report->results[index].digits == 1000) saw_format_policy1000_probe = 1;
+        else if (report->results[index].digits == 4096) saw_format_policy4096_probe = 1;
+        else if (report->results[index].digits == 8192) saw_format_policy8192_probe = 1;
+        else if (report->results[index].digits == 16384) saw_format_policy16384_probe = 1;
+        else CHECK(0);
+      } else if (strcmp(report->results[index].operation, "square-policy") == 0) {
+        saw_square_policy_probe = 1;
+        CHECK(strstr(report->results[index].detail, "op=square-policy") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=mpz_mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=1") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=square-policy") != NULL);
+        if (strstr(report->results[index].detail, "policy=current-default") != NULL) {
+          saw_square_policy_current = 1;
+          CHECK(strstr(report->results[index].detail, "candidate=current-scratch-square") != NULL);
+          CHECK(strstr(report->results[index].detail, "activeCandidate=current-scratch-square") != NULL);
+        } else if (strstr(report->results[index].detail, "policy=karatsuba-thr96") != NULL) {
+          saw_square_policy_thr96 = 1;
+          CHECK(strstr(report->results[index].detail, "leafThreshold=96") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=karatsuba-square") != NULL);
+          CHECK(strstr(report->results[index].detail, "activeCandidate=karatsuba-square") != NULL);
+        } else {
+          CHECK(0);
+        }
+        if (report->results[index].digits == 1000) saw_square_policy1000_probe = 1;
+        else if (report->results[index].digits == 4096) saw_square_policy4096_probe = 1;
+        else if (report->results[index].digits == 8192) saw_square_policy8192_probe = 1;
+        else if (report->results[index].digits == 16384) saw_square_policy16384_probe = 1;
+        else CHECK(0);
+      } else if (strcmp(report->results[index].operation, "mul-policy") == 0) {
+        saw_mul_policy_probe = 1;
+        CHECK(strstr(report->results[index].detail, "op=mul-policy") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=mpz_mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=mul-policy") != NULL);
+        if (strstr(report->results[index].detail, "policy=current-default") != NULL) {
+          saw_mul_policy_current = 1;
+          CHECK(strstr(report->results[index].detail, "candidate=current-scratch-mul") != NULL);
+          CHECK(strstr(report->results[index].detail, "activeCandidate=current-scratch-mul") != NULL);
+        } else if (strstr(report->results[index].detail, "policy=toom3-u4-ge8192-leaf48") != NULL) {
+          saw_mul_policy_toom_leaf48 = 1;
+          CHECK(strstr(report->results[index].detail, "minDigits=8192") != NULL);
+          CHECK(strstr(report->results[index].detail, "leafThreshold=48") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=one-level-toom3+unroll4-leaf") != NULL);
+          if (report->results[index].digits < 8192) {
+            CHECK(strstr(report->results[index].detail, "activeCandidate=current-scratch-mul") != NULL);
+          } else {
+            CHECK(strstr(report->results[index].detail, "activeCandidate=one-level-toom3+unroll4-leaf") != NULL);
+          }
+        } else if (strstr(report->results[index].detail, "policy=toom3-u4-rec-ge16384-leaf64-depth2") != NULL) {
+          saw_mul_policy_toom_rec = 1;
+          CHECK(strstr(report->results[index].detail, "minDigits=16384") != NULL);
+          CHECK(strstr(report->results[index].detail, "leafThreshold=64") != NULL);
+          CHECK(strstr(report->results[index].detail, "depthLimit=2") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=recursive-toom3+unroll4") != NULL);
+          if (report->results[index].digits < 16384) {
+            CHECK(strstr(report->results[index].detail, "activeCandidate=current-scratch-mul") != NULL);
+          } else {
+            CHECK(strstr(report->results[index].detail, "activeCandidate=recursive-toom3+unroll4") != NULL);
+          }
+        } else {
+          CHECK(0);
+        }
+        if (report->results[index].digits == 1000) saw_mul_policy1000_probe = 1;
+        else if (report->results[index].digits == 4096) saw_mul_policy4096_probe = 1;
+        else if (report->results[index].digits == 8192) saw_mul_policy8192_probe = 1;
+        else if (report->results[index].digits == 16384) saw_mul_policy16384_probe = 1;
+        else CHECK(0);
       } else {
         CHECK(0);
       }
-      if (report->results[index].digits == 1000) saw_format_policy1000_probe = 1;
-      else if (report->results[index].digits == 4096) saw_format_policy4096_probe = 1;
-      else if (report->results[index].digits == 8192) saw_format_policy8192_probe = 1;
-      else if (report->results[index].digits == 16384) saw_format_policy16384_probe = 1;
-      else CHECK(0);
       if (strcmp(report->results[index].adoption, "promotion-ready") == 0) {
         CHECK(report->results[index].stable_sample_count >= 4);
         CHECK(report->results[index].speed_ratio <= report->results[index].max_allowed_speed_ratio);
@@ -1840,6 +1935,21 @@ static void test_benchmarks(void) {
   CHECK(saw_format_policy4096_probe);
   CHECK(saw_format_policy8192_probe);
   CHECK(saw_format_policy16384_probe);
+  CHECK(saw_square_policy_probe);
+  CHECK(saw_square_policy_current);
+  CHECK(saw_square_policy_thr96);
+  CHECK(saw_square_policy1000_probe);
+  CHECK(saw_square_policy4096_probe);
+  CHECK(saw_square_policy8192_probe);
+  CHECK(saw_square_policy16384_probe);
+  CHECK(saw_mul_policy_probe);
+  CHECK(saw_mul_policy_current);
+  CHECK(saw_mul_policy_toom_leaf48);
+  CHECK(saw_mul_policy_toom_rec);
+  CHECK(saw_mul_policy1000_probe);
+  CHECK(saw_mul_policy4096_probe);
+  CHECK(saw_mul_policy8192_probe);
+  CHECK(saw_mul_policy16384_probe);
   CHECK(saw_format_strategy1000_probe);
   CHECK(saw_format_strategy4096_probe);
   CHECK(saw_format_strategy8192_probe);
@@ -1946,6 +2056,11 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "format-policy") != NULL);
   CHECK(strstr(json, "direct-ge4096-leaf8") != NULL);
   CHECK(strstr(json, "direct-ge8192-leaf16") != NULL);
+  CHECK(strstr(json, "square-policy") != NULL);
+  CHECK(strstr(json, "karatsuba-thr96") != NULL);
+  CHECK(strstr(json, "mul-policy") != NULL);
+  CHECK(strstr(json, "toom3-u4-ge8192-leaf48") != NULL);
+  CHECK(strstr(json, "toom3-u4-rec-ge16384-leaf64-depth2") != NULL);
   CHECK(strstr(json, "\"operation\":\"square\"") != NULL);
   CHECK(strstr(json, "square-vs-mul") != NULL);
   CHECK(strstr(json, "square-karatsuba-vs-mul") != NULL);
@@ -1995,6 +2110,11 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "format-policy") != NULL);
   CHECK(strstr(tsv, "direct-ge4096-leaf8") != NULL);
   CHECK(strstr(tsv, "direct-ge8192-leaf16") != NULL);
+  CHECK(strstr(tsv, "square-policy") != NULL);
+  CHECK(strstr(tsv, "karatsuba-thr96") != NULL);
+  CHECK(strstr(tsv, "mul-policy") != NULL);
+  CHECK(strstr(tsv, "toom3-u4-ge8192-leaf48") != NULL);
+  CHECK(strstr(tsv, "toom3-u4-rec-ge16384-leaf64-depth2") != NULL);
   CHECK(strstr(tsv, "square") != NULL);
   CHECK(strstr(tsv, "square-vs-mul") != NULL);
   CHECK(strstr(tsv, "square-karatsuba-vs-mul") != NULL);
@@ -2063,6 +2183,11 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "format-policy") != NULL);
   CHECK(strstr(benchmark_tsv, "direct-ge4096-leaf8") != NULL);
   CHECK(strstr(benchmark_tsv, "direct-ge8192-leaf16") != NULL);
+  CHECK(strstr(benchmark_tsv, "square-policy") != NULL);
+  CHECK(strstr(benchmark_tsv, "karatsuba-thr96") != NULL);
+  CHECK(strstr(benchmark_tsv, "mul-policy") != NULL);
+  CHECK(strstr(benchmark_tsv, "toom3-u4-ge8192-leaf48") != NULL);
+  CHECK(strstr(benchmark_tsv, "toom3-u4-rec-ge16384-leaf64-depth2") != NULL);
   CHECK(strstr(benchmark_tsv, "square") != NULL);
   CHECK(strstr(benchmark_tsv, "square-vs-mul") != NULL);
   CHECK(strstr(benchmark_tsv, "square-karatsuba-vs-mul") != NULL);
@@ -2119,6 +2244,11 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "format-policy current-default") != NULL);
   CHECK(strstr(benchmark_frontier, "format-policy direct-ge4096-leaf8") != NULL);
   CHECK(strstr(benchmark_frontier, "format-policy direct-ge8192-leaf16") != NULL);
+  CHECK(strstr(benchmark_frontier, "square-policy current-default") != NULL);
+  CHECK(strstr(benchmark_frontier, "square-policy karatsuba-thr96") != NULL);
+  CHECK(strstr(benchmark_frontier, "mul-policy current-default") != NULL);
+  CHECK(strstr(benchmark_frontier, "mul-policy toom3-u4-ge8192-leaf48") != NULL);
+  CHECK(strstr(benchmark_frontier, "mul-policy toom3-u4-rec-ge16384-leaf64-depth2") != NULL);
   CHECK(strstr(benchmark_frontier, "leaf=64") != NULL);
   CHECK(strstr(benchmark_frontier, "base=") != NULL);
 #if defined(_MSC_VER) && defined(_M_X64)
