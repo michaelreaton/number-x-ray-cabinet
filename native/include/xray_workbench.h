@@ -536,7 +536,10 @@ XRAY_API char *xray_bigint_get_decimal_wide_probe(const XrayScratchBigInt *value
 /**
  * Multiply with an explicit Karatsuba leaf threshold for benchmarking.
  *
- * out may alias either input. Returns 1 on success and 0 on allocation failure.
+ * This diagnostic route forces the generic threshold multiply path, so
+ * left == right is still measured as generic self-multiply rather than the
+ * production square shortcut. out may alias either input. Returns 1 on success
+ * and 0 on allocation failure.
  */
 XRAY_API int xray_bigint_mul_with_threshold(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t threshold);
 
