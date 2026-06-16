@@ -1120,3 +1120,69 @@ through them yet. Static direct is the only credible lead, but the winning cells
 move under `/GL` and 1000-digit rows regress under product-like codegen. A
 future promotion should test a gated policy such as `>=4096` with leaf 16 or
 `>=8192` with leaf 8 against `mpz_get_str`, not a global static D&C route.
+
+## 2026-06-16: Static Decimal Policy Gate
+
+Runs:
+
+- Normal Release:
+  `native/build-codex-pair-route/native-test-runs/20260616-002106-c4b04caf`
+- Product-like `/GL`:
+  `native/build-codex-ltcg/native-test-runs/20260616-002645-c4b04caf`
+
+The static direct formatter was promoted only into policy probes, not
+production routing. Two gated policies were tested against `mpz_get_str`:
+`static-ge4096-l16` and `static-ge8192-l8`. Below the gate, each policy keeps
+the current scratch formatter active so the 1000-digit regression is protected.
+
+Normal Release rows:
+
+- current default, 1000 digits: ratio `1.877`, stable `0/5`, `observe-only`
+- current default, 4096 digits: ratio `1.779`, stable `0/5`, `observe-only`
+- current default, 8192 digits: ratio `1.829`, stable `0/5`, `observe-only`
+- current default, 16384 digits: ratio `1.752`, stable `0/5`, `observe-only`
+- static `>=4096` leaf 16, 1000 digits: ratio `1.891`, stable `0/5`,
+  `observe-only`
+- static `>=4096` leaf 16, 4096 digits: ratio `1.770`, stable `0/5`,
+  `observe-only`
+- static `>=4096` leaf 16, 8192 digits: ratio `1.620`, stable `0/5`,
+  `observe-only`
+- static `>=4096` leaf 16, 16384 digits: ratio `1.703`, stable `0/5`,
+  `observe-only`
+- static `>=8192` leaf 8, 1000 digits: ratio `1.543`, stable `1/5`,
+  `observe-only`
+- static `>=8192` leaf 8, 4096 digits: ratio `1.903`, stable `0/5`,
+  `observe-only`
+- static `>=8192` leaf 8, 8192 digits: ratio `1.513`, stable `0/5`,
+  `observe-only`
+- static `>=8192` leaf 8, 16384 digits: ratio `1.538`, stable `0/5`,
+  `observe-only`
+
+Product-like `/GL` rows:
+
+- current default, 1000 digits: ratio `1.843`, stable `0/5`, `observe-only`
+- current default, 4096 digits: ratio `1.994`, stable `0/5`, `observe-only`
+- current default, 8192 digits: ratio `1.828`, stable `0/5`, `observe-only`
+- current default, 16384 digits: ratio `1.527`, stable `0/5`, `observe-only`
+- static `>=4096` leaf 16, 1000 digits: ratio `1.856`, stable `0/5`,
+  `observe-only`
+- static `>=4096` leaf 16, 4096 digits: ratio `1.752`, stable `0/5`,
+  `observe-only`
+- static `>=4096` leaf 16, 8192 digits: ratio `1.666`, stable `0/5`,
+  `observe-only`
+- static `>=4096` leaf 16, 16384 digits: ratio `1.708`, stable `0/5`,
+  `observe-only`
+- static `>=8192` leaf 8, 1000 digits: ratio `1.842`, stable `1/5`,
+  `observe-only`
+- static `>=8192` leaf 8, 4096 digits: ratio `1.499`, stable `0/5`,
+  `observe-only`
+- static `>=8192` leaf 8, 8192 digits: ratio `1.691`, stable `0/5`,
+  `observe-only`
+- static `>=8192` leaf 8, 16384 digits: ratio `1.632`, stable `0/5`,
+  `observe-only`
+
+Decision: reject static direct as a production formatter policy for now. It can
+beat current scratch in kernel rows, but the policy-to-GMP gate shows every
+tested size still backend-faster in both normal and `/GL` builds. The next large
+formatting work should attack the underlying bigint division or use a more
+GMP-like conversion algorithm, not just static power precompute.

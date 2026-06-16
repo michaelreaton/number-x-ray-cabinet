@@ -2824,6 +2824,15 @@ static char *format_policy_direct(
   return xray_bigint_get_decimal_dc_direct_probe(value, leaf_chunks);
 }
 
+static char *format_policy_static_direct(
+  const XrayScratchBigInt *value,
+  size_t digits,
+  size_t min_digits,
+  size_t leaf_chunks) {
+  if (digits < min_digits) return xray_bigint_get_decimal(value);
+  return xray_bigint_get_decimal_dc_static_direct_probe(value, leaf_chunks);
+}
+
 typedef char *(*XrayFormatPolicyProbeFn)(const XrayScratchBigInt *value, size_t digits, size_t min_digits, size_t leaf_chunks);
 
 static void run_format_policy_probe_case(
@@ -4732,6 +4741,28 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
       8192,
       16,
       format_policy_direct);
+    run_format_policy_probe_case(
+      report,
+      digits,
+      103U,
+      "static-ge4096-l16",
+      "dc-static-direct",
+      "decimal-format-policy-static-direct",
+      "static-powtab+buffer",
+      4096,
+      16,
+      format_policy_static_direct);
+    run_format_policy_probe_case(
+      report,
+      digits,
+      107U,
+      "static-ge8192-l8",
+      "dc-static-direct",
+      "decimal-format-policy-static-direct",
+      "static-powtab+buffer",
+      8192,
+      8,
+      format_policy_static_direct);
   }
 
   for (size_t digit_index = 0; digit_index < sizeof(format_strategy_digits) / sizeof(format_strategy_digits[0]); ++digit_index) {
