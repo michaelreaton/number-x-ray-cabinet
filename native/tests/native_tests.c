@@ -22,15 +22,6 @@ static void check_scratch_matches_mpz(const XrayScratchBigInt *actual, const mpz
   free(expected_text);
 }
 
-static char *test_path_join(const char *dir, const char *name) {
-  size_t dir_length = dir ? strlen(dir) : 0;
-  size_t name_length = name ? strlen(name) : 0;
-  char *path = (char *)calloc(dir_length + name_length + 2, 1);
-  CHECK(path != NULL);
-  snprintf(path, dir_length + name_length + 2, "%s/%s", dir ? dir : ".", name ? name : "");
-  return path;
-}
-
 static char *read_text_file(const char *path) {
   FILE *file = NULL;
 #ifdef _WIN32
@@ -1364,14 +1355,37 @@ static void test_workspace_and_gnfs_artifacts(void) {
   CHECK(strcmp(report.expression.normalized, "4097") == 0);
   CHECK(report.run_dir != NULL);
   CHECK(report.json != NULL);
+  CHECK(report.input_path != NULL);
+  CHECK(report.normalized_path != NULL);
+  CHECK(report.config_path != NULL);
+  CHECK(report.cpu_features_path != NULL);
+  CHECK(report.report_json_path != NULL);
+  CHECK(report.events_jsonl_path != NULL);
+  CHECK(report.benchmark_json_path == NULL);
+  CHECK(report.benchmark_tsv_path == NULL);
+  CHECK(report.benchmark_frontier_path == NULL);
   CHECK(report.cpu.logical_cpus >= 1);
   CHECK(report.gnfs.stage_count == 7);
   CHECK(strstr(report.json, "\"expression\"") != NULL);
   CHECK(strstr(report.json, "\"cpu\"") != NULL);
+  CHECK(strstr(report.json, "\"artifactPaths\"") != NULL);
+  CHECK(strstr(report.json, "\"benchmarkFrontier\":null") != NULL);
   CHECK(strstr(report.json, "\"avx\"") != NULL);
   CHECK(strstr(report.json, "\"gnfsReport\"") != NULL);
   CHECK(strstr(report.events_jsonl, "\"stage\":\"benchmark\",\"status\":\"skipped\"") != NULL);
   CHECK(strstr(report.events_jsonl, "\"stage\":\"cpu\",\"status\":\"profiled\"") != NULL);
+  char *normalized_text = read_text_file(report.normalized_path);
+  char *config_text = read_text_file(report.config_path);
+  char *report_json_text = read_text_file(report.report_json_path);
+  char *events_text = read_text_file(report.events_jsonl_path);
+  CHECK(strcmp(normalized_text, "4097") == 0);
+  CHECK(strstr(config_text, "gnfsStageProof=1") != NULL);
+  CHECK(strstr(report_json_text, "\"artifactPaths\"") != NULL);
+  CHECK(strstr(events_text, "\"stage\":\"benchmark\",\"status\":\"skipped\"") != NULL);
+  free(normalized_text);
+  free(config_text);
+  free(report_json_text);
+  free(events_text);
   CHECK(events.count >= 10);
   CHECK(events.saw_expression_complete);
   CHECK(events.saw_factor_event);
@@ -3564,18 +3578,26 @@ static void test_benchmarks(void) {
 
   CHECK(workbench.run_dir != NULL);
   CHECK(workbench.events_jsonl != NULL);
+  CHECK(workbench.input_path != NULL);
+  CHECK(workbench.normalized_path != NULL);
+  CHECK(workbench.config_path != NULL);
+  CHECK(workbench.cpu_features_path != NULL);
+  CHECK(workbench.report_json_path != NULL);
+  CHECK(workbench.events_jsonl_path != NULL);
+  CHECK(workbench.benchmark_json_path != NULL);
+  CHECK(workbench.benchmark_tsv_path != NULL);
+  CHECK(workbench.benchmark_frontier_path != NULL);
+  CHECK(strstr(workbench.json, "\"artifactPaths\"") != NULL);
+  CHECK(strstr(workbench.json, "\"benchmarkFrontier\"") != NULL);
+  CHECK(strstr(workbench.benchmark_frontier_path, workbench.run_dir) != NULL);
   CHECK(strstr(workbench.events_jsonl, "\"stage\":\"benchmark\"") != NULL);
   CHECK(strstr(workbench.events_jsonl, "lanePromotionReady=") != NULL);
   CHECK(strstr(workbench.events_jsonl, "laneSafetyRejected=") != NULL);
   CHECK(strstr(workbench.events_jsonl, "\"stage\":\"cpu\"") != NULL);
-  char *benchmark_json_path = test_path_join(workbench.run_dir, "benchmark.json");
-  char *benchmark_tsv_path = test_path_join(workbench.run_dir, "benchmark.tsv");
-  char *benchmark_frontier_path = test_path_join(workbench.run_dir, "benchmark_frontier.txt");
-  char *cpu_path = test_path_join(workbench.run_dir, "cpu_features.txt");
-  char *benchmark_json = read_text_file(benchmark_json_path);
-  char *benchmark_tsv = read_text_file(benchmark_tsv_path);
-  char *benchmark_frontier = read_text_file(benchmark_frontier_path);
-  char *cpu_text = read_text_file(cpu_path);
+  char *benchmark_json = read_text_file(workbench.benchmark_json_path);
+  char *benchmark_tsv = read_text_file(workbench.benchmark_tsv_path);
+  char *benchmark_frontier = read_text_file(workbench.benchmark_frontier_path);
+  char *cpu_text = read_text_file(workbench.cpu_features_path);
   CHECK(strstr(benchmark_json, "\"benchmarkReport\"") != NULL);
   CHECK(strstr(benchmark_json, "\"cpu\"") != NULL);
   CHECK(strstr(benchmark_json, "\"build\"") != NULL);
@@ -3807,10 +3829,6 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "no worst-pair regression above 1.0") != NULL);
   CHECK(strstr(cpu_text, "CPU:") != NULL);
   CHECK(strstr(cpu_text, "flags=") != NULL);
-  free(benchmark_json_path);
-  free(benchmark_tsv_path);
-  free(benchmark_frontier_path);
-  free(cpu_path);
   free(benchmark_json);
   free(benchmark_tsv);
   free(benchmark_frontier);

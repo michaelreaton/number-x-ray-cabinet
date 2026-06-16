@@ -80,6 +80,8 @@ typedef struct AppState {
   GtkWidget *benchmark_cpu_context_label;
   GtkWidget *benchmark_backend_context_label;
   GtkWidget *benchmark_build_context_label;
+  GtkWidget *benchmark_run_dir_label;
+  GtkWidget *benchmark_artifact_paths_label;
   guint live_timer_id;
   unsigned long run_started_ms;
   unsigned int run_pulse;
@@ -126,6 +128,8 @@ typedef struct RunResult {
   char benchmark_cpu_context[768];
   char benchmark_backend_context[256];
   char benchmark_build_context[768];
+  char benchmark_run_dir_text[512];
+  char benchmark_artifact_paths_text[1536];
   char *benchmark_text;
   char log_line[2048];
 } RunResult;
@@ -808,6 +812,38 @@ static void format_benchmark_context_labels(
   }
 }
 
+static void format_benchmark_artifact_labels(
+  const XrayWorkbenchReport *report,
+  char *run_dir_out,
+  size_t run_dir_out_size,
+  char *artifacts_out,
+  size_t artifacts_out_size
+) {
+  if (run_dir_out && run_dir_out_size) {
+    snprintf(run_dir_out, run_dir_out_size, "Run dir: %s",
+      report && report->run_dir ? report->run_dir : "Run Proof to create a workspace folder.");
+  }
+  if (artifacts_out && artifacts_out_size) {
+    if (!report || !report->run_dir) {
+      snprintf(artifacts_out, artifacts_out_size,
+        "Artifacts: waiting for a completed run.\n"
+        "Benchmark frontier, TSV, JSON, report JSON, and events JSONL are written after Run Proof.");
+    } else {
+      snprintf(artifacts_out, artifacts_out_size,
+        "Benchmark frontier: %s\n"
+        "Benchmark TSV: %s\n"
+        "Benchmark JSON: %s\n"
+        "Report JSON: %s\n"
+        "Events JSONL: %s",
+        report->benchmark_frontier_path ? report->benchmark_frontier_path : "not written",
+        report->benchmark_tsv_path ? report->benchmark_tsv_path : "not written",
+        report->benchmark_json_path ? report->benchmark_json_path : "not written",
+        report->report_json_path ? report->report_json_path : "not written",
+        report->events_jsonl_path ? report->events_jsonl_path : "not written");
+    }
+  }
+}
+
 static void apply_tone(GtkWidget *label, const char *tone) {
   if (!label) return;
   gtk_widget_remove_css_class(label, "good");
@@ -895,6 +931,15 @@ static void reset_benchmark_dashboard(AppState *app, const char *current) {
   set_label_if(app->benchmark_cpu_context_label, cpu_context);
   set_label_if(app->benchmark_backend_context_label, backend_context);
   set_label_if(app->benchmark_build_context_label, build_context);
+  char run_dir_text[512];
+  char artifact_paths_text[1536];
+  format_benchmark_artifact_labels(NULL,
+    run_dir_text,
+    sizeof(run_dir_text),
+    artifact_paths_text,
+    sizeof(artifact_paths_text));
+  set_label_if(app->benchmark_run_dir_label, run_dir_text);
+  set_label_if(app->benchmark_artifact_paths_label, artifact_paths_text);
   set_label_if(app->benchmark_current_label, current ? current : "Waiting for Run Proof.");
   app->benchmark_history_count = 0;
   memset(app->benchmark_history, 0, sizeof(app->benchmark_history));
@@ -1563,6 +1608,24 @@ static GtkWidget *benchmark_context_panel(AppState *app) {
   return box;
 }
 
+static GtkWidget *benchmark_artifacts_panel(AppState *app) {
+  GtkWidget *box = section_box("panel", 8);
+  GtkWidget *header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+  gtk_box_append(GTK_BOX(header), label_with_class("RUN ARTIFACTS", "section-title"));
+  GtkWidget *badge = label_with_width("AUDIT FILES", "micro", 16, FALSE);
+  gtk_widget_add_css_class(badge, "warn");
+  gtk_widget_set_halign(badge, GTK_ALIGN_END);
+  gtk_widget_set_hexpand(badge, TRUE);
+  gtk_box_append(GTK_BOX(header), badge);
+  gtk_box_append(GTK_BOX(box), header);
+
+  app->benchmark_run_dir_label = label_with_width("Run dir: Run Proof to create a workspace folder.", "mono-small", 118, TRUE);
+  app->benchmark_artifact_paths_label = label_with_width("Artifacts: waiting for a completed run.", "mono-small", 118, TRUE);
+  gtk_box_append(GTK_BOX(box), app->benchmark_run_dir_label);
+  gtk_box_append(GTK_BOX(box), app->benchmark_artifact_paths_label);
+  return box;
+}
+
 static GtkWidget *stage_row(const char *index, const char *state, const char *detail, const char *state_class) {
   GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
   gtk_widget_add_css_class(row, "stage-row");
@@ -1683,7 +1746,20 @@ static GtkWidget *build_benchmark_page(AppState *app) {
   gtk_widget_add_css_class(page, "surface");
   set_margins(page, 16, 16, 16, 16);
   gtk_box_append(GTK_BOX(page), label_with_class("LIVE BENCHMARK RESULTS", "section-title"));
-  gtk_box_append(GTK_BOX(page), benchmark_context_panel(app));
+  GtkWidget *run_context_grid = gtk_grid_new();
+  gtk_grid_set_column_spacing(GTK_GRID(run_context_grid), 10);
+  gtk_grid_set_row_spacing(GTK_GRID(run_context_grid), 10);
+  gtk_grid_set_column_homogeneous(GTK_GRID(run_context_grid), app->layout != XRAY_LAYOUT_COMPACT);
+  GtkWidget *context_panel = benchmark_context_panel(app);
+  GtkWidget *artifacts_panel = benchmark_artifacts_panel(app);
+  if (app->layout == XRAY_LAYOUT_COMPACT) {
+    gtk_grid_attach(GTK_GRID(run_context_grid), context_panel, 0, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(run_context_grid), artifacts_panel, 0, 1, 1, 1);
+  } else {
+    gtk_grid_attach(GTK_GRID(run_context_grid), context_panel, 0, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(run_context_grid), artifacts_panel, 1, 0, 1, 1);
+  }
+  gtk_box_append(GTK_BOX(page), run_context_grid);
 
   GtkWidget *summary = gtk_grid_new();
   gtk_grid_set_column_spacing(GTK_GRID(summary), 10);
@@ -1941,6 +2017,8 @@ static gboolean finish_run(gpointer data) {
   set_label_if(app->benchmark_cpu_context_label, result->benchmark_cpu_context);
   set_label_if(app->benchmark_backend_context_label, result->benchmark_backend_context);
   set_label_if(app->benchmark_build_context_label, result->benchmark_build_context);
+  set_label_if(app->benchmark_run_dir_label, result->benchmark_run_dir_text);
+  set_label_if(app->benchmark_artifact_paths_label, result->benchmark_artifact_paths_text);
   set_label_if(app->benchmark_current_label, result->bench_status);
   set_run_status(app, result->factor_status, result->proof_status, result->cyclo_status, result->bench_status);
   set_text_view(app->json_view, result->json);
@@ -1983,6 +2061,12 @@ static gpointer run_worker(gpointer data) {
     sizeof(result->benchmark_backend_context),
     result->benchmark_build_context,
     sizeof(result->benchmark_build_context));
+  format_benchmark_artifact_labels(
+    &report,
+    result->benchmark_run_dir_text,
+    sizeof(result->benchmark_run_dir_text),
+    result->benchmark_artifact_paths_text,
+    sizeof(result->benchmark_artifact_paths_text));
   for (size_t index = 0; index < report.benchmark.result_count; ++index) {
     if (!report.benchmark.results[index].passed) result->benchmark_failed_count++;
   }
@@ -2008,6 +2092,11 @@ static gpointer run_worker(gpointer data) {
     "Expression: %s\n"
     "Normalized: %s\n"
     "Run dir: %s\n"
+    "Benchmark frontier: %s\n"
+    "Benchmark TSV: %s\n"
+    "Benchmark JSON: %s\n"
+    "Report JSON: %s\n"
+    "Events JSONL: %s\n"
     "Factor status: %s | accounting=%s | productVerified=%s | factors=%zu | unresolved=%zu\n"
     "Cyclotomic: scanned=%zu | exact=%zu | timedOut=%s\n"
     "GNFS stage proof: %s | stages=%zu\n\n"
@@ -2015,6 +2104,11 @@ static gpointer run_worker(gpointer data) {
     report.expression.raw ? report.expression.raw : "",
     report.expression.normalized ? report.expression.normalized : "invalid",
     report.run_dir ? report.run_dir : "n/a",
+    report.benchmark_frontier_path ? report.benchmark_frontier_path : "not written",
+    report.benchmark_tsv_path ? report.benchmark_tsv_path : "not written",
+    report.benchmark_json_path ? report.benchmark_json_path : "not written",
+    report.report_json_path ? report.report_json_path : "not written",
+    report.events_jsonl_path ? report.events_jsonl_path : "not written",
     report.factor.status[0] ? report.factor.status : "invalid",
     report.factor.accounting_verified ? "verified" : "failed",
     report.factor.product_verified ? "true" : "false",

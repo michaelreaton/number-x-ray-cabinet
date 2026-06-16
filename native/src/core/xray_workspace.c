@@ -186,12 +186,12 @@ int xray_workbench_run(const char *raw_input, const XrayRunConfig *config_input,
   emit_run_event(&config, "workspace", report->run_dir ? "created" : "skipped",
     report->run_dir ? report->run_dir : "Could not create run directory");
   if (report->run_dir) {
-    char *input_path = path_for(report->run_dir, "input.txt");
-    char *normalized_path = path_for(report->run_dir, "normalized.txt");
-    char *config_path = path_for(report->run_dir, "config.txt");
-    char *cpu_path = path_for(report->run_dir, "cpu_features.txt");
-    write_text_file(input_path, raw_input ? raw_input : "");
-    write_text_file(normalized_path, expression_ok ? report->expression.normalized : (report->expression.error ? report->expression.error : "invalid"));
+    report->input_path = path_for(report->run_dir, "input.txt");
+    report->normalized_path = path_for(report->run_dir, "normalized.txt");
+    report->config_path = path_for(report->run_dir, "config.txt");
+    report->cpu_features_path = path_for(report->run_dir, "cpu_features.txt");
+    write_text_file(report->input_path, raw_input ? raw_input : "");
+    write_text_file(report->normalized_path, expression_ok ? report->expression.normalized : (report->expression.error ? report->expression.error : "invalid"));
     char config_text[512];
     snprintf(config_text, sizeof(config_text),
       "scanDepth=%s\nproofStrategy=%s\nprimalityMode=%s\nthreads=%u\nmemoryMb=%lu\ntrialLimit=%lu\nfermatIterations=%lu\nrhoIterations=%lu\npm1Bound=%lu\nbrentIterations=%lu\nnMin=%u\nnMax=%u\nbaseWindow=%u\ngnfsStageProof=%d\n",
@@ -209,14 +209,10 @@ int xray_workbench_run(const char *raw_input, const XrayRunConfig *config_input,
       config.cyclotomic.n_max,
       config.cyclotomic.base_window,
       config.enable_gnfs_stage_proof);
-    write_text_file(config_path, config_text);
+    write_text_file(report->config_path, config_text);
     char *cpu_summary = xray_cpu_features_summary(&report->cpu);
-    write_text_file(cpu_path, cpu_summary);
+    write_text_file(report->cpu_features_path, cpu_summary);
     free(cpu_summary);
-    free(input_path);
-    free(normalized_path);
-    free(config_path);
-    free(cpu_path);
   }
 
   if (expression_ok && config.enable_factor) {
@@ -278,31 +274,30 @@ int xray_workbench_run(const char *raw_input, const XrayRunConfig *config_input,
 
   emit_run_event(&config, "assemble", "running", "Serializing reports and audit events");
   report->events_jsonl = events_jsonl(report);
+  if (report->run_dir) {
+    report->events_jsonl_path = path_for(report->run_dir, "events.jsonl");
+    report->report_json_path = path_for(report->run_dir, "report.json");
+    if (config.enable_benchmark) {
+      report->benchmark_json_path = path_for(report->run_dir, "benchmark.json");
+      report->benchmark_tsv_path = path_for(report->run_dir, "benchmark.tsv");
+      report->benchmark_frontier_path = path_for(report->run_dir, "benchmark_frontier.txt");
+    }
+  }
   report->json = xray_workbench_full_report_json(report);
   if (report->run_dir) {
-    char *events_path = path_for(report->run_dir, "events.jsonl");
-    char *report_path = path_for(report->run_dir, "report.json");
-    char *benchmark_json_path = path_for(report->run_dir, "benchmark.json");
-    char *benchmark_tsv_path = path_for(report->run_dir, "benchmark.tsv");
-    char *benchmark_frontier_path = path_for(report->run_dir, "benchmark_frontier.txt");
-    write_text_file(events_path, report->events_jsonl);
-    write_text_file(report_path, report->json);
+    write_text_file(report->events_jsonl_path, report->events_jsonl);
+    write_text_file(report->report_json_path, report->json);
     if (config.enable_benchmark) {
       char *benchmark_json = xray_benchmark_report_json(&report->benchmark);
       char *benchmark_tsv = xray_benchmark_report_tsv(&report->benchmark);
       char *benchmark_frontier = xray_benchmark_frontier_text(&report->benchmark);
-      write_text_file(benchmark_json_path, benchmark_json);
-      write_text_file(benchmark_tsv_path, benchmark_tsv);
-      write_text_file(benchmark_frontier_path, benchmark_frontier);
+      write_text_file(report->benchmark_json_path, benchmark_json);
+      write_text_file(report->benchmark_tsv_path, benchmark_tsv);
+      write_text_file(report->benchmark_frontier_path, benchmark_frontier);
       free(benchmark_json);
       free(benchmark_tsv);
       free(benchmark_frontier);
     }
-    free(events_path);
-    free(report_path);
-    free(benchmark_json_path);
-    free(benchmark_tsv_path);
-    free(benchmark_frontier_path);
   }
   emit_run_event(&config, "assemble", "complete", "Report JSON, events, and artifacts written");
   mpz_clear(value);
@@ -319,6 +314,15 @@ void xray_workbench_report_clear(XrayWorkbenchReport *report) {
   xray_benchmark_report_clear(&report->benchmark);
   xray_gnfs_report_clear(&report->gnfs);
   free(report->run_dir);
+  free(report->input_path);
+  free(report->normalized_path);
+  free(report->config_path);
+  free(report->cpu_features_path);
+  free(report->report_json_path);
+  free(report->events_jsonl_path);
+  free(report->benchmark_json_path);
+  free(report->benchmark_tsv_path);
+  free(report->benchmark_frontier_path);
   free(report->json);
   free(report->events_jsonl);
   free(report->source_notes);

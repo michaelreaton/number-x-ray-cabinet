@@ -931,6 +931,16 @@ typedef struct XrayWorkbenchReport {
   XrayBenchmarkReport benchmark;
   XrayGnfsReport gnfs;
   char *run_dir;
+  /* Report-owned path fields naming files written under run_dir. */
+  char *input_path;
+  char *normalized_path;
+  char *config_path;
+  char *cpu_features_path;
+  char *report_json_path;
+  char *events_jsonl_path;
+  char *benchmark_json_path;
+  char *benchmark_tsv_path;
+  char *benchmark_frontier_path;
   char *json;
   char *events_jsonl;
   char *source_notes;
