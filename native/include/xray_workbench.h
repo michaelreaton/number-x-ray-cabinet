@@ -870,6 +870,15 @@ typedef struct XrayGnfsReport {
   unsigned long elapsed_ms;
 } XrayGnfsReport;
 
+/**
+ * Optional live stage callback for xray_workbench_run().
+ *
+ * stage, status, and detail are borrowed strings that are valid only during the
+ * callback. The callback runs on the caller's execution thread; GUI callers
+ * should dispatch to their UI thread before touching widgets.
+ */
+typedef void (*XrayRunEventCallback)(const char *stage, const char *status, const char *detail, void *user_data);
+
 typedef struct XrayRunConfig {
   XrayFactorConfig factor;
   XrayCyclotomicConfig cyclotomic;
@@ -884,6 +893,8 @@ typedef struct XrayRunConfig {
   char primality_mode[64];
   char workspace_root[260];
   const volatile int *cancel_flag;
+  XrayRunEventCallback event_callback;
+  void *event_user_data;
 } XrayRunConfig;
 
 typedef struct XrayWorkbenchReport {

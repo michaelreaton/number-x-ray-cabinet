@@ -43,6 +43,12 @@ typedef struct AppState {
   guint live_timer_id;
   unsigned long run_started_ms;
   unsigned int run_pulse;
+  size_t live_event_count;
+  char live_stage_name[48];
+  char live_stage_status[32];
+  char live_stage_detail[256];
+  char live_factor_status[80];
+  char live_event_log[4096];
   int run_active;
   volatile int cancel_requested;
   int persian;
@@ -65,6 +71,14 @@ typedef struct RunJob {
   char *input;
   XrayRunConfig config;
 } RunJob;
+
+typedef struct UiStageEvent {
+  AppState *app;
+  char stage[48];
+  char status[32];
+  char detail[256];
+  unsigned long elapsed_ms;
+} UiStageEvent;
 
 static const char *payam_paper_url = "https://amathz.com/my_gfn.html";
 static const char *rsa260_value =
@@ -596,24 +610,82 @@ static const char *live_stage(unsigned int pulse) {
   return stages[(pulse / 4U) % (sizeof(stages) / sizeof(stages[0]))];
 }
 
+static const char *current_live_stage(AppState *app) {
+  if (app && app->live_stage_name[0]) return app->live_stage_name;
+  return app ? live_stage(app->run_pulse) : "Ingest";
+}
+
+static void append_live_event(AppState *app, const UiStageEvent *event) {
+  if (!app || !event) return;
+  snprintf(app->live_stage_name, sizeof(app->live_stage_name), "%s", event->stage);
+  snprintf(app->live_stage_status, sizeof(app->live_stage_status), "%s", event->status);
+  snprintf(app->live_stage_detail, sizeof(app->live_stage_detail), "%s", event->detail);
+  app->live_event_count++;
+
+  char line[384];
+  snprintf(line, sizeof(line), "%02zu  %lu.%03lus  %-11s %-10s %s\n",
+    app->live_event_count,
+    event->elapsed_ms / 1000UL,
+    event->elapsed_ms % 1000UL,
+    event->stage,
+    event->status,
+    event->detail);
+  size_t used = strlen(app->live_event_log);
+  size_t line_length = strlen(line);
+  if (used + line_length + 1U >= sizeof(app->live_event_log)) {
+    snprintf(app->live_event_log, sizeof(app->live_event_log), "(older live events trimmed)\n");
+    used = strlen(app->live_event_log);
+  }
+  if (used + line_length + 1U < sizeof(app->live_event_log)) {
+    memcpy(app->live_event_log + used, line, line_length + 1U);
+  }
+}
+
+static void set_live_benchmark_view(AppState *app) {
+  if (!app || !app->benchmark_view) return;
+  const char *stage = current_live_stage(app);
+  const char *status = app->live_stage_status[0] ? app->live_stage_status : "running";
+  const char *detail = app->live_stage_detail[0] ? app->live_stage_detail : "Worker has started.";
+  char text[6144];
+  snprintf(text, sizeof(text),
+    "BENCHMARK FRONTIER\n"
+    "Native proof worker is running. Final frontier rows replace this live view when the report is assembled.\n\n"
+    "Current engine event: %s / %s\n"
+    "%s\n\n"
+    "LIVE STAGE EVENTS\n"
+    "%s\n"
+    "Benchmark note: scratch-vs-GMP/MPIR timings are measured inside the benchmark stage and are not shown as solved/proven until the complete report is serialized.\n",
+    stage,
+    status,
+    detail,
+    app->live_event_log[0] ? app->live_event_log : "(waiting for first engine event)\n");
+  set_text_view(app->benchmark_view, text);
+}
+
 static void set_live_log(AppState *app) {
   unsigned long elapsed = app->run_started_ms ? xray_now_ms() - app->run_started_ms : 0;
-  const char *stage = app->cancel_requested ? "Cancel checkpoint" : live_stage(app->run_pulse);
+  const char *stage = app->cancel_requested ? "Cancel checkpoint" : current_live_stage(app);
+  const char *status = app->live_stage_status[0] ? app->live_stage_status : "running";
+  const char *detail = app->live_stage_detail[0] ? app->live_stage_detail : "Worker has started.";
   char activity[4] = "...";
   activity[app->run_pulse % 4U] = '\0';
   char log_line[2048];
   snprintf(log_line, sizeof(log_line),
     "RUNNING%s\n"
     "Elapsed: %lu.%03lus\n"
-    "Active stage: %s\n"
-    "Worker: background proof run is active; UI pulse is live.\n"
+    "Engine stage: %s / %s\n"
+    "Detail: %s\n"
+    "Worker: background proof run is active; stage events are live.\n"
     "Cancel: %s\n\n"
-    "Live surfaces now update while the engine runs. Exact factors, cyclotomic candidates, benchmark rows, and JSON still settle only after the verified report is assembled.",
+    "Recent events:\n%s",
     activity,
     elapsed / 1000UL,
     elapsed % 1000UL,
     stage,
-    app->cancel_requested ? "requested; waiting for solver checkpoint" : "available");
+    status,
+    detail,
+    app->cancel_requested ? "requested; waiting for solver checkpoint" : "available",
+    app->live_event_log[0] ? app->live_event_log : "(waiting for first engine event)\n");
   set_text_view(app->log_view, log_line);
 }
 
@@ -631,13 +703,51 @@ static gboolean live_run_tick(gpointer user_data) {
   char cyclo[128];
   char bench[128];
   snprintf(factor, sizeof(factor), app->cancel_requested ? "Factor Solver: CANCEL REQUESTED" : "Factor Solver: RUNNING");
+  if (!app->cancel_requested && app->live_factor_status[0]) snprintf(factor, sizeof(factor), "%s", app->live_factor_status);
   snprintf(proof, sizeof(proof), "Product proof: running | elapsed %lu.%03lus", elapsed / 1000UL, elapsed % 1000UL);
-  snprintf(cyclo, sizeof(cyclo), "Live stage: %s | pulse %u", app->cancel_requested ? "Cancel checkpoint" : live_stage(app->run_pulse), app->run_pulse);
-  snprintf(bench, sizeof(bench), "Report assembling | worker active%s", app->cancel_requested ? " | cancel pending" : "");
+  snprintf(cyclo, sizeof(cyclo), "Live stage: %s | %s", app->cancel_requested ? "Cancel checkpoint" : current_live_stage(app), app->live_stage_status[0] ? app->live_stage_status : "running");
+  snprintf(bench, sizeof(bench), "%s | %s%s", current_live_stage(app), app->live_stage_status[0] ? app->live_stage_status : "worker active", app->cancel_requested ? " | cancel pending" : "");
   set_run_status(app, factor, proof, cyclo, bench);
   gtk_button_set_label(GTK_BUTTON(app->run_button), app->cancel_requested ? "CANCELLING..." : "RUNNING...");
   set_live_log(app);
+  set_live_benchmark_view(app);
   return G_SOURCE_CONTINUE;
+}
+
+static gboolean apply_stage_event(gpointer data) {
+  UiStageEvent *event = (UiStageEvent *)data;
+  AppState *app = event ? event->app : NULL;
+  if (app && app->run_active) {
+    append_live_event(app, event);
+    if (strcmp(event->stage, "factor") == 0) {
+      snprintf(app->live_factor_status, sizeof(app->live_factor_status), "Factor Solver: %s", event->status);
+    }
+    char factor[80];
+    char proof[128];
+    char cyclo[128];
+    char bench[128];
+    snprintf(factor, sizeof(factor), "%s", app->live_factor_status[0] ? app->live_factor_status : "Factor Solver: RUNNING");
+    snprintf(proof, sizeof(proof), "Product proof: %s | %s", event->stage, event->status);
+    snprintf(cyclo, sizeof(cyclo), "Live stage: %s | %s", event->stage, event->status);
+    snprintf(bench, sizeof(bench), "%s | %s", event->stage, event->status);
+    set_run_status(app, factor, proof, cyclo, bench);
+    set_live_log(app);
+    set_live_benchmark_view(app);
+  }
+  free(event);
+  return G_SOURCE_REMOVE;
+}
+
+static void on_workbench_stage_event(const char *stage, const char *status, const char *detail, void *user_data) {
+  AppState *app = (AppState *)user_data;
+  UiStageEvent *event = (UiStageEvent *)calloc(1, sizeof(*event));
+  if (!event) return;
+  event->app = app;
+  snprintf(event->stage, sizeof(event->stage), "%s", stage ? stage : "");
+  snprintf(event->status, sizeof(event->status), "%s", status ? status : "");
+  snprintf(event->detail, sizeof(event->detail), "%s", detail ? detail : "");
+  event->elapsed_ms = app && app->run_started_ms ? xray_now_ms() - app->run_started_ms : 0;
+  g_idle_add(apply_stage_event, event);
 }
 
 static char *chunk_decimal(const char *value, size_t width) {
@@ -1218,6 +1328,12 @@ static void on_run_clicked(GtkButton *button, gpointer user_data) {
   app->run_active = 1;
   app->run_started_ms = xray_now_ms();
   app->run_pulse = 0;
+  app->live_event_count = 0;
+  app->live_stage_name[0] = '\0';
+  app->live_stage_status[0] = '\0';
+  app->live_stage_detail[0] = '\0';
+  snprintf(app->live_factor_status, sizeof(app->live_factor_status), "Factor Solver: RUNNING");
+  app->live_event_log[0] = '\0';
   gtk_widget_set_sensitive(app->run_button, FALSE);
   gtk_button_set_label(GTK_BUTTON(app->run_button), "RUNNING...");
   gtk_widget_set_visible(app->cancel_button, TRUE);
@@ -1244,6 +1360,8 @@ static void on_run_clicked(GtkButton *button, gpointer user_data) {
   job->app = app;
   job->input = input;
   job->config = config_from_ui(app);
+  job->config.event_callback = on_workbench_stage_event;
+  job->config.event_user_data = app;
   GThread *thread = g_thread_new("xray-proof-worker", run_worker, job);
   g_thread_unref(thread);
 }

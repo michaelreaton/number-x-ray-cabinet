@@ -78,6 +78,12 @@ static char *path_for(const char *dir, const char *name) {
   return path;
 }
 
+static void emit_run_event(const XrayRunConfig *config, const char *stage, const char *status, const char *detail) {
+  if (config && config->event_callback) {
+    config->event_callback(stage ? stage : "", status ? status : "", detail ? detail : "", config->event_user_data);
+  }
+}
+
 XrayRunConfig xray_run_default_config(void) {
   XrayRunConfig config;
   memset(&config, 0, sizeof(config));
@@ -137,13 +143,20 @@ int xray_workbench_run(const char *raw_input, const XrayRunConfig *config_input,
   memset(report, 0, sizeof(*report));
   XrayRunConfig config = config_input ? *config_input : xray_run_default_config();
   config.factor.cancel_flag = config.cancel_flag;
+  emit_run_event(&config, "expression", "running", "Evaluating exact integer expression");
   xray_cpu_features_detect(&report->cpu);
+  emit_run_event(&config, "cpu", "profiled", "CPU feature gates captured for this run");
 
   mpz_t value;
   mpz_init(value);
   int expression_ok = xray_evaluate_expression(raw_input, value, &report->expression);
+  emit_run_event(&config, "expression", expression_ok ? "complete" : "invalid",
+    expression_ok ? "Expression normalized to an exact integer" :
+      (report->expression.error ? report->expression.error : "Expression did not evaluate to an integer"));
   const char *identity = expression_ok ? report->expression.normalized : raw_input;
   report->run_dir = make_run_dir(config.workspace_root, identity);
+  emit_run_event(&config, "workspace", report->run_dir ? "created" : "skipped",
+    report->run_dir ? report->run_dir : "Could not create run directory");
   if (report->run_dir) {
     char *input_path = path_for(report->run_dir, "input.txt");
     char *normalized_path = path_for(report->run_dir, "normalized.txt");
@@ -179,18 +192,60 @@ int xray_workbench_run(const char *raw_input, const XrayRunConfig *config_input,
   }
 
   if (expression_ok && config.enable_factor) {
+    emit_run_event(&config, "factor", "running", "Solving with bounded local factor methods");
     xray_factor_solve(report->expression.normalized, &config.factor, &report->factor);
+    char factor_detail[160];
+    snprintf(factor_detail, sizeof(factor_detail), "factors=%zu unresolved=%zu productVerified=%s",
+      report->factor.factor_count,
+      report->factor.unresolved_count,
+      report->factor.product_verified ? "true" : "false");
+    emit_run_event(&config, "factor", report->factor.status[0] ? report->factor.status : "complete", factor_detail);
+  } else {
+    emit_run_event(&config, "factor", config.enable_factor ? "skipped" : "disabled",
+      expression_ok ? "Factor stage disabled by config" : "Factor stage skipped because expression is invalid");
   }
   if (expression_ok && config.enable_cyclotomic) {
+    emit_run_event(&config, "cyclotomic", "running", "Scanning bounded cyclotomic candidates");
     xray_cyclotomic_scan(report->expression.normalized, &config.cyclotomic, &report->cyclotomic);
+    char cyclo_detail[160];
+    snprintf(cyclo_detail, sizeof(cyclo_detail), "scanned=%zu exact=%zu timedOut=%s",
+      report->cyclotomic.scanned,
+      report->cyclotomic.exact_matches,
+      report->cyclotomic.timed_out ? "true" : "false");
+    emit_run_event(&config, "cyclotomic", "complete", cyclo_detail);
+  } else {
+    emit_run_event(&config, "cyclotomic", config.enable_cyclotomic ? "skipped" : "disabled",
+      expression_ok ? "Cyclotomic stage disabled by config" : "Cyclotomic stage skipped because expression is invalid");
   }
   if (config.enable_benchmark) {
+    emit_run_event(&config, "benchmark", "running", "Measuring scratch bigint primitives against GMP/MPIR");
     xray_benchmark_run(&report->benchmark);
+    char benchmark_detail[192];
+    snprintf(benchmark_detail, sizeof(benchmark_detail), "passed=%zu/%zu scratch=%zu replacementReady=%zu oracleOnly=%zu blocked=%zu",
+      report->benchmark.passed_count,
+      report->benchmark.result_count,
+      report->benchmark.scratch_count,
+      report->benchmark.replacement_ready_count,
+      report->benchmark.oracle_only_count,
+      report->benchmark.blocked_count);
+    emit_run_event(&config, "benchmark", "complete", benchmark_detail);
+  } else {
+    emit_run_event(&config, "benchmark", "disabled", "Benchmark ladder disabled by config");
   }
   if (expression_ok && config.enable_gnfs_stage_proof) {
+    emit_run_event(&config, "gnfs", "running", "Writing inspectable GNFS stage-proof scaffold artifacts");
     xray_gnfs_stage_proof(report->expression.normalized, report->run_dir, &report->gnfs);
+    char gnfs_detail[96];
+    snprintf(gnfs_detail, sizeof(gnfs_detail), "status=%s stages=%zu",
+      report->gnfs.status[0] ? report->gnfs.status : "unknown",
+      report->gnfs.stage_count);
+    emit_run_event(&config, "gnfs", report->gnfs.status[0] ? report->gnfs.status : "complete", gnfs_detail);
+  } else {
+    emit_run_event(&config, "gnfs", config.enable_gnfs_stage_proof ? "skipped" : "disabled",
+      expression_ok ? "GNFS stage proof disabled by config" : "GNFS stage proof skipped because expression is invalid");
   }
 
+  emit_run_event(&config, "assemble", "running", "Serializing reports and audit events");
   report->events_jsonl = events_jsonl(report);
   report->json = xray_workbench_full_report_json(report);
   if (report->run_dir) {
@@ -218,7 +273,10 @@ int xray_workbench_run(const char *raw_input, const XrayRunConfig *config_input,
     free(benchmark_tsv_path);
     free(benchmark_frontier_path);
   }
+  emit_run_event(&config, "assemble", "complete", "Report JSON, events, and artifacts written");
   mpz_clear(value);
+  emit_run_event(&config, "run", expression_ok ? "complete" : "invalid",
+    expression_ok ? "Workbench run complete" : "Workbench run finished without a valid integer");
   return expression_ok;
 }
 
