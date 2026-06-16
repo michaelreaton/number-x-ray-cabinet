@@ -14,6 +14,7 @@ typedef enum XrayLayoutProfile {
 #define XRAY_BENCHMARK_LIVE_ROWS 8
 #define XRAY_BENCHMARK_LIVE_COLS 6
 #define XRAY_BENCHMARK_HISTORY_ROWS 96
+#define XRAY_BENCHMARK_STATUS_PANEL_ROWS 4
 
 typedef enum BenchmarkLaneFilter {
   BENCHMARK_FILTER_ALL = 0,
@@ -74,6 +75,8 @@ typedef struct AppState {
   GtkWidget *benchmark_lane_oracle_detail_label;
   GtkWidget *benchmark_lane_safety_count_label;
   GtkWidget *benchmark_lane_safety_detail_label;
+  GtkWidget *benchmark_better_label;
+  GtkWidget *benchmark_working_label;
   guint live_timer_id;
   unsigned long run_started_ms;
   unsigned int run_pulse;
@@ -115,6 +118,8 @@ typedef struct RunResult {
   char benchmark_ready_detail[192];
   char benchmark_oracle_detail[192];
   char benchmark_safety_detail[192];
+  char benchmark_better_text[768];
+  char benchmark_working_text[768];
   char *benchmark_text;
   char log_line[2048];
 } RunResult;
@@ -672,6 +677,86 @@ static const char *benchmark_filter_name(BenchmarkLaneFilter filter) {
   }
 }
 
+static void benchmark_insert_ratio_row(
+  const XrayBenchmarkResult **rows,
+  size_t capacity,
+  const XrayBenchmarkResult *candidate,
+  int ascending
+) {
+  if (!rows || capacity == 0 || !candidate || candidate->speed_ratio <= 0.0) return;
+  for (size_t slot = 0; slot < capacity; ++slot) {
+    if (!rows[slot] ||
+        (ascending && candidate->speed_ratio < rows[slot]->speed_ratio) ||
+        (!ascending && candidate->speed_ratio > rows[slot]->speed_ratio)) {
+      for (size_t move = capacity - 1U; move > slot; --move) rows[move] = rows[move - 1U];
+      rows[slot] = candidate;
+      return;
+    }
+  }
+}
+
+static void append_benchmark_status_line(
+  char *out,
+  size_t out_size,
+  const XrayBenchmarkResult *row,
+  int faster
+) {
+  if (!out || out_size == 0 || !row) return;
+  char operation[96];
+  benchmark_display_operation(row, operation, sizeof(operation));
+  double multiple = row->speed_ratio > 0.0 ? row->speed_ratio : 0.0;
+  if (faster && multiple > 0.0) multiple = 1.0 / multiple;
+  size_t used = strlen(out);
+  if (used >= out_size - 1U) return;
+  snprintf(out + used, out_size - used, "%s %zu digits  %.2fx %s  ratio %.2f  worst %.2f  stable %zu/%zu\n",
+    operation,
+    row->digits,
+    multiple,
+    faster ? "faster" : "slower",
+    row->speed_ratio,
+    row->worst_pair_ratio,
+    row->stable_sample_count,
+    row->sample_count);
+}
+
+static void format_benchmark_status_panels(
+  const XrayBenchmarkReport *report,
+  char *better_out,
+  size_t better_out_size,
+  char *working_out,
+  size_t working_out_size
+) {
+  const XrayBenchmarkResult *better[XRAY_BENCHMARK_STATUS_PANEL_ROWS] = {0};
+  const XrayBenchmarkResult *working[XRAY_BENCHMARK_STATUS_PANEL_ROWS] = {0};
+  if (better_out && better_out_size) better_out[0] = '\0';
+  if (working_out && working_out_size) working_out[0] = '\0';
+
+  if (report) {
+    for (size_t index = 0; index < report->result_count; ++index) {
+      const XrayBenchmarkResult *row = &report->results[index];
+      if (strcmp(row->category, "scratch-vs-gmp") != 0 || !row->parity_verified || row->speed_ratio <= 0.0) continue;
+      benchmark_insert_ratio_row(
+        row->replacement_ready ? better : working,
+        XRAY_BENCHMARK_STATUS_PANEL_ROWS,
+        row,
+        row->replacement_ready ? 1 : 0);
+    }
+  }
+
+  if (better_out && better_out_size) {
+    for (size_t index = 0; index < XRAY_BENCHMARK_STATUS_PANEL_ROWS && better[index]; ++index) {
+      append_benchmark_status_line(better_out, better_out_size, better[index], 1);
+    }
+    if (!better_out[0]) snprintf(better_out, better_out_size, "No replacement-ready rows yet.");
+  }
+  if (working_out && working_out_size) {
+    for (size_t index = 0; index < XRAY_BENCHMARK_STATUS_PANEL_ROWS && working[index]; ++index) {
+      append_benchmark_status_line(working_out, working_out_size, working[index], 0);
+    }
+    if (!working_out[0]) snprintf(working_out, working_out_size, "No exact-parity gaps yet.");
+  }
+}
+
 static void apply_tone(GtkWidget *label, const char *tone) {
   if (!label) return;
   gtk_widget_remove_css_class(label, "good");
@@ -744,6 +829,8 @@ static void reset_benchmark_dashboard(AppState *app, const char *current) {
   set_label_if(app->benchmark_lane_ready_detail_label, "No promotion-ready rows yet.");
   set_label_if(app->benchmark_lane_oracle_detail_label, "No oracle-only rows yet.");
   set_label_if(app->benchmark_lane_safety_detail_label, "No safety rejection yet.");
+  set_label_if(app->benchmark_better_label, "Run Proof to rank the fastest safe scratch rows.");
+  set_label_if(app->benchmark_working_label, "Run Proof to rank the largest exact-parity gaps.");
   set_label_if(app->benchmark_current_label, current ? current : "Waiting for Run Proof.");
   app->benchmark_history_count = 0;
   memset(app->benchmark_history, 0, sizeof(app->benchmark_history));
@@ -1373,6 +1460,25 @@ static GtkWidget *benchmark_lane_box(
   return box;
 }
 
+static GtkWidget *benchmark_status_box(
+  GtkWidget **detail_out,
+  const char *title,
+  const char *initial_detail,
+  const char *tone) {
+  GtkWidget *box = section_box("subpanel", 8);
+  GtkWidget *header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+  gtk_box_append(GTK_BOX(header), label_with_width(title, "metric-title", 30, FALSE));
+  GtkWidget *marker = label_with_width(tone && strcmp(tone, "good") == 0 ? "READY" : "FOCUS", tone ? tone : "warn", 8, FALSE);
+  gtk_widget_set_halign(marker, GTK_ALIGN_END);
+  gtk_widget_set_hexpand(marker, TRUE);
+  gtk_box_append(GTK_BOX(header), marker);
+  gtk_box_append(GTK_BOX(box), header);
+  GtkWidget *detail = label_with_width(initial_detail ? initial_detail : "Waiting for benchmark report.", "mono-small", 72, TRUE);
+  gtk_box_append(GTK_BOX(box), detail);
+  if (detail_out) *detail_out = detail;
+  return box;
+}
+
 static GtkWidget *stage_row(const char *index, const char *state, const char *detail, const char *state_class) {
   GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
   gtk_widget_add_css_class(row, "stage-row");
@@ -1526,6 +1632,29 @@ static GtkWidget *build_benchmark_page(AppState *app) {
     "Rows rejected by mismatch, regression, or safety gates.",
     "bad"), 2, 0, 1, 1);
   gtk_box_append(GTK_BOX(page), lanes);
+
+  GtkWidget *status_grid = gtk_grid_new();
+  gtk_grid_set_column_spacing(GTK_GRID(status_grid), 10);
+  gtk_grid_set_row_spacing(GTK_GRID(status_grid), 10);
+  gtk_grid_set_column_homogeneous(GTK_GRID(status_grid), app->layout != XRAY_LAYOUT_COMPACT);
+  GtkWidget *better_panel = benchmark_status_box(
+    &app->benchmark_better_label,
+    "BETTER NOW",
+    "Run Proof to rank the fastest safe scratch rows.",
+    "good");
+  GtkWidget *working_panel = benchmark_status_box(
+    &app->benchmark_working_label,
+    "STILL WORKING",
+    "Run Proof to rank the largest exact-parity gaps.",
+    "warn");
+  if (app->layout == XRAY_LAYOUT_COMPACT) {
+    gtk_grid_attach(GTK_GRID(status_grid), better_panel, 0, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(status_grid), working_panel, 0, 1, 1, 1);
+  } else {
+    gtk_grid_attach(GTK_GRID(status_grid), better_panel, 0, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(status_grid), working_panel, 1, 0, 1, 1);
+  }
+  gtk_box_append(GTK_BOX(page), status_grid);
 
   GtkWidget *stream = section_box("panel", 8);
   GtkWidget *stream_title = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
@@ -1722,6 +1851,8 @@ static gboolean finish_run(gpointer data) {
   if (result->benchmark_ready_detail[0]) set_label_if(app->benchmark_lane_ready_detail_label, result->benchmark_ready_detail);
   if (result->benchmark_oracle_detail[0]) set_label_if(app->benchmark_lane_oracle_detail_label, result->benchmark_oracle_detail);
   if (result->benchmark_safety_detail[0]) set_label_if(app->benchmark_lane_safety_detail_label, result->benchmark_safety_detail);
+  set_label_if(app->benchmark_better_label, result->benchmark_better_text);
+  set_label_if(app->benchmark_working_label, result->benchmark_working_text);
   set_label_if(app->benchmark_current_label, result->bench_status);
   set_run_status(app, result->factor_status, result->proof_status, result->cyclo_status, result->bench_status);
   set_text_view(app->json_view, result->json);
@@ -1750,6 +1881,12 @@ static gpointer run_worker(gpointer data) {
   snprintf(result->benchmark_ready_detail, sizeof(result->benchmark_ready_detail), "%s", report.benchmark.lanes.promotion_ready_detail);
   snprintf(result->benchmark_oracle_detail, sizeof(result->benchmark_oracle_detail), "%s", report.benchmark.lanes.oracle_only_detail);
   snprintf(result->benchmark_safety_detail, sizeof(result->benchmark_safety_detail), "%s", report.benchmark.lanes.safety_rejected_detail);
+  format_benchmark_status_panels(
+    &report.benchmark,
+    result->benchmark_better_text,
+    sizeof(result->benchmark_better_text),
+    result->benchmark_working_text,
+    sizeof(result->benchmark_working_text));
   for (size_t index = 0; index < report.benchmark.result_count; ++index) {
     if (!report.benchmark.results[index].passed) result->benchmark_failed_count++;
   }
