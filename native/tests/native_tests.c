@@ -3271,9 +3271,11 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "format-dc-ladder>=4096 digits leaf=8") != NULL);
   CHECK(strstr(benchmark_frontier, "FRONTIER SUMMARY") != NULL);
   CHECK(strstr(benchmark_frontier, "Largest scratch gaps") != NULL);
+  CHECK(strstr(benchmark_frontier, "Median wins rejected by worst-pair safety") != NULL);
   CHECK(strstr(benchmark_frontier, "SCRATCH VS ") != NULL);
   CHECK(strstr(benchmark_frontier, "PRODUCT POLICY PROBES") != NULL);
   CHECK(strstr(benchmark_frontier, "PRODUCT POLICY THRESHOLD GATES") != NULL);
+  CHECK(strstr(benchmark_frontier, "Worst") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-threshold thr=") != NULL);
   CHECK(strstr(benchmark_frontier, "mod-u32-precompute") != NULL);
   CHECK(strstr(benchmark_frontier, "gcd-u32-precompute") != NULL);
@@ -3356,6 +3358,7 @@ static void test_benchmarks(void) {
 #endif
   CHECK(strstr(benchmark_frontier, "format") != NULL);
   CHECK(strstr(benchmark_frontier, "flags=") != NULL);
+  CHECK(strstr(benchmark_frontier, "no worst-pair regression above 1.0") != NULL);
   CHECK(strstr(cpu_text, "CPU:") != NULL);
   CHECK(strstr(cpu_text, "flags=") != NULL);
   free(benchmark_json_path);
