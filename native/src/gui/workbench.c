@@ -44,11 +44,17 @@ typedef struct AppState {
   unsigned long run_started_ms;
   unsigned int run_pulse;
   size_t live_event_count;
+  size_t live_benchmark_row_count;
+  size_t live_benchmark_ready_count;
+  size_t live_benchmark_oracle_count;
+  size_t live_benchmark_blocked_count;
+  size_t live_benchmark_failed_count;
   char live_stage_name[48];
   char live_stage_status[32];
   char live_stage_detail[256];
   char live_factor_status[80];
   char live_event_log[4096];
+  char live_benchmark_row_log[8192];
   int run_active;
   volatile int cancel_requested;
   int persian;
@@ -641,23 +647,60 @@ static void append_live_event(AppState *app, const UiStageEvent *event) {
   }
 }
 
+static void append_live_benchmark_row(AppState *app, const UiStageEvent *event) {
+  if (!app || !event) return;
+  snprintf(app->live_stage_name, sizeof(app->live_stage_name), "benchmark");
+  snprintf(app->live_stage_status, sizeof(app->live_stage_status), "%s", event->status[0] ? event->status : "row");
+  snprintf(app->live_stage_detail, sizeof(app->live_stage_detail), "%s", event->detail);
+  app->live_benchmark_row_count++;
+  if (strcmp(event->status, "replacement-ready") == 0) app->live_benchmark_ready_count++;
+  else if (strcmp(event->status, "oracle-only") == 0) app->live_benchmark_oracle_count++;
+  else if (strcmp(event->status, "failed") == 0) app->live_benchmark_failed_count++;
+  else if (strstr(event->status, "blocked")) app->live_benchmark_blocked_count++;
+
+  char line[512];
+  snprintf(line, sizeof(line), "%03zu  %-18s %s\n",
+    app->live_benchmark_row_count,
+    event->status[0] ? event->status : "row",
+    event->detail[0] ? event->detail : "benchmark row complete");
+  size_t used = strlen(app->live_benchmark_row_log);
+  size_t line_length = strlen(line);
+  if (used + line_length + 1U >= sizeof(app->live_benchmark_row_log)) {
+    snprintf(app->live_benchmark_row_log, sizeof(app->live_benchmark_row_log), "(older benchmark rows trimmed)\n");
+    used = strlen(app->live_benchmark_row_log);
+  }
+  if (used + line_length + 1U < sizeof(app->live_benchmark_row_log)) {
+    memcpy(app->live_benchmark_row_log + used, line, line_length + 1U);
+  }
+}
+
 static void set_live_benchmark_view(AppState *app) {
   if (!app || !app->benchmark_view) return;
   const char *stage = current_live_stage(app);
   const char *status = app->live_stage_status[0] ? app->live_stage_status : "running";
   const char *detail = app->live_stage_detail[0] ? app->live_stage_detail : "Worker has started.";
-  char text[6144];
+  char text[12288];
   snprintf(text, sizeof(text),
     "BENCHMARK FRONTIER\n"
     "Native proof worker is running. Final frontier rows replace this live view when the report is assembled.\n\n"
     "Current engine event: %s / %s\n"
     "%s\n\n"
+    "BENCHMARK ROW STREAM\n"
+    "Rows: %zu   Replacement-ready: %zu   Oracle-only: %zu   Blocked: %zu   Failed: %zu\n"
+    "Recent rows:\n"
+    "%s\n"
     "LIVE STAGE EVENTS\n"
     "%s\n"
     "Benchmark note: scratch-vs-GMP/MPIR timings are measured inside the benchmark stage and are not shown as solved/proven until the complete report is serialized.\n",
     stage,
     status,
     detail,
+    app->live_benchmark_row_count,
+    app->live_benchmark_ready_count,
+    app->live_benchmark_oracle_count,
+    app->live_benchmark_blocked_count,
+    app->live_benchmark_failed_count,
+    app->live_benchmark_row_log[0] ? app->live_benchmark_row_log : "(waiting for benchmark rows)\n",
     app->live_event_log[0] ? app->live_event_log : "(waiting for first engine event)\n");
   set_text_view(app->benchmark_view, text);
 }
@@ -706,7 +749,15 @@ static gboolean live_run_tick(gpointer user_data) {
   if (!app->cancel_requested && app->live_factor_status[0]) snprintf(factor, sizeof(factor), "%s", app->live_factor_status);
   snprintf(proof, sizeof(proof), "Product proof: running | elapsed %lu.%03lus", elapsed / 1000UL, elapsed % 1000UL);
   snprintf(cyclo, sizeof(cyclo), "Live stage: %s | %s", app->cancel_requested ? "Cancel checkpoint" : current_live_stage(app), app->live_stage_status[0] ? app->live_stage_status : "running");
-  snprintf(bench, sizeof(bench), "%s | %s%s", current_live_stage(app), app->live_stage_status[0] ? app->live_stage_status : "worker active", app->cancel_requested ? " | cancel pending" : "");
+  if (app->live_benchmark_row_count) {
+    snprintf(bench, sizeof(bench), "Benchmark rows %zu | ready %zu | oracle %zu%s",
+      app->live_benchmark_row_count,
+      app->live_benchmark_ready_count,
+      app->live_benchmark_oracle_count,
+      app->cancel_requested ? " | cancel pending" : "");
+  } else {
+    snprintf(bench, sizeof(bench), "%s | %s%s", current_live_stage(app), app->live_stage_status[0] ? app->live_stage_status : "worker active", app->cancel_requested ? " | cancel pending" : "");
+  }
   set_run_status(app, factor, proof, cyclo, bench);
   gtk_button_set_label(GTK_BUTTON(app->run_button), app->cancel_requested ? "CANCELLING..." : "RUNNING...");
   set_live_log(app);
@@ -718,7 +769,8 @@ static gboolean apply_stage_event(gpointer data) {
   UiStageEvent *event = (UiStageEvent *)data;
   AppState *app = event ? event->app : NULL;
   if (app && app->run_active) {
-    append_live_event(app, event);
+    if (strcmp(event->stage, "benchmark-row") == 0) append_live_benchmark_row(app, event);
+    else append_live_event(app, event);
     if (strcmp(event->stage, "factor") == 0) {
       snprintf(app->live_factor_status, sizeof(app->live_factor_status), "Factor Solver: %s", event->status);
     }
@@ -729,7 +781,14 @@ static gboolean apply_stage_event(gpointer data) {
     snprintf(factor, sizeof(factor), "%s", app->live_factor_status[0] ? app->live_factor_status : "Factor Solver: RUNNING");
     snprintf(proof, sizeof(proof), "Product proof: %s | %s", event->stage, event->status);
     snprintf(cyclo, sizeof(cyclo), "Live stage: %s | %s", event->stage, event->status);
-    snprintf(bench, sizeof(bench), "%s | %s", event->stage, event->status);
+    if (app->live_benchmark_row_count) {
+      snprintf(bench, sizeof(bench), "Benchmark rows %zu | ready %zu | oracle %zu",
+        app->live_benchmark_row_count,
+        app->live_benchmark_ready_count,
+        app->live_benchmark_oracle_count);
+    } else {
+      snprintf(bench, sizeof(bench), "%s | %s", event->stage, event->status);
+    }
     set_run_status(app, factor, proof, cyclo, bench);
     set_live_log(app);
     set_live_benchmark_view(app);
@@ -1329,11 +1388,17 @@ static void on_run_clicked(GtkButton *button, gpointer user_data) {
   app->run_started_ms = xray_now_ms();
   app->run_pulse = 0;
   app->live_event_count = 0;
+  app->live_benchmark_row_count = 0;
+  app->live_benchmark_ready_count = 0;
+  app->live_benchmark_oracle_count = 0;
+  app->live_benchmark_blocked_count = 0;
+  app->live_benchmark_failed_count = 0;
   app->live_stage_name[0] = '\0';
   app->live_stage_status[0] = '\0';
   app->live_stage_detail[0] = '\0';
   snprintf(app->live_factor_status, sizeof(app->live_factor_status), "Factor Solver: RUNNING");
   app->live_event_log[0] = '\0';
+  app->live_benchmark_row_log[0] = '\0';
   gtk_widget_set_sensitive(app->run_button, FALSE);
   gtk_button_set_label(GTK_BUTTON(app->run_button), "RUNNING...");
   gtk_widget_set_visible(app->cancel_button, TRUE);
@@ -1351,8 +1416,8 @@ static void on_run_clicked(GtkButton *button, gpointer user_data) {
   set_text_view(app->benchmark_view,
     "BENCHMARK FRONTIER\n"
     "Running native proof worker...\n\n"
-    "The frontier summary and timing tables will populate when the benchmark report is assembled.\n"
-    "You can keep this tab open; the final scratch-vs-GMP/MPIR rows replace this placeholder automatically.\n");
+    "Benchmark rows will stream here during the benchmark stage.\n"
+    "The final frontier summary and timing tables replace this live view when the verified report is assembled.\n");
   set_live_log(app);
   if (!app->live_timer_id) app->live_timer_id = g_timeout_add(250, live_run_tick, app);
 

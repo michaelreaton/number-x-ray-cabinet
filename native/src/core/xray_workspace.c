@@ -84,6 +84,31 @@ static void emit_run_event(const XrayRunConfig *config, const char *stage, const
   }
 }
 
+static void emit_benchmark_row_event(const XrayBenchmarkResult *result, size_t result_index, void *user_data) {
+  const XrayRunConfig *config = (const XrayRunConfig *)user_data;
+  if (!config || !config->event_callback || !result) return;
+  const char *status = "passed";
+  if (!result->passed) status = "failed";
+  else if (result->replacement_ready) status = "replacement-ready";
+  else if (strcmp(result->category, "scratch-vs-gmp") == 0 && result->adoption[0]) status = result->adoption;
+  else if (result->status[0]) status = result->status;
+
+  char detail[384];
+  snprintf(detail, sizeof(detail),
+    "row=%zu category=%s operation=%s digits=%zu ratio=%.3f stable=%zu/%zu ready=%s scratchUs=%llu backendUs=%llu",
+    result_index,
+    result->category[0] ? result->category : "benchmark",
+    result->operation[0] ? result->operation : result->name,
+    result->digits,
+    result->speed_ratio,
+    result->stable_sample_count,
+    result->sample_count,
+    result->replacement_ready ? "true" : "false",
+    result->scratch_us,
+    result->gmp_us);
+  emit_run_event(config, "benchmark-row", status, detail);
+}
+
 XrayRunConfig xray_run_default_config(void) {
   XrayRunConfig config;
   memset(&config, 0, sizeof(config));
@@ -219,7 +244,7 @@ int xray_workbench_run(const char *raw_input, const XrayRunConfig *config_input,
   }
   if (config.enable_benchmark) {
     emit_run_event(&config, "benchmark", "running", "Measuring scratch bigint primitives against GMP/MPIR");
-    xray_benchmark_run(&report->benchmark);
+    xray_benchmark_run_with_callback(&report->benchmark, emit_benchmark_row_event, &config);
     char benchmark_detail[192];
     snprintf(benchmark_detail, sizeof(benchmark_detail), "passed=%zu/%zu scratch=%zu replacementReady=%zu oracleOnly=%zu blocked=%zu",
       report->benchmark.passed_count,

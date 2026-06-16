@@ -1304,21 +1304,36 @@ static void test_cyclotomic_known_values(void) {
 
 typedef struct RunEventCapture {
   size_t count;
+  size_t benchmark_row_count;
   int saw_expression_complete;
   int saw_factor_event;
+  int saw_benchmark_running;
+  int saw_benchmark_complete;
   int saw_benchmark_disabled;
+  int saw_benchmark_row_scratch;
+  int saw_benchmark_row_kernel;
+  int saw_benchmark_row_factor;
+  int saw_benchmark_row_cyclotomic;
   int saw_assemble_complete;
   char sequence[1024];
 } RunEventCapture;
 
 static void capture_run_event(const char *stage, const char *status, const char *detail, void *user_data) {
-  (void)detail;
   RunEventCapture *capture = (RunEventCapture *)user_data;
   if (!capture) return;
   capture->count++;
   if (strcmp(stage, "expression") == 0 && strcmp(status, "complete") == 0) capture->saw_expression_complete = 1;
   if (strcmp(stage, "factor") == 0) capture->saw_factor_event = 1;
+  if (strcmp(stage, "benchmark") == 0 && strcmp(status, "running") == 0) capture->saw_benchmark_running = 1;
+  if (strcmp(stage, "benchmark") == 0 && strcmp(status, "complete") == 0) capture->saw_benchmark_complete = 1;
   if (strcmp(stage, "benchmark") == 0 && strcmp(status, "disabled") == 0) capture->saw_benchmark_disabled = 1;
+  if (strcmp(stage, "benchmark-row") == 0) {
+    capture->benchmark_row_count++;
+    if (detail && strstr(detail, "category=scratch-vs-gmp")) capture->saw_benchmark_row_scratch = 1;
+    if (detail && strstr(detail, "category=kernel-probe")) capture->saw_benchmark_row_kernel = 1;
+    if (detail && strstr(detail, "category=factor-benchmark")) capture->saw_benchmark_row_factor = 1;
+    if (detail && strstr(detail, "category=cyclotomic-benchmark")) capture->saw_benchmark_row_cyclotomic = 1;
+  }
   if (strcmp(stage, "assemble") == 0 && strcmp(status, "complete") == 0) capture->saw_assemble_complete = 1;
   size_t used = strlen(capture->sequence);
   if (used + strlen(stage) + strlen(status) + 4U < sizeof(capture->sequence)) {
@@ -1433,6 +1448,10 @@ static void test_benchmarks(void) {
   config.enable_cyclotomic = 0;
   config.enable_gnfs_stage_proof = 0;
   config.enable_benchmark = 1;
+  RunEventCapture events;
+  memset(&events, 0, sizeof(events));
+  config.event_callback = capture_run_event;
+  config.event_user_data = &events;
   XrayWorkbenchReport workbench;
   CHECK(xray_workbench_run("10403", &config, &workbench));
   XrayBenchmarkReport *report = &workbench.benchmark;
@@ -1440,6 +1459,13 @@ static void test_benchmarks(void) {
   CHECK(report->cpu.logical_cpus >= 1);
   CHECK(report->result_count >= 40);
   CHECK(report->passed_count == report->result_count);
+  CHECK(events.saw_benchmark_running);
+  CHECK(events.saw_benchmark_complete);
+  CHECK(events.benchmark_row_count == report->result_count);
+  CHECK(events.saw_benchmark_row_factor);
+  CHECK(events.saw_benchmark_row_cyclotomic);
+  CHECK(events.saw_benchmark_row_scratch);
+  CHECK(events.saw_benchmark_row_kernel);
   size_t scratch_rows = 0;
   size_t kernel_rows = 0;
   size_t replacement_ready_rows = 0;

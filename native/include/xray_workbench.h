@@ -807,6 +807,15 @@ typedef struct XrayBenchmarkResult {
   char detail[512];
 } XrayBenchmarkResult;
 
+/**
+ * Optional callback invoked after each benchmark result row is appended.
+ *
+ * result is borrowed and valid only for the duration of the callback.
+ * result_index is one-based and reflects the row's position in the partial
+ * benchmark report. The callback runs on the benchmark caller's thread.
+ */
+typedef void (*XrayBenchmarkResultCallback)(const XrayBenchmarkResult *result, size_t result_index, void *user_data);
+
 typedef struct XrayCpuFeatures {
   char architecture[24];
   char vendor[32];
@@ -851,6 +860,8 @@ typedef struct XrayBenchmarkReport {
   size_t oracle_only_count;
   size_t blocked_count;
   unsigned long elapsed_ms;
+  XrayBenchmarkResultCallback result_callback;
+  void *result_callback_user_data;
 } XrayBenchmarkReport;
 
 typedef struct XrayGnfsStage {
@@ -1142,6 +1153,19 @@ XRAY_API char *xray_cyclotomic_scan_json(const char *raw_input);
  * decisions; they do not prove mathematical results.
  */
 XRAY_API int xray_benchmark_run(XrayBenchmarkReport *report);
+
+/**
+ * Run the benchmark ladder and stream each completed result row.
+ *
+ * result_callback may be NULL. When supplied, it is called after each row has
+ * been copied into the partial report and after report counters have been
+ * updated. GUI and foreign-language callers should dispatch from the callback
+ * before touching non-thread-safe state.
+ */
+XRAY_API int xray_benchmark_run_with_callback(
+  XrayBenchmarkReport *report,
+  XrayBenchmarkResultCallback result_callback,
+  void *user_data);
 
 /**
  * Free all heap fields inside a benchmark report and reset it.
