@@ -7,7 +7,8 @@ parity plus a stable same-run paired win.
 ## Current Rules
 
 - `replacementReady` requires exact parity, paired-median speed within the row
-  limit, and at least 4 of 5 stable paired samples.
+  limit, no worst-pair regression above `1.0`, and at least 4 of 5 stable
+  paired samples.
 - `kernel-probe` rows are evidence only. They do not change production routing.
 - A primitive-level win is not enough. The candidate must also survive the full
   operation shape before it can replace the current path.
@@ -18,6 +19,34 @@ parity plus a stable same-run paired win.
   its own. Such rows must report `thresholdSafety=requires-forced-neighbor`,
   `noAutoRoute=1`, `replacementReady=false`, and `adoption=observe-only` until a
   dedicated forced-neighbor safety row passes.
+
+## 2026-06-16: Worst-Pair Readiness Gate
+
+Runs:
+
+- Release: `native/build-codex-pair-route/native-test-runs/20260616-101356-c4b04caf`
+- `/GL`: `native/build-codex-ltcg/native-test-runs/20260616-102125-c4b04caf`
+
+This pass hardens benchmark readiness so a candidate cannot advertise
+replacement or promotion readiness when any paired sample is slower than the
+baseline, even if the paired median is faster. Those rows now report
+`status=worst-pair-regression`, `replacementReady=false`, and
+`adoption=observe-only`.
+
+Release row caught by the guard:
+
+- safety `preinv10e19-window768-1000`, 1000 digits: ratio `0.925`, worst pair
+  `1.288`, stable `2/2`, `worst-pair-regression`
+
+`/GL` row caught by the guard:
+
+- safety `preinv10e19-pairs-window768-1000`, 1000 digits: ratio `0.904`, worst
+  pair `1.036`, stable `2/2`, `worst-pair-regression`
+
+Decision: keep the candidate evidence, but reject adoption readiness whenever
+the worst paired sample regresses. This avoids the threshold trap where a small
+root-size or bounded-window row looks good by median while still losing in a
+product-like paired run.
 
 ## 2026-06-16: Bounded Preinv 10^19 Policy Gate Rejected By `/GL`
 

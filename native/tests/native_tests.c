@@ -1599,6 +1599,7 @@ static void test_benchmarks(void) {
       CHECK(report->results[index].replacement_ready == (strcmp(adoption, "allowed") == 0));
       if (strcmp(adoption, "allowed") == 0) {
         CHECK(report->results[index].stable_sample_count >= 4);
+        CHECK(report->results[index].worst_pair_ratio <= 1.0);
         replacement_ready_rows++;
       }
       else if (strcmp(adoption, "oracle-only") == 0) oracle_only_rows++;
@@ -2213,6 +2214,7 @@ static void test_benchmarks(void) {
           (report->results[index].sample_count < 4 ? report->results[index].sample_count : 4);
         CHECK(report->results[index].stable_sample_count >= required_stable);
         CHECK(report->results[index].speed_ratio <= report->results[index].max_allowed_speed_ratio);
+        CHECK(report->results[index].worst_pair_ratio <= 1.0);
       }
       CHECK(strstr(report->results[index].adoption, "promote-candidate") != NULL ||
         strstr(report->results[index].adoption, "observe-only") != NULL ||
@@ -2515,6 +2517,7 @@ static void test_benchmarks(void) {
       if (strcmp(report->results[index].adoption, "promotion-ready") == 0) {
         CHECK(report->results[index].stable_sample_count >= 4);
         CHECK(report->results[index].speed_ratio <= report->results[index].max_allowed_speed_ratio);
+        CHECK(report->results[index].worst_pair_ratio <= 1.0);
       }
       CHECK(strstr(report->results[index].adoption, "promotion-ready") != NULL ||
         strstr(report->results[index].adoption, "observe-only") != NULL ||
@@ -2681,6 +2684,7 @@ static void test_benchmarks(void) {
       if (strcmp(report->results[index].adoption, "promotion-ready") == 0) {
         CHECK(report->results[index].stable_sample_count == report->results[index].sample_count);
         CHECK(report->results[index].speed_ratio <= report->results[index].max_allowed_speed_ratio);
+        CHECK(report->results[index].worst_pair_ratio <= 1.0);
       }
       CHECK(strstr(report->results[index].adoption, "promotion-ready") != NULL ||
         strstr(report->results[index].adoption, "observe-only") != NULL ||
@@ -2697,9 +2701,13 @@ static void test_benchmarks(void) {
   unstable.max_allowed_speed_ratio = 1.0;
   unstable.sample_count = 5;
   unstable.stable_sample_count = 3;
+  unstable.worst_pair_ratio = 0.95;
   CHECK(strcmp(xray_scratch_adoption_for_result(&unstable), "oracle-only") == 0);
   unstable.stable_sample_count = 4;
   CHECK(strcmp(xray_scratch_adoption_for_result(&unstable), "allowed") == 0);
+  unstable.worst_pair_ratio = 1.01;
+  CHECK(strcmp(xray_scratch_adoption_for_result(&unstable), "oracle-only") == 0);
+  unstable.worst_pair_ratio = 0.95;
   unstable.speed_ratio = 1.01;
   unstable.stable_sample_count = 5;
   CHECK(strcmp(xray_scratch_adoption_for_result(&unstable), "oracle-only") == 0);
