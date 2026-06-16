@@ -77,6 +77,9 @@ typedef struct AppState {
   GtkWidget *benchmark_lane_safety_detail_label;
   GtkWidget *benchmark_better_label;
   GtkWidget *benchmark_working_label;
+  GtkWidget *benchmark_cpu_context_label;
+  GtkWidget *benchmark_backend_context_label;
+  GtkWidget *benchmark_build_context_label;
   guint live_timer_id;
   unsigned long run_started_ms;
   unsigned int run_pulse;
@@ -120,6 +123,9 @@ typedef struct RunResult {
   char benchmark_safety_detail[192];
   char benchmark_better_text[768];
   char benchmark_working_text[768];
+  char benchmark_cpu_context[768];
+  char benchmark_backend_context[256];
+  char benchmark_build_context[768];
   char *benchmark_text;
   char log_line[2048];
 } RunResult;
@@ -757,6 +763,51 @@ static void format_benchmark_status_panels(
   }
 }
 
+static void format_benchmark_context_labels(
+  const XrayBenchmarkReport *report,
+  char *cpu_out,
+  size_t cpu_out_size,
+  char *backend_out,
+  size_t backend_out_size,
+  char *build_out,
+  size_t build_out_size
+) {
+  if (cpu_out && cpu_out_size) {
+    XrayCpuFeatures cpu;
+    if (report && report->cpu.brand[0]) {
+      cpu = report->cpu;
+    } else {
+      xray_cpu_features_detect(&cpu);
+    }
+    char *summary = xray_cpu_features_summary(&cpu);
+    snprintf(cpu_out, cpu_out_size, "%s", summary ? summary : "CPU: unavailable");
+    free(summary);
+  }
+
+  if (backend_out && backend_out_size) {
+    snprintf(backend_out, backend_out_size, "Baseline backend: %s %s (%s)",
+      xray_bignum_backend_name(),
+      xray_bignum_backend_version(),
+      xray_bignum_backend_library());
+  }
+
+  if (build_out && build_out_size) {
+    XrayBigIntRouteConfig route = xray_bigint_route_config();
+    char *build = xray_build_info_summary(NULL);
+    snprintf(build_out, build_out_size,
+      "%s\nBigint route: word=%ub | karatsuba>=%zu limbs | format-horner>=%zu limbs | mul-unroll4=%s %zu..%zu limbs | msvc128=%s",
+      build ? build : "Build: unavailable",
+      route.word_bits,
+      route.karatsuba_threshold_limbs,
+      route.decimal_horner_min_limbs,
+      route.mul_unroll4_route_enabled ? "on" : "off",
+      route.mul_unroll4_route_min_limbs,
+      route.mul_unroll4_route_max_limbs,
+      route.msvc_uint128_helpers ? "yes" : "no");
+    free(build);
+  }
+}
+
 static void apply_tone(GtkWidget *label, const char *tone) {
   if (!label) return;
   gtk_widget_remove_css_class(label, "good");
@@ -831,6 +882,19 @@ static void reset_benchmark_dashboard(AppState *app, const char *current) {
   set_label_if(app->benchmark_lane_safety_detail_label, "No safety rejection yet.");
   set_label_if(app->benchmark_better_label, "Run Proof to rank the fastest safe scratch rows.");
   set_label_if(app->benchmark_working_label, "Run Proof to rank the largest exact-parity gaps.");
+  char cpu_context[768];
+  char backend_context[256];
+  char build_context[768];
+  format_benchmark_context_labels(NULL,
+    cpu_context,
+    sizeof(cpu_context),
+    backend_context,
+    sizeof(backend_context),
+    build_context,
+    sizeof(build_context));
+  set_label_if(app->benchmark_cpu_context_label, cpu_context);
+  set_label_if(app->benchmark_backend_context_label, backend_context);
+  set_label_if(app->benchmark_build_context_label, build_context);
   set_label_if(app->benchmark_current_label, current ? current : "Waiting for Run Proof.");
   app->benchmark_history_count = 0;
   memset(app->benchmark_history, 0, sizeof(app->benchmark_history));
@@ -1479,6 +1543,26 @@ static GtkWidget *benchmark_status_box(
   return box;
 }
 
+static GtkWidget *benchmark_context_panel(AppState *app) {
+  GtkWidget *box = section_box("panel", 8);
+  GtkWidget *header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+  gtk_box_append(GTK_BOX(header), label_with_class("RUN CONTEXT", "section-title"));
+  GtkWidget *badge = label_with_width("HARDWARE + ROUTE", "micro", 22, FALSE);
+  gtk_widget_add_css_class(badge, "good");
+  gtk_widget_set_halign(badge, GTK_ALIGN_END);
+  gtk_widget_set_hexpand(badge, TRUE);
+  gtk_box_append(GTK_BOX(header), badge);
+  gtk_box_append(GTK_BOX(box), header);
+
+  app->benchmark_cpu_context_label = label_with_width("CPU: detecting...", "mono-small", 118, TRUE);
+  app->benchmark_backend_context_label = label_with_width("Baseline backend: detecting...", "mono-small", 118, TRUE);
+  app->benchmark_build_context_label = label_with_width("Build: detecting...", "mono-small", 118, TRUE);
+  gtk_box_append(GTK_BOX(box), app->benchmark_cpu_context_label);
+  gtk_box_append(GTK_BOX(box), app->benchmark_backend_context_label);
+  gtk_box_append(GTK_BOX(box), app->benchmark_build_context_label);
+  return box;
+}
+
 static GtkWidget *stage_row(const char *index, const char *state, const char *detail, const char *state_class) {
   GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
   gtk_widget_add_css_class(row, "stage-row");
@@ -1599,6 +1683,7 @@ static GtkWidget *build_benchmark_page(AppState *app) {
   gtk_widget_add_css_class(page, "surface");
   set_margins(page, 16, 16, 16, 16);
   gtk_box_append(GTK_BOX(page), label_with_class("LIVE BENCHMARK RESULTS", "section-title"));
+  gtk_box_append(GTK_BOX(page), benchmark_context_panel(app));
 
   GtkWidget *summary = gtk_grid_new();
   gtk_grid_set_column_spacing(GTK_GRID(summary), 10);
@@ -1853,6 +1938,9 @@ static gboolean finish_run(gpointer data) {
   if (result->benchmark_safety_detail[0]) set_label_if(app->benchmark_lane_safety_detail_label, result->benchmark_safety_detail);
   set_label_if(app->benchmark_better_label, result->benchmark_better_text);
   set_label_if(app->benchmark_working_label, result->benchmark_working_text);
+  set_label_if(app->benchmark_cpu_context_label, result->benchmark_cpu_context);
+  set_label_if(app->benchmark_backend_context_label, result->benchmark_backend_context);
+  set_label_if(app->benchmark_build_context_label, result->benchmark_build_context);
   set_label_if(app->benchmark_current_label, result->bench_status);
   set_run_status(app, result->factor_status, result->proof_status, result->cyclo_status, result->bench_status);
   set_text_view(app->json_view, result->json);
@@ -1887,6 +1975,14 @@ static gpointer run_worker(gpointer data) {
     sizeof(result->benchmark_better_text),
     result->benchmark_working_text,
     sizeof(result->benchmark_working_text));
+  format_benchmark_context_labels(
+    &report.benchmark,
+    result->benchmark_cpu_context,
+    sizeof(result->benchmark_cpu_context),
+    result->benchmark_backend_context,
+    sizeof(result->benchmark_backend_context),
+    result->benchmark_build_context,
+    sizeof(result->benchmark_build_context));
   for (size_t index = 0; index < report.benchmark.result_count; ++index) {
     if (!report.benchmark.results[index].passed) result->benchmark_failed_count++;
   }
