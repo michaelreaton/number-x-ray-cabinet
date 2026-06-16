@@ -1350,6 +1350,7 @@ static void append_perf_result(
 
 static size_t policy_required_stable_samples(size_t sample_count) {
   if (sample_count == 0) return 0;
+  if (sample_count > XRAY_BENCH_SAMPLES) return sample_count - 1U;
   return sample_count < XRAY_SCRATCH_REQUIRED_STABLE_SAMPLES ?
     sample_count :
     XRAY_SCRATCH_REQUIRED_STABLE_SAMPLES;
@@ -1501,6 +1502,7 @@ static void append_arithmetic_policy_probe_result(
 
 static void append_format_policy_safety_result(
   XrayBenchmarkReport *report,
+  const char *operation,
   const char *policy,
   const char *candidate,
   size_t neighbor_digits,
@@ -1521,7 +1523,7 @@ static void append_format_policy_safety_result(
   memset(&result, 0, sizeof(result));
   snprintf(result.name, sizeof(result.name), "policy gate format %s", policy);
   snprintf(result.category, sizeof(result.category), "policy-gate");
-  snprintf(result.operation, sizeof(result.operation), "format-policy-safety");
+  snprintf(result.operation, sizeof(result.operation), "%s", operation ? operation : "format-policy-safety");
   result.digits = gate_digits;
   result.scratch_us = candidate_us ? candidate_us : 1;
   result.gmp_us = gmp_us ? gmp_us : 1;
@@ -1549,8 +1551,10 @@ static void append_format_policy_safety_result(
     (result.replacement_ready ? "policy-ready" : "needs-stability")))));
   result.passed = parity;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  size_t required_stable = policy_required_stable_samples(sample_count);
   snprintf(result.detail, sizeof(result.detail),
-    "op=format-policy-safety policy=%s gate=%zu neighbor=%zu min=%zu max=%zu leaf=%zu forcedCandidate=yes thresholdSafety=forced-neighbor neighborStable=%zu/%zu gateStable=%zu/%zu neighborRatio=%.3f gateRatio=%.3f ratioMethod=paired-median candidate=%s baseline=mpz_get_str featureGate=threshold-neighbor gmpClue=product-codegen adoption=%s",
+    "op=%s policy=%s gate=%zu neighbor=%zu min=%zu max=%zu leaf=%zu forcedCandidate=yes thresholdSafety=forced-neighbor neighborStable=%zu/%zu gateStable=%zu/%zu requiredStablePairs=%zu/%zu neighborRatio=%.3f gateRatio=%.3f ratioMethod=paired-median candidate=%s baseline=mpz_get_str featureGate=threshold-neighbor gmpClue=product-codegen adoption=%s",
+    result.operation,
     policy,
     gate_digits,
     neighbor_digits,
@@ -1560,6 +1564,8 @@ static void append_format_policy_safety_result(
     neighbor_stable,
     sample_count,
     gate_stable,
+    sample_count,
+    required_stable,
     sample_count,
     neighbor_ratio,
     gate_ratio,
@@ -3977,9 +3983,11 @@ static XrayFormatPolicyMeasurement measure_forced_format_policy_candidate(
   unsigned int seed,
   size_t max_digits,
   size_t leaf_chunks,
+  size_t sample_count,
   XrayFormatPolicyProbeFn probe) {
   XrayFormatPolicyMeasurement measurement;
   memset(&measurement, 0, sizeof(measurement));
+  if (sample_count == 0 || sample_count > XRAY_BENCH_MAX_SAMPLES) sample_count = XRAY_BENCH_SAMPLES;
   char *text = benchmark_decimal(digits, seed, 1);
   if (!text || !probe) {
     free(text);
@@ -3992,11 +4000,11 @@ static XrayFormatPolicyMeasurement measure_forced_format_policy_candidate(
   mpz_t gmp;
   mpz_init(gmp);
   int ok = xray_bigint_set_decimal(&scratch, text) && mpz_set_str(gmp, text, 10) == 0;
-  unsigned long long candidate_samples[XRAY_BENCH_SAMPLES] = {0};
-  unsigned long long gmp_samples[XRAY_BENCH_SAMPLES] = {0};
+  unsigned long long candidate_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
   int parity = 1;
 
-  for (unsigned int sample = 0; sample < XRAY_BENCH_SAMPLES; ++sample) {
+  for (size_t sample = 0; sample < sample_count; ++sample) {
     unsigned long long candidate_started = xray_now_us();
     for (unsigned int index = 0; ok && index < iterations; ++index) {
       char *candidate_text = probe(&scratch, digits, 0, max_digits, leaf_chunks);
@@ -4021,11 +4029,11 @@ static XrayFormatPolicyMeasurement measure_forced_format_policy_candidate(
   }
 
   measurement.parity = parity;
-  measurement.candidate_us = median_samples(candidate_samples, XRAY_BENCH_SAMPLES);
-  measurement.gmp_us = median_samples(gmp_samples, XRAY_BENCH_SAMPLES);
-  measurement.paired_ratio = median_paired_ratio(candidate_samples, gmp_samples, XRAY_BENCH_SAMPLES);
-  measurement.worst_pair_ratio = max_paired_ratio(candidate_samples, gmp_samples, XRAY_BENCH_SAMPLES);
-  measurement.stable_sample_count = paired_ratio_wins(candidate_samples, gmp_samples, XRAY_BENCH_SAMPLES, 1.0);
+  measurement.candidate_us = median_samples(candidate_samples, sample_count);
+  measurement.gmp_us = median_samples(gmp_samples, sample_count);
+  measurement.paired_ratio = median_paired_ratio(candidate_samples, gmp_samples, sample_count);
+  measurement.worst_pair_ratio = max_paired_ratio(candidate_samples, gmp_samples, sample_count);
+  measurement.stable_sample_count = paired_ratio_wins(candidate_samples, gmp_samples, sample_count, 1.0);
 
   mpz_clear(gmp);
   xray_bigint_clear(&scratch);
@@ -4033,8 +4041,9 @@ static XrayFormatPolicyMeasurement measure_forced_format_policy_candidate(
   return measurement;
 }
 
-static void run_format_policy_safety_case(
+static void run_format_policy_safety_case_samples(
   XrayBenchmarkReport *report,
+  const char *operation,
   unsigned int seed,
   const char *policy,
   const char *candidate,
@@ -4043,18 +4052,21 @@ static void run_format_policy_safety_case(
   size_t min_digits,
   size_t max_digits,
   size_t leaf_chunks,
+  size_t sample_count,
   XrayFormatPolicyProbeFn probe) {
   XrayFormatPolicyMeasurement neighbor = measure_forced_format_policy_candidate(
     neighbor_digits,
     seed,
     max_digits,
     leaf_chunks,
+    sample_count,
     probe);
   XrayFormatPolicyMeasurement gate = measure_forced_format_policy_candidate(
     gate_digits,
     seed + 1U,
     max_digits,
     leaf_chunks,
+    sample_count,
     probe);
   unsigned long long candidate_us = neighbor.candidate_us > gate.candidate_us ?
     neighbor.candidate_us :
@@ -4066,6 +4078,7 @@ static void run_format_policy_safety_case(
 
   append_format_policy_safety_result(
     report,
+    operation,
     policy,
     candidate,
     neighbor_digits,
@@ -4080,8 +4093,60 @@ static void run_format_policy_safety_case(
     gate.paired_ratio,
     neighbor.stable_sample_count,
     gate.stable_sample_count,
-    XRAY_BENCH_SAMPLES,
+    sample_count,
     worst_pair_ratio);
+}
+
+static void run_format_policy_safety_case(
+  XrayBenchmarkReport *report,
+  unsigned int seed,
+  const char *policy,
+  const char *candidate,
+  size_t neighbor_digits,
+  size_t gate_digits,
+  size_t min_digits,
+  size_t max_digits,
+  size_t leaf_chunks,
+  XrayFormatPolicyProbeFn probe) {
+  run_format_policy_safety_case_samples(
+    report,
+    "format-policy-safety",
+    seed,
+    policy,
+    candidate,
+    neighbor_digits,
+    gate_digits,
+    min_digits,
+    max_digits,
+    leaf_chunks,
+    XRAY_BENCH_SAMPLES,
+    probe);
+}
+
+static void run_format_policy_deep_safety_case(
+  XrayBenchmarkReport *report,
+  unsigned int seed,
+  const char *policy,
+  const char *candidate,
+  size_t neighbor_digits,
+  size_t gate_digits,
+  size_t min_digits,
+  size_t max_digits,
+  size_t leaf_chunks,
+  XrayFormatPolicyProbeFn probe) {
+  run_format_policy_safety_case_samples(
+    report,
+    "format-policy-deep-safety",
+    seed,
+    policy,
+    candidate,
+    neighbor_digits,
+    gate_digits,
+    min_digits,
+    max_digits,
+    leaf_chunks,
+    XRAY_BENCH_DEEP_SAMPLES,
+    probe);
 }
 
 static void run_format_policy_probe_case(
@@ -7170,6 +7235,29 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     report,
     271U,
     "preinv10e19-pairs-window896-1000",
+    "decimal-divide-1e19-preinv-pair-writer",
+    896,
+    1000,
+    896,
+    1000,
+    0,
+    format_policy_divide_1e19_preinv_pairs);
+
+  run_format_policy_deep_safety_case(
+    report,
+    281U,
+    "deep-preinv10e19-pairs-window768-960",
+    "decimal-divide-1e19-preinv-pair-writer",
+    768,
+    960,
+    768,
+    960,
+    0,
+    format_policy_divide_1e19_preinv_pairs);
+  run_format_policy_deep_safety_case(
+    report,
+    283U,
+    "deep-preinv10e19-pairs-window896-1000",
     "decimal-divide-1e19-preinv-pair-writer",
     896,
     1000,

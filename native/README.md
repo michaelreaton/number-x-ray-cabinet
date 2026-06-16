@@ -290,6 +290,10 @@ GMP-inspired base-`1e19` preinverse route. The `preinv10e19-window*` and
 root-size-gated decimal serialization pocket before it can influence the
 production formatter; they remain `observe-only` unless both endpoint timing
 and worst-pair safety pass.
+When a five-sample endpoint gate looks clean, matching
+`format-policy-deep-safety` rows rerun that exact window with 9 paired samples
+and require 8 stable wins before the route is treated as promotion evidence.
+That stricter row is still benchmark evidence, not a production route change.
 
 Add/sub benchmark rows use a higher iteration floor at 1000+ digits because those operations are fast enough that sub-millisecond timing windows can flip adoption labels from scheduler noise rather than real algorithm behavior.
 
