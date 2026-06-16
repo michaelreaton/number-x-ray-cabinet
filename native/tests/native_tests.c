@@ -1302,10 +1302,38 @@ static void test_cyclotomic_known_values(void) {
   mpz_clears(base, value, expected, NULL);
 }
 
+typedef struct RunEventCapture {
+  size_t count;
+  int saw_expression_complete;
+  int saw_factor_event;
+  int saw_benchmark_disabled;
+  int saw_assemble_complete;
+  char sequence[1024];
+} RunEventCapture;
+
+static void capture_run_event(const char *stage, const char *status, const char *detail, void *user_data) {
+  (void)detail;
+  RunEventCapture *capture = (RunEventCapture *)user_data;
+  if (!capture) return;
+  capture->count++;
+  if (strcmp(stage, "expression") == 0 && strcmp(status, "complete") == 0) capture->saw_expression_complete = 1;
+  if (strcmp(stage, "factor") == 0) capture->saw_factor_event = 1;
+  if (strcmp(stage, "benchmark") == 0 && strcmp(status, "disabled") == 0) capture->saw_benchmark_disabled = 1;
+  if (strcmp(stage, "assemble") == 0 && strcmp(status, "complete") == 0) capture->saw_assemble_complete = 1;
+  size_t used = strlen(capture->sequence);
+  if (used + strlen(stage) + strlen(status) + 4U < sizeof(capture->sequence)) {
+    snprintf(capture->sequence + used, sizeof(capture->sequence) - used, "%s:%s;", stage, status);
+  }
+}
+
 static void test_workspace_and_gnfs_artifacts(void) {
   XrayRunConfig config = xray_run_default_config();
   snprintf(config.workspace_root, sizeof(config.workspace_root), "native-test-runs");
   config.enable_benchmark = 0;
+  RunEventCapture events;
+  memset(&events, 0, sizeof(events));
+  config.event_callback = capture_run_event;
+  config.event_user_data = &events;
   XrayWorkbenchReport report;
   CHECK(xray_workbench_run("2^12 + 1", &config, &report));
   CHECK(report.expression.ok);
@@ -1320,6 +1348,12 @@ static void test_workspace_and_gnfs_artifacts(void) {
   CHECK(strstr(report.json, "\"gnfsReport\"") != NULL);
   CHECK(strstr(report.events_jsonl, "\"stage\":\"benchmark\",\"status\":\"skipped\"") != NULL);
   CHECK(strstr(report.events_jsonl, "\"stage\":\"cpu\",\"status\":\"profiled\"") != NULL);
+  CHECK(events.count >= 10);
+  CHECK(events.saw_expression_complete);
+  CHECK(events.saw_factor_event);
+  CHECK(events.saw_benchmark_disabled);
+  CHECK(events.saw_assemble_complete);
+  CHECK(strstr(events.sequence, "expression:running;cpu:profiled;expression:complete;") != NULL);
   xray_workbench_report_clear(&report);
 }
 
