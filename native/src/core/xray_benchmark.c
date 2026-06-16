@@ -1252,6 +1252,7 @@ static void append_format_policy_probe_result(
   const char *feature_gate,
   const char *gmp_clue,
   size_t min_digits,
+  size_t max_digits,
   size_t leaf_chunks,
   int parity,
   unsigned long long candidate_us,
@@ -1275,7 +1276,7 @@ static void append_format_policy_probe_result(
   result.worst_pair_ratio = worst_pair_ratio;
   result.parity_verified = parity;
   size_t required_stable = policy_required_stable_samples(sample_count);
-  int threshold_policy = min_digits > 0 || leaf_chunks > 0;
+  int threshold_policy = min_digits > 0 || max_digits > 0 || leaf_chunks > 0;
   int row_cleared_gate = parity &&
     result.speed_ratio <= result.max_allowed_speed_ratio &&
     result.stable_sample_count >= required_stable;
@@ -1286,12 +1287,13 @@ static void append_format_policy_probe_result(
     !parity ? "mismatch" : (result.replacement_ready ? "policy-ready" : (threshold_policy && row_cleared_gate ? "needs-safety-gate" : (result.speed_ratio <= 1.0 ? "needs-stability" : "backend-faster"))));
   result.passed = parity;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
-  const char *active_candidate = (min_digits == 0 || digits >= min_digits) ? candidate : "current-scratch-format";
+  const char *active_candidate = (digits >= min_digits && (max_digits == 0 || digits <= max_digits)) ? candidate : "current-scratch-format";
   snprintf(result.detail, sizeof(result.detail),
-    "op=format-policy digits=%zu policy=%s minDigits=%zu leafThreshold=%zu samples=%zu stablePairs=%zu/%zu ratioMethod=paired-median candidate=%s activeCandidate=%s baseline=mpz_get_str featureGate=%s gmpClue=%s thresholdSafety=%s noAutoRoute=%d adoption=%s",
+    "op=format-policy digits=%zu policy=%s minDigits=%zu maxDigits=%zu leafThreshold=%zu samples=%zu stablePairs=%zu/%zu ratioMethod=paired-median candidate=%s activeCandidate=%s baseline=mpz_get_str featureGate=%s gmpClue=%s thresholdSafety=%s noAutoRoute=%d adoption=%s",
     digits,
     policy,
     min_digits,
+    max_digits,
     leaf_chunks,
     sample_count,
     stable_sample_count,
@@ -1385,6 +1387,7 @@ static void append_format_policy_safety_result(
   size_t neighbor_digits,
   size_t gate_digits,
   size_t min_digits,
+  size_t max_digits,
   size_t leaf_chunks,
   int parity,
   unsigned long long candidate_us,
@@ -1426,11 +1429,12 @@ static void append_format_policy_safety_result(
   result.passed = parity;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=format-policy-safety policy=%s gate=%zu neighbor=%zu min=%zu leaf=%zu forcedCandidate=yes thresholdSafety=forced-neighbor neighborStable=%zu/%zu gateStable=%zu/%zu neighborRatio=%.3f gateRatio=%.3f ratioMethod=paired-median candidate=%s baseline=mpz_get_str featureGate=threshold-neighbor gmpClue=product-codegen adoption=%s",
+    "op=format-policy-safety policy=%s gate=%zu neighbor=%zu min=%zu max=%zu leaf=%zu forcedCandidate=yes thresholdSafety=forced-neighbor neighborStable=%zu/%zu gateStable=%zu/%zu neighborRatio=%.3f gateRatio=%.3f ratioMethod=paired-median candidate=%s baseline=mpz_get_str featureGate=threshold-neighbor gmpClue=product-codegen adoption=%s",
     policy,
     gate_digits,
     neighbor_digits,
     min_digits,
+    max_digits,
     leaf_chunks,
     neighbor_stable,
     sample_count,
@@ -3667,9 +3671,11 @@ static char *format_policy_current_default(
   const XrayScratchBigInt *value,
   size_t digits,
   size_t min_digits,
+  size_t max_digits,
   size_t leaf_chunks) {
   (void)digits;
   (void)min_digits;
+  (void)max_digits;
   (void)leaf_chunks;
   return xray_bigint_get_decimal(value);
 }
@@ -3678,7 +3684,9 @@ static char *format_policy_direct(
   const XrayScratchBigInt *value,
   size_t digits,
   size_t min_digits,
+  size_t max_digits,
   size_t leaf_chunks) {
+  if (max_digits > 0 && digits > max_digits) return xray_bigint_get_decimal(value);
   if (digits < min_digits) return xray_bigint_get_decimal(value);
   return xray_bigint_get_decimal_dc_direct_probe(value, leaf_chunks);
 }
@@ -3687,7 +3695,9 @@ static char *format_policy_static_direct(
   const XrayScratchBigInt *value,
   size_t digits,
   size_t min_digits,
+  size_t max_digits,
   size_t leaf_chunks) {
+  if (max_digits > 0 && digits > max_digits) return xray_bigint_get_decimal(value);
   if (digits < min_digits) return xray_bigint_get_decimal(value);
   return xray_bigint_get_decimal_dc_static_direct_probe(value, leaf_chunks);
 }
@@ -3696,7 +3706,9 @@ static char *format_policy_workspace(
   const XrayScratchBigInt *value,
   size_t digits,
   size_t min_digits,
+  size_t max_digits,
   size_t leaf_chunks) {
+  if (max_digits > 0 && digits > max_digits) return xray_bigint_get_decimal(value);
   if (digits < min_digits) return xray_bigint_get_decimal(value);
   return xray_bigint_get_decimal_dc_workspace_probe(value, leaf_chunks);
 }
@@ -3705,12 +3717,38 @@ static char *format_policy_preinv_qhat(
   const XrayScratchBigInt *value,
   size_t digits,
   size_t min_digits,
+  size_t max_digits,
   size_t leaf_chunks) {
+  if (max_digits > 0 && digits > max_digits) return xray_bigint_get_decimal(value);
   if (digits < min_digits) return xray_bigint_get_decimal(value);
   return xray_bigint_get_decimal_dc_preinv_qhat_probe(value, leaf_chunks);
 }
 
-typedef char *(*XrayFormatPolicyProbeFn)(const XrayScratchBigInt *value, size_t digits, size_t min_digits, size_t leaf_chunks);
+static char *format_policy_divide_1e19_preinv(
+  const XrayScratchBigInt *value,
+  size_t digits,
+  size_t min_digits,
+  size_t max_digits,
+  size_t leaf_chunks) {
+  (void)leaf_chunks;
+  if (max_digits > 0 && digits > max_digits) return xray_bigint_get_decimal(value);
+  if (digits < min_digits) return xray_bigint_get_decimal(value);
+  return xray_bigint_get_decimal_divide_1e19_preinv_probe(value);
+}
+
+static char *format_policy_divide_1e19_preinv_pairs(
+  const XrayScratchBigInt *value,
+  size_t digits,
+  size_t min_digits,
+  size_t max_digits,
+  size_t leaf_chunks) {
+  (void)leaf_chunks;
+  if (max_digits > 0 && digits > max_digits) return xray_bigint_get_decimal(value);
+  if (digits < min_digits) return xray_bigint_get_decimal(value);
+  return xray_bigint_get_decimal_divide_1e19_preinv_pair_writer_probe(value);
+}
+
+typedef char *(*XrayFormatPolicyProbeFn)(const XrayScratchBigInt *value, size_t digits, size_t min_digits, size_t max_digits, size_t leaf_chunks);
 
 typedef struct XrayFormatPolicyMeasurement {
   int parity;
@@ -3724,6 +3762,7 @@ typedef struct XrayFormatPolicyMeasurement {
 static XrayFormatPolicyMeasurement measure_forced_format_policy_candidate(
   size_t digits,
   unsigned int seed,
+  size_t max_digits,
   size_t leaf_chunks,
   XrayFormatPolicyProbeFn probe) {
   XrayFormatPolicyMeasurement measurement;
@@ -3747,7 +3786,7 @@ static XrayFormatPolicyMeasurement measure_forced_format_policy_candidate(
   for (unsigned int sample = 0; sample < XRAY_BENCH_SAMPLES; ++sample) {
     unsigned long long candidate_started = xray_now_us();
     for (unsigned int index = 0; ok && index < iterations; ++index) {
-      char *candidate_text = probe(&scratch, digits, 0, leaf_chunks);
+      char *candidate_text = probe(&scratch, digits, 0, max_digits, leaf_chunks);
       ok = candidate_text != NULL;
       free(candidate_text);
     }
@@ -3761,7 +3800,7 @@ static XrayFormatPolicyMeasurement measure_forced_format_policy_candidate(
     }
     gmp_samples[sample] = xray_now_us() - gmp_started;
 
-    char *candidate_text = probe(&scratch, digits, 0, leaf_chunks);
+    char *candidate_text = probe(&scratch, digits, 0, max_digits, leaf_chunks);
     char *gmp_text = mpz_get_str(NULL, 10, gmp);
     parity = parity && ok && candidate_text && gmp_text && strcmp(candidate_text, gmp_text) == 0;
     free(candidate_text);
@@ -3789,16 +3828,19 @@ static void run_format_policy_safety_case(
   size_t neighbor_digits,
   size_t gate_digits,
   size_t min_digits,
+  size_t max_digits,
   size_t leaf_chunks,
   XrayFormatPolicyProbeFn probe) {
   XrayFormatPolicyMeasurement neighbor = measure_forced_format_policy_candidate(
     neighbor_digits,
     seed,
+    max_digits,
     leaf_chunks,
     probe);
   XrayFormatPolicyMeasurement gate = measure_forced_format_policy_candidate(
     gate_digits,
     seed + 1U,
+    max_digits,
     leaf_chunks,
     probe);
   unsigned long long candidate_us = neighbor.candidate_us > gate.candidate_us ?
@@ -3816,6 +3858,7 @@ static void run_format_policy_safety_case(
     neighbor_digits,
     gate_digits,
     min_digits,
+    max_digits,
     leaf_chunks,
     neighbor.parity && gate.parity,
     candidate_us,
@@ -3837,6 +3880,7 @@ static void run_format_policy_probe_case(
   const char *feature_gate,
   const char *gmp_clue,
   size_t min_digits,
+  size_t max_digits,
   size_t leaf_chunks,
   XrayFormatPolicyProbeFn probe) {
   char *text = benchmark_decimal(digits, seed, 1);
@@ -3857,7 +3901,7 @@ static void run_format_policy_probe_case(
   for (unsigned int sample = 0; sample < XRAY_BENCH_SAMPLES; ++sample) {
     unsigned long long candidate_started = xray_now_us();
     for (unsigned int index = 0; ok && index < iterations; ++index) {
-      char *candidate_text = probe(&scratch, digits, min_digits, leaf_chunks);
+      char *candidate_text = probe(&scratch, digits, min_digits, max_digits, leaf_chunks);
       ok = candidate_text != NULL;
       free(candidate_text);
     }
@@ -3871,7 +3915,7 @@ static void run_format_policy_probe_case(
     }
     gmp_samples[sample] = xray_now_us() - gmp_started;
 
-    char *candidate_text = probe(&scratch, digits, min_digits, leaf_chunks);
+    char *candidate_text = probe(&scratch, digits, min_digits, max_digits, leaf_chunks);
     char *gmp_text = mpz_get_str(NULL, 10, gmp);
     parity = parity && ok && candidate_text && gmp_text && strcmp(candidate_text, gmp_text) == 0;
     free(candidate_text);
@@ -3886,6 +3930,7 @@ static void run_format_policy_probe_case(
     feature_gate,
     gmp_clue,
     min_digits,
+    max_digits,
     leaf_chunks,
     parity,
     median_samples(candidate_samples, XRAY_BENCH_SAMPLES),
@@ -6519,6 +6564,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
       "mpz_get_str-product-baseline",
       0,
       0,
+      0,
       format_policy_current_default);
     run_format_policy_probe_case(
       report,
@@ -6529,6 +6575,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
       "decimal-format-policy-direct-ge4096-leaf8",
       "mpn_dc_get_str-output-buffer",
       4096,
+      0,
       8,
       format_policy_direct);
     run_format_policy_probe_case(
@@ -6540,6 +6587,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
       "decimal-format-policy-direct-ge8192-leaf16",
       "mpn_dc_get_str-output-buffer",
       8192,
+      0,
       16,
       format_policy_direct);
     run_format_policy_probe_case(
@@ -6551,6 +6599,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
       "decimal-format-policy-static-direct",
       "static-powtab+buffer",
       4096,
+      0,
       16,
       format_policy_static_direct);
     run_format_policy_probe_case(
@@ -6562,6 +6611,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
       "decimal-format-policy-static-direct",
       "static-powtab+buffer",
       8192,
+      0,
       8,
       format_policy_static_direct);
     run_format_policy_probe_case(
@@ -6573,6 +6623,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
       "decimal-format-policy-workspace",
       "mpn_dc_get_str-divisor-context",
       4096,
+      0,
       16,
       format_policy_workspace);
     run_format_policy_probe_case(
@@ -6584,6 +6635,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
       "decimal-format-policy-preinv-qhat",
       "mpn_dc_get_str-preinverted-qhat",
       4096,
+      0,
       8,
       format_policy_preinv_qhat);
     run_format_policy_probe_case(
@@ -6595,6 +6647,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
       "decimal-format-policy-preinv-qhat",
       "mpn_dc_get_str-preinverted-qhat",
       8192,
+      0,
       16,
       format_policy_preinv_qhat);
     run_format_policy_probe_case(
@@ -6606,8 +6659,33 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
       "decimal-format-policy-preinv-qhat",
       "mpn_dc_get_str-preinverted-qhat",
       16384,
+      0,
       16,
       format_policy_preinv_qhat);
+    run_format_policy_probe_case(
+      report,
+      digits,
+      191U,
+      "preinv10e19-window768-1000",
+      "decimal-divide-1e19-preinv",
+      "decimal-format-policy-divide-1e19-preinv",
+      "mpn_sb_get_str-preinverted-divrem-1",
+      768,
+      1000,
+      0,
+      format_policy_divide_1e19_preinv);
+    run_format_policy_probe_case(
+      report,
+      digits,
+      193U,
+      "preinv10e19-pairs-window768-1000",
+      "decimal-divide-1e19-preinv-pair-writer",
+      "decimal-format-policy-divide-1e19-preinv-pairs",
+      "mpn_sb_get_str-preinverted-divrem-1+digit-emission",
+      768,
+      1000,
+      0,
+      format_policy_divide_1e19_preinv_pairs);
   }
 
   run_format_policy_safety_case(
@@ -6618,6 +6696,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     3072,
     4096,
     4096,
+    0,
     8,
     format_policy_direct);
   run_format_policy_safety_case(
@@ -6628,6 +6707,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     6144,
     8192,
     8192,
+    0,
     16,
     format_policy_direct);
   run_format_policy_safety_case(
@@ -6638,6 +6718,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     3072,
     4096,
     4096,
+    0,
     16,
     format_policy_static_direct);
   run_format_policy_safety_case(
@@ -6648,6 +6729,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     6144,
     8192,
     8192,
+    0,
     8,
     format_policy_static_direct);
   run_format_policy_safety_case(
@@ -6658,6 +6740,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     3072,
     4096,
     4096,
+    0,
     16,
     format_policy_workspace);
   run_format_policy_safety_case(
@@ -6668,6 +6751,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     3072,
     4096,
     4096,
+    0,
     8,
     format_policy_preinv_qhat);
   run_format_policy_safety_case(
@@ -6678,6 +6762,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     6144,
     8192,
     8192,
+    0,
     16,
     format_policy_preinv_qhat);
   run_format_policy_safety_case(
@@ -6688,8 +6773,31 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     12288,
     16384,
     16384,
+    0,
     16,
     format_policy_preinv_qhat);
+  run_format_policy_safety_case(
+    report,
+    197U,
+    "preinv10e19-window768-1000",
+    "decimal-divide-1e19-preinv",
+    768,
+    1000,
+    768,
+    1000,
+    0,
+    format_policy_divide_1e19_preinv);
+  run_format_policy_safety_case(
+    report,
+    199U,
+    "preinv10e19-pairs-window768-1000",
+    "decimal-divide-1e19-preinv-pair-writer",
+    768,
+    1000,
+    768,
+    1000,
+    0,
+    format_policy_divide_1e19_preinv_pairs);
 
   for (size_t digit_index = 0; digit_index < sizeof(format_strategy_digits) / sizeof(format_strategy_digits[0]); ++digit_index) {
     size_t digits = format_strategy_digits[digit_index];

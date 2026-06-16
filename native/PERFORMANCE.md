@@ -19,6 +19,48 @@ parity plus a stable same-run paired win.
   `noAutoRoute=1`, `replacementReady=false`, and `adoption=observe-only` until a
   dedicated forced-neighbor safety row passes.
 
+## 2026-06-16: Bounded Preinv 10^19 Policy Gate Rejected By `/GL`
+
+Runs:
+
+- Release: `native/build-codex-pair-route/native-test-runs/20260616-094647-c4b04caf`
+- `/GL`: `native/build-codex-ltcg/native-test-runs/20260616-095225-c4b04caf`
+
+This pass adds bounded `format-policy` rows for the 10^19 pre-inverted basecase
+formatter. Unlike a simple `ge1000` threshold, the policy has both `minDigits`
+and `maxDigits`, so it can test a narrow 768-1000 digit window without routing
+4096+ digit inputs into a candidate already known to regress. The policy rows
+export `activeCandidate=current-scratch-format` outside that window, and the
+safety rows force the candidate at 768 and 1000 digits.
+
+Release rows:
+
+- `preinv10e19-window768-1000`, 1000 digits: ratio `0.880`, worst pair
+  `1.002`, stable `4/5`, `needs-safety-gate`
+- `preinv10e19-pairs-window768-1000`, 1000 digits: ratio `0.807`, worst pair
+  `0.867`, stable `5/5`, `needs-safety-gate`
+- safety `preinv10e19-window768-1000`: neighbor ratio `0.527`, gate ratio
+  `0.839`, stable `2/2`, `policy-ready`
+- safety `preinv10e19-pairs-window768-1000`: neighbor ratio `0.581`, gate ratio
+  `0.815`, stable `2/2`, `policy-ready`
+
+`/GL` rows:
+
+- `preinv10e19-window768-1000`, 1000 digits: ratio `0.973`, worst pair
+  `1.092`, stable `3/5`, `needs-stability`
+- `preinv10e19-pairs-window768-1000`, 1000 digits: ratio `0.961`, worst pair
+  `1.910`, stable `3/5`, `needs-stability`
+- safety `preinv10e19-window768-1000`: neighbor ratio `0.712`, gate ratio
+  `1.027`, stable `1/2`, `gate-regression`
+- safety `preinv10e19-pairs-window768-1000`: neighbor ratio `0.731`, gate ratio
+  `0.946`, stable `1/2`, `gate-regression`
+
+Decision: rejected for production routing. The raw 1000-digit preinv kernel
+win remains real, but the MPIR-facing bounded policy does not survive
+product-like `/GL` codegen. Keep the bounded-window policy and safety machinery
+as a guardrail for future small-input candidates; do not enable the 10^19 preinv
+formatter by default.
+
 ## 2026-06-16: Decimal 10^19 Preinv Divide Probes Need A Size Gate
 
 Runs:
