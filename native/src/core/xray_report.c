@@ -428,7 +428,16 @@ static void append_label_token(char *label, size_t label_size, const char *prefi
 
 static void benchmark_frontier_label(const XrayBenchmarkResult *row, char *out, size_t out_size) {
   benchmark_row_label(row, out, out_size);
-  if (!row || strcmp(row->category, "kernel-probe") != 0) return;
+  if (!row) return;
+  if (strcmp(row->category, "policy-probe") == 0) {
+    if (row->operation[0]) snprintf(out, out_size, "%s", row->operation);
+    char value[48];
+    if (benchmark_detail_value(row, "policy", value, sizeof(value))) {
+      append_label_token(out, out_size, "", value);
+    }
+    return;
+  }
+  if (strcmp(row->category, "kernel-probe") != 0) return;
 
   if (row->operation[0]) snprintf(out, out_size, "%s", row->operation);
 
@@ -577,6 +586,28 @@ char *xray_benchmark_frontier_text(const XrayBenchmarkReport *report) {
       row->digits,
       row->adoption,
       row->replacement_ready ? "yes" : "no",
+      row->scratch_us,
+      row->gmp_us,
+      row->speed_ratio,
+      row->stable_sample_count,
+      row->sample_count);
+  }
+
+  jb_append(&buffer,
+    "\nPRODUCT POLICY PROBES\n"
+    "Policy                                    Digits   Status           Adoption          CandidateUs   BackendUs   Ratio   Stable\n"
+    "----------------------------------------   ------   --------------   ---------------   -----------   --------   -----   ------\n");
+  for (size_t index = 0; index < report->result_count; ++index) {
+    const XrayBenchmarkResult *row = &report->results[index];
+    if (strcmp(row->category, "policy-probe") != 0) continue;
+    char label[80];
+    benchmark_frontier_label(row, label, sizeof(label));
+    jb_printf(&buffer,
+      "%-40s   %6zu   %-14s   %-15s   %11llu   %8llu   %5.2f   %3zu/%-3zu\n",
+      label,
+      row->digits,
+      row->status,
+      row->adoption,
       row->scratch_us,
       row->gmp_us,
       row->speed_ratio,
