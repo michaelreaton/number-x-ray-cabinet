@@ -1275,6 +1275,56 @@ static void append_mul_threshold_probe_result(
   append_result(report, &result);
 }
 
+static void append_mul_karatsuba_middle_probe_result(
+  XrayBenchmarkReport *report,
+  size_t digits,
+  size_t threshold,
+  size_t operand_families,
+  int parity,
+  unsigned long long candidate_us,
+  unsigned long long baseline_us,
+  double paired_ratio,
+  size_t stable_sample_count,
+  size_t sample_count,
+  double worst_pair_ratio) {
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "kernel mul Karatsuba middle %zu limbs %zu digits", threshold, digits);
+  snprintf(result.category, sizeof(result.category), "kernel-probe");
+  snprintf(result.operation, sizeof(result.operation), "mul-karatsuba-middle");
+  result.digits = digits;
+  result.scratch_us = candidate_us ? candidate_us : 1;
+  result.gmp_us = baseline_us ? baseline_us : 1;
+  result.speed_ratio = paired_ratio > 0.0 ? paired_ratio : (double)result.scratch_us / (double)result.gmp_us;
+  result.max_allowed_speed_ratio = 0.98;
+  result.stable_sample_count = stable_sample_count;
+  result.sample_count = sample_count;
+  result.worst_pair_ratio = worst_pair_ratio;
+  result.parity_verified = parity;
+  size_t required_stable = kernel_required_stable_samples(sample_count);
+  result.replacement_ready = parity &&
+    result.speed_ratio <= result.max_allowed_speed_ratio &&
+    result.stable_sample_count >= required_stable;
+  snprintf(result.adoption, sizeof(result.adoption), "%s",
+    !parity ? "blocked-output-mismatch" : (result.replacement_ready ? "promote-candidate" : "observe-only"));
+  snprintf(result.status, sizeof(result.status), "%s",
+    !parity ? "mismatch" : (result.replacement_ready ? "candidate-faster" : (result.speed_ratio < 1.0 ? "candidate-no-margin" : "baseline-faster")));
+  result.passed = parity;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  snprintf(result.detail, sizeof(result.detail),
+    "op=mul-karatsuba-middle digits=%zu threshold=%zu mode=sum-vs-difference operandFamilies=%zu samples=%zu stablePairs=%zu/%zu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median candidate=karatsuba-sum-middle baseline=karatsuba-difference-middle featureGate=karatsuba-middle-form gmpClue=mpn_mul_n-middle-term adoption=%s",
+    digits,
+    threshold,
+    operand_families,
+    sample_count,
+    stable_sample_count,
+    sample_count,
+    result.speed_ratio,
+    result.worst_pair_ratio,
+    result.adoption);
+  append_result(report, &result);
+}
+
 static void append_format_threshold_probe_result(
   XrayBenchmarkReport *report,
   size_t digits,
@@ -2302,6 +2352,98 @@ static void run_mul_threshold_probe_case(XrayBenchmarkReport *report, size_t dig
     xray_bigint_clear(&a[family]);
     xray_bigint_clear(&b[family]);
     xray_bigint_clear(&scratch_out[family]);
+    free(left_text[family]);
+    free(right_text[family]);
+  }
+}
+
+static void run_mul_karatsuba_middle_probe_case(XrayBenchmarkReport *report, size_t digits, size_t threshold) {
+  char *left_text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  char *right_text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  XrayScratchBigInt a[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt b[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt candidate_out[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt baseline_out[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t ga[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gb[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gout[XRAY_MUL_OPERAND_FAMILIES];
+
+  unsigned int iterations = perf_iterations("mul", digits);
+  int ok = 1;
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    xray_bigint_init(&a[family]);
+    xray_bigint_init(&b[family]);
+    xray_bigint_init(&candidate_out[family]);
+    xray_bigint_init(&baseline_out[family]);
+    mpz_inits(ga[family], gb[family], gout[family], NULL);
+    left_text[family] = benchmark_decimal(digits, mul_operand_families[family].left_seed, mul_operand_families[family].left_high_lead);
+    right_text[family] = benchmark_decimal(digits, mul_operand_families[family].right_seed, mul_operand_families[family].right_high_lead);
+    ok = ok &&
+      left_text[family] &&
+      right_text[family] &&
+      xray_bigint_set_decimal(&a[family], left_text[family]) &&
+      xray_bigint_set_decimal(&b[family], right_text[family]) &&
+      mpz_set_str(ga[family], left_text[family], 10) == 0 &&
+      mpz_set_str(gb[family], right_text[family], 10) == 0;
+  }
+
+  unsigned long long candidate_samples[XRAY_BENCH_SAMPLES] = {0};
+  unsigned long long baseline_samples[XRAY_BENCH_SAMPLES] = {0};
+  int parity = 1;
+  for (unsigned int sample = 0; sample < XRAY_BENCH_SAMPLES; ++sample) {
+    unsigned long long candidate_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+        ok = xray_bigint_mul_karatsuba_sum_probe(&candidate_out[family], &a[family], &b[family], threshold);
+      }
+    }
+    candidate_samples[sample] = xray_now_us() - candidate_started;
+
+    unsigned long long baseline_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+        ok = xray_bigint_mul_with_threshold(&baseline_out[family], &a[family], &b[family], threshold);
+      }
+    }
+    baseline_samples[sample] = xray_now_us() - baseline_started;
+
+    for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+      mpz_mul(gout[family], ga[family], gb[family]);
+      char *candidate_text = xray_bigint_get_decimal(&candidate_out[family]);
+      char *baseline_text = xray_bigint_get_decimal(&baseline_out[family]);
+      char *gmp_text = mpz_get_str(NULL, 10, gout[family]);
+      parity = parity &&
+        ok &&
+        candidate_text &&
+        baseline_text &&
+        gmp_text &&
+        strcmp(candidate_text, baseline_text) == 0 &&
+        strcmp(candidate_text, gmp_text) == 0;
+      free(candidate_text);
+      free(baseline_text);
+      free(gmp_text);
+    }
+  }
+
+  append_mul_karatsuba_middle_probe_result(
+    report,
+    digits,
+    threshold,
+    XRAY_MUL_OPERAND_FAMILIES,
+    parity,
+    median_samples(candidate_samples, XRAY_BENCH_SAMPLES),
+    median_samples(baseline_samples, XRAY_BENCH_SAMPLES),
+    median_paired_ratio(candidate_samples, baseline_samples, XRAY_BENCH_SAMPLES),
+    paired_ratio_wins(candidate_samples, baseline_samples, XRAY_BENCH_SAMPLES, 0.98),
+    XRAY_BENCH_SAMPLES,
+    max_paired_ratio(candidate_samples, baseline_samples, XRAY_BENCH_SAMPLES));
+
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    mpz_clears(ga[family], gb[family], gout[family], NULL);
+    xray_bigint_clear(&a[family]);
+    xray_bigint_clear(&b[family]);
+    xray_bigint_clear(&candidate_out[family]);
+    xray_bigint_clear(&baseline_out[family]);
     free(left_text[family]);
     free(right_text[family]);
   }
@@ -4578,6 +4720,14 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
   for (size_t digit_index = 0; digit_index < sizeof(digits) / sizeof(digits[0]); ++digit_index) {
     for (size_t threshold_index = 0; threshold_index < sizeof(thresholds) / sizeof(thresholds[0]); ++threshold_index) {
       run_mul_threshold_probe_case(report, digits[digit_index], thresholds[threshold_index]);
+    }
+  }
+
+  const size_t middle_digits[] = {1000, 4096, 8192, 16384};
+  const size_t middle_thresholds[] = {64, 96, 128};
+  for (size_t digit_index = 0; digit_index < sizeof(middle_digits) / sizeof(middle_digits[0]); ++digit_index) {
+    for (size_t threshold_index = 0; threshold_index < sizeof(middle_thresholds) / sizeof(middle_thresholds[0]); ++threshold_index) {
+      run_mul_karatsuba_middle_probe_case(report, middle_digits[digit_index], middle_thresholds[threshold_index]);
     }
   }
 

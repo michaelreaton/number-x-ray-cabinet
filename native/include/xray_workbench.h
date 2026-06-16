@@ -414,6 +414,17 @@ XRAY_API char *xray_bigint_get_decimal_wide_probe(const XrayScratchBigInt *value
 XRAY_API int xray_bigint_mul_with_threshold(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t threshold);
 
 /**
+ * Multiply through the classic sum-middle Karatsuba probe route.
+ *
+ * The production Karatsuba route uses a difference-form middle product. This
+ * diagnostic probe keeps the same threshold policy but computes
+ * (a0 + a1) * (b0 + b1) - z0 - z2 so benchmarks can compare the middle-term
+ * shape directly. out may alias either input. Returns 1 on success and 0 on
+ * allocation failure.
+ */
+XRAY_API int xray_bigint_mul_karatsuba_sum_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t threshold);
+
+/**
  * Multiply through the bounded Toom-3 probe route.
  *
  * This is a benchmark/research probe. Returns 1 on success and 0 on allocation
