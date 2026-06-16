@@ -19,6 +19,63 @@ parity plus a stable same-run paired win.
   `noAutoRoute=1`, `replacementReady=false`, and `adoption=observe-only` until a
   dedicated forced-neighbor safety row passes.
 
+## 2026-06-16: Decimal 10^19 Preinv Divide Probes Need A Size Gate
+
+Runs:
+
+- Release: `native/build-codex-pair-route/native-test-runs/20260616-090851-c4b04caf`
+- `/GL`: `native/build-codex-ltcg/native-test-runs/20260616-091520-c4b04caf`
+
+This pass adds two evidence-only rows that replace the per-limb hardware
+division inside the repeated divide-by-10^19 basecase with the existing
+pre-inverted single-limb estimator. The pair-writer variant combines that
+pre-inverted divider with the earlier two-digit emission probe. The route is
+exactly parity-tested against the oracle formatter, but it is not a production
+route.
+
+Release rows:
+
+- `format-divide-1e19-preinv`, 1000 digits: ratio `0.472`, worst pair `0.571`,
+  stable `5/5`, `candidate-faster`
+- `format-divide-1e19-preinv`, 4096 digits: ratio `1.297`, worst pair `1.407`,
+  stable `0/5`, `baseline-faster`
+- `format-divide-1e19-preinv`, 8192 digits: ratio `1.688`, worst pair `1.956`,
+  stable `0/5`, `baseline-faster`
+- `format-divide-1e19-preinv`, 16384 digits: ratio `2.168`, worst pair
+  `2.265`, stable `0/5`, `baseline-faster`
+- `format-divide-1e19-preinv-pairs`, 1000 digits: ratio `0.544`, worst pair
+  `0.706`, stable `5/5`, `candidate-faster`
+- `format-divide-1e19-preinv-pairs`, 4096 digits: ratio `1.207`, worst pair
+  `1.647`, stable `0/5`, `baseline-faster`
+- `format-divide-1e19-preinv-pairs`, 8192 digits: ratio `1.707`, worst pair
+  `2.026`, stable `0/5`, `baseline-faster`
+- `format-divide-1e19-preinv-pairs`, 16384 digits: ratio `2.054`, worst pair
+  `2.388`, stable `0/5`, `baseline-faster`
+
+`/GL` rows:
+
+- `format-divide-1e19-preinv`, 1000 digits: ratio `0.396`, worst pair `0.443`,
+  stable `5/5`, `candidate-faster`
+- `format-divide-1e19-preinv`, 4096 digits: ratio `1.162`, worst pair `1.333`,
+  stable `0/5`, `baseline-faster`
+- `format-divide-1e19-preinv`, 8192 digits: ratio `1.586`, worst pair `1.782`,
+  stable `0/5`, `baseline-faster`
+- `format-divide-1e19-preinv`, 16384 digits: ratio `1.892`, worst pair
+  `2.067`, stable `0/5`, `baseline-faster`
+- `format-divide-1e19-preinv-pairs`, 1000 digits: ratio `0.428`, worst pair
+  `0.705`, stable `5/5`, `candidate-faster`
+- `format-divide-1e19-preinv-pairs`, 4096 digits: ratio `1.149`, worst pair
+  `1.302`, stable `0/5`, `baseline-faster`
+- `format-divide-1e19-preinv-pairs`, 8192 digits: ratio `1.578`, worst pair
+  `1.700`, stable `0/5`, `baseline-faster`
+- `format-divide-1e19-preinv-pairs`, 16384 digits: ratio `2.022`, worst pair
+  `2.082`, stable `0/5`, `baseline-faster`
+
+Decision: rejected as a global replacement. The 1000-digit result is a real,
+repeatable win in both Release and product-like `/GL`, but 4096 digits and above
+regress. The only safe follow-up is a root-size-gated policy with a forced
+neighbor row below the gate; do not infer adoption from the isolated probe rows.
+
 ## 2026-06-16: Decimal 10^19 Pair Writer Probe Rejected
 
 Runs:
