@@ -2846,6 +2846,17 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "baseline=mpz_get_str") != NULL);
         CHECK(strstr(report->results[index].detail, "featureGate=threshold-neighbor") != NULL);
         CHECK(strstr(report->results[index].detail, "gmpClue=product-codegen") != NULL);
+        int is_shallow_preinv10e19_gate =
+          !is_deep_format_gate &&
+          strstr(report->results[index].detail, "policy=preinv10e19") != NULL;
+        CHECK(strstr(
+          report->results[index].detail,
+          is_shallow_preinv10e19_gate ? "deepConfirmation=required" : "deepConfirmation=not-required") != NULL);
+        if (is_shallow_preinv10e19_gate) {
+          CHECK(!report->results[index].replacement_ready);
+          CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+          CHECK(strcmp(report->results[index].status, "policy-ready") != 0);
+        }
         if (strstr(report->results[index].detail, "policy=deep-preinv10e19-window768-1000") != NULL) {
           saw_format_policy_deep_gate_preinv10e19_window768_1000 = 1;
           CHECK(is_deep_format_gate);
@@ -3453,6 +3464,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "policy-gate") != NULL);
   CHECK(strstr(json, "format-policy-safety") != NULL);
   CHECK(strstr(json, "format-policy-deep-safety") != NULL);
+  CHECK(strstr(json, "deepConfirmation=required") != NULL);
+  CHECK(strstr(json, "deepConfirmation=not-required") != NULL);
   CHECK(strstr(json, "\"avx\"") != NULL);
   CHECK(strstr(json, "\"avx2\"") != NULL);
   CHECK(strstr(json, "\"scratchRows\"") != NULL);
@@ -3574,6 +3587,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "policy-probe") != NULL);
   CHECK(strstr(tsv, "policy-gate") != NULL);
   CHECK(strstr(tsv, "format-policy-deep-safety") != NULL);
+  CHECK(strstr(tsv, "deepConfirmation=required") != NULL);
+  CHECK(strstr(tsv, "deepConfirmation=not-required") != NULL);
   CHECK(strstr(tsv, "gmpClue=") != NULL);
   CHECK(strstr(tsv, "mul-toom3") != NULL);
   CHECK(strstr(tsv, "mod-u32-precompute") != NULL);
@@ -3713,6 +3728,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "policy-gate") != NULL);
   CHECK(strstr(benchmark_tsv, "format-policy-safety") != NULL);
   CHECK(strstr(benchmark_tsv, "format-policy-deep-safety") != NULL);
+  CHECK(strstr(benchmark_tsv, "deepConfirmation=required") != NULL);
+  CHECK(strstr(benchmark_tsv, "deepConfirmation=not-required") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-toom3") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-threshold-tournament") != NULL);
   CHECK(strstr(benchmark_tsv, "root-size-threshold-tournament") != NULL);
