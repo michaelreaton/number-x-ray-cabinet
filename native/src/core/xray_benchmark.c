@@ -2764,6 +2764,14 @@ static char *format_dc_ladder_leaf16_probe(const XrayScratchBigInt *value) {
   return xray_bigint_get_decimal_dc_ladder_probe(value, 16U);
 }
 
+static char *format_dc_static_ladder_leaf8_probe(const XrayScratchBigInt *value) {
+  return xray_bigint_get_decimal_dc_static_ladder_probe(value, 8U);
+}
+
+static char *format_dc_static_ladder_leaf16_probe(const XrayScratchBigInt *value) {
+  return xray_bigint_get_decimal_dc_static_ladder_probe(value, 16U);
+}
+
 static char *format_dc_ladder_leaf32_probe(const XrayScratchBigInt *value) {
   return xray_bigint_get_decimal_dc_ladder_probe(value, 32U);
 }
@@ -2778,6 +2786,14 @@ static char *format_dc_direct_leaf8_probe(const XrayScratchBigInt *value) {
 
 static char *format_dc_direct_leaf16_probe(const XrayScratchBigInt *value) {
   return xray_bigint_get_decimal_dc_direct_probe(value, 16U);
+}
+
+static char *format_dc_static_direct_leaf8_probe(const XrayScratchBigInt *value) {
+  return xray_bigint_get_decimal_dc_static_direct_probe(value, 8U);
+}
+
+static char *format_dc_static_direct_leaf16_probe(const XrayScratchBigInt *value) {
+  return xray_bigint_get_decimal_dc_static_direct_probe(value, 16U);
 }
 
 static char *format_dc_direct_leaf32_probe(const XrayScratchBigInt *value) {
@@ -4579,11 +4595,20 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     format_dc_ladder_leaf32_probe,
     format_dc_ladder_leaf64_probe
   };
+  const size_t format_dc_static_leaf_chunks[] = {8, 16};
+  XrayFormatProbeFn format_dc_static_ladder_probes[] = {
+    format_dc_static_ladder_leaf8_probe,
+    format_dc_static_ladder_leaf16_probe
+  };
   XrayFormatProbeFn format_dc_direct_probes[] = {
     format_dc_direct_leaf8_probe,
     format_dc_direct_leaf16_probe,
     format_dc_direct_leaf32_probe,
     format_dc_direct_leaf64_probe
+  };
+  XrayFormatProbeFn format_dc_static_direct_probes[] = {
+    format_dc_static_direct_leaf8_probe,
+    format_dc_static_direct_leaf16_probe
   };
   for (size_t digit_index = 0; digit_index < sizeof(format_strategy_digits) / sizeof(format_strategy_digits[0]); ++digit_index) {
     size_t digits = format_strategy_digits[digit_index];
@@ -4635,6 +4660,40 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
         "mpn_dc_get_str-output-buffer",
         19U,
         format_dc_direct_probes[leaf_index]);
+    }
+    for (size_t leaf_index = 0; leaf_index < sizeof(format_dc_static_leaf_chunks) / sizeof(format_dc_static_leaf_chunks[0]); ++leaf_index) {
+      char mode[64];
+      char label[80];
+      snprintf(mode, sizeof(mode), "dc-static-ladder leafThreshold=%zu", format_dc_static_leaf_chunks[leaf_index]);
+      snprintf(label, sizeof(label), "format D&C static ladder leaf %zu", format_dc_static_leaf_chunks[leaf_index]);
+      run_format_variant_probe_case(
+        report,
+        digits,
+        (unsigned int)(101U + leaf_index),
+        "format-dc-static-ladder",
+        label,
+        mode,
+        "dc-static-pow2",
+        "current-scratch-format",
+        "format-dc-static-ladder",
+        "static-powtab",
+        19U,
+        format_dc_static_ladder_probes[leaf_index]);
+      snprintf(mode, sizeof(mode), "dc-static-direct leafThreshold=%zu", format_dc_static_leaf_chunks[leaf_index]);
+      snprintf(label, sizeof(label), "format D&C static direct leaf %zu", format_dc_static_leaf_chunks[leaf_index]);
+      run_format_variant_probe_case(
+        report,
+        digits,
+        (unsigned int)(109U + leaf_index),
+        "format-dc-static-direct",
+        label,
+        mode,
+        "dc-static-direct",
+        "current-scratch-format",
+        "format-dc-static-direct",
+        "static-powtab+buffer",
+        19U,
+        format_dc_static_direct_probes[leaf_index]);
     }
   }
 

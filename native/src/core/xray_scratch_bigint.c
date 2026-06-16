@@ -69,6 +69,70 @@ static const char decimal_digit_pairs[] =
   "80818283848586878889"
   "90919293949596979899";
 
+static const uint64_t decimal_dc_static_pow2_0[] = {
+  UINT64_C(10000000000000000000)
+};
+
+static const uint64_t decimal_dc_static_pow2_1[] = {
+  UINT64_C(687399551400673280), UINT64_C(5421010862427522170)
+};
+
+static const uint64_t decimal_dc_static_pow2_2[] = {
+  UINT64_C(0), UINT64_C(8607968719199866880), UINT64_C(532749306367912313), UINT64_C(1593091911132452277)
+};
+
+static const uint64_t decimal_dc_static_pow2_3[] = {
+  UINT64_C(0), UINT64_C(0), UINT64_C(15252863918154973184), UINT64_C(4477131725245556545),
+  UINT64_C(6853971483050138908), UINT64_C(15193086134719162827), UINT64_C(11744654113764246714), UINT64_C(137582102682973977)
+};
+
+static const uint64_t decimal_dc_static_pow2_4[] = {
+  UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0),
+  UINT64_C(18104751977006104576), UINT64_C(7022382078611961980), UINT64_C(5818713298520399752), UINT64_C(3845577022746030748),
+  UINT64_C(12139943004249278607), UINT64_C(5889242339408380438), UINT64_C(14552017514495643209), UINT64_C(4968216578135424189),
+  UINT64_C(15773629750718909556), UINT64_C(9342075265934726546), UINT64_C(1149859480163044520), UINT64_C(1026134200324594)
+};
+
+static const uint64_t decimal_dc_static_pow2_5[] = {
+  UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0),
+  UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0),
+  UINT64_C(0), UINT64_C(14812487063030464512), UINT64_C(15678693317147271784), UINT64_C(13223892582731984624),
+  UINT64_C(17465812138978755258), UINT64_C(7664081700110503653), UINT64_C(7867086747378126271), UINT64_C(6694233273289526891),
+  UINT64_C(979072618450083183), UINT64_C(3181249480858999896), UINT64_C(1618460960086060797), UINT64_C(9729852571323393537),
+  UINT64_C(5512821131327516378), UINT64_C(14040226153079509991), UINT64_C(5675458110915889831), UINT64_C(14808706736072332751),
+  UINT64_C(16738973592517505687), UINT64_C(3211101337243187422), UINT64_C(16112068347911025940), UINT64_C(7727566944689383997),
+  UINT64_C(16383823567047475423), UINT64_C(9390551701925100160), UINT64_C(10351412666324596833), UINT64_C(57080609611)
+};
+
+static const uint64_t decimal_dc_static_pow2_6[] = {
+  UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0),
+  UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0),
+  UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0),
+  UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(0),
+  UINT64_C(0), UINT64_C(0), UINT64_C(0), UINT64_C(319005509880073473),
+  UINT64_C(1806551507373502735), UINT64_C(11302742870345376530), UINT64_C(13258527722524180429), UINT64_C(5446412568905165168),
+  UINT64_C(12543982081940419832), UINT64_C(15403731642616081653), UINT64_C(4737951089047661062), UINT64_C(3794326284714172484),
+  UINT64_C(2300983730994112517), UINT64_C(13011946269911379846), UINT64_C(3105983672841008074), UINT64_C(3271341497136365229),
+  UINT64_C(9317620278607948968), UINT64_C(6461467202444947841), UINT64_C(12956296021901158792), UINT64_C(5590221285761126278),
+  UINT64_C(5901497884083299244), UINT64_C(15598774421181943027), UINT64_C(12767720238382953525), UINT64_C(985519523759711351),
+  UINT64_C(9736924633090785807), UINT64_C(5815317455127115990), UINT64_C(10640367891977486574), UINT64_C(3341215565587611947),
+  UINT64_C(3379075655803910730), UINT64_C(7729393315787486022), UINT64_C(10660439658308642124), UINT64_C(2736012397475497809),
+  UINT64_C(15080284521096067759), UINT64_C(15230264543647898301), UINT64_C(16946947390220236831), UINT64_C(18357957862637485458),
+  UINT64_C(8751981732964013983), UINT64_C(7264578455454564054), UINT64_C(16667145575142581624), UINT64_C(16393813431037489643),
+  UINT64_C(14639777417809856269), UINT64_C(17573061233865061950), UINT64_C(17498971390803385829), UINT64_C(16526120241226747429),
+  UINT64_C(14725285770136587064), UINT64_C(7748610182331927902), UINT64_C(11569036654566192642), UINT64_C(176)
+};
+
+static XrayScratchBigInt decimal_dc_static_ladder_values[] = {
+  {(uint64_t *)decimal_dc_static_pow2_0, 1U, 1U},
+  {(uint64_t *)decimal_dc_static_pow2_1, 2U, 2U},
+  {(uint64_t *)decimal_dc_static_pow2_2, 4U, 4U},
+  {(uint64_t *)decimal_dc_static_pow2_3, 8U, 8U},
+  {(uint64_t *)decimal_dc_static_pow2_4, 16U, 16U},
+  {(uint64_t *)decimal_dc_static_pow2_5, 32U, 32U},
+  {(uint64_t *)decimal_dc_static_pow2_6, 64U, 64U},
+};
+
 XrayBigIntRouteConfig xray_bigint_route_config(void) {
   XrayBigIntRouteConfig config;
   config.word_bits = XRAY_BIGINT_WORD_BITS;
@@ -798,9 +862,15 @@ typedef struct {
   size_t ladder_count;
   size_t ladder_capacity;
   int use_ladder;
+  int use_static_ladder;
 } XrayDecimalDcPowerCache;
 
-static void decimal_dc_power_cache_init(XrayDecimalDcPowerCache *cache, int use_ladder) {
+static const XrayScratchBigInt *decimal_dc_static_ladder_get(size_t bit_index) {
+  size_t count = sizeof(decimal_dc_static_ladder_values) / sizeof(decimal_dc_static_ladder_values[0]);
+  return bit_index < count ? &decimal_dc_static_ladder_values[bit_index] : NULL;
+}
+
+static void decimal_dc_power_cache_init(XrayDecimalDcPowerCache *cache, int use_ladder, int use_static_ladder) {
   cache->items = NULL;
   cache->count = 0;
   cache->capacity = 0;
@@ -808,6 +878,7 @@ static void decimal_dc_power_cache_init(XrayDecimalDcPowerCache *cache, int use_
   cache->ladder_count = 0;
   cache->ladder_capacity = 0;
   cache->use_ladder = use_ladder;
+  cache->use_static_ladder = use_static_ladder;
 }
 
 static void decimal_dc_power_cache_clear(XrayDecimalDcPowerCache *cache) {
@@ -864,11 +935,18 @@ static int decimal_dc_power_ladder_reserve(XrayDecimalDcPowerCache *cache, size_
 
 static const XrayScratchBigInt *decimal_dc_power_ladder_get(XrayDecimalDcPowerCache *cache, size_t bit_index) {
   if (!cache) return NULL;
+  if (cache->use_static_ladder) {
+    const XrayScratchBigInt *static_power = decimal_dc_static_ladder_get(bit_index);
+    if (static_power) return static_power;
+  }
   if (!decimal_dc_power_ladder_reserve(cache, bit_index + 1U)) return NULL;
   while (cache->ladder_count <= bit_index) {
     size_t target = cache->ladder_count;
     int ok = 0;
-    if (target == 0) {
+    const XrayScratchBigInt *static_power = cache->use_static_ladder ? decimal_dc_static_ladder_get(target) : NULL;
+    if (static_power) {
+      ok = xray_bigint_copy(&cache->ladder[target], static_power);
+    } else if (target == 0) {
       ok = set_u64(&cache->ladder[target], XRAY_BIGINT_DECIMAL_WIDE_CHUNK_BASE);
     } else {
       ok = xray_bigint_mul(&cache->ladder[target], &cache->ladder[target - 1U], &cache->ladder[target - 1U]);
@@ -1622,7 +1700,7 @@ char *xray_bigint_get_decimal_dc_probe(const XrayScratchBigInt *value, size_t le
     return zero;
   }
   XrayDecimalDcPowerCache cache;
-  decimal_dc_power_cache_init(&cache, 0);
+  decimal_dc_power_cache_init(&cache, 0, 0);
   char *text = format_decimal_dc_internal(value, &cache, leaf_chunks ? leaf_chunks : 32U, 0);
   decimal_dc_power_cache_clear(&cache);
   return text;
@@ -1635,7 +1713,20 @@ char *xray_bigint_get_decimal_dc_ladder_probe(const XrayScratchBigInt *value, si
     return zero;
   }
   XrayDecimalDcPowerCache cache;
-  decimal_dc_power_cache_init(&cache, 1);
+  decimal_dc_power_cache_init(&cache, 1, 0);
+  char *text = format_decimal_dc_internal(value, &cache, leaf_chunks ? leaf_chunks : 32U, 0);
+  decimal_dc_power_cache_clear(&cache);
+  return text;
+}
+
+char *xray_bigint_get_decimal_dc_static_ladder_probe(const XrayScratchBigInt *value, size_t leaf_chunks) {
+  if (!value || value->count == 0) {
+    char *zero = (char *)calloc(2, 1);
+    if (zero) zero[0] = '0';
+    return zero;
+  }
+  XrayDecimalDcPowerCache cache;
+  decimal_dc_power_cache_init(&cache, 1, 1);
   char *text = format_decimal_dc_internal(value, &cache, leaf_chunks ? leaf_chunks : 32U, 0);
   decimal_dc_power_cache_clear(&cache);
   return text;
@@ -1654,7 +1745,42 @@ char *xray_bigint_get_decimal_dc_direct_probe(const XrayScratchBigInt *value, si
   if (!text) return NULL;
 
   XrayDecimalDcPowerCache cache;
-  decimal_dc_power_cache_init(&cache, 1);
+  decimal_dc_power_cache_init(&cache, 1, 0);
+  size_t start = 0;
+  int ok = format_decimal_dc_write_internal(
+    value,
+    &cache,
+    leaf_chunks ? leaf_chunks : 32U,
+    0,
+    text,
+    text_capacity - 1U,
+    0,
+    &start);
+  decimal_dc_power_cache_clear(&cache);
+  if (!ok) {
+    free(text);
+    return NULL;
+  }
+  size_t used = text_capacity - 1U - start;
+  memmove(text, text + start, used);
+  text[used] = '\0';
+  return text;
+}
+
+char *xray_bigint_get_decimal_dc_static_direct_probe(const XrayScratchBigInt *value, size_t leaf_chunks) {
+  if (!value || value->count == 0) {
+    char *zero = (char *)calloc(2, 1);
+    if (zero) zero[0] = '0';
+    return zero;
+  }
+  size_t chunk_capacity = estimate_decimal_wide_chunk_capacity(value);
+  if (chunk_capacity > (SIZE_MAX - 3U) / XRAY_BIGINT_DECIMAL_WIDE_CHUNK_DIGITS) return NULL;
+  size_t text_capacity = (chunk_capacity + 2U) * XRAY_BIGINT_DECIMAL_WIDE_CHUNK_DIGITS + 1U;
+  char *text = (char *)calloc(text_capacity, 1);
+  if (!text) return NULL;
+
+  XrayDecimalDcPowerCache cache;
+  decimal_dc_power_cache_init(&cache, 1, 1);
   size_t start = 0;
   int ok = format_decimal_dc_write_internal(
     value,
