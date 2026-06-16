@@ -516,6 +516,51 @@ static void benchmark_frontier_label(const XrayBenchmarkResult *row, char *out, 
   }
 }
 
+static void benchmark_insert_ratio_sorted(
+  const XrayBenchmarkResult **rows,
+  size_t capacity,
+  size_t *count,
+  const XrayBenchmarkResult *candidate,
+  int ascending
+) {
+  if (!rows || !capacity || !count || !candidate || candidate->speed_ratio <= 0.0) return;
+  for (size_t slot = 0; slot < capacity; ++slot) {
+    if (!rows[slot] ||
+        (ascending && candidate->speed_ratio < rows[slot]->speed_ratio) ||
+        (!ascending && candidate->speed_ratio > rows[slot]->speed_ratio)) {
+      for (size_t move = capacity - 1U; move > slot; --move) {
+        rows[move] = rows[move - 1U];
+      }
+      rows[slot] = candidate;
+      if (*count < capacity) (*count)++;
+      return;
+    }
+  }
+}
+
+static void append_benchmark_status_row(
+  JsonBuffer *buffer,
+  const XrayBenchmarkResult *row,
+  int faster
+) {
+  if (!buffer || !row) return;
+  char label[80];
+  benchmark_frontier_label(row, label, sizeof(label));
+  double factor = row->speed_ratio;
+  if (faster && row->speed_ratio > 0.0) factor = 1.0 / row->speed_ratio;
+  jb_printf(buffer,
+    "  %-24s %5zu digits   %.2fx %s than backend   ratio %.3f   worst %.3f   stable %zu/%zu   %s\n",
+    label,
+    row->digits,
+    factor,
+    faster ? "faster" : "slower",
+    row->speed_ratio,
+    row->worst_pair_ratio,
+    row->stable_sample_count,
+    row->sample_count,
+    row->adoption);
+}
+
 char *xray_benchmark_frontier_text(const XrayBenchmarkReport *report) {
   if (!report || !report->result_count) {
     char *empty = (char *)calloc(256, 1);
@@ -531,11 +576,32 @@ char *xray_benchmark_frontier_text(const XrayBenchmarkReport *report) {
   const XrayBenchmarkResult *near_wins[5] = {0};
   const XrayBenchmarkResult *top_gaps[5] = {0};
   const XrayBenchmarkResult *worst_pair_regressions[8] = {0};
+  const XrayBenchmarkResult *better_now[8] = {0};
+  const XrayBenchmarkResult *still_working[8] = {0};
   size_t near_count = 0;
   size_t worst_pair_count = 0;
+  size_t better_now_count = 0;
+  size_t still_working_count = 0;
 
   for (size_t index = 0; index < report->result_count; ++index) {
     const XrayBenchmarkResult *row = &report->results[index];
+    if (strcmp(row->category, "scratch-vs-gmp") == 0 && row->parity_verified && row->speed_ratio > 0.0) {
+      if (row->replacement_ready) {
+        benchmark_insert_ratio_sorted(
+          better_now,
+          sizeof(better_now) / sizeof(better_now[0]),
+          &better_now_count,
+          row,
+          1);
+      } else {
+        benchmark_insert_ratio_sorted(
+          still_working,
+          sizeof(still_working) / sizeof(still_working[0]),
+          &still_working_count,
+          row,
+          0);
+      }
+    }
     if (row->parity_verified &&
         !row->replacement_ready &&
         row->speed_ratio > 0.0 &&
@@ -615,6 +681,24 @@ char *xray_benchmark_frontier_text(const XrayBenchmarkReport *report) {
   jb_append(&buffer,
     "FRONTIER SUMMARY\n"
     "Ready rows are locally safe replacements. Oracle-only rows are evidence, not proof-routing permission.\n");
+  jb_append(&buffer, "MEASURABLE STATUS\n");
+  if (better_now_count) {
+    jb_append(&buffer, "Better now (scratch rows allowed):\n");
+    for (size_t index = 0; index < better_now_count; ++index) {
+      append_benchmark_status_row(&buffer, better_now[index], 1);
+    }
+  } else {
+    jb_append(&buffer, "Better now (scratch rows allowed): none in this run\n");
+  }
+  if (still_working_count) {
+    jb_append(&buffer, "Still working (scratch gaps):\n");
+    for (size_t index = 0; index < still_working_count; ++index) {
+      append_benchmark_status_row(&buffer, still_working[index], 0);
+    }
+  } else {
+    jb_append(&buffer, "Still working (scratch gaps): none in this run\n");
+  }
+
   if (near_count) {
     jb_append(&buffer, "Near wins needing stability:\n");
     for (size_t index = 0; index < near_count; ++index) {

@@ -273,12 +273,17 @@ Every benchmark run writes three benchmark artifacts in its run folder:
 
 - `benchmark.json`: machine-readable rows, CPU features, timings, gates, and status labels
 - `benchmark.tsv`: spreadsheet-friendly rows for sorting and comparison
-- `benchmark_frontier.txt`: human-readable CPU feature summary, near wins, largest scratch gaps, and scratch/kernel timing tables
+- `benchmark_frontier.txt`: human-readable CPU feature summary, measurable status, near wins, largest scratch gaps, and scratch/kernel timing tables
 
 Kernel rows in `benchmark_frontier.txt` include compact route tags such as
 `thr=`, `leaf=`, `depth=`, and `base=` when those values are present in the
 underlying benchmark detail. The full JSON/TSV artifacts remain the canonical
 machine-readable record.
+
+The `MEASURABLE STATUS` section is the quick progress readout: `Better now`
+lists the fastest scratch rows that are currently allowed to replace the
+backend on this machine, and `Still working` lists the largest exact-parity
+scratch gaps with ratio, worst-pair, and stable-sample evidence.
 
 The scratch-vs-GMP ladder currently measures 40, 150, 1000, 4096, and 8192 decimal digit operands so local changes have to keep scaling beyond tiny examples before they earn adoption labels. Parse and format rows are tracked separately because decimal ingestion and decimal serialization have very different bottlenecks. Multiplication and specialized square rows also have a 16384 digit discovery tier so larger-number arithmetic work can be observed before it is considered for routing. Multiplication rows aggregate two deterministic operand families because threshold-sensitive multiply code can look good on one number shape and lose on another. The tournament rows intentionally test several parse chunk sizes, decimal formatting handoff thresholds, multiply leaf thresholds, square thresholds, and Toom handoff candidates in one run; those rows are evidence-only until a bounded window wins with exact parity and stable same-run paired ratios. Decimal formatter route changes also need `format-dc-route` same-run evidence so a direct-output D&C pocket win cannot be mistaken for a global or root-size threshold; that route row uses chunked interleaved timing and alternates which side runs first to reduce scheduler and cache-warmth bias.
 
