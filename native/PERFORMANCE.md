@@ -19,6 +19,68 @@ parity plus a stable same-run paired win.
   `noAutoRoute=1`, `replacementReady=false`, and `adoption=observe-only` until a
   dedicated forced-neighbor safety row passes.
 
+## 2026-06-16: Decimal Preinv Policy Gates Rejected
+
+Runs:
+
+- Release: `native/build-codex-pair-route/native-test-runs/20260616-080431-c4b04caf`
+- `/GL`: `native/build-codex-ltcg/native-test-runs/20260616-081027-c4b04caf`
+
+This pass adds MPIR-facing `format-policy` rows for the integrated decimal
+workspace and pre-inverted qhat candidates. It also adds forced-neighbor
+`format-policy-safety` rows so a root-size threshold cannot look good at the
+active size while silently regressing the adjacent size below the gate.
+
+Release policy rows:
+
+- `workspace-ge4096-leaf16`, 4096 digits: ratio `1.720`, worst pair `2.186`,
+  stable `0/5`, `backend-faster`
+- `preinv-ge4096-leaf8`, 4096 digits: ratio `1.941`, worst pair `2.151`,
+  stable `0/5`, `backend-faster`
+- `preinv-ge8192-leaf16`, 8192 digits: ratio `1.744`, worst pair `1.897`,
+  stable `0/5`, `backend-faster`
+- `preinv-ge16384-leaf16`, 16384 digits: ratio `1.954`, worst pair `2.014`,
+  stable `0/5`, `backend-faster`
+
+Release safety rows:
+
+- `workspace-ge4096-leaf16`, neighbor 3072 / gate 4096: ratio `1.833`, stable
+  `0/2`, `neighbor-regression`
+- `preinv-ge4096-leaf8`, neighbor 3072 / gate 4096: ratio `1.688`, stable
+  `0/2`, `neighbor-regression`
+- `preinv-ge8192-leaf16`, neighbor 6144 / gate 8192: ratio `1.718`, stable
+  `0/2`, `neighbor-regression`
+- `preinv-ge16384-leaf16`, neighbor 12288 / gate 16384: ratio `1.977`, stable
+  `0/2`, `neighbor-regression`
+
+`/GL` policy rows:
+
+- `workspace-ge4096-leaf16`, 4096 digits: ratio `1.739`, worst pair `2.060`,
+  stable `0/5`, `backend-faster`
+- `preinv-ge4096-leaf8`, 4096 digits: ratio `1.693`, worst pair `2.112`,
+  stable `0/5`, `backend-faster`
+- `preinv-ge8192-leaf16`, 8192 digits: ratio `1.832`, worst pair `1.848`,
+  stable `0/5`, `backend-faster`
+- `preinv-ge16384-leaf16`, 16384 digits: ratio `1.829`, worst pair `2.116`,
+  stable `0/5`, `backend-faster`
+
+`/GL` safety rows:
+
+- `workspace-ge4096-leaf16`, neighbor 3072 / gate 4096: ratio `1.828`, stable
+  `0/2`, `neighbor-regression`
+- `preinv-ge4096-leaf8`, neighbor 3072 / gate 4096: ratio `1.633`, stable
+  `0/2`, `neighbor-regression`
+- `preinv-ge8192-leaf16`, neighbor 6144 / gate 8192: ratio `1.920`, stable
+  `0/2`, `neighbor-regression`
+- `preinv-ge16384-leaf16`, neighbor 12288 / gate 16384: ratio `1.826`, stable
+  `0/2`, `neighbor-regression`
+
+Decision: rejected for production routing. The earlier primitive and integrated
+formatter probes remain useful clues, but they do not beat MPIR when applied as
+a real decimal formatting policy. Keep these rows as regression guards and
+continue searching for a candidate that survives both MPIR-facing policy timing
+and forced-neighbor threshold safety.
+
 ## 2026-06-16: Integrated Decimal Division Probes
 
 Runs:

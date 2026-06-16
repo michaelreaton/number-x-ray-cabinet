@@ -3680,6 +3680,24 @@ static char *format_policy_static_direct(
   return xray_bigint_get_decimal_dc_static_direct_probe(value, leaf_chunks);
 }
 
+static char *format_policy_workspace(
+  const XrayScratchBigInt *value,
+  size_t digits,
+  size_t min_digits,
+  size_t leaf_chunks) {
+  if (digits < min_digits) return xray_bigint_get_decimal(value);
+  return xray_bigint_get_decimal_dc_workspace_probe(value, leaf_chunks);
+}
+
+static char *format_policy_preinv_qhat(
+  const XrayScratchBigInt *value,
+  size_t digits,
+  size_t min_digits,
+  size_t leaf_chunks) {
+  if (digits < min_digits) return xray_bigint_get_decimal(value);
+  return xray_bigint_get_decimal_dc_preinv_qhat_probe(value, leaf_chunks);
+}
+
 typedef char *(*XrayFormatPolicyProbeFn)(const XrayScratchBigInt *value, size_t digits, size_t min_digits, size_t leaf_chunks);
 
 typedef struct XrayFormatPolicyMeasurement {
@@ -6495,6 +6513,50 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
       8192,
       8,
       format_policy_static_direct);
+    run_format_policy_probe_case(
+      report,
+      digits,
+      149U,
+      "workspace-ge4096-leaf16",
+      "decimal-dc-direct-workspace",
+      "decimal-format-policy-workspace",
+      "mpn_dc_get_str-divisor-context",
+      4096,
+      16,
+      format_policy_workspace);
+    run_format_policy_probe_case(
+      report,
+      digits,
+      151U,
+      "preinv-ge4096-leaf8",
+      "decimal-dc-direct-preinv-qhat",
+      "decimal-format-policy-preinv-qhat",
+      "mpn_dc_get_str-preinverted-qhat",
+      4096,
+      8,
+      format_policy_preinv_qhat);
+    run_format_policy_probe_case(
+      report,
+      digits,
+      157U,
+      "preinv-ge8192-leaf16",
+      "decimal-dc-direct-preinv-qhat",
+      "decimal-format-policy-preinv-qhat",
+      "mpn_dc_get_str-preinverted-qhat",
+      8192,
+      16,
+      format_policy_preinv_qhat);
+    run_format_policy_probe_case(
+      report,
+      digits,
+      163U,
+      "preinv-ge16384-leaf16",
+      "decimal-dc-direct-preinv-qhat",
+      "decimal-format-policy-preinv-qhat",
+      "mpn_dc_get_str-preinverted-qhat",
+      16384,
+      16,
+      format_policy_preinv_qhat);
   }
 
   run_format_policy_safety_case(
@@ -6537,6 +6599,46 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     8192,
     8,
     format_policy_static_direct);
+  run_format_policy_safety_case(
+    report,
+    167U,
+    "workspace-ge4096-leaf16",
+    "decimal-dc-direct-workspace",
+    3072,
+    4096,
+    4096,
+    16,
+    format_policy_workspace);
+  run_format_policy_safety_case(
+    report,
+    173U,
+    "preinv-ge4096-leaf8",
+    "decimal-dc-direct-preinv-qhat",
+    3072,
+    4096,
+    4096,
+    8,
+    format_policy_preinv_qhat);
+  run_format_policy_safety_case(
+    report,
+    179U,
+    "preinv-ge8192-leaf16",
+    "decimal-dc-direct-preinv-qhat",
+    6144,
+    8192,
+    8192,
+    16,
+    format_policy_preinv_qhat);
+  run_format_policy_safety_case(
+    report,
+    181U,
+    "preinv-ge16384-leaf16",
+    "decimal-dc-direct-preinv-qhat",
+    12288,
+    16384,
+    16384,
+    16,
+    format_policy_preinv_qhat);
 
   for (size_t digit_index = 0; digit_index < sizeof(format_strategy_digits) / sizeof(format_strategy_digits[0]); ++digit_index) {
     size_t digits = format_strategy_digits[digit_index];
