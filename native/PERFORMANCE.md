@@ -14,6 +14,61 @@ parity plus a stable same-run paired win.
 - Threshold or root-size candidates must survive same-run paired medians,
   adjacent-size checks, and a product-like `/GL` build before they can become a
   production route. Independent best/best ratios are not an adoption signal.
+- A single threshold/gated policy row can never advertise route readiness on
+  its own. Such rows must report `thresholdSafety=requires-forced-neighbor`,
+  `noAutoRoute=1`, `replacementReady=false`, and `adoption=observe-only` until a
+  dedicated forced-neighbor safety row passes.
+
+## 2026-06-16: Threshold Policy No-Auto-Route Guard
+
+Runs:
+
+- Release: `native/build-codex-pair-route/native-test-runs/20260616-031129-c4b04caf`
+- `/GL`: `native/build-codex-ltcg/native-test-runs/20260616-031653-c4b04caf`
+
+This hardens the benchmark semantics after a product-codegen lesson: a
+threshold or root-size candidate can look good in one pocket and still hurt a
+nearby size or disappear under `/GL`. The benchmark now makes that impossible
+to confuse with a route decision. `format-policy`, `mul-policy`, and
+`square-policy` rows with a nonzero gate, leaf threshold, or depth limit are
+explicit scouts only. They keep their timing evidence, but they cannot set
+`replacementReady=true`; they must point to a separate forced-neighbor safety
+row before adoption.
+
+Release guard examples:
+
+- `mul-policy toom3-u4-ge8192-leaf48`, 1000 digits: ratio `0.672`, stable
+  `5/5`, status `needs-safety-gate`, `replacementReady=false`, `observe-only`
+- `mul-policy toom3-u4-ge8192-leaf48`, 8192 digits: ratio `1.097`, stable
+  `0/5`, `observe-only`
+- `square-policy karatsuba-thr96`, 1000 digits: ratio `0.782`, stable `4/5`,
+  status `needs-safety-gate`, `replacementReady=false`, `observe-only`
+- `format-policy-safety direct-ge4096-leaf8`: neighbor ratio `1.777`, gate
+  ratio `1.660`, `neighbor-regression`, `observe-only`
+- `qhat-u32-limb`: ratio `1.509`, stable `0/5`, `noAutoRoute=1`,
+  `observe-only`
+
+`/GL` guard examples:
+
+- `mul-policy toom3-u4-ge8192-leaf48`, 1000 digits: ratio `0.612`, stable
+  `5/5`, status `needs-safety-gate`, `replacementReady=false`, `observe-only`
+- `mul-policy toom3-u4-ge8192-leaf48`, 8192 digits: ratio `0.911`, stable
+  `3/5`, `observe-only`
+- `square-policy karatsuba-thr96`, 1000 digits: ratio `0.872`, stable `4/5`,
+  status `needs-safety-gate`, `replacementReady=false`, `observe-only`
+- `format-policy-safety direct-ge4096-leaf8`: neighbor ratio `1.727`, gate
+  ratio `1.675`, `neighbor-regression`, `observe-only`
+- `qhat-u32-limb`: ratio `1.524`, stable `0/5`, `noAutoRoute=1`,
+  `observe-only`
+
+The normal Release run also showed why `/GL` remains mandatory:
+`divmod-dc-power` at 4096 digits reported ratio `0.825` with `5/5` stable
+pairs, but the `/GL` build flipped the same row to ratio `1.045` with `0/5`
+stable pairs. That is a benchmark clue, not a route decision.
+
+Decision: keep threshold/root-size ideas as measured scouts until they pass
+forced neighbor rows and product-like `/GL` rows. Do not promote a global or
+root-size-gated threshold from a single fast row.
 
 ## 2026-06-16: Reusable Division Workspace Probe
 

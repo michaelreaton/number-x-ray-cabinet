@@ -1444,6 +1444,7 @@ static void test_benchmarks(void) {
   int saw_muladd_bmi2_adx_probe = 0;
   int saw_muladd_unroll_probe = 0;
   int saw_muladd_unroll8_probe = 0;
+  int saw_qhat_u32_limb_probe = 0;
   int saw_u32_precompute_probe = 0;
   int saw_mod_u32_precompute_probe = 0;
   int saw_gcd_u32_precompute_probe = 0;
@@ -1538,6 +1539,21 @@ static void test_benchmarks(void) {
       CHECK(strstr(report->results[index].detail, "adoption=") != NULL);
       if (strcmp(report->results[index].operation, "mul-threshold") == 0) {
         CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+      }
+      if (strcmp(report->results[index].operation, "qhat-u32-limb") == 0) {
+        saw_qhat_u32_limb_probe = 1;
+        CHECK(report->results[index].digits == 0);
+        CHECK(report->results[index].parity_verified);
+        CHECK(!report->results[index].replacement_ready);
+        CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+        CHECK(strstr(report->results[index].detail, "cases=4096") != NULL);
+        CHECK(strstr(report->results[index].detail, "passesPerSample=96") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=u32-limb-knuth-qhat") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=direct-udiv128-qhat") != NULL);
+        CHECK(strstr(report->results[index].detail, "parityTarget=qhat+rhat") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=division-qhat-estimator") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpClue=mpn_sbpi1_div_qr-qhat") != NULL);
+        CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
       }
       if (strcmp(report->results[index].operation, "mul-karatsuba-middle") == 0) {
         saw_karatsuba_middle_probe = 1;
@@ -2017,6 +2033,8 @@ static void test_benchmarks(void) {
       CHECK(strstr(report->results[index].detail, "featureGate=") != NULL);
       CHECK(strstr(report->results[index].detail, "gmpClue=") != NULL);
       CHECK(strstr(report->results[index].detail, "activeCandidate=") != NULL);
+      CHECK(strstr(report->results[index].detail, "thresholdSafety=") != NULL);
+      CHECK(strstr(report->results[index].detail, "noAutoRoute=") != NULL);
       if (strcmp(report->results[index].operation, "format-policy") == 0) {
         CHECK(strstr(report->results[index].detail, "op=format-policy") != NULL);
         CHECK(strstr(report->results[index].detail, "baseline=mpz_get_str") != NULL);
@@ -2025,11 +2043,17 @@ static void test_benchmarks(void) {
           saw_format_policy_current = 1;
           CHECK(strstr(report->results[index].detail, "candidate=current-scratch-format") != NULL);
           CHECK(strstr(report->results[index].detail, "activeCandidate=current-scratch-format") != NULL);
+          CHECK(strstr(report->results[index].detail, "thresholdSafety=direct-row") != NULL);
+          CHECK(strstr(report->results[index].detail, "noAutoRoute=0") != NULL);
         } else if (strstr(report->results[index].detail, "policy=direct-ge4096-leaf8") != NULL) {
           saw_format_policy_direct4096 = 1;
           CHECK(strstr(report->results[index].detail, "minDigits=4096") != NULL);
           CHECK(strstr(report->results[index].detail, "leafThreshold=8") != NULL);
           CHECK(strstr(report->results[index].detail, "candidate=decimal-dc-direct-writer") != NULL);
+          CHECK(strstr(report->results[index].detail, "thresholdSafety=requires-forced-neighbor") != NULL);
+          CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+          CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+          CHECK(!report->results[index].replacement_ready);
           if (report->results[index].digits < 4096) {
             CHECK(strstr(report->results[index].detail, "activeCandidate=current-scratch-format") != NULL);
           } else {
@@ -2040,6 +2064,10 @@ static void test_benchmarks(void) {
           CHECK(strstr(report->results[index].detail, "minDigits=8192") != NULL);
           CHECK(strstr(report->results[index].detail, "leafThreshold=16") != NULL);
           CHECK(strstr(report->results[index].detail, "candidate=decimal-dc-direct-writer") != NULL);
+          CHECK(strstr(report->results[index].detail, "thresholdSafety=requires-forced-neighbor") != NULL);
+          CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+          CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+          CHECK(!report->results[index].replacement_ready);
           if (report->results[index].digits < 8192) {
             CHECK(strstr(report->results[index].detail, "activeCandidate=current-scratch-format") != NULL);
           } else {
@@ -2052,6 +2080,10 @@ static void test_benchmarks(void) {
           CHECK(strstr(report->results[index].detail, "candidate=dc-static-direct") != NULL);
           CHECK(strstr(report->results[index].detail, "featureGate=decimal-format-policy-static-direct") != NULL);
           CHECK(strstr(report->results[index].detail, "gmpClue=static-powtab+buffer") != NULL);
+          CHECK(strstr(report->results[index].detail, "thresholdSafety=requires-forced-neighbor") != NULL);
+          CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+          CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+          CHECK(!report->results[index].replacement_ready);
           if (report->results[index].digits < 4096) {
             CHECK(strstr(report->results[index].detail, "activeCandidate=current-scratch-format") != NULL);
           } else {
@@ -2064,6 +2096,10 @@ static void test_benchmarks(void) {
           CHECK(strstr(report->results[index].detail, "candidate=dc-static-direct") != NULL);
           CHECK(strstr(report->results[index].detail, "featureGate=decimal-format-policy-static-direct") != NULL);
           CHECK(strstr(report->results[index].detail, "gmpClue=static-powtab+buffer") != NULL);
+          CHECK(strstr(report->results[index].detail, "thresholdSafety=requires-forced-neighbor") != NULL);
+          CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+          CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+          CHECK(!report->results[index].replacement_ready);
           if (report->results[index].digits < 8192) {
             CHECK(strstr(report->results[index].detail, "activeCandidate=current-scratch-format") != NULL);
           } else {
@@ -2088,12 +2124,18 @@ static void test_benchmarks(void) {
           CHECK(strstr(report->results[index].detail, "candidate=current-scratch-square") != NULL);
           CHECK(strstr(report->results[index].detail, "activeCandidate=current-scratch-square") != NULL);
           CHECK(strstr(report->results[index].detail, "candidateAvailable=yes") != NULL);
+          CHECK(strstr(report->results[index].detail, "thresholdSafety=direct-row") != NULL);
+          CHECK(strstr(report->results[index].detail, "noAutoRoute=0") != NULL);
         } else if (strstr(report->results[index].detail, "policy=karatsuba-thr96") != NULL) {
           saw_square_policy_thr96 = 1;
           CHECK(strstr(report->results[index].detail, "leafThreshold=96") != NULL);
           CHECK(strstr(report->results[index].detail, "candidate=karatsuba-square") != NULL);
           CHECK(strstr(report->results[index].detail, "activeCandidate=karatsuba-square") != NULL);
           CHECK(strstr(report->results[index].detail, "candidateAvailable=yes") != NULL);
+          CHECK(strstr(report->results[index].detail, "thresholdSafety=requires-forced-neighbor") != NULL);
+          CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+          CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+          CHECK(!report->results[index].replacement_ready);
         } else {
           CHECK(0);
         }
@@ -2113,11 +2155,17 @@ static void test_benchmarks(void) {
           CHECK(strstr(report->results[index].detail, "candidate=current-scratch-mul") != NULL);
           CHECK(strstr(report->results[index].detail, "activeCandidate=current-scratch-mul") != NULL);
           CHECK(strstr(report->results[index].detail, "candidateAvailable=yes") != NULL);
+          CHECK(strstr(report->results[index].detail, "thresholdSafety=direct-row") != NULL);
+          CHECK(strstr(report->results[index].detail, "noAutoRoute=0") != NULL);
         } else if (strstr(report->results[index].detail, "policy=toom3-u4-ge8192-leaf48") != NULL) {
           saw_mul_policy_toom_leaf48 = 1;
           CHECK(strstr(report->results[index].detail, "minDigits=8192") != NULL);
           CHECK(strstr(report->results[index].detail, "leafThreshold=48") != NULL);
           CHECK(strstr(report->results[index].detail, "candidate=one-level-toom3+unroll4-leaf") != NULL);
+          CHECK(strstr(report->results[index].detail, "thresholdSafety=requires-forced-neighbor") != NULL);
+          CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+          CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+          CHECK(!report->results[index].replacement_ready);
 #if defined(_MSC_VER) && defined(_M_X64)
           CHECK(strstr(report->results[index].detail, "candidateAvailable=yes") != NULL);
           if (report->results[index].digits < 8192) {
@@ -2137,6 +2185,10 @@ static void test_benchmarks(void) {
           CHECK(strstr(report->results[index].detail, "leafThreshold=64") != NULL);
           CHECK(strstr(report->results[index].detail, "depthLimit=2") != NULL);
           CHECK(strstr(report->results[index].detail, "candidate=recursive-toom3+unroll4") != NULL);
+          CHECK(strstr(report->results[index].detail, "thresholdSafety=requires-forced-neighbor") != NULL);
+          CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+          CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+          CHECK(!report->results[index].replacement_ready);
 #if defined(_MSC_VER) && defined(_M_X64)
           CHECK(strstr(report->results[index].detail, "candidateAvailable=yes") != NULL);
           if (report->results[index].digits < 16384) {
@@ -2375,6 +2427,7 @@ static void test_benchmarks(void) {
   CHECK(saw_square_karatsuba_vs_gmp_probe);
   CHECK(saw_toom3_probe);
   CHECK(saw_toom3_vs_scratch_probe);
+  CHECK(saw_qhat_u32_limb_probe);
   CHECK(saw_u32_precompute_probe);
   CHECK(saw_mod_u32_precompute_probe);
   CHECK(saw_gcd_u32_precompute_probe);
@@ -2472,6 +2525,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "bigint-division-context") != NULL);
   CHECK(strstr(json, "divmod-workspace") != NULL);
   CHECK(strstr(json, "bigint-division-workspace") != NULL);
+  CHECK(strstr(json, "qhat-u32-limb") != NULL);
+  CHECK(strstr(json, "division-qhat-estimator") != NULL);
   CHECK(strstr(json, "mul-karatsuba-middle") != NULL);
   CHECK(strstr(json, "karatsuba-sum-middle") != NULL);
   CHECK(strstr(json, "karatsuba-difference-middle") != NULL);
@@ -2651,6 +2706,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "format-policy-safety") != NULL);
   CHECK(strstr(benchmark_tsv, "divmod-precomputed") != NULL);
   CHECK(strstr(benchmark_tsv, "divmod-workspace") != NULL);
+  CHECK(strstr(benchmark_tsv, "qhat-u32-limb") != NULL);
+  CHECK(strstr(benchmark_tsv, "direct-udiv128-qhat") != NULL);
   CHECK(strstr(benchmark_tsv, "noAutoRoute=1") != NULL);
   CHECK(strstr(benchmark_tsv, "direct-ge4096-leaf8") != NULL);
   CHECK(strstr(benchmark_tsv, "direct-ge8192-leaf16") != NULL);
@@ -2691,6 +2748,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "gcd-u32-precompute") != NULL);
   CHECK(strstr(benchmark_frontier, "powmod-u32-precompute") != NULL);
   CHECK(strstr(benchmark_frontier, "parse-chunk chunk=") != NULL);
+  CHECK(strstr(benchmark_frontier, "qhat-u32-limb") != NULL);
   CHECK(strstr(benchmark_frontier, "divmod-dc-power chunks=") != NULL);
   CHECK(strstr(benchmark_frontier, "divmod-precomputed chunks=") != NULL);
   CHECK(strstr(benchmark_frontier, "divmod-workspace chunks=") != NULL);

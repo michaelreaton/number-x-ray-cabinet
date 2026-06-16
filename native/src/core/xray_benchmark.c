@@ -323,6 +323,284 @@ static void append_kernel_probe_result(
   append_result(report, &result);
 }
 
+typedef struct XrayQhatCase {
+  uint64_t high;
+  uint64_t low;
+  uint64_t divisor_top;
+  uint64_t divisor_next;
+  uint64_t numerator_next;
+  uint64_t direct_qhat;
+  uint64_t direct_rhat;
+} XrayQhatCase;
+
+static uint64_t bench_mul_high_u64(uint64_t left, uint64_t right) {
+#if defined(_MSC_VER) && defined(_M_X64)
+  unsigned __int64 high = 0;
+  (void)_umul128(left, right, &high);
+  return (uint64_t)high;
+#else
+  return (uint64_t)(((__uint128_t)left * (__uint128_t)right) >> 64);
+#endif
+}
+
+static int bench_product_gt_two_limb(uint64_t left, uint64_t right, uint64_t high, uint64_t low) {
+  uint64_t product_high = bench_mul_high_u64(left, right);
+  uint64_t product_low = left * right;
+  return product_high > high || (product_high == high && product_low > low);
+}
+
+static uint64_t bench_divmod_u64_direct(uint64_t high, uint64_t low, uint64_t divisor, uint64_t *remainder) {
+#if defined(_MSC_VER) && defined(_M_X64)
+  unsigned __int64 rem = 0;
+  unsigned __int64 quotient = _udiv128(
+    (unsigned __int64)high,
+    (unsigned __int64)low,
+    (unsigned __int64)divisor,
+    &rem);
+  if (remainder) *remainder = (uint64_t)rem;
+  return (uint64_t)quotient;
+#else
+  __uint128_t numerator = ((__uint128_t)high << 64U) | (__uint128_t)low;
+  if (remainder) *remainder = (uint64_t)(numerator % divisor);
+  return (uint64_t)(numerator / divisor);
+#endif
+}
+
+static uint32_t bench_divmod_u32_direct(uint32_t high, uint32_t low, uint32_t divisor, uint32_t *remainder) {
+  uint64_t numerator = ((uint64_t)high << 32U) | low;
+  uint32_t quotient = (uint32_t)(numerator / divisor);
+  if (remainder) *remainder = (uint32_t)(numerator - (uint64_t)quotient * divisor);
+  return quotient;
+}
+
+static int bench_product_gt_two_word32(uint32_t left, uint32_t right, uint32_t high, uint32_t low) {
+  uint64_t product = (uint64_t)left * right;
+  uint32_t product_high = (uint32_t)(product >> 32U);
+  uint32_t product_low = (uint32_t)product;
+  return product_high > high || (product_high == high && product_low > low);
+}
+
+static uint64_t bench_divmod_u64_via_u32(uint64_t high, uint64_t low, uint64_t divisor, uint64_t *remainder) {
+  uint32_t v0 = (uint32_t)divisor;
+  uint32_t v1 = (uint32_t)(divisor >> 32U);
+  uint32_t u[4] = {
+    (uint32_t)low,
+    (uint32_t)(low >> 32U),
+    (uint32_t)high,
+    (uint32_t)(high >> 32U)
+  };
+  uint32_t q[2] = {0, 0};
+
+  for (size_t jj = 2U; jj > 0; --jj) {
+    size_t j = jj - 1U;
+    uint32_t qhat = 0;
+    uint32_t rhat = 0;
+    int rhat_overflow = 0;
+    if (u[j + 2U] == v1) {
+      qhat = UINT32_MAX;
+      uint64_t r = (uint64_t)u[j + 1U] + v1;
+      rhat = (uint32_t)r;
+      rhat_overflow = r > UINT32_MAX;
+    } else {
+      qhat = bench_divmod_u32_direct(u[j + 2U], u[j + 1U], v1, &rhat);
+    }
+
+    while (!rhat_overflow && bench_product_gt_two_word32(qhat, v0, rhat, u[j])) {
+      qhat--;
+      uint32_t old_rhat = rhat;
+      rhat += v1;
+      rhat_overflow = rhat < old_rhat;
+    }
+
+    uint64_t carry = 0;
+    uint64_t borrow = 0;
+    for (size_t index = 0; index < 2U; ++index) {
+      uint64_t product = (uint64_t)(index == 0 ? v0 : v1) * qhat + carry;
+      uint32_t product_low = (uint32_t)product;
+      carry = product >> 32U;
+      uint64_t subtrahend = (uint64_t)product_low + borrow;
+      uint64_t word = u[j + index];
+      u[j + index] = (uint32_t)(word - subtrahend);
+      borrow = word < subtrahend;
+    }
+    uint64_t top_subtrahend = carry + borrow;
+    uint64_t top_word = u[j + 2U];
+    u[j + 2U] = (uint32_t)(top_word - top_subtrahend);
+    if (top_word < top_subtrahend) {
+      qhat--;
+      uint64_t sum = (uint64_t)u[j] + v0;
+      u[j] = (uint32_t)sum;
+      uint64_t carry_back = sum >> 32U;
+      sum = (uint64_t)u[j + 1U] + v1 + carry_back;
+      u[j + 1U] = (uint32_t)sum;
+      carry_back = sum >> 32U;
+      u[j + 2U] = (uint32_t)((uint64_t)u[j + 2U] + carry_back);
+    }
+    q[j] = qhat;
+  }
+
+  if (remainder) *remainder = ((uint64_t)u[1] << 32U) | u[0];
+  return ((uint64_t)q[1] << 32U) | q[0];
+}
+
+static void bench_qhat_apply_second_limb_correction(
+  uint64_t *qhat,
+  uint64_t *rhat,
+  uint64_t divisor_top,
+  uint64_t divisor_next,
+  uint64_t numerator_next) {
+  int rhat_overflow = 0;
+  while (!rhat_overflow && bench_product_gt_two_limb(*qhat, divisor_next, *rhat, numerator_next)) {
+    (*qhat)--;
+    uint64_t old_rhat = *rhat;
+    *rhat += divisor_top;
+    rhat_overflow = *rhat < old_rhat;
+  }
+}
+
+static void bench_qhat_direct(const XrayQhatCase *item, uint64_t *qhat, uint64_t *rhat) {
+  *qhat = bench_divmod_u64_direct(item->high, item->low, item->divisor_top, rhat);
+  bench_qhat_apply_second_limb_correction(qhat, rhat, item->divisor_top, item->divisor_next, item->numerator_next);
+}
+
+static void bench_qhat_u32_limb(const XrayQhatCase *item, uint64_t *qhat, uint64_t *rhat) {
+  *qhat = bench_divmod_u64_via_u32(item->high, item->low, item->divisor_top, rhat);
+  bench_qhat_apply_second_limb_correction(qhat, rhat, item->divisor_top, item->divisor_next, item->numerator_next);
+}
+
+static void fill_qhat_cases(XrayQhatCase *items, size_t count) {
+  uint64_t state = UINT64_C(0x243f6a8885a308d3);
+  for (size_t index = 0; index < count; ++index) {
+    state = state * UINT64_C(2862933555777941757) + UINT64_C(3037000493);
+    uint64_t divisor_top = state | UINT64_C(0x8000000000000000);
+    state = state * UINT64_C(2862933555777941757) + UINT64_C(3037000493);
+    uint64_t high = state % divisor_top;
+    state = state * UINT64_C(2862933555777941757) + UINT64_C(3037000493);
+    uint64_t low = state ^ (UINT64_C(0x9e3779b97f4a7c15) * (uint64_t)(index + 1U));
+    state = state * UINT64_C(2862933555777941757) + UINT64_C(3037000493);
+    uint64_t divisor_next = state | (UINT64_C(1) << 63U);
+    state = state * UINT64_C(2862933555777941757) + UINT64_C(3037000493);
+    uint64_t numerator_next = state;
+    if ((index % 17U) == 0) high = divisor_top - 1U;
+    if ((index % 31U) == 0) low = UINT64_MAX;
+
+    items[index].high = high;
+    items[index].low = low;
+    items[index].divisor_top = divisor_top;
+    items[index].divisor_next = divisor_next;
+    items[index].numerator_next = numerator_next;
+    bench_qhat_direct(&items[index], &items[index].direct_qhat, &items[index].direct_rhat);
+  }
+}
+
+static void append_qhat_probe_result(
+  XrayBenchmarkReport *report,
+  const char *operation,
+  const char *candidate,
+  size_t case_count,
+  unsigned int passes_per_sample,
+  int parity,
+  unsigned long long candidate_us,
+  unsigned long long baseline_us,
+  double paired_ratio,
+  size_t stable_sample_count,
+  size_t sample_count,
+  double worst_pair_ratio) {
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "kernel qhat estimator %s", candidate);
+  snprintf(result.category, sizeof(result.category), "kernel-probe");
+  snprintf(result.operation, sizeof(result.operation), "%s", operation);
+  result.digits = 0;
+  result.scratch_us = candidate_us ? candidate_us : 1;
+  result.gmp_us = baseline_us ? baseline_us : 1;
+  result.speed_ratio = paired_ratio > 0.0 ? paired_ratio : (double)result.scratch_us / (double)result.gmp_us;
+  result.max_allowed_speed_ratio = 0.98;
+  result.stable_sample_count = stable_sample_count;
+  result.sample_count = sample_count;
+  result.worst_pair_ratio = worst_pair_ratio;
+  result.parity_verified = parity;
+  int candidate_cleared_gate = parity &&
+    result.speed_ratio <= result.max_allowed_speed_ratio &&
+    result.stable_sample_count >= kernel_required_stable_samples(sample_count);
+  result.replacement_ready = 0;
+  snprintf(result.adoption, sizeof(result.adoption), "%s",
+    !parity ? "blocked-output-mismatch" : "observe-only");
+  snprintf(result.status, sizeof(result.status), "%s",
+    !parity ? "mismatch" : (candidate_cleared_gate ? "candidate-faster" : (result.speed_ratio < 1.0 ? "candidate-no-margin" : "baseline-faster")));
+  result.passed = parity;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  snprintf(result.detail, sizeof(result.detail),
+    "op=%s cases=%zu passesPerSample=%u samples=%zu stablePairs=%zu/%zu candidateUs=%llu baselineUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median max=%.2f candidate=%s baseline=direct-udiv128-qhat parityTarget=qhat+rhat featureGate=division-qhat-estimator gmpClue=mpn_sbpi1_div_qr-qhat noAutoRoute=1 adoption=%s",
+    operation,
+    case_count,
+    passes_per_sample,
+    sample_count,
+    stable_sample_count,
+    sample_count,
+    result.scratch_us,
+    result.gmp_us,
+    result.speed_ratio,
+    result.worst_pair_ratio,
+    result.max_allowed_speed_ratio,
+    candidate,
+    result.adoption);
+  append_result(report, &result);
+}
+
+static void run_qhat_estimator_probe_case(XrayBenchmarkReport *report) {
+  enum { qhat_case_count = 4096, passes_per_sample = 96 };
+  XrayQhatCase *items = (XrayQhatCase *)calloc(qhat_case_count, sizeof(XrayQhatCase));
+  if (!items) return;
+  fill_qhat_cases(items, qhat_case_count);
+
+  unsigned long long candidate_samples[XRAY_KERNEL_SAMPLES] = {0};
+  unsigned long long baseline_samples[XRAY_KERNEL_SAMPLES] = {0};
+  int parity = 1;
+  for (unsigned int sample = 0; sample < XRAY_KERNEL_SAMPLES; ++sample) {
+    unsigned long long baseline_started = xray_now_us();
+    for (unsigned int pass = 0; pass < passes_per_sample; ++pass) {
+      for (size_t index = 0; index < qhat_case_count; ++index) {
+        uint64_t qhat = 0;
+        uint64_t rhat = 0;
+        bench_qhat_direct(&items[index], &qhat, &rhat);
+        kernel_probe_sink ^= qhat ^ rhat;
+      }
+    }
+    baseline_samples[sample] = xray_now_us() - baseline_started;
+
+    unsigned long long candidate_started = xray_now_us();
+    for (unsigned int pass = 0; pass < passes_per_sample; ++pass) {
+      for (size_t index = 0; index < qhat_case_count; ++index) {
+        uint64_t qhat = 0;
+        uint64_t rhat = 0;
+        bench_qhat_u32_limb(&items[index], &qhat, &rhat);
+        parity = parity &&
+          qhat == items[index].direct_qhat &&
+          rhat == items[index].direct_rhat;
+        kernel_probe_sink ^= qhat ^ rhat;
+      }
+    }
+    candidate_samples[sample] = xray_now_us() - candidate_started;
+  }
+
+  append_qhat_probe_result(
+    report,
+    "qhat-u32-limb",
+    "u32-limb-knuth-qhat",
+    qhat_case_count,
+    passes_per_sample,
+    parity,
+    median_samples(candidate_samples, XRAY_KERNEL_SAMPLES),
+    median_samples(baseline_samples, XRAY_KERNEL_SAMPLES),
+    median_paired_ratio(candidate_samples, baseline_samples, XRAY_KERNEL_SAMPLES),
+    paired_ratio_wins(candidate_samples, baseline_samples, XRAY_KERNEL_SAMPLES, 0.98),
+    XRAY_KERNEL_SAMPLES,
+    max_paired_ratio(candidate_samples, baseline_samples, XRAY_KERNEL_SAMPLES));
+
+  free(items);
+}
+
 static void run_kernel_probe64_case(XrayBenchmarkReport *report, const char *operation, size_t bits) {
   size_t limbs32 = bits / 32U;
   size_t limbs64 = bits / 64U;
@@ -926,18 +1204,20 @@ static void append_format_policy_probe_result(
   result.worst_pair_ratio = worst_pair_ratio;
   result.parity_verified = parity;
   size_t required_stable = policy_required_stable_samples(sample_count);
-  result.replacement_ready = parity &&
+  int threshold_policy = min_digits > 0 || leaf_chunks > 0;
+  int row_cleared_gate = parity &&
     result.speed_ratio <= result.max_allowed_speed_ratio &&
     result.stable_sample_count >= required_stable;
+  result.replacement_ready = !threshold_policy && row_cleared_gate;
   snprintf(result.adoption, sizeof(result.adoption), "%s",
     !parity ? "blocked-output-mismatch" : (result.replacement_ready ? "promotion-ready" : "observe-only"));
   snprintf(result.status, sizeof(result.status), "%s",
-    !parity ? "mismatch" : (result.replacement_ready ? "policy-ready" : (result.speed_ratio <= 1.0 ? "needs-stability" : "backend-faster")));
+    !parity ? "mismatch" : (result.replacement_ready ? "policy-ready" : (threshold_policy && row_cleared_gate ? "needs-safety-gate" : (result.speed_ratio <= 1.0 ? "needs-stability" : "backend-faster"))));
   result.passed = parity;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   const char *active_candidate = (min_digits == 0 || digits >= min_digits) ? candidate : "current-scratch-format";
   snprintf(result.detail, sizeof(result.detail),
-    "op=format-policy digits=%zu policy=%s minDigits=%zu leafThreshold=%zu samples=%zu stablePairs=%zu/%zu ratioMethod=paired-median candidate=%s activeCandidate=%s baseline=mpz_get_str featureGate=%s gmpClue=%s adoption=%s",
+    "op=format-policy digits=%zu policy=%s minDigits=%zu leafThreshold=%zu samples=%zu stablePairs=%zu/%zu ratioMethod=paired-median candidate=%s activeCandidate=%s baseline=mpz_get_str featureGate=%s gmpClue=%s thresholdSafety=%s noAutoRoute=%d adoption=%s",
     digits,
     policy,
     min_digits,
@@ -949,6 +1229,8 @@ static void append_format_policy_probe_result(
     active_candidate,
     feature_gate,
     gmp_clue,
+    threshold_policy ? "requires-forced-neighbor" : "direct-row",
+    threshold_policy ? 1 : 0,
     result.adoption);
   append_result(report, &result);
 }
@@ -988,20 +1270,22 @@ static void append_arithmetic_policy_probe_result(
   result.worst_pair_ratio = worst_pair_ratio;
   result.parity_verified = parity;
   size_t required_stable = policy_required_stable_samples(sample_count);
-  result.replacement_ready = candidate_available &&
+  int threshold_policy = min_digits > 0 || leaf_threshold > 0 || depth_limit > 0;
+  int row_cleared_gate = candidate_available &&
     parity &&
     result.speed_ratio <= result.max_allowed_speed_ratio &&
     result.stable_sample_count >= required_stable;
+  result.replacement_ready = !threshold_policy && row_cleared_gate;
   snprintf(result.adoption, sizeof(result.adoption), "%s",
     !parity ? "blocked-output-mismatch" : (result.replacement_ready ? "promotion-ready" : "observe-only"));
   snprintf(result.status, sizeof(result.status), "%s",
-    !parity ? "mismatch" : (!candidate_available ? "candidate-unavailable" : (result.replacement_ready ? "policy-ready" : (result.speed_ratio <= 1.0 ? "needs-stability" : "backend-faster"))));
+    !parity ? "mismatch" : (!candidate_available ? "candidate-unavailable" : (result.replacement_ready ? "policy-ready" : (threshold_policy && row_cleared_gate ? "needs-safety-gate" : (result.speed_ratio <= 1.0 ? "needs-stability" : "backend-faster")))));
   result.passed = parity;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   const char *fallback_candidate = strcmp(operation, "mul") == 0 ? "current-scratch-mul" : "current-scratch-square";
   const char *active_candidate = (candidate_available && (min_digits == 0 || digits >= min_digits)) ? candidate : fallback_candidate;
   snprintf(result.detail, sizeof(result.detail),
-    "op=%s-policy digits=%zu policy=%s minDigits=%zu leafThreshold=%zu depthLimit=%zu operandFamilies=%zu samples=%zu stablePairs=%zu/%zu ratioMethod=paired-median candidate=%s activeCandidate=%s candidateAvailable=%s baseline=mpz_mul featureGate=%s gmpClue=%s adoption=%s",
+    "op=%s-policy digits=%zu policy=%s minDigits=%zu leafThreshold=%zu depthLimit=%zu operandFamilies=%zu samples=%zu stablePairs=%zu/%zu ratioMethod=paired-median candidate=%s activeCandidate=%s candidateAvailable=%s baseline=mpz_mul featureGate=%s gmpClue=%s thresholdSafety=%s noAutoRoute=%d adoption=%s",
     operation,
     digits,
     policy,
@@ -1017,6 +1301,8 @@ static void append_arithmetic_policy_probe_result(
     candidate_available ? "yes" : "no",
     feature_gate,
     gmp_clue,
+    threshold_policy ? "requires-forced-neighbor" : "direct-row",
+    threshold_policy ? 1 : 0,
     result.adoption);
   append_result(report, &result);
 }
@@ -5124,6 +5410,8 @@ static void run_scratch_bigint_gates(XrayBenchmarkReport *report) {
 }
 
 static void run_kernel_probes(XrayBenchmarkReport *report) {
+  run_qhat_estimator_probe_case(report);
+
   const size_t bit_sizes[] = {2048, 16384};
   for (size_t index = 0; index < sizeof(bit_sizes) / sizeof(bit_sizes[0]); ++index) {
     run_kernel_probe64_case(report, "add-carry", bit_sizes[index]);
