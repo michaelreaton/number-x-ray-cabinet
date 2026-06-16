@@ -39,6 +39,11 @@ typedef struct XrayBigIntDivisorContext {
   int valid;
 } XrayBigIntDivisorContext;
 
+typedef struct XrayBigIntDivisionWorkspace {
+  XrayScratchBigInt normalized_numerator;
+  XrayScratchBigInt remainder_slice;
+} XrayBigIntDivisionWorkspace;
+
 typedef struct XrayBigIntRouteConfig {
   unsigned int word_bits;
   size_t karatsuba_threshold_limbs;
@@ -549,6 +554,32 @@ XRAY_API int xray_bigint_divisor_context_set(XrayBigIntDivisorContext *context, 
  * context, invalid divisor, or identical quotient/remainder outputs.
  */
 XRAY_API int xray_bigint_divmod_precomputed(XrayScratchBigInt *quotient, XrayScratchBigInt *remainder, const XrayScratchBigInt *numerator, const XrayBigIntDivisorContext *context);
+
+/**
+ * Initialize reusable scratch storage for repeated full-width division.
+ *
+ * The workspace keeps temporary normalized numerator and remainder-slice
+ * buffers across calls. Pair it with XrayBigIntDivisorContext when a tool needs
+ * many divisions by the same divisor. Call
+ * xray_bigint_division_workspace_clear() when done.
+ */
+XRAY_API void xray_bigint_division_workspace_init(XrayBigIntDivisionWorkspace *workspace);
+
+/**
+ * Release memory owned by a reusable division workspace.
+ */
+XRAY_API void xray_bigint_division_workspace_clear(XrayBigIntDivisionWorkspace *workspace);
+
+/**
+ * Divide numerator using precomputed divisor state and caller-owned workspace.
+ *
+ * quotient and remainder must be different objects. quotient or remainder may
+ * alias numerator. workspace must be distinct from numerator, quotient, and
+ * remainder. Returns 1 on success and 0 on allocation failure, invalid context
+ * or workspace, invalid divisor, aliased workspace, or identical
+ * quotient/remainder outputs.
+ */
+XRAY_API int xray_bigint_divmod_precomputed_workspace(XrayScratchBigInt *quotient, XrayScratchBigInt *remainder, const XrayScratchBigInt *numerator, const XrayBigIntDivisorContext *context, XrayBigIntDivisionWorkspace *workspace);
 
 /**
  * Return gcd(value, other) for a 32-bit other operand.
