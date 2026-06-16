@@ -15,6 +15,62 @@ parity plus a stable same-run paired win.
   adjacent-size checks, and a product-like `/GL` build before they can become a
   production route. Independent best/best ratios are not an adoption signal.
 
+## 2026-06-16: Precomputed Divisor Context Probe
+
+Runs:
+
+- Release: `native/build-codex-pair-route/native-test-runs/20260616-014157-c4b04caf`
+- `/GL`: `native/build-codex-ltcg/native-test-runs/20260616-014646-c4b04caf`
+
+The scratch bigint library now exposes `XrayBigIntDivisorContext` for repeated
+division by the same full-width divisor. The context caches a private divisor
+copy plus the normalized divisor and normalization shift used by the existing
+Knuth-style division loop. The benchmark emits `divmod-precomputed` rows that
+compare the context API against the current scratch `xray_bigint_divmod` in the
+same run, while verifying quotient/remainder parity against `mpz_tdiv_qr`.
+
+This is a precompute probe, not a threshold or production route. The row detail
+includes `thresholdSafety=explicit-context` and `noAutoRoute=1` so a local
+same-size win cannot become a harmful global default.
+
+Release rows:
+
+- `divmod-dc-power`, 4096 digits, 107 chunks: ratio `1.037`, stable `1/5`,
+  worst pair `1.167`, `observe-only`
+- `divmod-dc-power`, 8192 digits, 215 chunks: ratio `1.403`, stable `1/5`,
+  worst pair `1.418`, `observe-only`
+- `divmod-dc-power`, 16384 digits, 431 chunks: ratio `1.806`, stable `0/5`,
+  worst pair `2.222`, `observe-only`
+- `divmod-precomputed`, 4096 digits, 107 chunks: ratio `1.021`, stable `2/5`,
+  worst pair `1.041`, `observe-only`
+- `divmod-precomputed`, 8192 digits, 215 chunks: ratio `0.991`, stable `1/5`,
+  worst pair `1.061`, `observe-only`
+- `divmod-precomputed`, 16384 digits, 431 chunks: ratio `1.097`, stable `1/5`,
+  worst pair `1.133`, `observe-only`
+
+`/GL` rows:
+
+- `divmod-dc-power`, 4096 digits, 107 chunks: ratio `1.055`, stable `1/5`,
+  worst pair `1.419`, `observe-only`
+- `divmod-dc-power`, 8192 digits, 215 chunks: ratio `1.148`, stable `0/5`,
+  worst pair `1.273`, `observe-only`
+- `divmod-dc-power`, 16384 digits, 431 chunks: ratio `1.633`, stable `0/5`,
+  worst pair `2.132`, `observe-only`
+- `divmod-precomputed`, 4096 digits, 107 chunks: ratio `1.186`, stable `1/5`,
+  worst pair `1.437`, `observe-only`
+- `divmod-precomputed`, 8192 digits, 215 chunks: ratio `0.919`, stable `3/5`,
+  worst pair `1.344`, `observe-only`
+- `divmod-precomputed`, 16384 digits, 431 chunks: ratio `0.968`, stable `3/5`,
+  worst pair `1.053`, `observe-only`
+
+Decision: keep the context as an explicit importer API and benchmark probe only.
+The idea is plausible for repeated large divisions, but the product-like `/GL`
+run still has worst-pair regressions and only 3 of 5 stable samples at the
+interesting sizes. Do not turn this into a global/root-size threshold. The next
+division work should move toward GMP's deeper clues: pre-inverted top-limb
+division, divide-and-conquer division, and measured thresholds with forced
+neighbor guards.
+
 ## 2026-06-16: Threshold Neighbor Guard
 
 Runs:
