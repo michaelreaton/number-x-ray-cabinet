@@ -3226,6 +3226,7 @@ static int mul_dispatch(XrayScratchBigInt *out, const XrayScratchBigInt *left, c
 
 int xray_bigint_mul(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
   if (!out || !left || !right) return 0;
+  if (left == right) return xray_bigint_square(out, left);
   if (out == left || out == right) {
     XrayScratchBigInt temp;
     xray_bigint_init(&temp);

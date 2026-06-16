@@ -230,7 +230,9 @@ XRAY_API int xray_bigint_sub(XrayScratchBigInt *out, const XrayScratchBigInt *le
 /**
  * Compute out = left * right using the production scratch multiply route.
  *
- * out may alias either input. Returns 1 on success and 0 on allocation failure.
+ * out may alias either input. When left and right are the same object, the
+ * production square route is used. Returns 1 on success and 0 on allocation
+ * failure.
  */
 XRAY_API int xray_bigint_mul(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right);
 

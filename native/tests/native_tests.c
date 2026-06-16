@@ -864,6 +864,11 @@ static void test_scratch_bigint_square_oracle(void) {
     CHECK(xray_bigint_compare(&square, &product) == 0);
     check_scratch_matches_mpz(&square, gsquare);
 
+    CHECK(xray_bigint_set_decimal(&value, small_cases[index]));
+    CHECK(xray_bigint_mul(&value, &value, &value));
+    check_scratch_matches_mpz(&value, gsquare);
+
+    CHECK(xray_bigint_set_decimal(&value, small_cases[index]));
     CHECK(xray_bigint_square(&value, &value));
     check_scratch_matches_mpz(&value, gsquare);
 
@@ -887,6 +892,10 @@ static void test_scratch_bigint_square_oracle(void) {
   CHECK(xray_bigint_mul(&tiny_product, &tiny, &tiny));
   CHECK(xray_bigint_compare(&tiny_square, &tiny_product) == 0);
   check_scratch_matches_mpz(&tiny_square, gtiny_square);
+  CHECK(xray_bigint_set_decimal(&tiny, tiny_route_text));
+  CHECK(xray_bigint_mul(&tiny, &tiny, &tiny));
+  check_scratch_matches_mpz(&tiny, gtiny_square);
+  CHECK(xray_bigint_set_decimal(&tiny, tiny_route_text));
   CHECK(xray_bigint_square(&tiny, &tiny));
   check_scratch_matches_mpz(&tiny, gtiny_square);
   mpz_clears(gtiny, gtiny_square, NULL);
