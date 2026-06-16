@@ -792,12 +792,20 @@ typedef struct {
   XrayDecimalDcPower *items;
   size_t count;
   size_t capacity;
+  XrayScratchBigInt *ladder;
+  size_t ladder_count;
+  size_t ladder_capacity;
+  int use_ladder;
 } XrayDecimalDcPowerCache;
 
-static void decimal_dc_power_cache_init(XrayDecimalDcPowerCache *cache) {
+static void decimal_dc_power_cache_init(XrayDecimalDcPowerCache *cache, int use_ladder) {
   cache->items = NULL;
   cache->count = 0;
   cache->capacity = 0;
+  cache->ladder = NULL;
+  cache->ladder_count = 0;
+  cache->ladder_capacity = 0;
+  cache->use_ladder = use_ladder;
 }
 
 static void decimal_dc_power_cache_clear(XrayDecimalDcPowerCache *cache) {
@@ -805,10 +813,17 @@ static void decimal_dc_power_cache_clear(XrayDecimalDcPowerCache *cache) {
   for (size_t index = 0; index < cache->count; ++index) {
     xray_bigint_clear(&cache->items[index].value);
   }
+  for (size_t index = 0; index < cache->ladder_count; ++index) {
+    xray_bigint_clear(&cache->ladder[index]);
+  }
   free(cache->items);
+  free(cache->ladder);
   cache->items = NULL;
   cache->count = 0;
   cache->capacity = 0;
+  cache->ladder = NULL;
+  cache->ladder_count = 0;
+  cache->ladder_capacity = 0;
 }
 
 static int decimal_dc_power_cache_reserve(XrayDecimalDcPowerCache *cache, size_t needed) {
@@ -824,6 +839,82 @@ static int decimal_dc_power_cache_reserve(XrayDecimalDcPowerCache *cache, size_t
   cache->items = next;
   cache->capacity = next_capacity;
   return 1;
+}
+
+static int decimal_dc_power_ladder_reserve(XrayDecimalDcPowerCache *cache, size_t needed) {
+  if (cache->ladder_capacity >= needed) return 1;
+  size_t old_capacity = cache->ladder_capacity;
+  size_t next_capacity = cache->ladder_capacity ? cache->ladder_capacity * 2U : 8U;
+  while (next_capacity < needed) {
+    if (next_capacity > SIZE_MAX / 2U) return 0;
+    next_capacity *= 2U;
+  }
+  if (next_capacity > SIZE_MAX / sizeof(XrayScratchBigInt)) return 0;
+  XrayScratchBigInt *next = (XrayScratchBigInt *)realloc(cache->ladder, sizeof(XrayScratchBigInt) * next_capacity);
+  if (!next) return 0;
+  cache->ladder = next;
+  for (size_t index = old_capacity; index < next_capacity; ++index) {
+    xray_bigint_init(&cache->ladder[index]);
+  }
+  cache->ladder_capacity = next_capacity;
+  return 1;
+}
+
+static const XrayScratchBigInt *decimal_dc_power_ladder_get(XrayDecimalDcPowerCache *cache, size_t bit_index) {
+  if (!cache) return NULL;
+  if (!decimal_dc_power_ladder_reserve(cache, bit_index + 1U)) return NULL;
+  while (cache->ladder_count <= bit_index) {
+    size_t target = cache->ladder_count;
+    int ok = 0;
+    if (target == 0) {
+      ok = set_u64(&cache->ladder[target], XRAY_BIGINT_DECIMAL_WIDE_CHUNK_BASE);
+    } else {
+      ok = xray_bigint_mul(&cache->ladder[target], &cache->ladder[target - 1U], &cache->ladder[target - 1U]);
+    }
+    if (!ok) return NULL;
+    cache->ladder_count++;
+  }
+  return &cache->ladder[bit_index];
+}
+
+static int decimal_dc_power_cache_store(
+  XrayDecimalDcPowerCache *cache,
+  size_t chunks,
+  const XrayScratchBigInt *power) {
+  if (!cache || !power) return 0;
+  if (!decimal_dc_power_cache_reserve(cache, cache->count + 1U)) return 0;
+  size_t target = cache->count++;
+  cache->items[target].chunks = chunks;
+  xray_bigint_init(&cache->items[target].value);
+  int ok = xray_bigint_copy(&cache->items[target].value, power);
+  if (!ok) {
+    xray_bigint_clear(&cache->items[target].value);
+    cache->count--;
+  }
+  return ok;
+}
+
+static int decimal_dc_power_from_ladder(
+  XrayDecimalDcPowerCache *cache,
+  XrayScratchBigInt *out,
+  size_t chunks) {
+  if (!cache || !out) return 0;
+  int ok = set_u32(out, 1U);
+  size_t remaining = chunks;
+  size_t bit_index = 0;
+  while (ok && remaining) {
+    if (remaining & 1U) {
+      const XrayScratchBigInt *factor = decimal_dc_power_ladder_get(cache, bit_index);
+      if (!factor) return 0;
+      XrayScratchBigInt product;
+      xray_bigint_init(&product);
+      ok = xray_bigint_mul(&product, out, factor) && xray_bigint_copy(out, &product);
+      xray_bigint_clear(&product);
+    }
+    remaining >>= 1U;
+    bit_index++;
+  }
+  return ok;
 }
 
 static const XrayScratchBigInt *decimal_dc_power_cache_get(XrayDecimalDcPowerCache *cache, size_t chunks) {
@@ -843,24 +934,17 @@ static const XrayScratchBigInt *decimal_dc_power_cache_get(XrayDecimalDcPowerCac
 
   XrayScratchBigInt power;
   xray_bigint_init(&power);
-  int ok = source_index == SIZE_MAX ? set_u32(&power, 1U) : xray_bigint_copy(&power, &cache->items[source_index].value);
-  for (size_t index = source_chunks; ok && index < chunks; ++index) {
-    ok = mul_add_small_inplace(&power, XRAY_BIGINT_DECIMAL_WIDE_CHUNK_BASE, 0);
-  }
-
-  if (ok) {
-    ok = decimal_dc_power_cache_reserve(cache, cache->count + 1U);
-  }
-  if (ok) {
-    size_t target = cache->count++;
-    cache->items[target].chunks = chunks;
-    xray_bigint_init(&cache->items[target].value);
-    ok = xray_bigint_copy(&cache->items[target].value, &power);
-    if (!ok) {
-      xray_bigint_clear(&cache->items[target].value);
-      cache->count--;
+  int ok = 0;
+  if (cache->use_ladder) {
+    ok = decimal_dc_power_from_ladder(cache, &power, chunks);
+  } else {
+    ok = source_index == SIZE_MAX ? set_u32(&power, 1U) : xray_bigint_copy(&power, &cache->items[source_index].value);
+    for (size_t index = source_chunks; ok && index < chunks; ++index) {
+      ok = mul_add_small_inplace(&power, XRAY_BIGINT_DECIMAL_WIDE_CHUNK_BASE, 0);
     }
   }
+
+  if (ok) ok = decimal_dc_power_cache_store(cache, chunks, &power);
   xray_bigint_clear(&power);
   if (!ok) return NULL;
   return &cache->items[cache->count - 1U].value;
@@ -1381,7 +1465,20 @@ char *xray_bigint_get_decimal_dc_probe(const XrayScratchBigInt *value, size_t le
     return zero;
   }
   XrayDecimalDcPowerCache cache;
-  decimal_dc_power_cache_init(&cache);
+  decimal_dc_power_cache_init(&cache, 0);
+  char *text = format_decimal_dc_internal(value, &cache, leaf_chunks ? leaf_chunks : 32U, 0);
+  decimal_dc_power_cache_clear(&cache);
+  return text;
+}
+
+char *xray_bigint_get_decimal_dc_ladder_probe(const XrayScratchBigInt *value, size_t leaf_chunks) {
+  if (!value || value->count == 0) {
+    char *zero = (char *)calloc(2, 1);
+    if (zero) zero[0] = '0';
+    return zero;
+  }
+  XrayDecimalDcPowerCache cache;
+  decimal_dc_power_cache_init(&cache, 1);
   char *text = format_decimal_dc_internal(value, &cache, leaf_chunks ? leaf_chunks : 32U, 0);
   decimal_dc_power_cache_clear(&cache);
   return text;
@@ -1415,7 +1512,7 @@ char *xray_bigint_get_decimal_wide_probe(const XrayScratchBigInt *value) {
 char *xray_bigint_get_decimal(const XrayScratchBigInt *value) {
   if (value && value->count > 0 &&
       estimate_decimal_wide_chunks_from_bits(value) >= XRAY_BIGINT_DECIMAL_DC_MIN_WIDE_CHUNKS) {
-    char *dc_text = xray_bigint_get_decimal_dc_probe(value, XRAY_BIGINT_DECIMAL_DC_LEAF_CHUNKS);
+    char *dc_text = xray_bigint_get_decimal_dc_ladder_probe(value, XRAY_BIGINT_DECIMAL_DC_LEAF_CHUNKS);
     if (dc_text) return dc_text;
   }
   return get_decimal_with_options_writer(
