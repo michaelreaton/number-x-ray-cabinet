@@ -2228,7 +2228,8 @@ static void test_benchmarks(void) {
         saw_square_vs_mul_probe = 1;
         CHECK(strstr(report->results[index].detail, "routeCandidate=unrouted") != NULL);
         CHECK(strstr(report->results[index].detail, "candidate=specialized-square") != NULL);
-        CHECK(strstr(report->results[index].detail, "baseline=current-scratch-self-mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "genericMulUs=") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=generic-threshold-self-mul") != NULL);
         CHECK(strstr(report->results[index].detail, "featureGate=square-basecase-probe") != NULL);
         CHECK(strstr(report->results[index].detail, "operandFamilies=1") != NULL);
       }
@@ -2238,6 +2239,9 @@ static void test_benchmarks(void) {
         else saw_square_karatsuba_vs_gmp_probe = 1;
         CHECK(strstr(report->results[index].detail, "threshold=") != NULL);
         CHECK(strstr(report->results[index].detail, "candidate=karatsuba-square") != NULL);
+        if (strcmp(report->results[index].operation, "square-karatsuba-vs-mul") == 0) {
+          CHECK(strstr(report->results[index].detail, "baseline=generic-threshold-self-mul") != NULL);
+        }
         CHECK(strstr(report->results[index].detail, "featureGate=karatsuba-square-probe") != NULL);
         CHECK(strstr(report->results[index].detail, "operandFamilies=1") != NULL);
       }

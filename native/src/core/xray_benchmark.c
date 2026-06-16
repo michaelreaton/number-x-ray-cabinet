@@ -2053,7 +2053,7 @@ static void append_square_vs_mul_probe_result(
   double worst_pair_ratio) {
   XrayBenchmarkResult result;
   memset(&result, 0, sizeof(result));
-  snprintf(result.name, sizeof(result.name), "kernel square versus self-mul %zu digits", digits);
+  snprintf(result.name, sizeof(result.name), "kernel square versus generic self-mul %zu digits", digits);
   snprintf(result.category, sizeof(result.category), "kernel-probe");
   snprintf(result.operation, sizeof(result.operation), "square-vs-mul");
   result.digits = digits;
@@ -2080,7 +2080,7 @@ static void append_square_vs_mul_probe_result(
   result.passed = parity;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=square-vs-mul digits=%zu routeCandidate=unrouted operandFamilies=1 samples=%zu stablePairs=%zu/%zu squareUs=%llu currentMulUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median max=%.2f candidate=specialized-square baseline=current-scratch-self-mul featureGate=square-basecase-probe gmpClue=sqr_basecase adoption=%s",
+    "op=square-vs-mul digits=%zu routeCandidate=unrouted operandFamilies=1 samples=%zu stablePairs=%zu/%zu squareUs=%llu genericMulUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median max=%.2f candidate=specialized-square baseline=generic-threshold-self-mul featureGate=square-basecase-probe gmpClue=sqr_basecase adoption=%s",
     digits,
     sample_count,
     stable_sample_count,
@@ -5730,7 +5730,7 @@ static void run_square_karatsuba_probe_case(
   append_square_karatsuba_probe_result(
     report,
     baseline_is_gmp ? "square-karatsuba-vs-gmp" : "square-karatsuba-vs-mul",
-    baseline_is_gmp ? "mpz_mul" : "current-scratch-self-mul",
+    baseline_is_gmp ? "mpz_mul" : "generic-threshold-self-mul",
     digits,
     threshold,
     parity,
