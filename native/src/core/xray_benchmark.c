@@ -50,6 +50,7 @@ static void append_result(XrayBenchmarkReport *report, const XrayBenchmarkResult
   XrayBenchmarkResult *next = (XrayBenchmarkResult *)realloc(report->results, sizeof(XrayBenchmarkResult) * (report->result_count + 1));
   if (!next) return;
   report->results = next;
+  size_t row_index = report->result_count;
   report->results[report->result_count++] = *result;
   if (result->passed) report->passed_count++;
   if (strcmp(result->category, "scratch-vs-gmp") == 0) {
@@ -57,6 +58,9 @@ static void append_result(XrayBenchmarkReport *report, const XrayBenchmarkResult
     if (strcmp(result->adoption, "allowed") == 0) report->replacement_ready_count++;
     else if (strcmp(result->adoption, "oracle-only") == 0) report->oracle_only_count++;
     else report->blocked_count++;
+  }
+  if (report->result_callback) {
+    report->result_callback(&report->results[row_index], row_index + 1U, report->result_callback_user_data);
   }
 }
 
@@ -7049,9 +7053,14 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
 #endif
 }
 
-int xray_benchmark_run(XrayBenchmarkReport *report) {
+int xray_benchmark_run_with_callback(
+  XrayBenchmarkReport *report,
+  XrayBenchmarkResultCallback result_callback,
+  void *user_data) {
   if (!report) return 0;
   memset(report, 0, sizeof(*report));
+  report->result_callback = result_callback;
+  report->result_callback_user_data = user_data;
   unsigned long started = xray_now_ms();
   xray_cpu_features_detect(&report->cpu);
 
@@ -7068,7 +7077,13 @@ int xray_benchmark_run(XrayBenchmarkReport *report) {
   run_scratch_bigint_gates(report);
 
   report->elapsed_ms = xray_now_ms() - started;
+  report->result_callback = NULL;
+  report->result_callback_user_data = NULL;
   return 1;
+}
+
+int xray_benchmark_run(XrayBenchmarkReport *report) {
+  return xray_benchmark_run_with_callback(report, NULL, NULL);
 }
 
 void xray_benchmark_report_clear(XrayBenchmarkReport *report) {

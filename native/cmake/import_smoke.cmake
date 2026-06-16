@@ -107,6 +107,7 @@ foreach(expected
     "\"parameters\": []"
     "\"name\": \"xray_factor_solve_json\""
     "\"name\": \"xray_benchmark_run\""
+    "\"name\": \"xray_benchmark_run_with_callback\""
     "\"name\": \"xray_workbench_run_json\"")
   string(FIND "${api_catalog}" "${expected}" expected_index)
   if(expected_index LESS 0)
@@ -164,6 +165,7 @@ foreach(expected
     "Ownership: `caller-owned:xray_free`"
     "### `xray_factor_solve_json`"
     "### `xray_benchmark_run`"
+    "### `xray_benchmark_run_with_callback`"
     "### `xray_workbench_run_json`"
     "Function count: ${api_count}")
   string(FIND "${api_reference}" "${expected}" expected_index)
