@@ -1772,11 +1772,13 @@ static void test_benchmarks(void) {
           saw_square_policy_current = 1;
           CHECK(strstr(report->results[index].detail, "candidate=current-scratch-square") != NULL);
           CHECK(strstr(report->results[index].detail, "activeCandidate=current-scratch-square") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidateAvailable=yes") != NULL);
         } else if (strstr(report->results[index].detail, "policy=karatsuba-thr96") != NULL) {
           saw_square_policy_thr96 = 1;
           CHECK(strstr(report->results[index].detail, "leafThreshold=96") != NULL);
           CHECK(strstr(report->results[index].detail, "candidate=karatsuba-square") != NULL);
           CHECK(strstr(report->results[index].detail, "activeCandidate=karatsuba-square") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidateAvailable=yes") != NULL);
         } else {
           CHECK(0);
         }
@@ -1795,27 +1797,44 @@ static void test_benchmarks(void) {
           saw_mul_policy_current = 1;
           CHECK(strstr(report->results[index].detail, "candidate=current-scratch-mul") != NULL);
           CHECK(strstr(report->results[index].detail, "activeCandidate=current-scratch-mul") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidateAvailable=yes") != NULL);
         } else if (strstr(report->results[index].detail, "policy=toom3-u4-ge8192-leaf48") != NULL) {
           saw_mul_policy_toom_leaf48 = 1;
           CHECK(strstr(report->results[index].detail, "minDigits=8192") != NULL);
           CHECK(strstr(report->results[index].detail, "leafThreshold=48") != NULL);
           CHECK(strstr(report->results[index].detail, "candidate=one-level-toom3+unroll4-leaf") != NULL);
+#if defined(_MSC_VER) && defined(_M_X64)
+          CHECK(strstr(report->results[index].detail, "candidateAvailable=yes") != NULL);
           if (report->results[index].digits < 8192) {
             CHECK(strstr(report->results[index].detail, "activeCandidate=current-scratch-mul") != NULL);
           } else {
             CHECK(strstr(report->results[index].detail, "activeCandidate=one-level-toom3+unroll4-leaf") != NULL);
           }
+#else
+          CHECK(strstr(report->results[index].detail, "candidateAvailable=no") != NULL);
+          CHECK(strstr(report->results[index].detail, "activeCandidate=current-scratch-mul") != NULL);
+          CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+          CHECK(!report->results[index].replacement_ready);
+#endif
         } else if (strstr(report->results[index].detail, "policy=toom3-u4-rec-ge16384-leaf64-depth2") != NULL) {
           saw_mul_policy_toom_rec = 1;
           CHECK(strstr(report->results[index].detail, "minDigits=16384") != NULL);
           CHECK(strstr(report->results[index].detail, "leafThreshold=64") != NULL);
           CHECK(strstr(report->results[index].detail, "depthLimit=2") != NULL);
           CHECK(strstr(report->results[index].detail, "candidate=recursive-toom3+unroll4") != NULL);
+#if defined(_MSC_VER) && defined(_M_X64)
+          CHECK(strstr(report->results[index].detail, "candidateAvailable=yes") != NULL);
           if (report->results[index].digits < 16384) {
             CHECK(strstr(report->results[index].detail, "activeCandidate=current-scratch-mul") != NULL);
           } else {
             CHECK(strstr(report->results[index].detail, "activeCandidate=recursive-toom3+unroll4") != NULL);
           }
+#else
+          CHECK(strstr(report->results[index].detail, "candidateAvailable=no") != NULL);
+          CHECK(strstr(report->results[index].detail, "activeCandidate=current-scratch-mul") != NULL);
+          CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+          CHECK(!report->results[index].replacement_ready);
+#endif
         } else {
           CHECK(0);
         }
