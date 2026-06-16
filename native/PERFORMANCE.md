@@ -912,3 +912,34 @@ Decision: keep the pre-reserve path as a small formatter safety and stability
 improvement. It promotes the 150-digit format row in both local runs, but it
 does not change the large-number conclusion: 1000+ digit formatting still needs
 a divide-and-conquer conversion rather than more linear chunk-loop tuning.
+
+## 2026-06-15: External MFastFermat Root-Gated Threshold Lesson
+
+Source repo: `C:\Users\mike\Documents\MFastFermat`
+
+MFastFermat's BigCPU Montgomery square path retested Karatsuba leaf/band
+thresholds on real factor-form survivor rows, not generic random multiply
+inputs. The useful result was shape-gated, not global:
+
+- A global 96-limb Karatsuba band improved the 96k/128k frontier phase rows and
+  product rows, but it regressed a smaller 3180-bit worker-matched product row
+  versus the existing default.
+- The promoted route kept smaller roots on the prior 128-limb fallback and used
+  a 96-limb band only for roots of at least 1800 limbs.
+- The rebuilt default then reported `active_band_threshold=128` at 8036 bits and
+  `active_band_threshold=96` at 128036 bits.
+- The 128036-bit product/GMP row moved from the old default miss
+  (`0.855x` in `benchmark_product_default_vs_gmp_96k128k_20260615.txt`) to a
+  same-shape default win (`1.047x` in
+  `benchmark_promoted_default_vs_gmp_128k_20260615.txt`), with product/GMP
+  sample fingerprints checked by the harness.
+
+Decision: carry this lesson into PayamAnalysis threshold work. Do not promote a
+single multiply/square threshold just because it wins a frontier row. Record the
+operand shape and route by shape or size band when needed. Treat phase probes as
+scouts only; the adoption signal is the full operation under the actual app
+workload, paired against the GMP oracle with matching samples and stable-run
+evidence. Also keep the sum-vs-difference Karatsuba middle term as an explicit
+benchmark dimension: the MFastFermat difference-form plus endpoint-copy route
+survived product testing better than the classic sum-form middle in that
+workload.
