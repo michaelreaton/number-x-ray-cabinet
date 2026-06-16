@@ -104,6 +104,52 @@ that uses the pre-inverted estimator inside the normalized Knuth loop and
 compares quotient/remainder parity plus product-like timings. Do not route the
 micro-kernel by itself.
 
+## 2026-06-16: Full Pre-Inverted Qhat Division Probe
+
+Runs:
+
+- Release: `native/build-codex-pair-route/native-test-runs/20260616-035952-c4b04caf`
+- `/GL`: `native/build-codex-ltcg/native-test-runs/20260616-040612-c4b04caf`
+
+The pre-inverted qhat idea now has a full quotient/remainder probe inside the
+normalized Knuth division loop. The exported diagnostic API
+`xray_bigint_divmod_preinv_qhat_probe()` keeps the same alias and workspace
+contract as `xray_bigint_divmod_precomputed_workspace()`, computes the
+normalized divisor top-limb reciprocal once per divisor, and uses multiply-high
+plus correction for the quotient digit estimate. The benchmark compares this
+candidate against the real context+workspace division path, and every sample is
+checked against `mpz_tdiv_qr`.
+
+This is deliberately not a threshold, root-size gate, or automatic route. The
+row detail records `precomputeScope=per-divisor`,
+`thresholdSafety=explicit-probe`, and `noAutoRoute=1`, and the result is held
+at `replacementReady=false` even when the local median is faster.
+
+Release rows:
+
+- `divmod-preinv-qhat`, 4096 digits, 107 chunks: ratio `0.996`, stable `2/5`,
+  worst pair `1.224`, `replacementReady=false`, `observe-only`
+- `divmod-preinv-qhat`, 8192 digits, 215 chunks: ratio `0.825`, stable `3/5`,
+  worst pair `1.110`, `replacementReady=false`, `observe-only`
+- `divmod-preinv-qhat`, 16384 digits, 431 chunks: ratio `0.906`, stable `4/5`,
+  worst pair `1.335`, `replacementReady=false`, `observe-only`
+
+`/GL` rows:
+
+- `divmod-preinv-qhat`, 4096 digits, 107 chunks: ratio `0.948`, stable `3/5`,
+  worst pair `1.220`, `replacementReady=false`, `observe-only`
+- `divmod-preinv-qhat`, 8192 digits, 215 chunks: ratio `0.963`, stable `3/5`,
+  worst pair `0.999`, `replacementReady=false`, `observe-only`
+- `divmod-preinv-qhat`, 16384 digits, 431 chunks: ratio `0.995`, stable `2/5`,
+  worst pair `1.015`, `replacementReady=false`, `observe-only`
+
+Decision: keep the full pre-inverted qhat division path as an explicit
+diagnostic/importer probe only. It survives product-like `/GL` better than the
+earlier division scouts, but it is not stable enough for routing: neighboring
+sizes still show worst-pair regressions and the 16384 digit `/GL` row drops to
+only `2/5` stable pairs. This directly avoids the threshold failure mode where
+a promising large-size row becomes a harmful global or root-size-gated default.
+
 ## 2026-06-16: Reusable Division Workspace Probe
 
 Runs:

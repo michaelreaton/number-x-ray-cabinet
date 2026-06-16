@@ -638,11 +638,16 @@ static void test_scratch_bigint_oracle_sweep(void) {
         CHECK(xray_bigint_divmod_precomputed_workspace(&quotient, &remainder, &a, &divisor_context, &division_workspace));
         check_scratch_matches_mpz(&quotient, gquotient);
         check_scratch_matches_mpz(&remainder, gremainder);
+
+        CHECK(xray_bigint_divmod_preinv_qhat_probe(&quotient, &remainder, &a, &divisor_context, &division_workspace));
+        check_scratch_matches_mpz(&quotient, gquotient);
+        check_scratch_matches_mpz(&remainder, gremainder);
       } else {
         CHECK(!xray_bigint_divmod(&quotient, &remainder, &a, &b));
         CHECK(!xray_bigint_divisor_context_set(&divisor_context, &b));
         CHECK(!xray_bigint_divmod_precomputed(&quotient, &remainder, &a, &divisor_context));
         CHECK(!xray_bigint_divmod_precomputed_workspace(&quotient, &remainder, &a, &divisor_context, &division_workspace));
+        CHECK(!xray_bigint_divmod_preinv_qhat_probe(&quotient, &remainder, &a, &divisor_context, &division_workspace));
       }
     }
   }
@@ -693,10 +698,28 @@ static void test_scratch_bigint_oracle_sweep(void) {
     &divisor_context,
     &division_workspace));
 
+  CHECK(xray_bigint_copy(&alias, &a));
+  CHECK(xray_bigint_divmod_preinv_qhat_probe(&alias, &remainder, &alias, &divisor_context, &division_workspace));
+  check_scratch_matches_mpz(&alias, gquotient);
+  check_scratch_matches_mpz(&remainder, gremainder);
+
+  CHECK(xray_bigint_copy(&alias, &a));
+  CHECK(xray_bigint_divmod_preinv_qhat_probe(&quotient, &alias, &alias, &divisor_context, &division_workspace));
+  check_scratch_matches_mpz(&quotient, gquotient);
+  check_scratch_matches_mpz(&alias, gremainder);
+  CHECK(!xray_bigint_divmod_preinv_qhat_probe(&quotient, &quotient, &a, &divisor_context, &division_workspace));
+  CHECK(!xray_bigint_divmod_preinv_qhat_probe(
+    &division_workspace.normalized_numerator,
+    &remainder,
+    &a,
+    &divisor_context,
+    &division_workspace));
+
   CHECK(xray_bigint_set_decimal(&b, "0"));
   CHECK(!xray_bigint_divisor_context_set(&divisor_context, &b));
   CHECK(!xray_bigint_divmod_precomputed(&quotient, &remainder, &a, &divisor_context));
   CHECK(!xray_bigint_divmod_precomputed_workspace(&quotient, &remainder, &a, &divisor_context, &division_workspace));
+  CHECK(!xray_bigint_divmod_preinv_qhat_probe(&quotient, &remainder, &a, &divisor_context, &division_workspace));
 
   mpz_clears(ga, gb, gout, gquotient, gremainder, gdivisor, ggcd, gpow, NULL);
   xray_bigint_division_workspace_clear(&division_workspace);
@@ -1485,6 +1508,10 @@ static void test_benchmarks(void) {
   int saw_divmod_workspace4096_probe = 0;
   int saw_divmod_workspace8192_probe = 0;
   int saw_divmod_workspace16384_probe = 0;
+  int saw_divmod_preinv_qhat_probe = 0;
+  int saw_divmod_preinv_qhat4096_probe = 0;
+  int saw_divmod_preinv_qhat8192_probe = 0;
+  int saw_divmod_preinv_qhat16384_probe = 0;
   int saw_mul_unroll4_vs_scratch_probe = 0;
   int saw_mul_unroll4_vs_gmp_probe = 0;
   int saw_mul_unroll4_deep_vs_gmp_probe = 0;
@@ -1709,6 +1736,35 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "featureGate=bigint-division-workspace") != NULL);
         CHECK(strstr(report->results[index].detail, "gmpClue=mpn_tdiv_qr-scratch-reuse") != NULL);
         CHECK(strstr(report->results[index].detail, "thresholdSafety=explicit-workspace") != NULL);
+        CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=1") != NULL);
+        CHECK(!report->results[index].replacement_ready);
+        CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+      }
+      if (strcmp(report->results[index].operation, "divmod-preinv-qhat") == 0) {
+        saw_divmod_preinv_qhat_probe = 1;
+        if (report->results[index].digits == 4096) {
+          saw_divmod_preinv_qhat4096_probe = 1;
+          CHECK(strstr(report->results[index].detail, "powerChunks=107") != NULL);
+          CHECK(strstr(report->results[index].detail, "divisorDigits=2034") != NULL);
+        } else if (report->results[index].digits == 8192) {
+          saw_divmod_preinv_qhat8192_probe = 1;
+          CHECK(strstr(report->results[index].detail, "powerChunks=215") != NULL);
+          CHECK(strstr(report->results[index].detail, "divisorDigits=4086") != NULL);
+        } else if (report->results[index].digits == 16384) {
+          saw_divmod_preinv_qhat16384_probe = 1;
+          CHECK(strstr(report->results[index].detail, "powerChunks=431") != NULL);
+          CHECK(strstr(report->results[index].detail, "divisorDigits=8190") != NULL);
+        } else {
+          CHECK(0);
+        }
+        CHECK(strstr(report->results[index].detail, "candidate=scratch-divmod-preinv-qhat") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=scratch-divmod-context-workspace") != NULL);
+        CHECK(strstr(report->results[index].detail, "oracle=mpz_tdiv_qr") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=bigint-division-preinv-qhat") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpClue=mpn_sbpi1_div_qr-qhat") != NULL);
+        CHECK(strstr(report->results[index].detail, "precomputeScope=per-divisor") != NULL);
+        CHECK(strstr(report->results[index].detail, "thresholdSafety=explicit-probe") != NULL);
         CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
         CHECK(strstr(report->results[index].detail, "operandFamilies=1") != NULL);
         CHECK(!report->results[index].replacement_ready);
@@ -2486,6 +2542,10 @@ static void test_benchmarks(void) {
   CHECK(saw_divmod_workspace4096_probe);
   CHECK(saw_divmod_workspace8192_probe);
   CHECK(saw_divmod_workspace16384_probe);
+  CHECK(saw_divmod_preinv_qhat_probe);
+  CHECK(saw_divmod_preinv_qhat4096_probe);
+  CHECK(saw_divmod_preinv_qhat8192_probe);
+  CHECK(saw_divmod_preinv_qhat16384_probe);
 #if defined(_MSC_VER) && defined(_M_X64)
   CHECK(saw_toom3_unroll4_vs_scratch_probe);
   CHECK(saw_toom3_unroll4_vs_gmp_probe);
@@ -2544,6 +2604,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "bigint-division-context") != NULL);
   CHECK(strstr(json, "divmod-workspace") != NULL);
   CHECK(strstr(json, "bigint-division-workspace") != NULL);
+  CHECK(strstr(json, "divmod-preinv-qhat") != NULL);
+  CHECK(strstr(json, "bigint-division-preinv-qhat") != NULL);
   CHECK(strstr(json, "qhat-u32-limb") != NULL);
   CHECK(strstr(json, "qhat-preinv") != NULL);
   CHECK(strstr(json, "preinverted-limb-qhat") != NULL);
@@ -2727,6 +2789,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "format-policy-safety") != NULL);
   CHECK(strstr(benchmark_tsv, "divmod-precomputed") != NULL);
   CHECK(strstr(benchmark_tsv, "divmod-workspace") != NULL);
+  CHECK(strstr(benchmark_tsv, "divmod-preinv-qhat") != NULL);
+  CHECK(strstr(benchmark_tsv, "scratch-divmod-preinv-qhat") != NULL);
   CHECK(strstr(benchmark_tsv, "qhat-u32-limb") != NULL);
   CHECK(strstr(benchmark_tsv, "qhat-preinv") != NULL);
   CHECK(strstr(benchmark_tsv, "preinverted-limb-qhat") != NULL);
@@ -2776,6 +2840,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "divmod-dc-power chunks=") != NULL);
   CHECK(strstr(benchmark_frontier, "divmod-precomputed chunks=") != NULL);
   CHECK(strstr(benchmark_frontier, "divmod-workspace chunks=") != NULL);
+  CHECK(strstr(benchmark_frontier, "divmod-preinv-qhat chunks=") != NULL);
   CHECK(strstr(benchmark_frontier, "format-threshold thr=16") != NULL);
   CHECK(strstr(benchmark_frontier, "format-threshold thr=32") != NULL);
   CHECK(strstr(benchmark_frontier, "format-threshold thr=40") != NULL);

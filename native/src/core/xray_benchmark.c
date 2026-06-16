@@ -1652,6 +1652,59 @@ static void append_divmod_workspace_probe_result(
   append_result(report, &result);
 }
 
+static void append_divmod_preinv_qhat_probe_result(
+  XrayBenchmarkReport *report,
+  size_t digits,
+  size_t power_chunks,
+  int parity,
+  unsigned long long candidate_us,
+  unsigned long long baseline_us,
+  double paired_ratio,
+  size_t stable_sample_count,
+  size_t sample_count,
+  double worst_pair_ratio) {
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "kernel divmod preinverted qhat %zu chunks %zu digits", power_chunks, digits);
+  snprintf(result.category, sizeof(result.category), "kernel-probe");
+  snprintf(result.operation, sizeof(result.operation), "divmod-preinv-qhat");
+  result.digits = digits;
+  result.scratch_us = candidate_us ? candidate_us : 1;
+  result.gmp_us = baseline_us ? baseline_us : 1;
+  result.speed_ratio = paired_ratio > 0.0 ? paired_ratio : (double)result.scratch_us / (double)result.gmp_us;
+  result.max_allowed_speed_ratio = 0.98;
+  result.stable_sample_count = stable_sample_count;
+  result.sample_count = sample_count;
+  result.worst_pair_ratio = worst_pair_ratio;
+  result.parity_verified = parity;
+  size_t required_stable = kernel_required_stable_samples(sample_count);
+  int candidate_cleared_gate = parity &&
+    result.speed_ratio <= result.max_allowed_speed_ratio &&
+    result.stable_sample_count >= required_stable;
+  result.replacement_ready = 0;
+  snprintf(result.adoption, sizeof(result.adoption), "%s",
+    !parity ? "blocked-output-mismatch" : "observe-only");
+  snprintf(result.status, sizeof(result.status), "%s",
+    !parity ? "mismatch" : (candidate_cleared_gate ? "candidate-faster" : (result.speed_ratio < 1.0 ? "candidate-no-margin" : "baseline-faster")));
+  result.passed = parity;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  snprintf(result.detail, sizeof(result.detail),
+    "op=divmod-preinv-qhat digits=%zu powerChunks=%zu divisorDigits=%zu operandFamilies=1 samples=%zu stablePairs=%zu/%zu candidateUs=%llu baselineUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median max=%.2f candidate=scratch-divmod-preinv-qhat baseline=scratch-divmod-context-workspace oracle=mpz_tdiv_qr featureGate=bigint-division-preinv-qhat gmpClue=mpn_sbpi1_div_qr-qhat precomputeScope=per-divisor thresholdSafety=explicit-probe noAutoRoute=1 adoption=%s",
+    digits,
+    power_chunks,
+    power_chunks * 19U + 1U,
+    sample_count,
+    stable_sample_count,
+    sample_count,
+    result.scratch_us,
+    result.gmp_us,
+    result.speed_ratio,
+    result.worst_pair_ratio,
+    result.max_allowed_speed_ratio,
+    result.adoption);
+  append_result(report, &result);
+}
+
 static void append_square_vs_mul_probe_result(
   XrayBenchmarkReport *report,
   size_t digits,
@@ -5299,6 +5352,132 @@ static void run_divmod_workspace_probe_case(XrayBenchmarkReport *report, size_t 
   free(divisor_text);
 }
 
+static void run_divmod_preinv_qhat_probe_case(XrayBenchmarkReport *report, size_t digits, unsigned int seed) {
+  size_t power_chunks = digits / (2U * 19U);
+  if (power_chunks == 0) power_chunks = 1;
+  char *numerator_text = benchmark_decimal(digits, seed, 1);
+  char *divisor_text = benchmark_power_of_ten_decimal(power_chunks * 19U);
+  if (!numerator_text || !divisor_text) {
+    free(numerator_text);
+    free(divisor_text);
+    return;
+  }
+
+  unsigned int iterations = perf_iterations("divmod-bigint", digits);
+  XrayScratchBigInt numerator, divisor, candidate_quotient, candidate_remainder, baseline_quotient, baseline_remainder;
+  XrayBigIntDivisorContext divisor_context;
+  XrayBigIntDivisionWorkspace candidate_workspace;
+  XrayBigIntDivisionWorkspace baseline_workspace;
+  xray_bigint_init(&numerator);
+  xray_bigint_init(&divisor);
+  xray_bigint_init(&candidate_quotient);
+  xray_bigint_init(&candidate_remainder);
+  xray_bigint_init(&baseline_quotient);
+  xray_bigint_init(&baseline_remainder);
+  xray_bigint_divisor_context_init(&divisor_context);
+  xray_bigint_division_workspace_init(&candidate_workspace);
+  xray_bigint_division_workspace_init(&baseline_workspace);
+  mpz_t gnum, gdiv, gquot, grem;
+  mpz_inits(gnum, gdiv, gquot, grem, NULL);
+  int ok = xray_bigint_set_decimal(&numerator, numerator_text) &&
+    xray_bigint_set_decimal(&divisor, divisor_text) &&
+    xray_bigint_divisor_context_set(&divisor_context, &divisor) &&
+    mpz_set_str(gnum, numerator_text, 10) == 0 &&
+    mpz_set_str(gdiv, divisor_text, 10) == 0;
+
+  if (ok) {
+    ok = xray_bigint_divmod_preinv_qhat_probe(
+      &candidate_quotient,
+      &candidate_remainder,
+      &numerator,
+      &divisor_context,
+      &candidate_workspace) &&
+      xray_bigint_divmod_precomputed_workspace(
+        &baseline_quotient,
+        &baseline_remainder,
+        &numerator,
+        &divisor_context,
+        &baseline_workspace);
+  }
+
+  unsigned long long candidate_samples[XRAY_BENCH_SAMPLES] = {0};
+  unsigned long long baseline_samples[XRAY_BENCH_SAMPLES] = {0};
+  int parity = 1;
+  for (unsigned int sample = 0; sample < XRAY_BENCH_SAMPLES; ++sample) {
+    unsigned long long candidate_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      ok = xray_bigint_divmod_preinv_qhat_probe(
+        &candidate_quotient,
+        &candidate_remainder,
+        &numerator,
+        &divisor_context,
+        &candidate_workspace);
+    }
+    candidate_samples[sample] = xray_now_us() - candidate_started;
+
+    unsigned long long baseline_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      ok = xray_bigint_divmod_precomputed_workspace(
+        &baseline_quotient,
+        &baseline_remainder,
+        &numerator,
+        &divisor_context,
+        &baseline_workspace);
+    }
+    baseline_samples[sample] = xray_now_us() - baseline_started;
+
+    mpz_tdiv_qr(gquot, grem, gnum, gdiv);
+    char *candidate_quotient_text = xray_bigint_get_decimal(&candidate_quotient);
+    char *candidate_remainder_text = xray_bigint_get_decimal(&candidate_remainder);
+    char *baseline_quotient_text = xray_bigint_get_decimal(&baseline_quotient);
+    char *baseline_remainder_text = xray_bigint_get_decimal(&baseline_remainder);
+    char *gquot_text = mpz_get_str(NULL, 10, gquot);
+    char *grem_text = mpz_get_str(NULL, 10, grem);
+    parity = parity && ok &&
+      candidate_quotient_text &&
+      candidate_remainder_text &&
+      baseline_quotient_text &&
+      baseline_remainder_text &&
+      gquot_text &&
+      grem_text &&
+      strcmp(candidate_quotient_text, baseline_quotient_text) == 0 &&
+      strcmp(candidate_remainder_text, baseline_remainder_text) == 0 &&
+      strcmp(candidate_quotient_text, gquot_text) == 0 &&
+      strcmp(candidate_remainder_text, grem_text) == 0;
+    free(candidate_quotient_text);
+    free(candidate_remainder_text);
+    free(baseline_quotient_text);
+    free(baseline_remainder_text);
+    free(gquot_text);
+    free(grem_text);
+  }
+
+  append_divmod_preinv_qhat_probe_result(
+    report,
+    digits,
+    power_chunks,
+    parity,
+    median_samples(candidate_samples, XRAY_BENCH_SAMPLES),
+    median_samples(baseline_samples, XRAY_BENCH_SAMPLES),
+    median_paired_ratio(candidate_samples, baseline_samples, XRAY_BENCH_SAMPLES),
+    paired_ratio_wins(candidate_samples, baseline_samples, XRAY_BENCH_SAMPLES, 0.98),
+    XRAY_BENCH_SAMPLES,
+    max_paired_ratio(candidate_samples, baseline_samples, XRAY_BENCH_SAMPLES));
+
+  mpz_clears(gnum, gdiv, gquot, grem, NULL);
+  xray_bigint_division_workspace_clear(&candidate_workspace);
+  xray_bigint_division_workspace_clear(&baseline_workspace);
+  xray_bigint_divisor_context_clear(&divisor_context);
+  xray_bigint_clear(&numerator);
+  xray_bigint_clear(&divisor);
+  xray_bigint_clear(&candidate_quotient);
+  xray_bigint_clear(&candidate_remainder);
+  xray_bigint_clear(&baseline_quotient);
+  xray_bigint_clear(&baseline_remainder);
+  free(numerator_text);
+  free(divisor_text);
+}
+
 static void run_scratch_modular_case(XrayBenchmarkReport *report, const char *operation, size_t digits) {
   char *text = benchmark_decimal(digits, 23, 1);
   if (!text) return;
@@ -5449,6 +5628,10 @@ static void run_scratch_bigint_gates(XrayBenchmarkReport *report) {
       report,
       divmod_dc_power_digits[digit_index],
       (unsigned int)(149U + digit_index));
+    run_divmod_preinv_qhat_probe_case(
+      report,
+      divmod_dc_power_digits[digit_index],
+      (unsigned int)(173U + digit_index));
   }
   const size_t square_probe_sizes[] = {1000, 4096, 8192, 16384};
   const size_t square_probe_thresholds[] = {16, 24, 32, 48, 64, 80, 96, 112, 128, 160};

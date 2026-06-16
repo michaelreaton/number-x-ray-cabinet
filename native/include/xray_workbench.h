@@ -582,6 +582,18 @@ XRAY_API void xray_bigint_division_workspace_clear(XrayBigIntDivisionWorkspace *
 XRAY_API int xray_bigint_divmod_precomputed_workspace(XrayScratchBigInt *quotient, XrayScratchBigInt *remainder, const XrayScratchBigInt *numerator, const XrayBigIntDivisorContext *context, XrayBigIntDivisionWorkspace *workspace);
 
 /**
+ * Divide numerator using a precomputed divisor, caller-owned workspace, and a
+ * diagnostic pre-inverted top-limb qhat estimator.
+ *
+ * This is a benchmark/research probe. It keeps the same output contract and
+ * alias restrictions as xray_bigint_divmod_precomputed_workspace(), but it
+ * swaps the normalized Knuth loop's hardware quotient-digit division for a
+ * pre-inverted limb estimate plus correction. It returns 1 on exact
+ * quotient/remainder success and 0 for invalid input or allocation failure.
+ */
+XRAY_API int xray_bigint_divmod_preinv_qhat_probe(XrayScratchBigInt *quotient, XrayScratchBigInt *remainder, const XrayScratchBigInt *numerator, const XrayBigIntDivisorContext *context, XrayBigIntDivisionWorkspace *workspace);
+
+/**
  * Return gcd(value, other) for a 32-bit other operand.
  */
 XRAY_API uint32_t xray_bigint_gcd_u32(const XrayScratchBigInt *value, uint32_t other);

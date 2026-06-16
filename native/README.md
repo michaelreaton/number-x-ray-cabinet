@@ -290,10 +290,13 @@ The 64-bit scratch migration is intentionally gated per operation. Add/sub now u
 Division research now includes evidence-only qhat probes. The 32-bit-limb
 Knuth estimator lost to direct `_udiv128`, while the normalized pre-inverted
 top-limb estimator won the qhat micro-kernel under Release and `/GL`. That row
-is still `noAutoRoute=1`; it must graduate through a full quotient/remainder
-division probe before it can affect production routing.
+is still `noAutoRoute=1`. A full `divmod-preinv-qhat` quotient/remainder probe
+now tests the same estimator inside the normalized division loop against the
+real context+workspace path, with exact `mpz_tdiv_qr` parity. It remains an
+explicit diagnostic/importer probe only until product-like `/GL` rows and
+neighboring sizes show stable wins without worst-pair regressions.
 
-Primary references: [GMP multiplication algorithms](https://gmplib.org/manual/Multiplication-Algorithms.html), [GMP FFT multiplication](https://gmplib.org/manual/FFT-Multiplication.html), and the official GMP 6.3.0 source tarball from [gmplib.org](https://gmplib.org/download/gmp/gmp-6.3.0.tar.xz).
+Primary references: [GMP multiplication algorithms](https://gmplib.org/manual/Multiplication-Algorithms.html), [GMP FFT multiplication](https://gmplib.org/manual/FFT-Multiplication.html), [GMP single-limb division](https://gmplib.org/manual/Single-Limb-Division.html), and the official GMP 6.3.0 source tarball from [gmplib.org](https://gmplib.org/download/gmp/gmp-6.3.0.tar.xz).
 
 ## CLI
 
