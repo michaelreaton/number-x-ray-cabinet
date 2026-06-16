@@ -6470,6 +6470,8 @@ static void run_scratch_bigint_gates(XrayBenchmarkReport *report) {
     run_scratch_square_case(report, sizes[index]);
     run_square_vs_mul_probe_case(report, sizes[index]);
   }
+  run_scratch_format_case(report, 768);
+  run_scratch_format_case(report, 896);
   run_scratch_mul_case(report, 16384);
   run_scratch_square_case(report, 16384);
   run_square_vs_mul_probe_case(report, 16384);
@@ -7243,6 +7245,28 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     0,
     format_policy_divide_1e19_preinv_pairs);
 
+  run_format_policy_deep_safety_case(
+    report,
+    273U,
+    "deep-preinv10e19-window768-1000",
+    "decimal-divide-1e19-preinv",
+    768,
+    1000,
+    768,
+    1000,
+    0,
+    format_policy_divide_1e19_preinv);
+  run_format_policy_deep_safety_case(
+    report,
+    277U,
+    "deep-preinv10e19-pairs-window768-896",
+    "decimal-divide-1e19-preinv-pair-writer",
+    768,
+    896,
+    768,
+    896,
+    0,
+    format_policy_divide_1e19_preinv_pairs);
   run_format_policy_deep_safety_case(
     report,
     281U,

@@ -343,7 +343,7 @@ static void test_scratch_bigint_oracle(void) {
   free(oracle_quotient);
 
   XrayBigIntRouteConfig route = xray_bigint_route_config();
-  const size_t format_roundtrip_sizes[] = {40U, 150U, 1000U, 4096U, 8192U};
+  const size_t format_roundtrip_sizes[] = {40U, 150U, 768U, 896U, 1000U, 4096U, 8192U};
   for (size_t index = 0; index < sizeof(format_roundtrip_sizes) / sizeof(format_roundtrip_sizes[0]); ++index) {
     char *roundtrip_input = make_pattern_decimal(format_roundtrip_sizes[index], "97531864208642135790");
     CHECK(roundtrip_input != NULL);
@@ -1487,6 +1487,8 @@ static void test_benchmarks(void) {
   int saw_16384_scratch_mul = 0;
   int saw_scratch_square = 0;
   int saw_scratch_format = 0;
+  int saw_scratch_format768 = 0;
+  int saw_scratch_format896 = 0;
   int saw_8192_kernel_probe = 0;
   int saw_16384_kernel_probe = 0;
   int saw_square_vs_mul_probe = 0;
@@ -1612,6 +1614,8 @@ static void test_benchmarks(void) {
   int saw_format_policy_gate_preinv10e19_pairs_window768_960 = 0;
   int saw_format_policy_gate_preinv10e19_window896_1000 = 0;
   int saw_format_policy_gate_preinv10e19_pairs_window896_1000 = 0;
+  int saw_format_policy_deep_gate_preinv10e19_window768_1000 = 0;
+  int saw_format_policy_deep_gate_preinv10e19_pairs_window768_896 = 0;
   int saw_format_policy_deep_gate_preinv10e19_pairs_window768_960 = 0;
   int saw_format_policy_deep_gate_preinv10e19_pairs_window896_1000 = 0;
   int saw_divmod_preinv_qhat_safety_gate = 0;
@@ -1744,7 +1748,11 @@ static void test_benchmarks(void) {
       if (report->results[index].digits == 8192) saw_8192_scratch = 1;
       if (report->results[index].digits == 16384 && strcmp(report->results[index].operation, "mul") == 0) saw_16384_scratch_mul = 1;
       if (strcmp(report->results[index].operation, "square") == 0) saw_scratch_square = 1;
-      if (strcmp(report->results[index].operation, "format") == 0) saw_scratch_format = 1;
+      if (strcmp(report->results[index].operation, "format") == 0) {
+        saw_scratch_format = 1;
+        if (report->results[index].digits == 768) saw_scratch_format768 = 1;
+        if (report->results[index].digits == 896) saw_scratch_format896 = 1;
+      }
       CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
       CHECK(strstr(report->results[index].detail, "stablePairs=") != NULL);
       CHECK(strstr(report->results[index].detail, "worstPairRatio=") != NULL);
@@ -2791,7 +2799,29 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "baseline=mpz_get_str") != NULL);
         CHECK(strstr(report->results[index].detail, "featureGate=threshold-neighbor") != NULL);
         CHECK(strstr(report->results[index].detail, "gmpClue=product-codegen") != NULL);
-        if (strstr(report->results[index].detail, "policy=deep-preinv10e19-pairs-window768-960") != NULL) {
+        if (strstr(report->results[index].detail, "policy=deep-preinv10e19-window768-1000") != NULL) {
+          saw_format_policy_deep_gate_preinv10e19_window768_1000 = 1;
+          CHECK(is_deep_format_gate);
+          CHECK(strstr(report->results[index].detail, "neighbor=768") != NULL);
+          CHECK(strstr(report->results[index].detail, "gate=1000") != NULL);
+          CHECK(strstr(report->results[index].detail, "min=768") != NULL);
+          CHECK(strstr(report->results[index].detail, "max=1000") != NULL);
+          CHECK(strstr(report->results[index].detail, "leaf=0") != NULL);
+          CHECK(strstr(report->results[index].detail, "neighborStable=") != NULL);
+          CHECK(strstr(report->results[index].detail, "/9") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv") != NULL);
+        } else if (strstr(report->results[index].detail, "policy=deep-preinv10e19-pairs-window768-896") != NULL) {
+          saw_format_policy_deep_gate_preinv10e19_pairs_window768_896 = 1;
+          CHECK(is_deep_format_gate);
+          CHECK(strstr(report->results[index].detail, "neighbor=768") != NULL);
+          CHECK(strstr(report->results[index].detail, "gate=896") != NULL);
+          CHECK(strstr(report->results[index].detail, "min=768") != NULL);
+          CHECK(strstr(report->results[index].detail, "max=896") != NULL);
+          CHECK(strstr(report->results[index].detail, "leaf=0") != NULL);
+          CHECK(strstr(report->results[index].detail, "neighborStable=") != NULL);
+          CHECK(strstr(report->results[index].detail, "/9") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv-pair-writer") != NULL);
+        } else if (strstr(report->results[index].detail, "policy=deep-preinv10e19-pairs-window768-960") != NULL) {
           saw_format_policy_deep_gate_preinv10e19_pairs_window768_960 = 1;
           CHECK(is_deep_format_gate);
           CHECK(strstr(report->results[index].detail, "neighbor=768") != NULL);
@@ -3047,6 +3077,8 @@ static void test_benchmarks(void) {
   CHECK(saw_16384_scratch_mul);
   CHECK(saw_scratch_square);
   CHECK(saw_scratch_format);
+  CHECK(saw_scratch_format768);
+  CHECK(saw_scratch_format896);
   CHECK(saw_8192_kernel_probe);
   CHECK(saw_16384_kernel_probe);
   CHECK(saw_square_vs_mul_probe);
@@ -3172,6 +3204,8 @@ static void test_benchmarks(void) {
   CHECK(saw_format_policy_gate_preinv10e19_pairs_window768_960);
   CHECK(saw_format_policy_gate_preinv10e19_window896_1000);
   CHECK(saw_format_policy_gate_preinv10e19_pairs_window896_1000);
+  CHECK(saw_format_policy_deep_gate_preinv10e19_window768_1000);
+  CHECK(saw_format_policy_deep_gate_preinv10e19_pairs_window768_896);
   CHECK(saw_format_policy_deep_gate_preinv10e19_pairs_window768_960);
   CHECK(saw_format_policy_deep_gate_preinv10e19_pairs_window896_1000);
   CHECK(saw_divmod_preinv_qhat_safety_gate);
@@ -3392,6 +3426,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "preinv-ge16384-leaf16") != NULL);
   CHECK(strstr(json, "preinv10e19-window768-1000") != NULL);
   CHECK(strstr(json, "preinv10e19-pairs-window768-1000") != NULL);
+  CHECK(strstr(json, "deep-preinv10e19-window768-1000") != NULL);
+  CHECK(strstr(json, "deep-preinv10e19-pairs-window768-896") != NULL);
   CHECK(strstr(json, "deep-preinv10e19-pairs-window768-960") != NULL);
   CHECK(strstr(json, "deep-preinv10e19-pairs-window896-1000") != NULL);
   CHECK(strstr(json, "decimal-format-policy-workspace") != NULL);
@@ -3619,6 +3655,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "preinv-ge16384-leaf16") != NULL);
   CHECK(strstr(benchmark_tsv, "preinv10e19-window768-1000") != NULL);
   CHECK(strstr(benchmark_tsv, "preinv10e19-pairs-window768-1000") != NULL);
+  CHECK(strstr(benchmark_tsv, "deep-preinv10e19-window768-1000") != NULL);
+  CHECK(strstr(benchmark_tsv, "deep-preinv10e19-pairs-window768-896") != NULL);
   CHECK(strstr(benchmark_tsv, "deep-preinv10e19-pairs-window768-960") != NULL);
   CHECK(strstr(benchmark_tsv, "deep-preinv10e19-pairs-window896-1000") != NULL);
   CHECK(strstr(benchmark_tsv, "requiredStablePairs=8/9") != NULL);
@@ -3727,6 +3765,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "format-policy-safety preinv-ge16384-leaf16") != NULL);
   CHECK(strstr(benchmark_frontier, "format-policy-safety preinv10e19-window768-1000") != NULL);
   CHECK(strstr(benchmark_frontier, "format-policy-safety preinv10e19-pairs-window768-1000") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-policy-deep-safety deep-preinv10e19-window768-1000") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-policy-deep-safety deep-preinv10e19-pairs-window768-896") != NULL);
   CHECK(strstr(benchmark_frontier, "format-policy-deep-safety deep-preinv10e19-pairs-window768-960") != NULL);
   CHECK(strstr(benchmark_frontier, "format-policy-deep-safety deep-preinv10e19-pairs-window896-1000") != NULL);
   CHECK(strstr(benchmark_frontier, "square-policy current-default") != NULL);
