@@ -943,3 +943,33 @@ evidence. Also keep the sum-vs-difference Karatsuba middle term as an explicit
 benchmark dimension: the MFastFermat difference-form plus endpoint-copy route
 survived product testing better than the classic sum-form middle in that
 workload.
+
+## 2026-06-16: External MFastFermat Frontier Swatch Lesson
+
+Source repo: `C:\Users\mike\Documents\MFastFermat`
+
+MFastFermat pushed its factor-form Montgomery square scout further to 192k and
+256k bit shapes after a full 192k product/GMP confirmation row took about 16
+minutes on the laptop. The new fast scout groups many existing compile-time
+experiments into one short phase run, then reruns plausible finalists with more
+repeats before any production route is considered.
+
+Key transferable findings:
+
+- Broad swatches need failure-tolerant harnesses. `toom3_1024` failed warmup
+  self-checks on both 192k and 256k factor-form shapes, and the harness now
+  reports that as a row instead of aborting the whole run.
+- Broad swatches can be order-biased. One `frontier` group run produced default
+  rows much slower than nearby runs, so it was used only to discover finalists,
+  not to claim speedups.
+- The 5-repeat finalist pass kept the production default unchanged:
+  `fastredc_512` was flat at 192k and slower at 256k (`1.004x`, `0.967x`);
+  `static_redc` helped 256k but hurt 192k (`1.197x`, `0.874x`);
+  `copy_gap_clear`, `carry_chain`, `direct_z2`, and `hoist_redc` lost both
+  sizes.
+
+Decision: carry this into PayamAnalysis route work. A larger-size-only win must
+be shape- or size-gated before it is even a product candidate, and a broad
+discovery run is not an adoption gate. Keep failed-route reporting explicit, run
+the finalists again with longer paired samples, and only then compare against
+GMP on the actual operation shape.
