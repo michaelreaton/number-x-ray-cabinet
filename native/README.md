@@ -258,6 +258,8 @@ Benchmark JSON exposes that rule per operation-size row:
 - `scratchUs` and `gmpUs`: median local timings from the current machine
 - `speedRatio`: median of paired scratch/GMP sample ratios, not a cherry-picked independent best-time division; a ratio below `1.0` means scratch was faster for that row
 - `stableSampleCount`, `sampleCount`, and `worstPairRatio`: the stability guard that keeps a noisy benchmark row from being promoted on one lucky median
+- `measurableStatus.betterNow[]`: the fastest exact-parity scratch rows that are currently allowed to replace the backend, with `speedup`, `speedRatio`, `worstPairRatio`, and stability counts
+- `measurableStatus.stillWorking[]`: the largest exact-parity scratch gaps that are not route-ready, with `slowdown`, `speedRatio`, `worstPairRatio`, and stability counts
 
 Rows with parity but without `replacementReady` are useful migration evidence, but the production path must remain GMP-backed.
 
