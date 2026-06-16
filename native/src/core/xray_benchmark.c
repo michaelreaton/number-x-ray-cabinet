@@ -18,6 +18,12 @@
 #define XRAY_HAS_MSVC_BMI2_ADX_INTRINSICS 0
 #endif
 
+#if defined(_MSC_VER) && defined(_M_X64)
+#define XRAY_HAS_MUL_UNROLL4_POLICY_PROBES 1
+#else
+#define XRAY_HAS_MUL_UNROLL4_POLICY_PROBES 0
+#endif
+
 #define XRAY_BENCH_SAMPLES 5
 #define XRAY_BENCH_DEEP_SAMPLES 9
 #define XRAY_BENCH_MAX_SAMPLES 9
@@ -954,6 +960,7 @@ static void append_arithmetic_policy_probe_result(
   size_t min_digits,
   size_t leaf_threshold,
   size_t depth_limit,
+  int candidate_available,
   int parity,
   unsigned long long candidate_us,
   unsigned long long gmp_us,
@@ -976,19 +983,20 @@ static void append_arithmetic_policy_probe_result(
   result.worst_pair_ratio = worst_pair_ratio;
   result.parity_verified = parity;
   size_t required_stable = policy_required_stable_samples(sample_count);
-  result.replacement_ready = parity &&
+  result.replacement_ready = candidate_available &&
+    parity &&
     result.speed_ratio <= result.max_allowed_speed_ratio &&
     result.stable_sample_count >= required_stable;
   snprintf(result.adoption, sizeof(result.adoption), "%s",
     !parity ? "blocked-output-mismatch" : (result.replacement_ready ? "promotion-ready" : "observe-only"));
   snprintf(result.status, sizeof(result.status), "%s",
-    !parity ? "mismatch" : (result.replacement_ready ? "policy-ready" : (result.speed_ratio <= 1.0 ? "needs-stability" : "backend-faster")));
+    !parity ? "mismatch" : (!candidate_available ? "candidate-unavailable" : (result.replacement_ready ? "policy-ready" : (result.speed_ratio <= 1.0 ? "needs-stability" : "backend-faster"))));
   result.passed = parity;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   const char *fallback_candidate = strcmp(operation, "mul") == 0 ? "current-scratch-mul" : "current-scratch-square";
-  const char *active_candidate = (min_digits == 0 || digits >= min_digits) ? candidate : fallback_candidate;
+  const char *active_candidate = (candidate_available && (min_digits == 0 || digits >= min_digits)) ? candidate : fallback_candidate;
   snprintf(result.detail, sizeof(result.detail),
-    "op=%s-policy digits=%zu policy=%s minDigits=%zu leafThreshold=%zu depthLimit=%zu operandFamilies=%zu samples=%zu stablePairs=%zu/%zu ratioMethod=paired-median candidate=%s activeCandidate=%s baseline=mpz_mul featureGate=%s gmpClue=%s adoption=%s",
+    "op=%s-policy digits=%zu policy=%s minDigits=%zu leafThreshold=%zu depthLimit=%zu operandFamilies=%zu samples=%zu stablePairs=%zu/%zu ratioMethod=paired-median candidate=%s activeCandidate=%s candidateAvailable=%s baseline=mpz_mul featureGate=%s gmpClue=%s adoption=%s",
     operation,
     digits,
     policy,
@@ -1001,6 +1009,7 @@ static void append_arithmetic_policy_probe_result(
     sample_count,
     candidate,
     active_candidate,
+    candidate_available ? "yes" : "no",
     feature_gate,
     gmp_clue,
     result.adoption);
@@ -2881,6 +2890,7 @@ static void run_square_policy_probe_case(
     0,
     threshold,
     0,
+    1,
     parity,
     median_samples(candidate_samples, XRAY_BENCH_SAMPLES),
     median_samples(gmp_samples, XRAY_BENCH_SAMPLES),
@@ -2928,8 +2938,15 @@ static int mul_policy_toom3_unroll4(
   size_t leaf_threshold,
   size_t depth_limit) {
   (void)depth_limit;
+#if XRAY_HAS_MUL_UNROLL4_POLICY_PROBES
   if (digits < min_digits) return xray_bigint_mul(out, left, right);
   return xray_bigint_mul_toom3_unroll4_probe(out, left, right, leaf_threshold);
+#else
+  (void)digits;
+  (void)min_digits;
+  (void)leaf_threshold;
+  return xray_bigint_mul(out, left, right);
+#endif
 }
 
 static int mul_policy_toom3_unroll4_recursive(
@@ -2940,8 +2957,16 @@ static int mul_policy_toom3_unroll4_recursive(
   size_t min_digits,
   size_t leaf_threshold,
   size_t depth_limit) {
+#if XRAY_HAS_MUL_UNROLL4_POLICY_PROBES
   if (digits < min_digits) return xray_bigint_mul(out, left, right);
   return xray_bigint_mul_toom3_unroll4_recursive_probe(out, left, right, leaf_threshold, depth_limit);
+#else
+  (void)digits;
+  (void)min_digits;
+  (void)leaf_threshold;
+  (void)depth_limit;
+  return xray_bigint_mul(out, left, right);
+#endif
 }
 
 static void run_mul_policy_probe_case(
@@ -2954,6 +2979,7 @@ static void run_mul_policy_probe_case(
   size_t min_digits,
   size_t leaf_threshold,
   size_t depth_limit,
+  int candidate_available,
   XrayMulPolicyProbeFn probe) {
   char *left_text[XRAY_MUL_OPERAND_FAMILIES] = {0};
   char *right_text[XRAY_MUL_OPERAND_FAMILIES] = {0};
@@ -3023,6 +3049,7 @@ static void run_mul_policy_probe_case(
     min_digits,
     leaf_threshold,
     depth_limit,
+    candidate_available,
     parity,
     median_samples(candidate_samples, XRAY_BENCH_SAMPLES),
     median_samples(gmp_samples, XRAY_BENCH_SAMPLES),
@@ -4518,6 +4545,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
       0,
       0,
       0,
+      1,
       mul_policy_current_default);
     run_mul_policy_probe_case(
       report,
@@ -4529,6 +4557,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
       8192,
       48,
       1,
+      XRAY_HAS_MUL_UNROLL4_POLICY_PROBES,
       mul_policy_toom3_unroll4);
     run_mul_policy_probe_case(
       report,
@@ -4540,6 +4569,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
       16384,
       64,
       2,
+      XRAY_HAS_MUL_UNROLL4_POLICY_PROBES,
       mul_policy_toom3_unroll4_recursive);
   }
 
