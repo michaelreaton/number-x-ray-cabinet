@@ -91,6 +91,9 @@ typedef struct RunResult {
   size_t benchmark_blocked_count;
   size_t benchmark_failed_count;
   size_t benchmark_safety_count;
+  char benchmark_ready_detail[192];
+  char benchmark_oracle_detail[192];
+  char benchmark_safety_detail[192];
   char *benchmark_text;
   char log_line[2048];
 } RunResult;
@@ -256,7 +259,7 @@ static char *format_benchmark_report_text(const XrayBenchmarkReport *report) {
     return gui_strdup(
       "BENCHMARK RESULTS\n"
       "Run Proof with benchmarks enabled to populate live primitive timings.\n"
-      "A frontier summary will highlight replacement-ready rows, near wins, and the largest remaining gaps.\n");
+      "A frontier summary will highlight promotion-ready lanes, near wins, and the largest remaining gaps.\n");
   }
 
   size_t capacity = 4096 + report->result_count * 360;
@@ -628,7 +631,8 @@ static int benchmark_status_is_promotion_ready(const char *status) {
 
 static int benchmark_status_is_safety_rejected(const char *status) {
   return status && (
-    strstr(status, "safety") ||
+    strstr(status, "safety-rejected") ||
+    strstr(status, "safety-blocked") ||
     strstr(status, "regression") ||
     strstr(status, "neighbor") ||
     strstr(status, "blocked") ||
@@ -881,7 +885,7 @@ static void set_live_benchmark_view(AppState *app) {
     "Current engine event: %s / %s\n"
     "%s\n\n"
     "BENCHMARK ROW STREAM\n"
-    "Rows: %zu   Replacement-ready: %zu   Oracle-only: %zu   Blocked: %zu   Failed: %zu\n"
+    "Rows: %zu   Promotion-ready: %zu   Oracle-only: %zu   Safety-rejected: %zu   Blocked: %zu   Failed: %zu\n"
     "Recent rows:\n"
     "%s\n"
     "LIVE STAGE EVENTS\n"
@@ -893,6 +897,7 @@ static void set_live_benchmark_view(AppState *app) {
     app->live_benchmark_row_count,
     app->live_benchmark_ready_count,
     app->live_benchmark_oracle_count,
+    app->live_benchmark_safety_count,
     app->live_benchmark_blocked_count,
     app->live_benchmark_failed_count,
     app->live_benchmark_row_log[0] ? app->live_benchmark_row_log : "(waiting for benchmark rows)\n",
@@ -1389,7 +1394,7 @@ static GtkWidget *build_benchmark_page(AppState *app) {
   gtk_grid_set_column_spacing(GTK_GRID(summary), 10);
   gtk_grid_set_column_homogeneous(GTK_GRID(summary), TRUE);
   gtk_grid_attach(GTK_GRID(summary), metric_box(&app->benchmark_total_label, "rows", "0", "good"), 0, 0, 1, 1);
-  gtk_grid_attach(GTK_GRID(summary), metric_box(&app->benchmark_ready_label, "replacement-ready", "0", "good"), 1, 0, 1, 1);
+  gtk_grid_attach(GTK_GRID(summary), metric_box(&app->benchmark_ready_label, "promotion-ready", "0", "good"), 1, 0, 1, 1);
   gtk_grid_attach(GTK_GRID(summary), metric_box(&app->benchmark_oracle_label, "oracle-only", "0", "warn"), 2, 0, 1, 1);
   gtk_grid_attach(GTK_GRID(summary), metric_box(&app->benchmark_blocked_label, "blocked", "0", "bad"), 3, 0, 1, 1);
   gtk_grid_attach(GTK_GRID(summary), metric_box(&app->benchmark_failed_label, "failed", "0", "bad"), 4, 0, 1, 1);
@@ -1452,7 +1457,7 @@ static GtkWidget *build_benchmark_page(AppState *app) {
   set_text_view(app->benchmark_view,
     "BENCHMARK FRONTIER\n"
     "Run Proof to measure scratch bigint primitives against GMP/MPIR.\n\n"
-    "The frontier summary will show replacement-ready rows, near wins, and the largest remaining gaps before the detailed timing tables.\n");
+    "The frontier summary will show promotion-ready lanes, near wins, and the largest remaining gaps before the detailed timing tables.\n");
   reset_benchmark_dashboard(app, "Run Proof to stream benchmark rows.");
 
   GtkWidget *ladder = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
@@ -1603,6 +1608,9 @@ static gboolean finish_run(gpointer data) {
   app->live_benchmark_safety_count = result->benchmark_safety_count;
   set_benchmark_dashboard_counts(app);
   update_benchmark_lane_counts(app);
+  if (result->benchmark_ready_detail[0]) set_label_if(app->benchmark_lane_ready_detail_label, result->benchmark_ready_detail);
+  if (result->benchmark_oracle_detail[0]) set_label_if(app->benchmark_lane_oracle_detail_label, result->benchmark_oracle_detail);
+  if (result->benchmark_safety_detail[0]) set_label_if(app->benchmark_lane_safety_detail_label, result->benchmark_safety_detail);
   set_label_if(app->benchmark_current_label, result->bench_status);
   set_run_status(app, result->factor_status, result->proof_status, result->cyclo_status, result->bench_status);
   set_text_view(app->json_view, result->json);
@@ -1624,15 +1632,15 @@ static gpointer run_worker(gpointer data) {
   result->json = gui_strdup(report.json ? report.json : "{}");
   result->benchmark_text = format_benchmark_report_text(&report.benchmark);
   result->benchmark_total_count = report.benchmark.result_count;
-  result->benchmark_ready_count = report.benchmark.replacement_ready_count;
-  result->benchmark_oracle_count = report.benchmark.oracle_only_count;
+  result->benchmark_ready_count = report.benchmark.lanes.promotion_ready_count;
+  result->benchmark_oracle_count = report.benchmark.lanes.oracle_only_count;
   result->benchmark_blocked_count = report.benchmark.blocked_count;
+  result->benchmark_safety_count = report.benchmark.lanes.safety_rejected_count;
+  snprintf(result->benchmark_ready_detail, sizeof(result->benchmark_ready_detail), "%s", report.benchmark.lanes.promotion_ready_detail);
+  snprintf(result->benchmark_oracle_detail, sizeof(result->benchmark_oracle_detail), "%s", report.benchmark.lanes.oracle_only_detail);
+  snprintf(result->benchmark_safety_detail, sizeof(result->benchmark_safety_detail), "%s", report.benchmark.lanes.safety_rejected_detail);
   for (size_t index = 0; index < report.benchmark.result_count; ++index) {
     if (!report.benchmark.results[index].passed) result->benchmark_failed_count++;
-    if (benchmark_status_is_safety_rejected(report.benchmark.results[index].status) ||
-        benchmark_status_is_safety_rejected(report.benchmark.results[index].adoption)) {
-      result->benchmark_safety_count++;
-    }
   }
   snprintf(result->factor_status, sizeof(result->factor_status), "Factor Solver: %s", report.factor.status[0] ? report.factor.status : "invalid");
   snprintf(result->proof_status, sizeof(result->proof_status), "Product proof: %s | factors %zu | unresolved %zu | %lu ms",
@@ -1644,12 +1652,12 @@ static gpointer run_worker(gpointer data) {
     report.cyclotomic.scanned,
     report.cyclotomic.exact_matches,
     report.cyclotomic.elapsed_ms);
-  snprintf(result->bench_status, sizeof(result->bench_status), "Bench %zu/%zu | scratch ready %zu/%zu | oracle %zu | GNFS %zu",
+  snprintf(result->bench_status, sizeof(result->bench_status), "Bench %zu/%zu | promotion %zu | oracle %zu | safety %zu | GNFS %zu",
     report.benchmark.passed_count,
     report.benchmark.result_count,
-    report.benchmark.replacement_ready_count,
-    report.benchmark.scratch_count,
-    report.benchmark.oracle_only_count,
+    report.benchmark.lanes.promotion_ready_count,
+    report.benchmark.lanes.oracle_only_count,
+    report.benchmark.lanes.safety_rejected_count,
     report.gnfs.stage_count);
   snprintf(result->log_line, sizeof(result->log_line),
     "RUN COMPLETE\n"

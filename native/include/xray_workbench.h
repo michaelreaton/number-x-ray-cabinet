@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define XRAY_VERSION "0.1.0-native-proof"
-#define XRAY_ABI_VERSION 1u
+#define XRAY_ABI_VERSION 2u
 
 #ifndef XRAY_API
 #if defined(_WIN32) && defined(XRAY_SHARED)
@@ -89,7 +89,7 @@ XRAY_API const char *xray_version(void);
  * Return the runtime C ABI version for the loaded library.
  *
  * The ABI version changes when the exported C layout or calling contract makes
- * a backward-incompatible change. The current ABI is 1.
+ * a backward-incompatible change. The current ABI is 2.
  */
 XRAY_API unsigned int xray_abi_version(void);
 
@@ -807,6 +807,15 @@ typedef struct XrayBenchmarkResult {
   char detail[512];
 } XrayBenchmarkResult;
 
+typedef struct XrayBenchmarkLaneSummary {
+  size_t promotion_ready_count;
+  size_t oracle_only_count;
+  size_t safety_rejected_count;
+  char promotion_ready_detail[192];
+  char oracle_only_detail[192];
+  char safety_rejected_detail[192];
+} XrayBenchmarkLaneSummary;
+
 /**
  * Optional callback invoked after each benchmark result row is appended.
  *
@@ -859,6 +868,7 @@ typedef struct XrayBenchmarkReport {
   size_t replacement_ready_count;
   size_t oracle_only_count;
   size_t blocked_count;
+  XrayBenchmarkLaneSummary lanes;
   unsigned long elapsed_ms;
   XrayBenchmarkResultCallback result_callback;
   void *result_callback_user_data;
@@ -1212,6 +1222,39 @@ XRAY_API char *xray_benchmark_frontier_text(const XrayBenchmarkReport *report);
  * The returned pointer is borrowed static storage and must not be freed.
  */
 XRAY_API const char *xray_scratch_adoption_for_result(const XrayBenchmarkResult *result);
+
+/**
+ * Return non-zero when a benchmark result belongs in the promotion-ready lane.
+ *
+ * The promotion-ready lane is broader than scratch replacement readiness: it
+ * includes rows whose status or adoption indicates an implementation candidate
+ * passed its local parity, speed, stability, and safety gates.
+ */
+XRAY_API int xray_benchmark_result_is_promotion_ready(const XrayBenchmarkResult *result);
+
+/**
+ * Return non-zero when a benchmark result belongs in the oracle-only lane.
+ *
+ * Oracle-only rows are useful evidence for research and comparison, but they
+ * are not authorized to route production proof or arithmetic behavior.
+ */
+XRAY_API int xray_benchmark_result_is_oracle_only(const XrayBenchmarkResult *result);
+
+/**
+ * Return non-zero when a benchmark result belongs in the safety-rejected lane.
+ *
+ * Safety-rejected rows include output mismatches, explicit blocked rows, and
+ * threshold or neighbor regressions that should prevent adoption.
+ */
+XRAY_API int xray_benchmark_result_is_safety_rejected(const XrayBenchmarkResult *result);
+
+/**
+ * Format a compact one-line benchmark result summary.
+ *
+ * result_index is one-based when available; pass 0 to omit a stable row number.
+ * The output is always NUL-terminated when out_size is non-zero.
+ */
+XRAY_API void xray_benchmark_result_brief(const XrayBenchmarkResult *result, size_t result_index, char *out, size_t out_size);
 
 /**
  * Emit a toy GNFS stage-proof artifact pipeline for an already normalized input.

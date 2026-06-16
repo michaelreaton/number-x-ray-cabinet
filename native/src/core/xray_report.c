@@ -250,6 +250,20 @@ static void append_bigint_route_config_json(JsonBuffer *buffer) {
     route.msvc_uint128_helpers ? "true" : "false");
 }
 
+static void append_benchmark_lane_json(JsonBuffer *buffer, const XrayBenchmarkLaneSummary *lanes) {
+  jb_append(buffer, "\"lanes\":{");
+  jb_printf(buffer, "\"promotionReady\":{\"count\":%zu,\"last\":",
+    lanes ? lanes->promotion_ready_count : 0);
+  jb_string(buffer, lanes ? lanes->promotion_ready_detail : "");
+  jb_printf(buffer, "},\"oracleOnly\":{\"count\":%zu,\"last\":",
+    lanes ? lanes->oracle_only_count : 0);
+  jb_string(buffer, lanes ? lanes->oracle_only_detail : "");
+  jb_printf(buffer, "},\"safetyRejected\":{\"count\":%zu,\"last\":",
+    lanes ? lanes->safety_rejected_count : 0);
+  jb_string(buffer, lanes ? lanes->safety_rejected_detail : "");
+  jb_append(buffer, "}}");
+}
+
 static void append_benchmark_json(JsonBuffer *buffer, const XrayBenchmarkReport *report) {
   jb_append(buffer, "\"benchmarkReport\":{");
   append_cpu_json(buffer, "cpu", report ? &report->cpu : NULL);
@@ -263,6 +277,8 @@ static void append_benchmark_json(JsonBuffer *buffer, const XrayBenchmarkReport 
   jb_string(buffer, xray_bignum_backend_library());
   jb_append(buffer, ",");
   append_bigint_route_config_json(buffer);
+  jb_append(buffer, ",");
+  append_benchmark_lane_json(buffer, report ? &report->lanes : NULL);
   jb_printf(buffer,
     ",\"passed\":%zu,\"total\":%zu,\"scratchRows\":%zu,\"replacementReadyRows\":%zu,\"oracleOnlyRows\":%zu,\"blockedRows\":%zu,\"elapsedMs\":%lu,\"results\":[",
     report->passed_count,
@@ -582,7 +598,7 @@ char *xray_benchmark_frontier_text(const XrayBenchmarkReport *report) {
   free(cpu_summary);
   free(build_summary);
   jb_printf(&buffer,
-    "Passed: %zu/%zu   Scratch rows: %zu   Replacement-ready: %zu   Oracle-only: %zu   Blocked: %zu   Elapsed: %lums\n\n",
+    "Passed: %zu/%zu   Scratch rows: %zu   Replacement-ready: %zu   Oracle-only: %zu   Blocked: %zu   Elapsed: %lums\n",
     report->passed_count,
     report->result_count,
     report->scratch_count,
@@ -590,6 +606,11 @@ char *xray_benchmark_frontier_text(const XrayBenchmarkReport *report) {
     report->oracle_only_count,
     report->blocked_count,
     report->elapsed_ms);
+  jb_printf(&buffer,
+    "Lanes: promotion-ready=%zu   oracle-only=%zu   safety-rejected=%zu\n\n",
+    report->lanes.promotion_ready_count,
+    report->lanes.oracle_only_count,
+    report->lanes.safety_rejected_count);
 
   jb_append(&buffer,
     "FRONTIER SUMMARY\n"

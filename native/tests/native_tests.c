@@ -1471,6 +1471,9 @@ static void test_benchmarks(void) {
   size_t replacement_ready_rows = 0;
   size_t oracle_only_rows = 0;
   size_t blocked_rows = 0;
+  size_t lane_promotion_ready_rows = 0;
+  size_t lane_oracle_only_rows = 0;
+  size_t lane_safety_rejected_rows = 0;
   int saw_8192_scratch = 0;
   int saw_16384_scratch_mul = 0;
   int saw_scratch_square = 0;
@@ -1687,6 +1690,22 @@ static void test_benchmarks(void) {
   int saw_mul_unroll4_vs_gmp_probe = 0;
   int saw_mul_unroll4_deep_vs_gmp_probe = 0;
   for (size_t index = 0; index < report->result_count; ++index) {
+    char lane_brief[192];
+    if (xray_benchmark_result_is_promotion_ready(&report->results[index])) {
+      lane_promotion_ready_rows++;
+      xray_benchmark_result_brief(&report->results[index], index + 1U, lane_brief, sizeof(lane_brief));
+      CHECK(strstr(lane_brief, "d=") != NULL);
+    }
+    if (xray_benchmark_result_is_oracle_only(&report->results[index])) {
+      lane_oracle_only_rows++;
+      xray_benchmark_result_brief(&report->results[index], index + 1U, lane_brief, sizeof(lane_brief));
+      CHECK(strstr(lane_brief, "r=") != NULL);
+    }
+    if (xray_benchmark_result_is_safety_rejected(&report->results[index])) {
+      lane_safety_rejected_rows++;
+      xray_benchmark_result_brief(&report->results[index], index + 1U, lane_brief, sizeof(lane_brief));
+      CHECK(strstr(lane_brief, "s=") != NULL);
+    }
     if (strcmp(report->results[index].category, "scratch-vs-gmp") == 0) {
       scratch_rows++;
       CHECK(report->results[index].parity_verified);
@@ -3045,8 +3064,19 @@ static void test_benchmarks(void) {
   CHECK(report->oracle_only_count == oracle_only_rows);
   CHECK(report->blocked_count == blocked_rows);
   CHECK(report->scratch_count == report->replacement_ready_count + report->oracle_only_count + report->blocked_count);
+  CHECK(report->lanes.promotion_ready_count == lane_promotion_ready_rows);
+  CHECK(report->lanes.oracle_only_count == lane_oracle_only_rows);
+  CHECK(report->lanes.safety_rejected_count == lane_safety_rejected_rows);
+  CHECK(report->lanes.promotion_ready_count >= report->replacement_ready_count);
+  CHECK(report->lanes.oracle_only_count >= report->oracle_only_count);
+  if (report->lanes.promotion_ready_count) CHECK(strstr(report->lanes.promotion_ready_detail, "d=") != NULL);
+  if (report->lanes.oracle_only_count) CHECK(strstr(report->lanes.oracle_only_detail, "r=") != NULL);
+  if (report->lanes.safety_rejected_count) CHECK(strstr(report->lanes.safety_rejected_detail, "s=") != NULL);
   char *json = xray_benchmark_report_json(report);
   CHECK(json != NULL);
+  CHECK(strstr(json, "\"lanes\"") != NULL);
+  CHECK(strstr(json, "\"promotionReady\"") != NULL);
+  CHECK(strstr(json, "\"safetyRejected\"") != NULL);
   CHECK(strstr(json, "\"replacementReady\"") != NULL);
   CHECK(strstr(json, "\"stableSampleCount\"") != NULL);
   CHECK(strstr(json, "\"sampleCount\"") != NULL);
@@ -3268,6 +3298,8 @@ static void test_benchmarks(void) {
   CHECK(workbench.run_dir != NULL);
   CHECK(workbench.events_jsonl != NULL);
   CHECK(strstr(workbench.events_jsonl, "\"stage\":\"benchmark\"") != NULL);
+  CHECK(strstr(workbench.events_jsonl, "lanePromotionReady=") != NULL);
+  CHECK(strstr(workbench.events_jsonl, "laneSafetyRejected=") != NULL);
   CHECK(strstr(workbench.events_jsonl, "\"stage\":\"cpu\"") != NULL);
   char *benchmark_json_path = test_path_join(workbench.run_dir, "benchmark.json");
   char *benchmark_tsv_path = test_path_join(workbench.run_dir, "benchmark.tsv");
@@ -3286,6 +3318,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_json, "\"baselineBackendVersion\"") != NULL);
   CHECK(strstr(benchmark_json, "\"baselineBackendLibrary\"") != NULL);
   CHECK(strstr(benchmark_json, "\"scratchRouteConfig\"") != NULL);
+  CHECK(strstr(benchmark_json, "\"lanes\"") != NULL);
+  CHECK(strstr(benchmark_json, "\"promotionReady\"") != NULL);
+  CHECK(strstr(benchmark_json, "\"oracleOnly\"") != NULL);
+  CHECK(strstr(benchmark_json, "\"safetyRejected\"") != NULL);
   CHECK(strstr(benchmark_json, "\"squareTinySelfMulPolicy\"") != NULL);
   CHECK(strstr(benchmark_json, "\"mulUnroll4RouteMaxLimbs\"") != NULL);
   CHECK(strstr(benchmark_json, "\"decimalPairWriterPolicy\"") != NULL);
