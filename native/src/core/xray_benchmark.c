@@ -2411,6 +2411,7 @@ static void append_format_variant_probe_result(
   const char *label,
   size_t digits,
   const char *mode,
+  const char *timing_mode,
   const char *candidate,
   const char *baseline,
   const char *feature_gate,
@@ -2448,10 +2449,11 @@ static void append_format_variant_probe_result(
   result.passed = parity;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=%s digits=%zu mode=%s chunkDigits=%u operandFamilies=1 samples=%zu stablePairs=%zu/%zu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median candidate=%s baseline=%s featureGate=%s gmpClue=%s adoption=%s",
+    "op=%s digits=%zu mode=%s timing=%s chunkDigits=%u operandFamilies=1 samples=%zu stablePairs=%zu/%zu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median candidate=%s baseline=%s featureGate=%s gmpClue=%s adoption=%s",
     operation,
     digits,
     mode,
+    timing_mode ? timing_mode : "block",
     chunk_digits,
     sample_count,
     stable_sample_count,
@@ -3914,6 +3916,7 @@ static void run_format_variant_probe_case(
     label,
     digits,
     mode,
+    "block",
     candidate,
     baseline,
     feature_gate,
@@ -3930,6 +3933,26 @@ static void run_format_variant_probe_case(
   mpz_clear(gmp);
   xray_bigint_clear(&scratch);
   free(text);
+}
+
+static int run_format_probe_batch(
+  const XrayScratchBigInt *scratch,
+  XrayFormatProbeFn probe,
+  unsigned int iterations,
+  unsigned long long *elapsed_us) {
+  if (!scratch || !probe || !elapsed_us) return 0;
+  unsigned long long started = xray_now_us();
+  int ok = 1;
+  for (unsigned int index = 0; index < iterations; ++index) {
+    char *text = probe(scratch);
+    if (!text) {
+      ok = 0;
+      break;
+    }
+    free(text);
+  }
+  *elapsed_us += xray_now_us() - started;
+  return ok;
 }
 
 static void run_format_variant_pair_probe_case(
@@ -3960,23 +3983,30 @@ static void run_format_variant_pair_probe_case(
   unsigned long long candidate_samples[XRAY_BENCH_SAMPLES] = {0};
   unsigned long long baseline_samples[XRAY_BENCH_SAMPLES] = {0};
   int parity = 1;
+  unsigned int batch_iterations = iterations >= 64U ? 8U : (iterations >= 16U ? 4U : 1U);
+  char timing_mode[64];
+  snprintf(
+    timing_mode,
+    sizeof(timing_mode),
+    "interleaved-alternating-batch%u",
+    batch_iterations);
 
   for (unsigned int sample = 0; sample < XRAY_BENCH_SAMPLES; ++sample) {
-    unsigned long long candidate_started = xray_now_us();
-    for (unsigned int index = 0; ok && index < iterations; ++index) {
-      char *candidate_text = candidate_probe(&scratch);
-      ok = candidate_text != NULL;
-      free(candidate_text);
+    unsigned int completed = 0;
+    int candidate_first = (sample % 2U) == 0U;
+    while (ok && completed < iterations) {
+      unsigned int remaining = iterations - completed;
+      unsigned int batch = remaining < batch_iterations ? remaining : batch_iterations;
+      if (candidate_first) {
+        ok = run_format_probe_batch(&scratch, candidate_probe, batch, &candidate_samples[sample]);
+        if (ok) ok = run_format_probe_batch(&scratch, baseline_probe, batch, &baseline_samples[sample]);
+      } else {
+        ok = run_format_probe_batch(&scratch, baseline_probe, batch, &baseline_samples[sample]);
+        if (ok) ok = run_format_probe_batch(&scratch, candidate_probe, batch, &candidate_samples[sample]);
+      }
+      candidate_first = !candidate_first;
+      completed += batch;
     }
-    candidate_samples[sample] = xray_now_us() - candidate_started;
-
-    unsigned long long baseline_started = xray_now_us();
-    for (unsigned int index = 0; ok && index < iterations; ++index) {
-      char *baseline_text = baseline_probe(&scratch);
-      ok = baseline_text != NULL;
-      free(baseline_text);
-    }
-    baseline_samples[sample] = xray_now_us() - baseline_started;
 
     char *candidate_text = candidate_probe(&scratch);
     char *baseline_text = baseline_probe(&scratch);
@@ -3995,6 +4025,7 @@ static void run_format_variant_pair_probe_case(
     label,
     digits,
     mode,
+    timing_mode,
     candidate,
     baseline,
     feature_gate,

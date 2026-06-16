@@ -1966,6 +1966,7 @@ static void test_benchmarks(void) {
         } else if (strcmp(report->results[index].operation, "format-dc-route") == 0) {
           saw_format_dc_route_probe = 1;
           CHECK(strstr(report->results[index].detail, "mode=direct16-vs-ladder8") != NULL);
+          CHECK(strstr(report->results[index].detail, "timing=interleaved-alternating-batch") != NULL);
           CHECK(strstr(report->results[index].detail, "chunkDigits=19") != NULL);
           CHECK(strstr(report->results[index].detail, "candidate=decimal-dc-direct-writer-leaf16") != NULL);
           CHECK(strstr(report->results[index].detail, "featureGate=decimal-format-dc-route") != NULL);

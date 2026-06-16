@@ -19,6 +19,44 @@ parity plus a stable same-run paired win.
   `noAutoRoute=1`, `replacementReady=false`, and `adoption=observe-only` until a
   dedicated forced-neighbor safety row passes.
 
+## 2026-06-16: Decimal Route Probe Interleaving
+
+Runs:
+
+- Release: `native/build-codex-pair-route/native-test-runs/20260616-065130-c4b04caf`
+- `/GL`: `native/build-codex-ltcg/native-test-runs/20260616-065652-c4b04caf`
+
+The `format-dc-route` benchmark now times the direct-output D&C candidate and
+ladder baseline in alternating chunks inside each sample, and flips which side
+runs first from sample to sample. The detail string records
+`timing=interleaved-alternating-batchN` so future artifacts show whether a row
+used old block timing or the lower-drift interleaved method.
+
+Decision: measurement-only. This does not route direct-output D&C into
+production formatting; it improves the evidence quality for any future route
+proposal.
+
+Release interleaved route rows:
+
+- 1000 digits: ratio `0.798`, worst pair `0.861`, stable `5/5`
+- 4096 digits: ratio `0.921`, worst pair `1.041`, stable `3/5`
+- 8192 digits: ratio `0.921`, worst pair `1.037`, stable `3/5`
+- 16384 digits: ratio `0.933`, worst pair `0.970`, stable `5/5`
+
+`/GL` interleaved route rows:
+
+- 1000 digits: ratio `0.924`, worst pair `0.980`, stable `4/5`
+- 4096 digits: ratio `0.922`, worst pair `1.031`, stable `3/5`
+- 8192 digits: ratio `0.877`, worst pair `0.908`, stable `5/5`
+- 16384 digits: ratio `0.973`, worst pair `1.057`, stable `4/5`
+
+The interleaved route probe is now more internally consistent, but the
+MPIR-facing product-policy safety rows still reject promotion. Release reports
+neighbor-regression for `direct-ge4096-leaf8` at ratio `1.877` and
+`direct-ge8192-leaf16` at ratio `2.020`; `/GL` reports neighbor-regression at
+`1.745` and `1.925`. Production formatting remains on the ladder route until
+direct-output D&C also wins the MPIR-facing policy gate.
+
 ## 2026-06-16: Decimal Direct-Output Route Rejected
 
 Runs:
