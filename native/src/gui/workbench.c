@@ -50,6 +50,12 @@ typedef struct AppState {
   GtkWidget *benchmark_failed_label;
   GtkWidget *benchmark_current_label;
   GtkWidget *benchmark_row_labels[XRAY_BENCHMARK_LIVE_ROWS][XRAY_BENCHMARK_LIVE_COLS];
+  GtkWidget *benchmark_lane_ready_count_label;
+  GtkWidget *benchmark_lane_ready_detail_label;
+  GtkWidget *benchmark_lane_oracle_count_label;
+  GtkWidget *benchmark_lane_oracle_detail_label;
+  GtkWidget *benchmark_lane_safety_count_label;
+  GtkWidget *benchmark_lane_safety_detail_label;
   guint live_timer_id;
   unsigned long run_started_ms;
   unsigned int run_pulse;
@@ -59,6 +65,7 @@ typedef struct AppState {
   size_t live_benchmark_oracle_count;
   size_t live_benchmark_blocked_count;
   size_t live_benchmark_failed_count;
+  size_t live_benchmark_safety_count;
   char live_stage_name[48];
   char live_stage_status[32];
   char live_stage_detail[256];
@@ -83,6 +90,7 @@ typedef struct RunResult {
   size_t benchmark_oracle_count;
   size_t benchmark_blocked_count;
   size_t benchmark_failed_count;
+  size_t benchmark_safety_count;
   char *benchmark_text;
   char log_line[2048];
 } RunResult;
@@ -614,6 +622,19 @@ static const char *benchmark_status_tone(const char *status) {
   return "warn";
 }
 
+static int benchmark_status_is_promotion_ready(const char *status) {
+  return status && (strcmp(status, "replacement-ready") == 0 || strstr(status, "promote") != NULL);
+}
+
+static int benchmark_status_is_safety_rejected(const char *status) {
+  return status && (
+    strstr(status, "safety") ||
+    strstr(status, "regression") ||
+    strstr(status, "neighbor") ||
+    strstr(status, "blocked") ||
+    strstr(status, "mismatch"));
+}
+
 static void apply_tone(GtkWidget *label, const char *tone) {
   if (!label) return;
   gtk_widget_remove_css_class(label, "good");
@@ -638,9 +659,51 @@ static void set_benchmark_dashboard_counts(AppState *app) {
   set_label_if(app->benchmark_failed_label, value);
 }
 
+static void update_benchmark_lane_counts(AppState *app) {
+  if (!app) return;
+  char value[48];
+  snprintf(value, sizeof(value), "%zu", app->live_benchmark_ready_count);
+  set_label_if(app->benchmark_lane_ready_count_label, value);
+  snprintf(value, sizeof(value), "%zu", app->live_benchmark_oracle_count);
+  set_label_if(app->benchmark_lane_oracle_count_label, value);
+  snprintf(value, sizeof(value), "%zu", app->live_benchmark_safety_count);
+  set_label_if(app->benchmark_lane_safety_count_label, value);
+}
+
+static void benchmark_event_brief(const UiStageEvent *event, char *out, size_t out_size) {
+  if (!out || out_size == 0) return;
+  if (!event) {
+    snprintf(out, out_size, "No rows yet.");
+    return;
+  }
+  char row_id[32] = "";
+  char category[40] = "";
+  char operation[64] = "";
+  char digits[32] = "";
+  char ratio[32] = "";
+  char stable[32] = "";
+  detail_token_value(event->detail, "row", row_id, sizeof(row_id));
+  detail_token_value(event->detail, "category", category, sizeof(category));
+  detail_token_value(event->detail, "operation", operation, sizeof(operation));
+  detail_token_value(event->detail, "digits", digits, sizeof(digits));
+  detail_token_value(event->detail, "ratio", ratio, sizeof(ratio));
+  detail_token_value(event->detail, "stable", stable, sizeof(stable));
+  snprintf(out, out_size, "#%s %s %s d=%s r=%s s=%s",
+    row_id[0] ? row_id : "?",
+    category[0] ? category : "benchmark",
+    operation[0] ? operation : "unknown",
+    digits[0] ? digits : "-",
+    ratio[0] ? ratio : "n/a",
+    stable[0] ? stable : "n/a");
+}
+
 static void reset_benchmark_dashboard(AppState *app, const char *current) {
   if (!app) return;
   set_benchmark_dashboard_counts(app);
+  update_benchmark_lane_counts(app);
+  set_label_if(app->benchmark_lane_ready_detail_label, "No promotion-ready rows yet.");
+  set_label_if(app->benchmark_lane_oracle_detail_label, "No oracle-only rows yet.");
+  set_label_if(app->benchmark_lane_safety_detail_label, "No safety rejection yet.");
   set_label_if(app->benchmark_current_label, current ? current : "Waiting for Run Proof.");
   for (int row = 0; row < XRAY_BENCHMARK_LIVE_ROWS; ++row) {
     for (int col = 0; col < XRAY_BENCHMARK_LIVE_COLS; ++col) {
@@ -773,11 +836,18 @@ static void append_live_benchmark_row(AppState *app, const UiStageEvent *event) 
   snprintf(app->live_stage_status, sizeof(app->live_stage_status), "%s", event->status[0] ? event->status : "row");
   snprintf(app->live_stage_detail, sizeof(app->live_stage_detail), "%s", event->detail);
   app->live_benchmark_row_count++;
-  if (strcmp(event->status, "replacement-ready") == 0) app->live_benchmark_ready_count++;
+  char lane_brief[192];
+  benchmark_event_brief(event, lane_brief, sizeof(lane_brief));
+  if (benchmark_status_is_promotion_ready(event->status)) app->live_benchmark_ready_count++;
   else if (strcmp(event->status, "oracle-only") == 0) app->live_benchmark_oracle_count++;
   else if (strcmp(event->status, "failed") == 0) app->live_benchmark_failed_count++;
   else if (strstr(event->status, "blocked")) app->live_benchmark_blocked_count++;
+  if (benchmark_status_is_safety_rejected(event->status)) app->live_benchmark_safety_count++;
   set_benchmark_dashboard_counts(app);
+  update_benchmark_lane_counts(app);
+  if (benchmark_status_is_promotion_ready(event->status)) set_label_if(app->benchmark_lane_ready_detail_label, lane_brief);
+  if (strcmp(event->status, "oracle-only") == 0) set_label_if(app->benchmark_lane_oracle_detail_label, lane_brief);
+  if (benchmark_status_is_safety_rejected(event->status)) set_label_if(app->benchmark_lane_safety_detail_label, lane_brief);
   push_benchmark_table_row(app, event);
   char current[320];
   snprintf(current, sizeof(current), "%s | %s", event->status[0] ? event->status : "row", event->detail[0] ? event->detail : "benchmark row complete");
@@ -1173,6 +1243,27 @@ static GtkWidget *metric_box(GtkWidget **value_out, const char *title, const cha
   return box;
 }
 
+static GtkWidget *benchmark_lane_box(
+  GtkWidget **count_out,
+  GtkWidget **detail_out,
+  const char *title,
+  const char *initial_detail,
+  const char *tone) {
+  GtkWidget *box = section_box("subpanel", 6);
+  GtkWidget *header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+  gtk_box_append(GTK_BOX(header), label_with_width(title, "metric-title", 26, FALSE));
+  GtkWidget *count = label_with_width("0", tone ? tone : "warn", 8, FALSE);
+  gtk_widget_set_halign(count, GTK_ALIGN_END);
+  gtk_widget_set_hexpand(count, TRUE);
+  gtk_box_append(GTK_BOX(header), count);
+  gtk_box_append(GTK_BOX(box), header);
+  GtkWidget *detail = label_with_width(initial_detail ? initial_detail : "Waiting.", "mono-small", 54, TRUE);
+  gtk_box_append(GTK_BOX(box), detail);
+  if (count_out) *count_out = count;
+  if (detail_out) *detail_out = detail;
+  return box;
+}
+
 static GtkWidget *stage_row(const char *index, const char *state, const char *detail, const char *state_class) {
   GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
   gtk_widget_add_css_class(row, "stage-row");
@@ -1303,6 +1394,29 @@ static GtkWidget *build_benchmark_page(AppState *app) {
   gtk_grid_attach(GTK_GRID(summary), metric_box(&app->benchmark_blocked_label, "blocked", "0", "bad"), 3, 0, 1, 1);
   gtk_grid_attach(GTK_GRID(summary), metric_box(&app->benchmark_failed_label, "failed", "0", "bad"), 4, 0, 1, 1);
   gtk_box_append(GTK_BOX(page), summary);
+
+  GtkWidget *lanes = gtk_grid_new();
+  gtk_grid_set_column_spacing(GTK_GRID(lanes), 10);
+  gtk_grid_set_column_homogeneous(GTK_GRID(lanes), TRUE);
+  gtk_grid_attach(GTK_GRID(lanes), benchmark_lane_box(
+    &app->benchmark_lane_ready_count_label,
+    &app->benchmark_lane_ready_detail_label,
+    "promotion-ready",
+    "Rows that passed parity, speed, stability, and safety gates.",
+    "good"), 0, 0, 1, 1);
+  gtk_grid_attach(GTK_GRID(lanes), benchmark_lane_box(
+    &app->benchmark_lane_oracle_count_label,
+    &app->benchmark_lane_oracle_detail_label,
+    "oracle-only",
+    "Evidence rows that do not have routing permission.",
+    "warn"), 1, 0, 1, 1);
+  gtk_grid_attach(GTK_GRID(lanes), benchmark_lane_box(
+    &app->benchmark_lane_safety_count_label,
+    &app->benchmark_lane_safety_detail_label,
+    "safety-rejected",
+    "Rows rejected by mismatch, regression, or safety gates.",
+    "bad"), 2, 0, 1, 1);
+  gtk_box_append(GTK_BOX(page), lanes);
 
   GtkWidget *stream = section_box("panel", 8);
   GtkWidget *stream_title = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
@@ -1486,7 +1600,9 @@ static gboolean finish_run(gpointer data) {
   app->live_benchmark_oracle_count = result->benchmark_oracle_count;
   app->live_benchmark_blocked_count = result->benchmark_blocked_count;
   app->live_benchmark_failed_count = result->benchmark_failed_count;
+  app->live_benchmark_safety_count = result->benchmark_safety_count;
   set_benchmark_dashboard_counts(app);
+  update_benchmark_lane_counts(app);
   set_label_if(app->benchmark_current_label, result->bench_status);
   set_run_status(app, result->factor_status, result->proof_status, result->cyclo_status, result->bench_status);
   set_text_view(app->json_view, result->json);
@@ -1513,6 +1629,10 @@ static gpointer run_worker(gpointer data) {
   result->benchmark_blocked_count = report.benchmark.blocked_count;
   for (size_t index = 0; index < report.benchmark.result_count; ++index) {
     if (!report.benchmark.results[index].passed) result->benchmark_failed_count++;
+    if (benchmark_status_is_safety_rejected(report.benchmark.results[index].status) ||
+        benchmark_status_is_safety_rejected(report.benchmark.results[index].adoption)) {
+      result->benchmark_safety_count++;
+    }
   }
   snprintf(result->factor_status, sizeof(result->factor_status), "Factor Solver: %s", report.factor.status[0] ? report.factor.status : "invalid");
   snprintf(result->proof_status, sizeof(result->proof_status), "Product proof: %s | factors %zu | unresolved %zu | %lu ms",
@@ -1576,6 +1696,7 @@ static void on_run_clicked(GtkButton *button, gpointer user_data) {
   app->live_benchmark_oracle_count = 0;
   app->live_benchmark_blocked_count = 0;
   app->live_benchmark_failed_count = 0;
+  app->live_benchmark_safety_count = 0;
   app->live_stage_name[0] = '\0';
   app->live_stage_status[0] = '\0';
   app->live_stage_detail[0] = '\0';
