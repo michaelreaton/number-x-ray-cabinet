@@ -293,7 +293,11 @@ and worst-pair safety pass.
 When a five-sample endpoint gate looks clean, matching
 `format-policy-deep-safety` rows rerun that exact window with 9 paired samples
 and require 8 stable wins before the route is treated as promotion evidence.
-That stricter row is still benchmark evidence, not a production route change.
+The deep audit covers the current promotion-candidate `1e19` windows as well
+as nearby pair-writer windows that looked tempting but noisy. These stricter
+rows are benchmark evidence, not a production route change, until repeat runs
+show the same exact window clearing the deep gate and the production-shaped
+scratch rows at the window endpoints.
 
 Add/sub benchmark rows use a higher iteration floor at 1000+ digits because those operations are fast enough that sub-millisecond timing windows can flip adoption labels from scheduler noise rather than real algorithm behavior.
 
