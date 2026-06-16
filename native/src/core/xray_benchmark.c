@@ -4158,6 +4158,44 @@ static void run_format_policy_probe_case(
   free(text);
 }
 
+static void run_format_policy_window_endpoint_probe_cases(
+  XrayBenchmarkReport *report,
+  unsigned int seed,
+  const char *policy,
+  const char *candidate,
+  const char *feature_gate,
+  const char *gmp_clue,
+  size_t min_digits,
+  size_t max_digits,
+  XrayFormatPolicyProbeFn probe) {
+  run_format_policy_probe_case(
+    report,
+    min_digits,
+    seed,
+    policy,
+    candidate,
+    feature_gate,
+    gmp_clue,
+    min_digits,
+    max_digits,
+    0,
+    probe);
+  if (max_digits != min_digits) {
+    run_format_policy_probe_case(
+      report,
+      max_digits,
+      seed + 1U,
+      policy,
+      candidate,
+      feature_gate,
+      gmp_clue,
+      min_digits,
+      max_digits,
+      0,
+      probe);
+  }
+}
+
 static void run_format_variant_probe_case(
   XrayBenchmarkReport *report,
   size_t digits,
@@ -7008,6 +7046,134 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     768,
     1000,
     768,
+    1000,
+    0,
+    format_policy_divide_1e19_preinv_pairs);
+
+  run_format_policy_window_endpoint_probe_cases(
+    report,
+    211U,
+    "preinv10e19-window768-896",
+    "decimal-divide-1e19-preinv",
+    "decimal-format-policy-divide-1e19-preinv",
+    "mpn_sb_get_str-preinverted-divrem-1",
+    768,
+    896,
+    format_policy_divide_1e19_preinv);
+  run_format_policy_window_endpoint_probe_cases(
+    report,
+    223U,
+    "preinv10e19-pairs-window768-896",
+    "decimal-divide-1e19-preinv-pair-writer",
+    "decimal-format-policy-divide-1e19-preinv-pairs",
+    "mpn_sb_get_str-preinverted-divrem-1+digit-emission",
+    768,
+    896,
+    format_policy_divide_1e19_preinv_pairs);
+  run_format_policy_window_endpoint_probe_cases(
+    report,
+    227U,
+    "preinv10e19-window768-960",
+    "decimal-divide-1e19-preinv",
+    "decimal-format-policy-divide-1e19-preinv",
+    "mpn_sb_get_str-preinverted-divrem-1",
+    768,
+    960,
+    format_policy_divide_1e19_preinv);
+  run_format_policy_window_endpoint_probe_cases(
+    report,
+    229U,
+    "preinv10e19-pairs-window768-960",
+    "decimal-divide-1e19-preinv-pair-writer",
+    "decimal-format-policy-divide-1e19-preinv-pairs",
+    "mpn_sb_get_str-preinverted-divrem-1+digit-emission",
+    768,
+    960,
+    format_policy_divide_1e19_preinv_pairs);
+  run_format_policy_window_endpoint_probe_cases(
+    report,
+    233U,
+    "preinv10e19-window896-1000",
+    "decimal-divide-1e19-preinv",
+    "decimal-format-policy-divide-1e19-preinv",
+    "mpn_sb_get_str-preinverted-divrem-1",
+    896,
+    1000,
+    format_policy_divide_1e19_preinv);
+  run_format_policy_window_endpoint_probe_cases(
+    report,
+    239U,
+    "preinv10e19-pairs-window896-1000",
+    "decimal-divide-1e19-preinv-pair-writer",
+    "decimal-format-policy-divide-1e19-preinv-pairs",
+    "mpn_sb_get_str-preinverted-divrem-1+digit-emission",
+    896,
+    1000,
+    format_policy_divide_1e19_preinv_pairs);
+
+  run_format_policy_safety_case(
+    report,
+    241U,
+    "preinv10e19-window768-896",
+    "decimal-divide-1e19-preinv",
+    768,
+    896,
+    768,
+    896,
+    0,
+    format_policy_divide_1e19_preinv);
+  run_format_policy_safety_case(
+    report,
+    251U,
+    "preinv10e19-pairs-window768-896",
+    "decimal-divide-1e19-preinv-pair-writer",
+    768,
+    896,
+    768,
+    896,
+    0,
+    format_policy_divide_1e19_preinv_pairs);
+  run_format_policy_safety_case(
+    report,
+    257U,
+    "preinv10e19-window768-960",
+    "decimal-divide-1e19-preinv",
+    768,
+    960,
+    768,
+    960,
+    0,
+    format_policy_divide_1e19_preinv);
+  run_format_policy_safety_case(
+    report,
+    263U,
+    "preinv10e19-pairs-window768-960",
+    "decimal-divide-1e19-preinv-pair-writer",
+    768,
+    960,
+    768,
+    960,
+    0,
+    format_policy_divide_1e19_preinv_pairs);
+  run_format_policy_safety_case(
+    report,
+    269U,
+    "preinv10e19-window896-1000",
+    "decimal-divide-1e19-preinv",
+    896,
+    1000,
+    896,
+    1000,
+    0,
+    format_policy_divide_1e19_preinv);
+  run_format_policy_safety_case(
+    report,
+    271U,
+    "preinv10e19-pairs-window896-1000",
+    "decimal-divide-1e19-preinv-pair-writer",
+    896,
+    1000,
+    896,
     1000,
     0,
     format_policy_divide_1e19_preinv_pairs);

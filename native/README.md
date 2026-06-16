@@ -282,6 +282,15 @@ machine-readable record.
 
 The scratch-vs-GMP ladder currently measures 40, 150, 1000, 4096, and 8192 decimal digit operands so local changes have to keep scaling beyond tiny examples before they earn adoption labels. Parse and format rows are tracked separately because decimal ingestion and decimal serialization have very different bottlenecks. Multiplication and specialized square rows also have a 16384 digit discovery tier so larger-number arithmetic work can be observed before it is considered for routing. Multiplication rows aggregate two deterministic operand families because threshold-sensitive multiply code can look good on one number shape and lose on another. The tournament rows intentionally test several parse chunk sizes, decimal formatting handoff thresholds, multiply leaf thresholds, square thresholds, and Toom handoff candidates in one run; those rows are evidence-only until a bounded window wins with exact parity and stable same-run paired ratios. Decimal formatter route changes also need `format-dc-route` same-run evidence so a direct-output D&C pocket win cannot be mistaken for a global or root-size threshold; that route row uses chunked interleaved timing and alternates which side runs first to reduce scheduler and cache-warmth bias.
 
+Formatter policy probes also include explicit endpoint tournaments for the
+GMP-inspired base-`1e19` preinverse route. The `preinv10e19-window*` and
+`preinv10e19-pairs-window*` rows measure candidate-only endpoints such as
+768/896, 768/960, and 896/1000 digits, then emit matching
+`format-policy-safety` gates. These rows exist to prove or reject a
+root-size-gated decimal serialization pocket before it can influence the
+production formatter; they remain `observe-only` unless both endpoint timing
+and worst-pair safety pass.
+
 Add/sub benchmark rows use a higher iteration floor at 1000+ digits because those operations are fast enough that sub-millisecond timing windows can flip adoption labels from scheduler noise rather than real algorithm behavior.
 
 On MSVC x64 builds, the benchmark also emits evidence-only `mul-toom3-unroll4-*` rows. These combine the one-level Toom-3 split with the bounded `_umul128`/`_addcarry_u64` unroll4 leaf schedule so larger-number work can tell whether GMP's advantage is coming from algorithm selection, leaf scheduling, or both. Extra GMP-facing handoff scout rows test leaf thresholds near GMP's tuned Toom region (`24`, `48`, `96`) without adding production routes. The `mul-toom3-u4-rec-vs-gmp` rows test a depth-limited recursive Toom-3 variant at the 16384 digit frontier. Deep rows such as `mul-toom3-unroll4-deep-vs-gmp` and `mul-toom3-u4-rec-deep-vs-gmp` rerun selected promising GMP comparisons with 9 paired samples, including the recursive leaf `64` and `96` gates, so a noisy near-win cannot influence routing. They do not widen the production route unless parity and the same-run stability gate both pass.
