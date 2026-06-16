@@ -19,6 +19,52 @@ parity plus a stable same-run paired win.
   `noAutoRoute=1`, `replacementReady=false`, and `adoption=observe-only` until a
   dedicated forced-neighbor safety row passes.
 
+## 2026-06-16: Decimal Direct-Output Route Rejected
+
+Runs:
+
+- Release: `native/build-codex-pair-route/native-test-runs/20260616-062244-c4b04caf`
+- `/GL`: `native/build-codex-ltcg/native-test-runs/20260616-062814-c4b04caf`
+
+The benchmark now emits a required `format-dc-route` row that compares the
+tempting direct-output divide-and-conquer formatter with the current ladder
+formatter in the same run: `decimal-dc-direct-writer-leaf16` versus
+`decimal-dc-pow2-ladder-leaf8`. This row exists specifically to prevent a
+formatter threshold from being promoted by comparing independent best samples or
+by looking only at a single large-size pocket.
+
+Release route rows:
+
+- 1000 digits: ratio `0.972`, worst pair `1.318`, stable `3/5`, `observe-only`
+- 4096 digits: ratio `0.931`, worst pair `1.019`, stable `4/5`,
+  `promote-candidate`
+- 8192 digits: ratio `0.949`, worst pair `0.973`, stable `5/5`,
+  `promote-candidate`
+- 16384 digits: ratio `0.996`, worst pair `1.036`, stable `2/5`,
+  `observe-only`
+
+`/GL` route rows:
+
+- 1000 digits: ratio `0.916`, worst pair `1.367`, stable `3/5`, `observe-only`
+- 4096 digits: ratio `1.046`, worst pair `1.130`, stable `2/5`, `observe-only`
+- 8192 digits: ratio `0.941`, worst pair `1.226`, stable `3/5`, `observe-only`
+- 16384 digits: ratio `0.903`, worst pair `1.064`, stable `4/5`,
+  `promote-candidate`
+
+The `/GL` result rejects the 4096/8192 windows that looked tempting in Release,
+while Release does not confirm the `/GL` 16384 pocket strongly enough to form a
+root-size gate. The product-policy safety rows also remain rejected against
+MPIR: `format-policy-safety direct-ge4096-leaf8` reports neighbor-regression
+with ratio `1.934` in Release and `1.989` under `/GL`; `direct-ge8192-leaf16`
+reports neighbor-regression with ratio `1.946` in Release and `1.930` under
+`/GL`.
+
+Decision: keep production formatting on
+`format-dc-ladder>=4096 digits leaf=8`. The direct-output formatter remains a
+diagnostic scout with exact parity coverage, but no global threshold or
+root-size-gated threshold is routed until same-run Release, `/GL`, neighbor
+safety, and MPIR-facing policy rows all agree.
+
 ## 2026-06-16: Multiply Threshold Forced-Neighbor Gate
 
 Runs:
