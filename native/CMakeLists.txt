@@ -10,8 +10,70 @@ option(XRAY_BUILD_GTK "Build the GTK4 desktop workbench when GTK4 headers are av
 option(XRAY_BUILD_CLI "Build the command-line native workbench runner" ON)
 option(XRAY_BUILD_SHARED "Build the shared Number X-Ray core library for language bindings and plugin-style consumers" ON)
 option(XRAY_INSTALL "Install the reusable Number X-Ray C library package" ON)
+option(XRAY_GTK_COPY_RUNTIME_DLLS "Copy GTK/vcpkg runtime DLLs beside xray_workbench on Windows" ON)
+set(XRAY_GTK_ROOT "" CACHE PATH "Optional GTK4/vcpkg prefix used to locate the desktop workbench dependencies")
 
 include(GNUInstallDirs)
+
+function(xray_prepend_env_path env_name path_sep)
+  set(_xray_joined_paths "")
+  foreach(path IN LISTS ARGN)
+    if(path AND EXISTS "${path}")
+      if(_xray_joined_paths)
+        string(APPEND _xray_joined_paths "${path_sep}")
+      endif()
+      string(APPEND _xray_joined_paths "${path}")
+    endif()
+  endforeach()
+  if(_xray_joined_paths)
+    if(DEFINED ENV{${env_name}} AND NOT "$ENV{${env_name}}" STREQUAL "")
+      set(ENV{${env_name}} "${_xray_joined_paths}${path_sep}$ENV{${env_name}}")
+    else()
+      set(ENV{${env_name}} "${_xray_joined_paths}")
+    endif()
+  endif()
+endfunction()
+
+function(xray_configure_gtk_pkgconfig_hints)
+  set(_xray_gtk_prefixes
+    "${XRAY_GTK_ROOT}"
+    "$ENV{GTK4_ROOT}"
+    "$ENV{VCPKG_INSTALLATION_ROOT}/installed/x64-windows"
+    "$ENV{VCPKG_ROOT}/installed/x64-windows"
+    "C:/vcpkg/installed/x64-windows"
+  )
+
+  foreach(_xray_prefix IN LISTS _xray_gtk_prefixes)
+    if(_xray_prefix AND EXISTS "${_xray_prefix}/lib/pkgconfig/gtk4.pc")
+      set(XRAY_GTK_ROOT "${_xray_prefix}" CACHE PATH "Optional GTK4/vcpkg prefix used to locate the desktop workbench dependencies" FORCE)
+      break()
+    endif()
+  endforeach()
+
+  if(XRAY_GTK_ROOT)
+    set(_xray_pkgconfig_dirs
+      "${XRAY_GTK_ROOT}/lib/pkgconfig"
+      "${XRAY_GTK_ROOT}/debug/lib/pkgconfig"
+    )
+    if(WIN32)
+      xray_prepend_env_path(PKG_CONFIG_PATH ";" ${_xray_pkgconfig_dirs})
+    else()
+      xray_prepend_env_path(PKG_CONFIG_PATH ":" ${_xray_pkgconfig_dirs})
+    endif()
+
+    if(WIN32 AND NOT PKG_CONFIG_EXECUTABLE)
+      find_program(PKG_CONFIG_EXECUTABLE
+        NAMES pkgconf.exe pkgconf pkg-config.exe pkg-config
+        HINTS
+          "${XRAY_GTK_ROOT}/tools/pkgconf"
+          "$ENV{VCPKG_INSTALLATION_ROOT}/installed/x64-windows/tools/pkgconf"
+          "$ENV{VCPKG_ROOT}/installed/x64-windows/tools/pkgconf"
+          "C:/vcpkg/installed/x64-windows/tools/pkgconf"
+        NO_DEFAULT_PATH
+      )
+    endif()
+  endif()
+endfunction()
 
 if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
@@ -365,12 +427,14 @@ if(BUILD_TESTING)
 endif()
 
 if(XRAY_BUILD_GTK)
+  xray_configure_gtk_pkgconfig_hints()
   find_package(PkgConfig QUIET)
   if(PkgConfig_FOUND)
     pkg_check_modules(GTK4 QUIET gtk4)
   endif()
 
   if(GTK4_FOUND)
+    message(STATUS "GTK4 desktop workbench enabled: ${GTK4_VERSION} (${XRAY_GTK_ROOT})")
     add_executable(xray_workbench
       src/gui/main.c
       src/gui/workbench.c
@@ -383,7 +447,17 @@ if(XRAY_BUILD_GTK)
     target_link_directories(xray_workbench PRIVATE ${GTK4_LIBRARY_DIRS})
     target_link_libraries(xray_workbench PRIVATE xray_core ${GTK4_LIBRARIES})
     target_compile_options(xray_workbench PRIVATE ${GTK4_CFLAGS_OTHER})
+    if(WIN32 AND XRAY_GTK_COPY_RUNTIME_DLLS AND XRAY_GTK_ROOT)
+      file(GLOB XRAY_GTK_RUNTIME_DLLS CONFIGURE_DEPENDS "${XRAY_GTK_ROOT}/bin/*.dll")
+      if(XRAY_GTK_RUNTIME_DLLS)
+        add_custom_command(TARGET xray_workbench POST_BUILD
+          COMMAND ${CMAKE_COMMAND} -E copy_if_different ${XRAY_GTK_RUNTIME_DLLS} $<TARGET_FILE_DIR:xray_workbench>
+          COMMENT "Copying GTK/vcpkg runtime DLLs for xray_workbench"
+          VERBATIM
+        )
+      endif()
+    endif()
   else()
-    message(WARNING "GTK4 was not found; xray_workbench GUI target will be skipped. Core, CLI, and tests still build.")
+    message(WARNING "GTK4 was not found; xray_workbench GUI target will be skipped. Set XRAY_GTK_ROOT or configure with the vcpkg toolchain. Core, CLI, and tests still build.")
   endif()
 endif()

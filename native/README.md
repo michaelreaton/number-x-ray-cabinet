@@ -29,6 +29,23 @@ ctest --test-dir native/build-gtk -C Release --output-on-failure
 native\build-gtk\Release\xray_workbench.exe
 ```
 
+On Windows, CMake also auto-detects the common vcpkg install prefix
+`C:/vcpkg/installed/x64-windows`, its bundled `pkgconf.exe`, and `gtk4.pc`.
+That keeps GUI target discovery working for local build folders that were not
+configured with the vcpkg toolchain:
+
+```powershell
+cmake -S native -B native/build-gtk-autodetect -DXRAY_BUILD_GTK=ON
+cmake --build native/build-gtk-autodetect --config Release --target xray_workbench
+native\build-gtk-autodetect\Release\xray_workbench.exe
+```
+
+Use `-DXRAY_GTK_ROOT=C:/path/to/gtk-prefix` when GTK4 is installed somewhere
+other than vcpkg. Windows GTK builds copy `*.dll` files from
+`<XRAY_GTK_ROOT>/bin` beside `xray_workbench.exe` by default so the executable
+can be launched directly from the build folder; set
+`-DXRAY_GTK_COPY_RUNTIME_DLLS=OFF` when another packaging step owns runtime DLLs.
+
 Linux/macOS with GMP and GTK4 development packages:
 
 ```bash
