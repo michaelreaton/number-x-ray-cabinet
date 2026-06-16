@@ -135,7 +135,7 @@ static char *events_jsonl(const XrayWorkbenchReport *report) {
     "{\"stage\":\"cpu\",\"status\":\"profiled\",\"detail\":\"logical=%u avx=%s avx2=%s avx512f=%s bmi2=%s adx=%s\"}\n"
     "{\"stage\":\"factor\",\"status\":\"%s\",\"detail\":\"factors=%zu unresolved=%zu productVerified=%s\"}\n"
     "{\"stage\":\"cyclotomic\",\"status\":\"complete\",\"detail\":\"scanned=%zu exact=%zu\"}\n"
-    "{\"stage\":\"benchmark\",\"status\":\"%s\",\"detail\":\"passed=%zu/%zu scratch=%zu replacementReady=%zu oracleOnly=%zu blocked=%zu\"}\n"
+    "{\"stage\":\"benchmark\",\"status\":\"%s\",\"detail\":\"passed=%zu/%zu scratch=%zu replacementReady=%zu oracleOnly=%zu blocked=%zu lanePromotionReady=%zu laneOracleOnly=%zu laneSafetyRejected=%zu\"}\n"
     "{\"stage\":\"gnfs\",\"status\":\"%s\",\"detail\":\"stages=%zu\"}\n",
     report->expression.ok ? "complete" : "invalid",
     report->expression.ok ? "exact integer expression evaluated" : (report->expression.error ? report->expression.error : "invalid"),
@@ -158,6 +158,9 @@ static char *events_jsonl(const XrayWorkbenchReport *report) {
     report->benchmark.replacement_ready_count,
     report->benchmark.oracle_only_count,
     report->benchmark.blocked_count,
+    report->benchmark.lanes.promotion_ready_count,
+    report->benchmark.lanes.oracle_only_count,
+    report->benchmark.lanes.safety_rejected_count,
     report->gnfs.status[0] ? report->gnfs.status : "skipped",
     report->gnfs.stage_count);
   return events;
@@ -246,13 +249,16 @@ int xray_workbench_run(const char *raw_input, const XrayRunConfig *config_input,
     emit_run_event(&config, "benchmark", "running", "Measuring scratch bigint primitives against GMP/MPIR");
     xray_benchmark_run_with_callback(&report->benchmark, emit_benchmark_row_event, &config);
     char benchmark_detail[192];
-    snprintf(benchmark_detail, sizeof(benchmark_detail), "passed=%zu/%zu scratch=%zu replacementReady=%zu oracleOnly=%zu blocked=%zu",
+    snprintf(benchmark_detail, sizeof(benchmark_detail), "passed=%zu/%zu scratch=%zu replacementReady=%zu oracleOnly=%zu blocked=%zu lanePromotionReady=%zu laneOracleOnly=%zu laneSafetyRejected=%zu",
       report->benchmark.passed_count,
       report->benchmark.result_count,
       report->benchmark.scratch_count,
       report->benchmark.replacement_ready_count,
       report->benchmark.oracle_only_count,
-      report->benchmark.blocked_count);
+      report->benchmark.blocked_count,
+      report->benchmark.lanes.promotion_ready_count,
+      report->benchmark.lanes.oracle_only_count,
+      report->benchmark.lanes.safety_rejected_count);
     emit_run_event(&config, "benchmark", "complete", benchmark_detail);
   } else {
     emit_run_event(&config, "benchmark", "disabled", "Benchmark ladder disabled by config");

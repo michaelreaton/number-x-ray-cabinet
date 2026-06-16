@@ -46,12 +46,94 @@ static const XrayMulOperandFamily mul_operand_families[XRAY_MUL_OPERAND_FAMILIES
   {29, 37, 1, 1}
 };
 
+static int text_has_token(const char *text, const char *token) {
+  return text && token && strstr(text, token) != NULL;
+}
+
+int xray_benchmark_result_is_promotion_ready(const XrayBenchmarkResult *result) {
+  if (!result) return 0;
+  return result->replacement_ready ||
+    strcmp(result->adoption, "allowed") == 0 ||
+    strcmp(result->adoption, "promotion-ready") == 0 ||
+    text_has_token(result->adoption, "promote") ||
+    strcmp(result->status, "replacement-ready") == 0 ||
+    strcmp(result->status, "policy-ready") == 0 ||
+    text_has_token(result->status, "promote");
+}
+
+int xray_benchmark_result_is_oracle_only(const XrayBenchmarkResult *result) {
+  if (!result) return 0;
+  return strcmp(result->adoption, "oracle-only") == 0 ||
+    strcmp(result->status, "oracle-only") == 0;
+}
+
+int xray_benchmark_result_is_safety_rejected(const XrayBenchmarkResult *result) {
+  if (!result) return 0;
+  return text_has_token(result->status, "safety-rejected") ||
+    text_has_token(result->status, "safety-blocked") ||
+    text_has_token(result->status, "regression") ||
+    text_has_token(result->status, "neighbor") ||
+    text_has_token(result->status, "blocked") ||
+    text_has_token(result->status, "mismatch") ||
+    text_has_token(result->adoption, "safety-rejected") ||
+    text_has_token(result->adoption, "safety-blocked") ||
+    text_has_token(result->adoption, "regression") ||
+    text_has_token(result->adoption, "neighbor") ||
+    text_has_token(result->adoption, "blocked") ||
+    text_has_token(result->adoption, "mismatch");
+}
+
+void xray_benchmark_result_brief(const XrayBenchmarkResult *result, size_t result_index, char *out, size_t out_size) {
+  if (!out || out_size == 0) return;
+  if (!result) {
+    snprintf(out, out_size, "No benchmark row.");
+    return;
+  }
+  const char *category = result->category[0] ? result->category : "benchmark";
+  const char *operation = result->operation[0] ? result->operation : (result->name[0] ? result->name : "unknown");
+  if (result_index) {
+    snprintf(out, out_size, "#%zu %s %s d=%zu r=%.3f s=%zu/%zu",
+      result_index,
+      category,
+      operation,
+      result->digits,
+      result->speed_ratio,
+      result->stable_sample_count,
+      result->sample_count);
+  } else {
+    snprintf(out, out_size, "%s %s d=%zu r=%.3f s=%zu/%zu",
+      category,
+      operation,
+      result->digits,
+      result->speed_ratio,
+      result->stable_sample_count,
+      result->sample_count);
+  }
+}
+
+static void note_lane_result(XrayBenchmarkReport *report, const XrayBenchmarkResult *result, size_t result_index) {
+  if (!report || !result) return;
+  if (xray_benchmark_result_is_promotion_ready(result)) {
+    report->lanes.promotion_ready_count++;
+    xray_benchmark_result_brief(result, result_index, report->lanes.promotion_ready_detail, sizeof(report->lanes.promotion_ready_detail));
+  }
+  if (xray_benchmark_result_is_oracle_only(result)) {
+    report->lanes.oracle_only_count++;
+    xray_benchmark_result_brief(result, result_index, report->lanes.oracle_only_detail, sizeof(report->lanes.oracle_only_detail));
+  }
+  if (xray_benchmark_result_is_safety_rejected(result)) {
+    report->lanes.safety_rejected_count++;
+    xray_benchmark_result_brief(result, result_index, report->lanes.safety_rejected_detail, sizeof(report->lanes.safety_rejected_detail));
+  }
+}
+
 static void append_result(XrayBenchmarkReport *report, const XrayBenchmarkResult *result) {
   XrayBenchmarkResult *next = (XrayBenchmarkResult *)realloc(report->results, sizeof(XrayBenchmarkResult) * (report->result_count + 1));
   if (!next) return;
   report->results = next;
   size_t row_index = report->result_count;
   report->results[report->result_count++] = *result;
+  XrayBenchmarkResult *row = &report->results[row_index];
   if (result->passed) report->passed_count++;
   if (strcmp(result->category, "scratch-vs-gmp") == 0) {
     report->scratch_count++;
@@ -59,8 +141,9 @@ static void append_result(XrayBenchmarkReport *report, const XrayBenchmarkResult
     else if (strcmp(result->adoption, "oracle-only") == 0) report->oracle_only_count++;
     else report->blocked_count++;
   }
+  note_lane_result(report, row, row_index + 1U);
   if (report->result_callback) {
-    report->result_callback(&report->results[row_index], row_index + 1U, report->result_callback_user_data);
+    report->result_callback(row, row_index + 1U, report->result_callback_user_data);
   }
 }
 
