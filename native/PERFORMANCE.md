@@ -15,6 +15,46 @@ parity plus a stable same-run paired win.
   adjacent-size checks, and a product-like `/GL` build before they can become a
   production route. Independent best/best ratios are not an adoption signal.
 
+## 2026-06-16: Threshold Neighbor Guard
+
+Runs:
+
+- Release: `native/build-codex-pair-route/native-test-runs/20260616-004924-c4b04caf`
+- `/GL`: `native/build-codex-ltcg/native-test-runs/20260616-005500-c4b04caf`
+
+The benchmark now emits `format-policy-safety` rows for threshold/root-size
+format policies. Each row forces the candidate at a neighbor size below the gate
+and at the gate itself; both sizes must pass exact parity, same-run paired
+median speed, and paired-sample stability before the policy can be promoted.
+This directly guards against a threshold that looks good at one large size but
+hurts an adjacent smaller size under product-like codegen.
+
+Release guard rows:
+
+- `direct-ge4096-leaf8`: worst ratio `2.236`, stable sizes `0/2`,
+  `neighbor-regression`, `observe-only`
+- `direct-ge8192-leaf16`: worst ratio `1.580`, stable sizes `0/2`,
+  `neighbor-regression`, `observe-only`
+- `static-ge4096-l16`: worst ratio `1.671`, stable sizes `0/2`,
+  `neighbor-regression`, `observe-only`
+- `static-ge8192-l8`: worst ratio `1.993`, stable sizes `0/2`,
+  `neighbor-regression`, `observe-only`
+
+`/GL` guard rows:
+
+- `direct-ge4096-leaf8`: worst ratio `2.073`, stable sizes `0/2`,
+  `neighbor-regression`, `observe-only`
+- `direct-ge8192-leaf16`: worst ratio `2.162`, stable sizes `0/2`,
+  `neighbor-regression`, `observe-only`
+- `static-ge4096-l16`: worst ratio `2.126`, stable sizes `0/2`,
+  `neighbor-regression`, `observe-only`
+- `static-ge8192-l8`: worst ratio `1.971`, stable sizes `0/2`,
+  `neighbor-regression`, `observe-only`
+
+Decision: keep all tested decimal format threshold policies unrouted. The guard
+does what we want: no single-size or non-product-codegen win can become a route
+without proving the adjacent-size behavior too.
+
 ## 2026-06-15: Toom-3 Full-Shape Gate
 
 Run: `runs/20260615-041302-c4b04caf`

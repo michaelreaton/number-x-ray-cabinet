@@ -1016,6 +1016,71 @@ static void append_arithmetic_policy_probe_result(
   append_result(report, &result);
 }
 
+static void append_format_policy_safety_result(
+  XrayBenchmarkReport *report,
+  const char *policy,
+  const char *candidate,
+  size_t neighbor_digits,
+  size_t gate_digits,
+  size_t min_digits,
+  size_t leaf_chunks,
+  int parity,
+  unsigned long long candidate_us,
+  unsigned long long gmp_us,
+  double neighbor_ratio,
+  double gate_ratio,
+  size_t neighbor_stable,
+  size_t gate_stable,
+  size_t sample_count,
+  double worst_pair_ratio) {
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "policy gate format %s", policy);
+  snprintf(result.category, sizeof(result.category), "policy-gate");
+  snprintf(result.operation, sizeof(result.operation), "format-policy-safety");
+  result.digits = gate_digits;
+  result.scratch_us = candidate_us ? candidate_us : 1;
+  result.gmp_us = gmp_us ? gmp_us : 1;
+  result.speed_ratio = neighbor_ratio > gate_ratio ? neighbor_ratio : gate_ratio;
+  result.max_allowed_speed_ratio = 1.0;
+  result.stable_sample_count =
+    (neighbor_stable >= policy_required_stable_samples(sample_count) ? 1U : 0U) +
+    (gate_stable >= policy_required_stable_samples(sample_count) ? 1U : 0U);
+  result.sample_count = 2;
+  result.worst_pair_ratio = worst_pair_ratio;
+  result.parity_verified = parity;
+  int neighbor_safe = neighbor_ratio <= result.max_allowed_speed_ratio &&
+    neighbor_stable >= policy_required_stable_samples(sample_count);
+  int gate_safe = gate_ratio <= result.max_allowed_speed_ratio &&
+    gate_stable >= policy_required_stable_samples(sample_count);
+  result.replacement_ready = parity && neighbor_safe && gate_safe;
+  snprintf(result.adoption, sizeof(result.adoption), "%s",
+    !parity ? "blocked-output-mismatch" : (result.replacement_ready ? "promotion-ready" : "observe-only"));
+  snprintf(result.status, sizeof(result.status), "%s",
+    !parity ? "mismatch" :
+    (!neighbor_safe ? "neighbor-regression" :
+    (!gate_safe ? "gate-regression" :
+    (result.replacement_ready ? "policy-ready" : "needs-stability"))));
+  result.passed = parity;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  snprintf(result.detail, sizeof(result.detail),
+    "op=format-policy-safety policy=%s gate=%zu neighbor=%zu min=%zu leaf=%zu forcedCandidate=yes thresholdSafety=forced-neighbor neighborStable=%zu/%zu gateStable=%zu/%zu neighborRatio=%.3f gateRatio=%.3f ratioMethod=paired-median candidate=%s baseline=mpz_get_str featureGate=threshold-neighbor gmpClue=product-codegen adoption=%s",
+    policy,
+    gate_digits,
+    neighbor_digits,
+    min_digits,
+    leaf_chunks,
+    neighbor_stable,
+    sample_count,
+    gate_stable,
+    sample_count,
+    neighbor_ratio,
+    gate_ratio,
+    candidate,
+    result.adoption);
+  append_result(report, &result);
+}
+
 static void append_parse_chunk_probe_result(
   XrayBenchmarkReport *report,
   size_t digits,
@@ -2834,6 +2899,122 @@ static char *format_policy_static_direct(
 }
 
 typedef char *(*XrayFormatPolicyProbeFn)(const XrayScratchBigInt *value, size_t digits, size_t min_digits, size_t leaf_chunks);
+
+typedef struct XrayFormatPolicyMeasurement {
+  int parity;
+  unsigned long long candidate_us;
+  unsigned long long gmp_us;
+  double paired_ratio;
+  double worst_pair_ratio;
+  size_t stable_sample_count;
+} XrayFormatPolicyMeasurement;
+
+static XrayFormatPolicyMeasurement measure_forced_format_policy_candidate(
+  size_t digits,
+  unsigned int seed,
+  size_t leaf_chunks,
+  XrayFormatPolicyProbeFn probe) {
+  XrayFormatPolicyMeasurement measurement;
+  memset(&measurement, 0, sizeof(measurement));
+  char *text = benchmark_decimal(digits, seed, 1);
+  if (!text || !probe) {
+    free(text);
+    return measurement;
+  }
+
+  unsigned int iterations = perf_iterations("format", digits);
+  XrayScratchBigInt scratch;
+  xray_bigint_init(&scratch);
+  mpz_t gmp;
+  mpz_init(gmp);
+  int ok = xray_bigint_set_decimal(&scratch, text) && mpz_set_str(gmp, text, 10) == 0;
+  unsigned long long candidate_samples[XRAY_BENCH_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_SAMPLES] = {0};
+  int parity = 1;
+
+  for (unsigned int sample = 0; sample < XRAY_BENCH_SAMPLES; ++sample) {
+    unsigned long long candidate_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      char *candidate_text = probe(&scratch, digits, 0, leaf_chunks);
+      ok = candidate_text != NULL;
+      free(candidate_text);
+    }
+    candidate_samples[sample] = xray_now_us() - candidate_started;
+
+    unsigned long long gmp_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      char *gmp_text = mpz_get_str(NULL, 10, gmp);
+      ok = gmp_text != NULL;
+      free(gmp_text);
+    }
+    gmp_samples[sample] = xray_now_us() - gmp_started;
+
+    char *candidate_text = probe(&scratch, digits, 0, leaf_chunks);
+    char *gmp_text = mpz_get_str(NULL, 10, gmp);
+    parity = parity && ok && candidate_text && gmp_text && strcmp(candidate_text, gmp_text) == 0;
+    free(candidate_text);
+    free(gmp_text);
+  }
+
+  measurement.parity = parity;
+  measurement.candidate_us = median_samples(candidate_samples, XRAY_BENCH_SAMPLES);
+  measurement.gmp_us = median_samples(gmp_samples, XRAY_BENCH_SAMPLES);
+  measurement.paired_ratio = median_paired_ratio(candidate_samples, gmp_samples, XRAY_BENCH_SAMPLES);
+  measurement.worst_pair_ratio = max_paired_ratio(candidate_samples, gmp_samples, XRAY_BENCH_SAMPLES);
+  measurement.stable_sample_count = paired_ratio_wins(candidate_samples, gmp_samples, XRAY_BENCH_SAMPLES, 1.0);
+
+  mpz_clear(gmp);
+  xray_bigint_clear(&scratch);
+  free(text);
+  return measurement;
+}
+
+static void run_format_policy_safety_case(
+  XrayBenchmarkReport *report,
+  unsigned int seed,
+  const char *policy,
+  const char *candidate,
+  size_t neighbor_digits,
+  size_t gate_digits,
+  size_t min_digits,
+  size_t leaf_chunks,
+  XrayFormatPolicyProbeFn probe) {
+  XrayFormatPolicyMeasurement neighbor = measure_forced_format_policy_candidate(
+    neighbor_digits,
+    seed,
+    leaf_chunks,
+    probe);
+  XrayFormatPolicyMeasurement gate = measure_forced_format_policy_candidate(
+    gate_digits,
+    seed + 1U,
+    leaf_chunks,
+    probe);
+  unsigned long long candidate_us = neighbor.candidate_us > gate.candidate_us ?
+    neighbor.candidate_us :
+    gate.candidate_us;
+  unsigned long long gmp_us = neighbor.gmp_us > gate.gmp_us ? neighbor.gmp_us : gate.gmp_us;
+  double worst_pair_ratio = neighbor.worst_pair_ratio > gate.worst_pair_ratio ?
+    neighbor.worst_pair_ratio :
+    gate.worst_pair_ratio;
+
+  append_format_policy_safety_result(
+    report,
+    policy,
+    candidate,
+    neighbor_digits,
+    gate_digits,
+    min_digits,
+    leaf_chunks,
+    neighbor.parity && gate.parity,
+    candidate_us,
+    gmp_us,
+    neighbor.paired_ratio,
+    gate.paired_ratio,
+    neighbor.stable_sample_count,
+    gate.stable_sample_count,
+    XRAY_BENCH_SAMPLES,
+    worst_pair_ratio);
+}
 
 static void run_format_policy_probe_case(
   XrayBenchmarkReport *report,
@@ -4764,6 +4945,47 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
       8,
       format_policy_static_direct);
   }
+
+  run_format_policy_safety_case(
+    report,
+    113U,
+    "direct-ge4096-leaf8",
+    "decimal-dc-direct-writer",
+    3072,
+    4096,
+    4096,
+    8,
+    format_policy_direct);
+  run_format_policy_safety_case(
+    report,
+    127U,
+    "direct-ge8192-leaf16",
+    "decimal-dc-direct-writer",
+    6144,
+    8192,
+    8192,
+    16,
+    format_policy_direct);
+  run_format_policy_safety_case(
+    report,
+    131U,
+    "static-ge4096-l16",
+    "dc-static-direct",
+    3072,
+    4096,
+    4096,
+    16,
+    format_policy_static_direct);
+  run_format_policy_safety_case(
+    report,
+    137U,
+    "static-ge8192-l8",
+    "dc-static-direct",
+    6144,
+    8192,
+    8192,
+    8,
+    format_policy_static_direct);
 
   for (size_t digit_index = 0; digit_index < sizeof(format_strategy_digits) / sizeof(format_strategy_digits[0]); ++digit_index) {
     size_t digits = format_strategy_digits[digit_index];
