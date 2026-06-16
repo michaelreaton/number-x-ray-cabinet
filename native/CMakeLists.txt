@@ -132,6 +132,7 @@ set(XRAY_CORE_SOURCES
   src/core/xray_factor.c
   src/core/xray_cyclotomic.c
   src/core/xray_report.c
+  src/core/xray_benchmark_compare.c
   src/core/xray_benchmark.c
   src/core/xray_gnfs.c
   src/core/xray_workspace.c

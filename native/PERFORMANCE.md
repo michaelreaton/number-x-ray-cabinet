@@ -20,6 +20,47 @@ parity plus a stable same-run paired win.
   `noAutoRoute=1`, `replacementReady=false`, and `adoption=observe-only` until a
   dedicated forced-neighbor safety row passes.
 
+## 2026-06-16: Cross-Build Benchmark Compare
+
+Runs:
+
+- Release: `native/build-codex-pair-route/native-test-runs/20260616-115718-c4b04caf`
+- `/GL`: `native/build-codex-ltcg/native-test-runs/20260616-120216-c4b04caf`
+
+The CLI now compares two benchmark TSV artifacts directly:
+
+```powershell
+native\build-codex-pair-route\Release\xray_cli.exe --bench-compare `
+  native\build-codex-pair-route\native-test-runs\20260616-115718-c4b04caf\benchmark.tsv `
+  native\build-codex-ltcg\native-test-runs\20260616-120216-c4b04caf\benchmark.tsv
+```
+
+Fresh Release versus product-like `/GL` result:
+
+- rows: left `744`, right `744`, matched `744`
+- ready in both builds: `112`
+- ready in only one build: `85`
+- median wins rejected by worst-pair safety: `208`
+
+Best both-build-ready examples:
+
+- `gcd-u32`, 150 digits: Release ratio `0.283`, worst `0.344`; `/GL` ratio
+  `0.298`, worst `0.346`
+- `parse-chunk chunkDigits=15`, 16384 digits: Release ratio `0.426`, worst
+  `0.435`; `/GL` ratio `0.348`, worst `0.391`
+- `mod-u32`, 150 digits: Release ratio `0.441`, worst `0.443`; `/GL` ratio
+  `0.383`, worst `0.383`
+
+Rows ready in only one build included `square-policy current-default` at 1000
+digits and several formatter/multiply threshold probes. They remain
+non-promotable because build posture changes their worst-pair behavior.
+
+Decision: use cross-build compare before promoting threshold, static/dynamic
+precompute, AVX/BMI/ADX, or root-size-gated policies. A candidate can be
+interesting in one artifact, but it cannot become a production route unless the
+same row key is ready in both build fingerprints and neither artifact has a
+worst-pair regression.
+
 ## 2026-06-16: Benchmark Build Fingerprint
 
 Runs:

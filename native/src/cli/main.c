@@ -10,6 +10,38 @@ static const char *rsa260(void) {
 
 static void usage(const char *argv0) {
   fprintf(stderr, "Usage: %s [--bench|--bench-frontier] [--rsa260] [exact-integer-expression]\n", argv0);
+  fprintf(stderr, "       %s --bench-compare left.tsv right.tsv\n", argv0);
+}
+
+static char *read_all_text(const char *path) {
+  FILE *file = NULL;
+#ifdef _WIN32
+  if (fopen_s(&file, path, "rb") != 0) file = NULL;
+#else
+  file = fopen(path, "rb");
+#endif
+  if (!file) return NULL;
+  if (fseek(file, 0, SEEK_END) != 0) {
+    fclose(file);
+    return NULL;
+  }
+  long length = ftell(file);
+  if (length < 0 || fseek(file, 0, SEEK_SET) != 0) {
+    fclose(file);
+    return NULL;
+  }
+  char *text = (char *)calloc((size_t)length + 1U, 1);
+  if (!text) {
+    fclose(file);
+    return NULL;
+  }
+  if (length && fread(text, 1, (size_t)length, file) != (size_t)length) {
+    free(text);
+    fclose(file);
+    return NULL;
+  }
+  fclose(file);
+  return text;
 }
 
 int main(int argc, char **argv) {
@@ -23,6 +55,28 @@ int main(int argc, char **argv) {
       return 0;
     }
     else if (strcmp(argv[index], "--bench") == 0) run_bench = 1;
+    else if (strcmp(argv[index], "--bench-compare") == 0) {
+      if (index + 2 >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      char *left = read_all_text(argv[index + 1]);
+      char *right = read_all_text(argv[index + 2]);
+      if (!left || !right) {
+        fprintf(stderr, "Could not read benchmark TSV inputs.\n");
+        free(left);
+        free(right);
+        return 3;
+      }
+      char *review = xray_benchmark_compare_tsv_text(left, right);
+      if (review) {
+        puts(review);
+        xray_free(review);
+      }
+      free(left);
+      free(right);
+      return 0;
+    }
     else if (strcmp(argv[index], "--bench-frontier") == 0) {
       run_bench = 1;
       print_frontier = 1;

@@ -151,9 +151,9 @@ XRAY_API char *xray_build_info_summary(const XrayBuildInfo *info);
  *
  * Pass pointers returned by functions such as xray_bigint_get_decimal(),
  * xray_preview_decimal(), xray_*_report_json(), and
- * xray_cpu_features_summary() or xray_build_info_summary(). Passing NULL is
- * allowed. Use this instead of plain free() across shared-library or
- * foreign-language boundaries.
+ * xray_benchmark_compare_tsv_text(), xray_cpu_features_summary(), or
+ * xray_build_info_summary(). Passing NULL is allowed. Use this instead of
+ * plain free() across shared-library or foreign-language boundaries.
  */
 XRAY_API void xray_free(void *ptr);
 
@@ -1150,6 +1150,19 @@ XRAY_API char *xray_benchmark_report_json(const XrayBenchmarkReport *report);
  * The caller owns the returned string and must release it with xray_free().
  */
 XRAY_API char *xray_benchmark_report_tsv(const XrayBenchmarkReport *report);
+
+/**
+ * Compare two benchmark TSV artifacts and return a human-readable review.
+ *
+ * The comparison matches rows by operation, digit count, and stable route
+ * tokens from the TSV detail column, falling back to row name only when no route
+ * tokens are present. It reports rows that are promotion-ready in both
+ * artifacts, rows that are ready in only one artifact, and median wins rejected
+ * by worst-pair safety. This is intended for Release-vs-LTO or scalar-vs-AVX
+ * tournament review. The caller owns the returned string and must release it
+ * with xray_free().
+ */
+XRAY_API char *xray_benchmark_compare_tsv_text(const char *left_tsv, const char *right_tsv);
 
 /**
  * Format the benchmark frontier summary as newly allocated text.
