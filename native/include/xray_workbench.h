@@ -375,6 +375,17 @@ XRAY_API char *xray_bigint_get_decimal_divide_1e19_probe(const XrayScratchBigInt
 XRAY_API char *xray_bigint_get_decimal_dc_probe(const XrayScratchBigInt *value, size_t leaf_chunks);
 
 /**
+ * Format value through a divide-and-conquer decimal conversion probe using a
+ * power-of-two table for 10^19 powers.
+ *
+ * leaf_chunks controls when recursion falls back to repeated division by
+ * 10^19. Pass 0 for the default leaf. The caller owns the returned string and
+ * must release it with xray_free(). This diagnostic route tests the MPIR/GMP
+ * style B^1, B^2, B^4, ... precompute ladder against the linear power builder.
+ */
+XRAY_API char *xray_bigint_get_decimal_dc_ladder_probe(const XrayScratchBigInt *value, size_t leaf_chunks);
+
+/**
  * Format value through the 19-digit decimal chunk probe route.
  *
  * The caller owns the returned string and must release it with xray_free().
