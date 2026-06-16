@@ -75,6 +75,11 @@ static void jb_string(JsonBuffer *buffer, const char *text) {
   jb_append(buffer, "\"");
 }
 
+static void jb_nullable_string(JsonBuffer *buffer, const char *text) {
+  if (text) jb_string(buffer, text);
+  else jb_append(buffer, "null");
+}
+
 static char *jb_take(JsonBuffer *buffer) {
   if (!buffer->data) return NULL;
   char *data = buffer->data;
@@ -405,6 +410,20 @@ static void append_expression_json(JsonBuffer *buffer, const XrayExpressionResul
     expression && expression->ok ? "true" : "false",
     expression ? expression->digits : 0,
     expression ? expression->bit_length : 0);
+}
+
+static void append_artifact_paths_json(JsonBuffer *buffer, const XrayWorkbenchReport *report) {
+  jb_append(buffer, "\"artifactPaths\":{");
+  jb_append(buffer, "\"input\":"); jb_nullable_string(buffer, report ? report->input_path : NULL);
+  jb_append(buffer, ",\"normalized\":"); jb_nullable_string(buffer, report ? report->normalized_path : NULL);
+  jb_append(buffer, ",\"config\":"); jb_nullable_string(buffer, report ? report->config_path : NULL);
+  jb_append(buffer, ",\"cpuFeatures\":"); jb_nullable_string(buffer, report ? report->cpu_features_path : NULL);
+  jb_append(buffer, ",\"reportJson\":"); jb_nullable_string(buffer, report ? report->report_json_path : NULL);
+  jb_append(buffer, ",\"eventsJsonl\":"); jb_nullable_string(buffer, report ? report->events_jsonl_path : NULL);
+  jb_append(buffer, ",\"benchmarkJson\":"); jb_nullable_string(buffer, report ? report->benchmark_json_path : NULL);
+  jb_append(buffer, ",\"benchmarkTsv\":"); jb_nullable_string(buffer, report ? report->benchmark_tsv_path : NULL);
+  jb_append(buffer, ",\"benchmarkFrontier\":"); jb_nullable_string(buffer, report ? report->benchmark_frontier_path : NULL);
+  jb_append(buffer, "}");
 }
 
 static void append_gnfs_json(JsonBuffer *buffer, const XrayGnfsReport *report) {
@@ -947,6 +966,8 @@ char *xray_workbench_full_report_json(const XrayWorkbenchReport *report) {
   jb_append(&buffer, "\"app\":\"Number X-Ray Workbench\",");
   jb_append(&buffer, "\"version\":"); jb_string(&buffer, XRAY_VERSION);
   jb_append(&buffer, ",\"runDir\":"); jb_string(&buffer, report ? report->run_dir : NULL);
+  jb_append(&buffer, ",");
+  append_artifact_paths_json(&buffer, report);
   jb_append(&buffer, ",");
   append_build_json(&buffer, "build");
   jb_append(&buffer, ",");
