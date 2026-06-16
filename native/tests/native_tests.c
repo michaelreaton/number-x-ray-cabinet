@@ -1590,6 +1590,12 @@ static void test_benchmarks(void) {
   int saw_format_policy_preinv16384 = 0;
   int saw_format_policy_preinv10e19_window = 0;
   int saw_format_policy_preinv10e19_pairs_window = 0;
+  int saw_format_policy_preinv10e19_window768_896 = 0;
+  int saw_format_policy_preinv10e19_pairs_window768_896 = 0;
+  int saw_format_policy_preinv10e19_window768_960 = 0;
+  int saw_format_policy_preinv10e19_pairs_window768_960 = 0;
+  int saw_format_policy_preinv10e19_window896_1000 = 0;
+  int saw_format_policy_preinv10e19_pairs_window896_1000 = 0;
   int saw_format_policy_gate_direct4096 = 0;
   int saw_format_policy_gate_direct8192 = 0;
   int saw_format_policy_gate_static4096 = 0;
@@ -1600,9 +1606,18 @@ static void test_benchmarks(void) {
   int saw_format_policy_gate_preinv16384 = 0;
   int saw_format_policy_gate_preinv10e19_window = 0;
   int saw_format_policy_gate_preinv10e19_pairs_window = 0;
+  int saw_format_policy_gate_preinv10e19_window768_896 = 0;
+  int saw_format_policy_gate_preinv10e19_pairs_window768_896 = 0;
+  int saw_format_policy_gate_preinv10e19_window768_960 = 0;
+  int saw_format_policy_gate_preinv10e19_pairs_window768_960 = 0;
+  int saw_format_policy_gate_preinv10e19_window896_1000 = 0;
+  int saw_format_policy_gate_preinv10e19_pairs_window896_1000 = 0;
   int saw_divmod_preinv_qhat_safety_gate = 0;
   int saw_mul_policy_safety_toom_leaf48_gate = 0;
   int saw_mul_policy_safety_toom_rec_gate = 0;
+  int saw_format_policy768_probe = 0;
+  int saw_format_policy896_probe = 0;
+  int saw_format_policy960_probe = 0;
   int saw_format_policy1000_probe = 0;
   int saw_format_policy4096_probe = 0;
   int saw_format_policy8192_probe = 0;
@@ -2548,10 +2563,91 @@ static void test_benchmarks(void) {
           } else {
             CHECK(strstr(report->results[index].detail, "activeCandidate=current-scratch-format") != NULL);
           }
+        } else if (strstr(report->results[index].detail, "policy=preinv10e19-window768-896") != NULL) {
+          saw_format_policy_preinv10e19_window768_896 = 1;
+          CHECK(strstr(report->results[index].detail, "minDigits=768") != NULL);
+          CHECK(strstr(report->results[index].detail, "maxDigits=896") != NULL);
+          CHECK(strstr(report->results[index].detail, "leafThreshold=0") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv") != NULL);
+          CHECK(strstr(report->results[index].detail, "featureGate=decimal-format-policy-divide-1e19-preinv") != NULL);
+          CHECK(strstr(report->results[index].detail, "gmpClue=mpn_sb_get_str-preinverted-divrem-1") != NULL);
+          CHECK(strstr(report->results[index].detail, "thresholdSafety=requires-forced-neighbor") != NULL);
+          CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+          CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+          CHECK(!report->results[index].replacement_ready);
+          CHECK(strstr(report->results[index].detail, "activeCandidate=decimal-divide-1e19-preinv") != NULL);
+        } else if (strstr(report->results[index].detail, "policy=preinv10e19-pairs-window768-896") != NULL) {
+          saw_format_policy_preinv10e19_pairs_window768_896 = 1;
+          CHECK(strstr(report->results[index].detail, "minDigits=768") != NULL);
+          CHECK(strstr(report->results[index].detail, "maxDigits=896") != NULL);
+          CHECK(strstr(report->results[index].detail, "leafThreshold=0") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv-pair-writer") != NULL);
+          CHECK(strstr(report->results[index].detail, "featureGate=decimal-format-policy-divide-1e19-preinv-pairs") != NULL);
+          CHECK(strstr(report->results[index].detail, "gmpClue=mpn_sb_get_str-preinverted-divrem-1+digit-emission") != NULL);
+          CHECK(strstr(report->results[index].detail, "thresholdSafety=requires-forced-neighbor") != NULL);
+          CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+          CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+          CHECK(!report->results[index].replacement_ready);
+          CHECK(strstr(report->results[index].detail, "activeCandidate=decimal-divide-1e19-preinv-pair-writer") != NULL);
+        } else if (strstr(report->results[index].detail, "policy=preinv10e19-window768-960") != NULL) {
+          saw_format_policy_preinv10e19_window768_960 = 1;
+          CHECK(strstr(report->results[index].detail, "minDigits=768") != NULL);
+          CHECK(strstr(report->results[index].detail, "maxDigits=960") != NULL);
+          CHECK(strstr(report->results[index].detail, "leafThreshold=0") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv") != NULL);
+          CHECK(strstr(report->results[index].detail, "featureGate=decimal-format-policy-divide-1e19-preinv") != NULL);
+          CHECK(strstr(report->results[index].detail, "gmpClue=mpn_sb_get_str-preinverted-divrem-1") != NULL);
+          CHECK(strstr(report->results[index].detail, "thresholdSafety=requires-forced-neighbor") != NULL);
+          CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+          CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+          CHECK(!report->results[index].replacement_ready);
+          CHECK(strstr(report->results[index].detail, "activeCandidate=decimal-divide-1e19-preinv") != NULL);
+        } else if (strstr(report->results[index].detail, "policy=preinv10e19-pairs-window768-960") != NULL) {
+          saw_format_policy_preinv10e19_pairs_window768_960 = 1;
+          CHECK(strstr(report->results[index].detail, "minDigits=768") != NULL);
+          CHECK(strstr(report->results[index].detail, "maxDigits=960") != NULL);
+          CHECK(strstr(report->results[index].detail, "leafThreshold=0") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv-pair-writer") != NULL);
+          CHECK(strstr(report->results[index].detail, "featureGate=decimal-format-policy-divide-1e19-preinv-pairs") != NULL);
+          CHECK(strstr(report->results[index].detail, "gmpClue=mpn_sb_get_str-preinverted-divrem-1+digit-emission") != NULL);
+          CHECK(strstr(report->results[index].detail, "thresholdSafety=requires-forced-neighbor") != NULL);
+          CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+          CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+          CHECK(!report->results[index].replacement_ready);
+          CHECK(strstr(report->results[index].detail, "activeCandidate=decimal-divide-1e19-preinv-pair-writer") != NULL);
+        } else if (strstr(report->results[index].detail, "policy=preinv10e19-window896-1000") != NULL) {
+          saw_format_policy_preinv10e19_window896_1000 = 1;
+          CHECK(strstr(report->results[index].detail, "minDigits=896") != NULL);
+          CHECK(strstr(report->results[index].detail, "maxDigits=1000") != NULL);
+          CHECK(strstr(report->results[index].detail, "leafThreshold=0") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv") != NULL);
+          CHECK(strstr(report->results[index].detail, "featureGate=decimal-format-policy-divide-1e19-preinv") != NULL);
+          CHECK(strstr(report->results[index].detail, "gmpClue=mpn_sb_get_str-preinverted-divrem-1") != NULL);
+          CHECK(strstr(report->results[index].detail, "thresholdSafety=requires-forced-neighbor") != NULL);
+          CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+          CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+          CHECK(!report->results[index].replacement_ready);
+          CHECK(strstr(report->results[index].detail, "activeCandidate=decimal-divide-1e19-preinv") != NULL);
+        } else if (strstr(report->results[index].detail, "policy=preinv10e19-pairs-window896-1000") != NULL) {
+          saw_format_policy_preinv10e19_pairs_window896_1000 = 1;
+          CHECK(strstr(report->results[index].detail, "minDigits=896") != NULL);
+          CHECK(strstr(report->results[index].detail, "maxDigits=1000") != NULL);
+          CHECK(strstr(report->results[index].detail, "leafThreshold=0") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv-pair-writer") != NULL);
+          CHECK(strstr(report->results[index].detail, "featureGate=decimal-format-policy-divide-1e19-preinv-pairs") != NULL);
+          CHECK(strstr(report->results[index].detail, "gmpClue=mpn_sb_get_str-preinverted-divrem-1+digit-emission") != NULL);
+          CHECK(strstr(report->results[index].detail, "thresholdSafety=requires-forced-neighbor") != NULL);
+          CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+          CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+          CHECK(!report->results[index].replacement_ready);
+          CHECK(strstr(report->results[index].detail, "activeCandidate=decimal-divide-1e19-preinv-pair-writer") != NULL);
         } else {
           CHECK(0);
         }
-        if (report->results[index].digits == 1000) saw_format_policy1000_probe = 1;
+        if (report->results[index].digits == 768) saw_format_policy768_probe = 1;
+        else if (report->results[index].digits == 896) saw_format_policy896_probe = 1;
+        else if (report->results[index].digits == 960) saw_format_policy960_probe = 1;
+        else if (report->results[index].digits == 1000) saw_format_policy1000_probe = 1;
         else if (report->results[index].digits == 4096) saw_format_policy4096_probe = 1;
         else if (report->results[index].digits == 8192) saw_format_policy8192_probe = 1;
         else if (report->results[index].digits == 16384) saw_format_policy16384_probe = 1;
@@ -2760,6 +2856,54 @@ static void test_benchmarks(void) {
           CHECK(strstr(report->results[index].detail, "max=1000") != NULL);
           CHECK(strstr(report->results[index].detail, "leaf=0") != NULL);
           CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv-pair-writer") != NULL);
+        } else if (strstr(report->results[index].detail, "policy=preinv10e19-window768-896") != NULL) {
+          saw_format_policy_gate_preinv10e19_window768_896 = 1;
+          CHECK(strstr(report->results[index].detail, "neighbor=768") != NULL);
+          CHECK(strstr(report->results[index].detail, "gate=896") != NULL);
+          CHECK(strstr(report->results[index].detail, "min=768") != NULL);
+          CHECK(strstr(report->results[index].detail, "max=896") != NULL);
+          CHECK(strstr(report->results[index].detail, "leaf=0") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv") != NULL);
+        } else if (strstr(report->results[index].detail, "policy=preinv10e19-pairs-window768-896") != NULL) {
+          saw_format_policy_gate_preinv10e19_pairs_window768_896 = 1;
+          CHECK(strstr(report->results[index].detail, "neighbor=768") != NULL);
+          CHECK(strstr(report->results[index].detail, "gate=896") != NULL);
+          CHECK(strstr(report->results[index].detail, "min=768") != NULL);
+          CHECK(strstr(report->results[index].detail, "max=896") != NULL);
+          CHECK(strstr(report->results[index].detail, "leaf=0") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv-pair-writer") != NULL);
+        } else if (strstr(report->results[index].detail, "policy=preinv10e19-window768-960") != NULL) {
+          saw_format_policy_gate_preinv10e19_window768_960 = 1;
+          CHECK(strstr(report->results[index].detail, "neighbor=768") != NULL);
+          CHECK(strstr(report->results[index].detail, "gate=960") != NULL);
+          CHECK(strstr(report->results[index].detail, "min=768") != NULL);
+          CHECK(strstr(report->results[index].detail, "max=960") != NULL);
+          CHECK(strstr(report->results[index].detail, "leaf=0") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv") != NULL);
+        } else if (strstr(report->results[index].detail, "policy=preinv10e19-pairs-window768-960") != NULL) {
+          saw_format_policy_gate_preinv10e19_pairs_window768_960 = 1;
+          CHECK(strstr(report->results[index].detail, "neighbor=768") != NULL);
+          CHECK(strstr(report->results[index].detail, "gate=960") != NULL);
+          CHECK(strstr(report->results[index].detail, "min=768") != NULL);
+          CHECK(strstr(report->results[index].detail, "max=960") != NULL);
+          CHECK(strstr(report->results[index].detail, "leaf=0") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv-pair-writer") != NULL);
+        } else if (strstr(report->results[index].detail, "policy=preinv10e19-window896-1000") != NULL) {
+          saw_format_policy_gate_preinv10e19_window896_1000 = 1;
+          CHECK(strstr(report->results[index].detail, "neighbor=896") != NULL);
+          CHECK(strstr(report->results[index].detail, "gate=1000") != NULL);
+          CHECK(strstr(report->results[index].detail, "min=896") != NULL);
+          CHECK(strstr(report->results[index].detail, "max=1000") != NULL);
+          CHECK(strstr(report->results[index].detail, "leaf=0") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv") != NULL);
+        } else if (strstr(report->results[index].detail, "policy=preinv10e19-pairs-window896-1000") != NULL) {
+          saw_format_policy_gate_preinv10e19_pairs_window896_1000 = 1;
+          CHECK(strstr(report->results[index].detail, "neighbor=896") != NULL);
+          CHECK(strstr(report->results[index].detail, "gate=1000") != NULL);
+          CHECK(strstr(report->results[index].detail, "min=896") != NULL);
+          CHECK(strstr(report->results[index].detail, "max=1000") != NULL);
+          CHECK(strstr(report->results[index].detail, "leaf=0") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv-pair-writer") != NULL);
         } else {
           CHECK(0);
         }
@@ -2960,6 +3104,12 @@ static void test_benchmarks(void) {
   CHECK(saw_format_policy_preinv16384);
   CHECK(saw_format_policy_preinv10e19_window);
   CHECK(saw_format_policy_preinv10e19_pairs_window);
+  CHECK(saw_format_policy_preinv10e19_window768_896);
+  CHECK(saw_format_policy_preinv10e19_pairs_window768_896);
+  CHECK(saw_format_policy_preinv10e19_window768_960);
+  CHECK(saw_format_policy_preinv10e19_pairs_window768_960);
+  CHECK(saw_format_policy_preinv10e19_window896_1000);
+  CHECK(saw_format_policy_preinv10e19_pairs_window896_1000);
   CHECK(saw_policy_gate);
   CHECK(saw_format_policy_gate_direct4096);
   CHECK(saw_format_policy_gate_direct8192);
@@ -2971,9 +3121,18 @@ static void test_benchmarks(void) {
   CHECK(saw_format_policy_gate_preinv16384);
   CHECK(saw_format_policy_gate_preinv10e19_window);
   CHECK(saw_format_policy_gate_preinv10e19_pairs_window);
+  CHECK(saw_format_policy_gate_preinv10e19_window768_896);
+  CHECK(saw_format_policy_gate_preinv10e19_pairs_window768_896);
+  CHECK(saw_format_policy_gate_preinv10e19_window768_960);
+  CHECK(saw_format_policy_gate_preinv10e19_pairs_window768_960);
+  CHECK(saw_format_policy_gate_preinv10e19_window896_1000);
+  CHECK(saw_format_policy_gate_preinv10e19_pairs_window896_1000);
   CHECK(saw_divmod_preinv_qhat_safety_gate);
   CHECK(saw_mul_policy_safety_toom_leaf48_gate);
   CHECK(saw_mul_policy_safety_toom_rec_gate);
+  CHECK(saw_format_policy768_probe);
+  CHECK(saw_format_policy896_probe);
+  CHECK(saw_format_policy960_probe);
   CHECK(saw_format_policy1000_probe);
   CHECK(saw_format_policy4096_probe);
   CHECK(saw_format_policy8192_probe);
