@@ -1809,6 +1809,22 @@ static void copy_decimal_digit_pair(char *out, uint32_t value) {
   out[1] = pair[1];
 }
 
+static size_t write_u64_decimal_pairs(char *out, uint64_t value) {
+  char digits[20];
+  size_t offset = sizeof(digits);
+  do {
+    uint64_t quotient = value / 100U;
+    uint32_t pair = (uint32_t)(value - quotient * 100U);
+    offset -= 2U;
+    copy_decimal_digit_pair(digits + offset, pair);
+    value = quotient;
+  } while (value);
+  if (digits[offset] == '0') offset++;
+  size_t count = sizeof(digits) - offset;
+  memcpy(out, digits + offset, count);
+  return count;
+}
+
 static size_t write_u32_decimal_pairs(char *out, uint32_t value) {
   char digits[10];
   size_t offset = sizeof(digits);
@@ -1871,6 +1887,16 @@ static void write_u64_decimal_padded19(char *out, uint64_t value) {
   }
 }
 
+static void write_u64_decimal_padded19_pairs(char *out, uint64_t value) {
+  uint64_t lead = value / UINT64_C(1000000000000000000);
+  uint64_t low18 = value - lead * UINT64_C(1000000000000000000);
+  uint32_t high9 = (uint32_t)(low18 / XRAY_BIGINT_DECIMAL_CHUNK_BASE);
+  uint32_t low9 = (uint32_t)(low18 - (uint64_t)high9 * XRAY_BIGINT_DECIMAL_CHUNK_BASE);
+  out[0] = (char)('0' + lead);
+  write_u32_decimal_padded9_pairs(out + 1U, high9);
+  write_u32_decimal_padded9_pairs(out + 10U, low9);
+}
+
 static char *format_decimal_chunks_u32_mode(const uint32_t *chunks, size_t chunk_count, int writer_mode) {
   if (chunk_count == 0) {
     char *zero = (char *)calloc(2, 1);
@@ -1901,7 +1927,7 @@ static char *format_decimal_chunks_u32(const uint32_t *chunks, size_t chunk_coun
   return format_decimal_chunks_u32_mode(chunks, chunk_count, use_pair_writer ? 1 : 0);
 }
 
-static char *format_decimal_chunks_u64(const uint64_t *chunks, size_t chunk_count) {
+static char *format_decimal_chunks_u64_mode(const uint64_t *chunks, size_t chunk_count, int writer_mode) {
   if (chunk_count == 0) {
     char *zero = (char *)calloc(2, 1);
     if (zero) zero[0] = '0';
@@ -1911,12 +1937,26 @@ static char *format_decimal_chunks_u64(const uint64_t *chunks, size_t chunk_coun
   size_t capacity = chunk_count * XRAY_BIGINT_DECIMAL_WIDE_CHUNK_DIGITS + 1U;
   char *text = (char *)calloc(capacity, 1);
   if (!text) return NULL;
-  size_t used = write_u64_decimal(text, chunks[chunk_count - 1]);
+  size_t used = writer_mode ?
+    write_u64_decimal_pairs(text, chunks[chunk_count - 1]) :
+    write_u64_decimal(text, chunks[chunk_count - 1]);
   for (size_t index = chunk_count - 1; index-- > 0;) {
-    write_u64_decimal_padded19(text + used, chunks[index]);
+    if (writer_mode) {
+      write_u64_decimal_padded19_pairs(text + used, chunks[index]);
+    } else {
+      write_u64_decimal_padded19(text + used, chunks[index]);
+    }
     used += XRAY_BIGINT_DECIMAL_WIDE_CHUNK_DIGITS;
   }
   return text;
+}
+
+static char *format_decimal_chunks_u64(const uint64_t *chunks, size_t chunk_count) {
+  return format_decimal_chunks_u64_mode(chunks, chunk_count, 0);
+}
+
+static char *format_decimal_chunks_u64_pair_writer(const uint64_t *chunks, size_t chunk_count) {
+  return format_decimal_chunks_u64_mode(chunks, chunk_count, 1);
 }
 
 static int set_decimal_with_chunk_digits(XrayScratchBigInt *value, const char *decimal, unsigned int chunk_size) {
@@ -2148,6 +2188,32 @@ char *xray_bigint_get_decimal_divide_1e19_probe(const XrayScratchBigInt *value) 
   }
 
   char *text = format_decimal_chunks_u64(chunks, chunk_count);
+  free(chunks);
+  return text;
+}
+
+char *xray_bigint_get_decimal_divide_1e19_pair_writer_probe(const XrayScratchBigInt *value) {
+  if (!value || value->count == 0) {
+    char *zero = (char *)calloc(2, 1);
+    if (zero) zero[0] = '0';
+    return zero;
+  }
+
+  uint64_t *chunks = NULL;
+  size_t chunk_count = 0;
+  if (!decimal_wide_chunks_from_limbs_divide(&chunks, &chunk_count, value)) return NULL;
+  if (chunk_count == 0) {
+    uint64_t *zero_chunk = (uint64_t *)realloc(chunks, sizeof(uint64_t));
+    if (!zero_chunk) {
+      free(chunks);
+      return NULL;
+    }
+    chunks = zero_chunk;
+    chunks[0] = 0;
+    chunk_count = 1;
+  }
+
+  char *text = format_decimal_chunks_u64_pair_writer(chunks, chunk_count);
   free(chunks);
   return text;
 }

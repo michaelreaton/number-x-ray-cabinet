@@ -3651,6 +3651,10 @@ static char *format_dc_preinv_qhat_leaf16_probe(const XrayScratchBigInt *value) 
   return xray_bigint_get_decimal_dc_preinv_qhat_probe(value, 16U);
 }
 
+static char *format_divide_1e19_pair_writer_probe(const XrayScratchBigInt *value) {
+  return xray_bigint_get_decimal_divide_1e19_pair_writer_probe(value);
+}
+
 static char *format_policy_current_default(
   const XrayScratchBigInt *value,
   size_t digits,
@@ -6279,6 +6283,19 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
       "mpn_sb_get_str-largest-decimal-power",
       19U,
       xray_bigint_get_decimal_divide_1e19_probe);
+    run_format_variant_probe_case(
+      report,
+      digits,
+      47U,
+      "format-divide-1e19-pairs",
+      "format MPIR basecase pair writer",
+      "divide-copy-by-1e19-pair-writer",
+      "decimal-divide-1e19-pair-writer",
+      "current-scratch-format",
+      "decimal-format-divide-1e19-pairs",
+      "mpn_sb_get_str-largest-decimal-power+digit-emission",
+      19U,
+      format_divide_1e19_pair_writer_probe);
   }
   const size_t format_dc_leaf_chunks[] = {8, 16, 32, 64};
   XrayFormatProbeFn format_dc_probes[] = {
