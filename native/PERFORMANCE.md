@@ -1030,3 +1030,93 @@ threshold/size cells were slower or unstable. This is the same failure class as
 the root-size threshold issue from MFastFermat: a pocket win is not a global
 route. A future promotion must be root-size gated, product-shape tested, and
 confirmed in the `/GL` build before touching production multiply.
+
+## 2026-06-16: Static Decimal Power Table Probe
+
+Runs:
+
+- Normal Release:
+  `native/build-codex-pair-route/native-test-runs/20260615-235944-c4b04caf`
+- Product-like `/GL`:
+  `native/build-codex-ltcg/native-test-runs/20260616-000445-c4b04caf`
+
+The divide-and-conquer decimal formatter now has benchmark-only probes that use
+a small built-in table for `(10^19)^(2^0)` through `(10^19)^(2^6)`. Existing
+dynamic ladder and production formatting are unchanged. The static probes are
+exactly checked against current scratch formatting and `mpz_get_str`.
+
+Normal Release rows:
+
+- static ladder, 1000 digits, leaf 8: ratio `1.303`, stable `0/5`,
+  `observe-only`
+- static direct, 1000 digits, leaf 8: ratio `0.930`, stable `3/5`,
+  `observe-only`
+- static ladder, 1000 digits, leaf 16: ratio `0.983`, stable `2/5`,
+  `observe-only`
+- static direct, 1000 digits, leaf 16: ratio `0.921`, stable `5/5`,
+  `candidate-faster`
+- static ladder, 4096 digits, leaf 8: ratio `1.093`, stable `1/5`,
+  `observe-only`
+- static direct, 4096 digits, leaf 8: ratio `0.822`, stable `4/5`,
+  `candidate-faster`
+- static ladder, 4096 digits, leaf 16: ratio `0.945`, stable `3/5`,
+  `observe-only`
+- static direct, 4096 digits, leaf 16: ratio `0.877`, stable `3/5`,
+  `observe-only`
+- static ladder, 8192 digits, leaf 8: ratio `0.969`, stable `3/5`,
+  `observe-only`
+- static direct, 8192 digits, leaf 8: ratio `0.938`, stable `3/5`,
+  `observe-only`
+- static ladder, 8192 digits, leaf 16: ratio `1.004`, stable `2/5`,
+  `observe-only`
+- static direct, 8192 digits, leaf 16: ratio `0.982`, stable `2/5`,
+  `observe-only`
+- static ladder, 16384 digits, leaf 8: ratio `0.962`, stable `3/5`,
+  `observe-only`
+- static direct, 16384 digits, leaf 8: ratio `0.909`, stable `4/5`,
+  `candidate-faster`
+- static ladder, 16384 digits, leaf 16: ratio `1.033`, stable `2/5`,
+  `observe-only`
+- static direct, 16384 digits, leaf 16: ratio `0.974`, stable `3/5`,
+  `observe-only`
+
+Product-like `/GL` rows:
+
+- static ladder, 1000 digits, leaf 8: ratio `1.239`, stable `1/5`,
+  `observe-only`
+- static direct, 1000 digits, leaf 8: ratio `1.187`, stable `0/5`,
+  `observe-only`
+- static ladder, 1000 digits, leaf 16: ratio `1.213`, stable `1/5`,
+  `observe-only`
+- static direct, 1000 digits, leaf 16: ratio `1.139`, stable `2/5`,
+  `observe-only`
+- static ladder, 4096 digits, leaf 8: ratio `0.962`, stable `3/5`,
+  `observe-only`
+- static direct, 4096 digits, leaf 8: ratio `0.986`, stable `2/5`,
+  `observe-only`
+- static ladder, 4096 digits, leaf 16: ratio `0.967`, stable `3/5`,
+  `observe-only`
+- static direct, 4096 digits, leaf 16: ratio `0.828`, stable `5/5`,
+  `candidate-faster`
+- static ladder, 8192 digits, leaf 8: ratio `1.022`, stable `2/5`,
+  `observe-only`
+- static direct, 8192 digits, leaf 8: ratio `0.834`, stable `4/5`,
+  `candidate-faster`
+- static ladder, 8192 digits, leaf 16: ratio `1.013`, stable `1/5`,
+  `observe-only`
+- static direct, 8192 digits, leaf 16: ratio `0.955`, stable `3/5`,
+  `observe-only`
+- static ladder, 16384 digits, leaf 8: ratio `1.017`, stable `2/5`,
+  `observe-only`
+- static direct, 16384 digits, leaf 8: ratio `0.978`, stable `3/5`,
+  `observe-only`
+- static ladder, 16384 digits, leaf 16: ratio `0.960`, stable `5/5`,
+  `candidate-faster`
+- static direct, 16384 digits, leaf 16: ratio `0.931`, stable `3/5`,
+  `observe-only`
+
+Decision: keep the static table probes and do not route production formatting
+through them yet. Static direct is the only credible lead, but the winning cells
+move under `/GL` and 1000-digit rows regress under product-like codegen. A
+future promotion should test a gated policy such as `>=4096` with leaf 16 or
+`>=8192` with leaf 8 against `mpz_get_str`, not a global static D&C route.

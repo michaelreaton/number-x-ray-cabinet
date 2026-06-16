@@ -386,6 +386,18 @@ XRAY_API char *xray_bigint_get_decimal_dc_probe(const XrayScratchBigInt *value, 
 XRAY_API char *xray_bigint_get_decimal_dc_ladder_probe(const XrayScratchBigInt *value, size_t leaf_chunks);
 
 /**
+ * Format value through a divide-and-conquer decimal conversion probe using a
+ * small built-in power-of-two table for 10^19 powers.
+ *
+ * leaf_chunks controls when recursion falls back to repeated division by
+ * 10^19. Pass 0 for the default leaf. The caller owns the returned string and
+ * must release it with xray_free(). This diagnostic route tests static
+ * precompute against the per-call ladder without changing production
+ * formatting.
+ */
+XRAY_API char *xray_bigint_get_decimal_dc_static_ladder_probe(const XrayScratchBigInt *value, size_t leaf_chunks);
+
+/**
  * Format value through a ladder-backed divide-and-conquer decimal conversion
  * probe that writes into one final output buffer.
  *
@@ -396,6 +408,17 @@ XRAY_API char *xray_bigint_get_decimal_dc_ladder_probe(const XrayScratchBigInt *
  * of the remaining large-format gap.
  */
 XRAY_API char *xray_bigint_get_decimal_dc_direct_probe(const XrayScratchBigInt *value, size_t leaf_chunks);
+
+/**
+ * Format value through the direct-output divide-and-conquer probe using a small
+ * built-in power-of-two table for 10^19 powers.
+ *
+ * leaf_chunks controls when recursion falls back to repeated division by
+ * 10^19. Pass 0 for the default leaf. The caller owns the returned string and
+ * must release it with xray_free(). This diagnostic route measures static
+ * power precompute plus direct output buffering as one candidate.
+ */
+XRAY_API char *xray_bigint_get_decimal_dc_static_direct_probe(const XrayScratchBigInt *value, size_t leaf_chunks);
 
 /**
  * Format value through the 19-digit decimal chunk probe route.
