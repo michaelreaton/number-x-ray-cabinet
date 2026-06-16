@@ -150,6 +150,47 @@ sizes still show worst-pair regressions and the 16384 digit `/GL` row drops to
 only `2/5` stable pairs. This directly avoids the threshold failure mode where
 a promising large-size row becomes a harmful global or root-size-gated default.
 
+## 2026-06-16: Pre-Inverted Qhat Safety Gate
+
+Runs:
+
+- Release: `native/build-codex-pair-route/native-test-runs/20260616-044535-c4b04caf`
+- `/GL`: `native/build-codex-ltcg/native-test-runs/20260616-045049-c4b04caf`
+
+The benchmark now emits a `divmod-preinv-qhat-safety` policy-gate row that
+aggregates the existing 4096, 8192, and 16384 digit full divmod probe rows.
+This row does not rerun the expensive division cases; it turns the measured
+same-run rows into one threshold-safety verdict with
+`thresholdSafety=forced-neighbor`, `forcedCandidate=yes`, `noAutoRoute=1`, and
+`replacementReady=false`.
+
+Release rows:
+
+- `divmod-preinv-qhat`, 4096 digits: ratio `0.946`, stable `3/5`, worst pair
+  `1.089`, `observe-only`
+- `divmod-preinv-qhat`, 8192 digits: ratio `0.992`, stable `2/5`, worst pair
+  `1.031`, `observe-only`
+- `divmod-preinv-qhat`, 16384 digits: ratio `1.062`, stable `2/5`, worst pair
+  `1.234`, `observe-only`
+- `divmod-preinv-qhat-safety`: `neighbor-regression`, safe sizes `0/3`,
+  max ratio `1.062`, max worst pair `1.234`, `observe-only`
+
+`/GL` rows:
+
+- `divmod-preinv-qhat`, 4096 digits: ratio `0.868`, stable `4/5`, worst pair
+  `0.985`, `observe-only`
+- `divmod-preinv-qhat`, 8192 digits: ratio `0.965`, stable `4/5`, worst pair
+  `1.034`, `observe-only`
+- `divmod-preinv-qhat`, 16384 digits: ratio `1.067`, stable `2/5`, worst pair
+  `1.529`, `observe-only`
+- `divmod-preinv-qhat-safety`: `neighbor-regression`, safe sizes `1/3`,
+  max ratio `1.067`, max worst pair `1.529`, `observe-only`
+
+Decision: do not route pre-inverted qhat from the tempting `/GL` 4096/8192
+rows. The safety row captures the important counter-evidence in the same
+human-readable and machine-readable report: 16384 digits regressed badly, so a
+root-size or threshold route would be unsafe.
+
 ## 2026-06-16: Reusable Division Workspace Probe
 
 Runs:

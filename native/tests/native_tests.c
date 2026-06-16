@@ -1420,6 +1420,7 @@ static void test_benchmarks(void) {
   int saw_format_policy_gate_direct8192 = 0;
   int saw_format_policy_gate_static4096 = 0;
   int saw_format_policy_gate_static8192 = 0;
+  int saw_divmod_preinv_qhat_safety_gate = 0;
   int saw_format_policy1000_probe = 0;
   int saw_format_policy4096_probe = 0;
   int saw_format_policy8192_probe = 0;
@@ -2302,55 +2303,76 @@ static void test_benchmarks(void) {
       CHECK(report->results[index].gmp_us > 0);
       CHECK(report->results[index].speed_ratio > 0.0);
       CHECK(report->results[index].max_allowed_speed_ratio == 1.0);
-      CHECK(report->results[index].sample_count == 2);
       CHECK(report->results[index].stable_sample_count <= report->results[index].sample_count);
       CHECK(report->results[index].worst_pair_ratio > 0.0);
-      CHECK(strcmp(report->results[index].operation, "format-policy-safety") == 0);
-      CHECK(strstr(report->results[index].detail, "op=format-policy-safety") != NULL);
       CHECK(strstr(report->results[index].detail, "thresholdSafety=forced-neighbor") != NULL);
       CHECK(strstr(report->results[index].detail, "forcedCandidate=yes") != NULL);
       CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
-      CHECK(strstr(report->results[index].detail, "neighborStable=") != NULL);
-      CHECK(strstr(report->results[index].detail, "gateStable=") != NULL);
-      CHECK(strstr(report->results[index].detail, "neighborRatio=") != NULL);
-      CHECK(strstr(report->results[index].detail, "gateRatio=") != NULL);
-      CHECK(strstr(report->results[index].detail, "baseline=mpz_get_str") != NULL);
-      CHECK(strstr(report->results[index].detail, "featureGate=threshold-neighbor") != NULL);
-      CHECK(strstr(report->results[index].detail, "gmpClue=product-codegen") != NULL);
       CHECK(strstr(report->results[index].detail, "adoption=") != NULL);
-      if (strstr(report->results[index].detail, "policy=direct-ge4096-leaf8") != NULL) {
-        saw_format_policy_gate_direct4096 = 1;
-        CHECK(strstr(report->results[index].detail, "neighbor=3072") != NULL);
-        CHECK(strstr(report->results[index].detail, "gate=4096") != NULL);
-        CHECK(strstr(report->results[index].detail, "min=4096") != NULL);
-        CHECK(strstr(report->results[index].detail, "leaf=8") != NULL);
-        CHECK(strstr(report->results[index].detail, "candidate=decimal-dc-direct-writer") != NULL);
-      } else if (strstr(report->results[index].detail, "policy=direct-ge8192-leaf16") != NULL) {
-        saw_format_policy_gate_direct8192 = 1;
-        CHECK(strstr(report->results[index].detail, "neighbor=6144") != NULL);
-        CHECK(strstr(report->results[index].detail, "gate=8192") != NULL);
-        CHECK(strstr(report->results[index].detail, "min=8192") != NULL);
-        CHECK(strstr(report->results[index].detail, "leaf=16") != NULL);
-        CHECK(strstr(report->results[index].detail, "candidate=decimal-dc-direct-writer") != NULL);
-      } else if (strstr(report->results[index].detail, "policy=static-ge4096-l16") != NULL) {
-        saw_format_policy_gate_static4096 = 1;
-        CHECK(strstr(report->results[index].detail, "neighbor=3072") != NULL);
-        CHECK(strstr(report->results[index].detail, "gate=4096") != NULL);
-        CHECK(strstr(report->results[index].detail, "min=4096") != NULL);
-        CHECK(strstr(report->results[index].detail, "leaf=16") != NULL);
-        CHECK(strstr(report->results[index].detail, "candidate=dc-static-direct") != NULL);
-      } else if (strstr(report->results[index].detail, "policy=static-ge8192-l8") != NULL) {
-        saw_format_policy_gate_static8192 = 1;
-        CHECK(strstr(report->results[index].detail, "neighbor=6144") != NULL);
-        CHECK(strstr(report->results[index].detail, "gate=8192") != NULL);
-        CHECK(strstr(report->results[index].detail, "min=8192") != NULL);
-        CHECK(strstr(report->results[index].detail, "leaf=8") != NULL);
-        CHECK(strstr(report->results[index].detail, "candidate=dc-static-direct") != NULL);
+      if (strcmp(report->results[index].operation, "format-policy-safety") == 0) {
+        CHECK(report->results[index].sample_count == 2);
+        CHECK(strstr(report->results[index].detail, "op=format-policy-safety") != NULL);
+        CHECK(strstr(report->results[index].detail, "neighborStable=") != NULL);
+        CHECK(strstr(report->results[index].detail, "gateStable=") != NULL);
+        CHECK(strstr(report->results[index].detail, "neighborRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "gateRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=mpz_get_str") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=threshold-neighbor") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpClue=product-codegen") != NULL);
+        if (strstr(report->results[index].detail, "policy=direct-ge4096-leaf8") != NULL) {
+          saw_format_policy_gate_direct4096 = 1;
+          CHECK(strstr(report->results[index].detail, "neighbor=3072") != NULL);
+          CHECK(strstr(report->results[index].detail, "gate=4096") != NULL);
+          CHECK(strstr(report->results[index].detail, "min=4096") != NULL);
+          CHECK(strstr(report->results[index].detail, "leaf=8") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=decimal-dc-direct-writer") != NULL);
+        } else if (strstr(report->results[index].detail, "policy=direct-ge8192-leaf16") != NULL) {
+          saw_format_policy_gate_direct8192 = 1;
+          CHECK(strstr(report->results[index].detail, "neighbor=6144") != NULL);
+          CHECK(strstr(report->results[index].detail, "gate=8192") != NULL);
+          CHECK(strstr(report->results[index].detail, "min=8192") != NULL);
+          CHECK(strstr(report->results[index].detail, "leaf=16") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=decimal-dc-direct-writer") != NULL);
+        } else if (strstr(report->results[index].detail, "policy=static-ge4096-l16") != NULL) {
+          saw_format_policy_gate_static4096 = 1;
+          CHECK(strstr(report->results[index].detail, "neighbor=3072") != NULL);
+          CHECK(strstr(report->results[index].detail, "gate=4096") != NULL);
+          CHECK(strstr(report->results[index].detail, "min=4096") != NULL);
+          CHECK(strstr(report->results[index].detail, "leaf=16") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=dc-static-direct") != NULL);
+        } else if (strstr(report->results[index].detail, "policy=static-ge8192-l8") != NULL) {
+          saw_format_policy_gate_static8192 = 1;
+          CHECK(strstr(report->results[index].detail, "neighbor=6144") != NULL);
+          CHECK(strstr(report->results[index].detail, "gate=8192") != NULL);
+          CHECK(strstr(report->results[index].detail, "min=8192") != NULL);
+          CHECK(strstr(report->results[index].detail, "leaf=8") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=dc-static-direct") != NULL);
+        } else {
+          CHECK(0);
+        }
+      } else if (strcmp(report->results[index].operation, "divmod-preinv-qhat-safety") == 0) {
+        saw_divmod_preinv_qhat_safety_gate = 1;
+        CHECK(report->results[index].sample_count == 3);
+        CHECK(!report->results[index].replacement_ready);
+        CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+        CHECK(strstr(report->results[index].detail, "op=divmod-preinv-qhat-safety") != NULL);
+        CHECK(strstr(report->results[index].detail, "sizes=4096,8192,16384") != NULL);
+        CHECK(strstr(report->results[index].detail, "safeSizes=") != NULL);
+        CHECK(strstr(report->results[index].detail, "requiredStablePairs=4/5") != NULL);
+        CHECK(strstr(report->results[index].detail, "maxRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "maxWorstPairRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=scratch-divmod-preinv-qhat") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=scratch-divmod-context-workspace") != NULL);
+        CHECK(strstr(report->results[index].detail, "oracle=mpz_tdiv_qr") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=bigint-division-preinv-qhat") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpClue=mpn_sbpi1_div_qr-qhat") != NULL);
+        CHECK(strstr(report->results[index].detail, "precomputeScope=per-divisor") != NULL);
+        CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
       } else {
         CHECK(0);
       }
       if (strcmp(report->results[index].adoption, "promotion-ready") == 0) {
-        CHECK(report->results[index].stable_sample_count == 2);
+        CHECK(report->results[index].stable_sample_count == report->results[index].sample_count);
         CHECK(report->results[index].speed_ratio <= report->results[index].max_allowed_speed_ratio);
       }
       CHECK(strstr(report->results[index].adoption, "promotion-ready") != NULL ||
@@ -2466,6 +2488,7 @@ static void test_benchmarks(void) {
   CHECK(saw_format_policy_gate_direct8192);
   CHECK(saw_format_policy_gate_static4096);
   CHECK(saw_format_policy_gate_static8192);
+  CHECK(saw_divmod_preinv_qhat_safety_gate);
   CHECK(saw_format_policy1000_probe);
   CHECK(saw_format_policy4096_probe);
   CHECK(saw_format_policy8192_probe);
@@ -2605,6 +2628,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "divmod-workspace") != NULL);
   CHECK(strstr(json, "bigint-division-workspace") != NULL);
   CHECK(strstr(json, "divmod-preinv-qhat") != NULL);
+  CHECK(strstr(json, "divmod-preinv-qhat-safety") != NULL);
   CHECK(strstr(json, "bigint-division-preinv-qhat") != NULL);
   CHECK(strstr(json, "qhat-u32-limb") != NULL);
   CHECK(strstr(json, "qhat-preinv") != NULL);
@@ -2790,6 +2814,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "divmod-precomputed") != NULL);
   CHECK(strstr(benchmark_tsv, "divmod-workspace") != NULL);
   CHECK(strstr(benchmark_tsv, "divmod-preinv-qhat") != NULL);
+  CHECK(strstr(benchmark_tsv, "divmod-preinv-qhat-safety") != NULL);
   CHECK(strstr(benchmark_tsv, "scratch-divmod-preinv-qhat") != NULL);
   CHECK(strstr(benchmark_tsv, "qhat-u32-limb") != NULL);
   CHECK(strstr(benchmark_tsv, "qhat-preinv") != NULL);
@@ -2841,6 +2866,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "divmod-precomputed chunks=") != NULL);
   CHECK(strstr(benchmark_frontier, "divmod-workspace chunks=") != NULL);
   CHECK(strstr(benchmark_frontier, "divmod-preinv-qhat chunks=") != NULL);
+  CHECK(strstr(benchmark_frontier, "divmod-preinv-qhat-safety") != NULL);
   CHECK(strstr(benchmark_frontier, "format-threshold thr=16") != NULL);
   CHECK(strstr(benchmark_frontier, "format-threshold thr=32") != NULL);
   CHECK(strstr(benchmark_frontier, "format-threshold thr=40") != NULL);
