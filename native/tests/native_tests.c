@@ -805,6 +805,46 @@ static void test_scratch_bigint_mul_thresholds(void) {
   free(right_text);
 }
 
+static void test_scratch_bigint_karatsuba_sum_probe_oracle(void) {
+  const size_t thresholds[] = {32, 64, 96, 128};
+  char *left_text = make_pattern_decimal(2400, "86420975318642097531");
+  char *right_text = make_pattern_decimal(2400, "13579246801357924680");
+  XrayScratchBigInt a, b, product, alias, current;
+  xray_bigint_init(&a);
+  xray_bigint_init(&b);
+  xray_bigint_init(&product);
+  xray_bigint_init(&alias);
+  xray_bigint_init(&current);
+  mpz_t ga, gb, gproduct;
+  mpz_inits(ga, gb, gproduct, NULL);
+
+  CHECK(xray_bigint_set_decimal(&a, left_text));
+  CHECK(xray_bigint_set_decimal(&b, right_text));
+  CHECK(mpz_set_str(ga, left_text, 10) == 0);
+  CHECK(mpz_set_str(gb, right_text, 10) == 0);
+  mpz_mul(gproduct, ga, gb);
+
+  for (size_t index = 0; index < sizeof(thresholds) / sizeof(thresholds[0]); ++index) {
+    CHECK(xray_bigint_mul_karatsuba_sum_probe(&product, &a, &b, thresholds[index]));
+    check_scratch_matches_mpz(&product, gproduct);
+    CHECK(xray_bigint_mul_with_threshold(&current, &a, &b, thresholds[index]));
+    CHECK(xray_bigint_compare(&product, &current) == 0);
+
+    CHECK(xray_bigint_copy(&alias, &a));
+    CHECK(xray_bigint_mul_karatsuba_sum_probe(&alias, &alias, &b, thresholds[index]));
+    check_scratch_matches_mpz(&alias, gproduct);
+  }
+
+  xray_bigint_clear(&a);
+  xray_bigint_clear(&b);
+  xray_bigint_clear(&product);
+  xray_bigint_clear(&alias);
+  xray_bigint_clear(&current);
+  mpz_clears(ga, gb, gproduct, NULL);
+  free(left_text);
+  free(right_text);
+}
+
 static void test_scratch_bigint_toom3_probe_oracle(void) {
   char *left_text = make_pattern_decimal(2400, "97531864208642135790");
   char *right_text = make_pattern_decimal(2400, "24681357913579246801");
@@ -1264,6 +1304,14 @@ static void test_benchmarks(void) {
   int saw_mul_policy4096_probe = 0;
   int saw_mul_policy8192_probe = 0;
   int saw_mul_policy16384_probe = 0;
+  int saw_karatsuba_middle_probe = 0;
+  int saw_karatsuba_middle64_probe = 0;
+  int saw_karatsuba_middle96_probe = 0;
+  int saw_karatsuba_middle128_probe = 0;
+  int saw_karatsuba_middle1000_probe = 0;
+  int saw_karatsuba_middle4096_probe = 0;
+  int saw_karatsuba_middle8192_probe = 0;
+  int saw_karatsuba_middle16384_probe = 0;
   int saw_format_strategy1000_probe = 0;
   int saw_format_strategy4096_probe = 0;
   int saw_format_strategy8192_probe = 0;
@@ -1366,6 +1414,24 @@ static void test_benchmarks(void) {
       CHECK(strstr(report->results[index].detail, "adoption=") != NULL);
       if (strcmp(report->results[index].operation, "mul-threshold") == 0) {
         CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+      }
+      if (strcmp(report->results[index].operation, "mul-karatsuba-middle") == 0) {
+        saw_karatsuba_middle_probe = 1;
+        CHECK(strstr(report->results[index].detail, "mode=sum-vs-difference") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=karatsuba-sum-middle") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=karatsuba-difference-middle") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=karatsuba-middle-form") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpClue=mpn_mul_n-middle-term") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+        if (strstr(report->results[index].detail, "threshold=64 ") != NULL) saw_karatsuba_middle64_probe = 1;
+        else if (strstr(report->results[index].detail, "threshold=96 ") != NULL) saw_karatsuba_middle96_probe = 1;
+        else if (strstr(report->results[index].detail, "threshold=128 ") != NULL) saw_karatsuba_middle128_probe = 1;
+        else CHECK(0);
+        if (report->results[index].digits == 1000) saw_karatsuba_middle1000_probe = 1;
+        else if (report->results[index].digits == 4096) saw_karatsuba_middle4096_probe = 1;
+        else if (report->results[index].digits == 8192) saw_karatsuba_middle8192_probe = 1;
+        else if (report->results[index].digits == 16384) saw_karatsuba_middle16384_probe = 1;
+        else CHECK(0);
       }
       if (strcmp(report->results[index].operation, "mod-u32-precompute") == 0 ||
           strcmp(report->results[index].operation, "gcd-u32-precompute") == 0 ||
@@ -1969,6 +2035,14 @@ static void test_benchmarks(void) {
   CHECK(saw_mul_policy4096_probe);
   CHECK(saw_mul_policy8192_probe);
   CHECK(saw_mul_policy16384_probe);
+  CHECK(saw_karatsuba_middle_probe);
+  CHECK(saw_karatsuba_middle64_probe);
+  CHECK(saw_karatsuba_middle96_probe);
+  CHECK(saw_karatsuba_middle128_probe);
+  CHECK(saw_karatsuba_middle1000_probe);
+  CHECK(saw_karatsuba_middle4096_probe);
+  CHECK(saw_karatsuba_middle8192_probe);
+  CHECK(saw_karatsuba_middle16384_probe);
   CHECK(saw_format_strategy1000_probe);
   CHECK(saw_format_strategy4096_probe);
   CHECK(saw_format_strategy8192_probe);
@@ -2055,6 +2129,9 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "\"maxAllowedSpeedRatio\"") != NULL);
   CHECK(strstr(json, "\"scratchUs\"") != NULL);
   CHECK(strstr(json, "mul-toom3") != NULL);
+  CHECK(strstr(json, "mul-karatsuba-middle") != NULL);
+  CHECK(strstr(json, "karatsuba-sum-middle") != NULL);
+  CHECK(strstr(json, "karatsuba-difference-middle") != NULL);
   CHECK(strstr(json, "mod-u32-precompute") != NULL);
   CHECK(strstr(json, "gcd-u32-precompute") != NULL);
   CHECK(strstr(json, "powmod-u32-precompute") != NULL);
@@ -2139,6 +2216,9 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "square-karatsuba-vs-mul") != NULL);
   CHECK(strstr(tsv, "square-karatsuba-vs-gmp") != NULL);
   CHECK(strstr(tsv, "mul-toom3-vs-scratch") != NULL);
+  CHECK(strstr(tsv, "mul-karatsuba-middle") != NULL);
+  CHECK(strstr(tsv, "karatsuba-sum-middle") != NULL);
+  CHECK(strstr(tsv, "karatsuba-difference-middle") != NULL);
 #if defined(_MSC_VER) && defined(_M_X64)
   CHECK(strstr(tsv, "mul-toom3-unroll4-vs-scratch") != NULL);
   CHECK(strstr(tsv, "mul-toom3-unroll4-vs-gmp") != NULL);
@@ -2182,6 +2262,9 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "kernel-probe") != NULL);
   CHECK(strstr(benchmark_tsv, "policy-probe") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-toom3") != NULL);
+  CHECK(strstr(benchmark_tsv, "mul-karatsuba-middle") != NULL);
+  CHECK(strstr(benchmark_tsv, "karatsuba-sum-middle") != NULL);
+  CHECK(strstr(benchmark_tsv, "karatsuba-difference-middle") != NULL);
   CHECK(strstr(benchmark_tsv, "mod-u32-precompute") != NULL);
   CHECK(strstr(benchmark_tsv, "gcd-u32-precompute") != NULL);
   CHECK(strstr(benchmark_tsv, "powmod-u32-precompute") != NULL);
@@ -2268,6 +2351,9 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "mul-policy current-default") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-policy toom3-u4-ge8192-leaf48") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-policy toom3-u4-rec-ge16384-leaf64-depth2") != NULL);
+  CHECK(strstr(benchmark_frontier, "mul-karatsuba-middle") != NULL);
+  CHECK(strstr(benchmark_frontier, "mode=sum-vs-difference") != NULL);
+  CHECK(strstr(benchmark_frontier, "base=karatsuba-difference-") != NULL);
   CHECK(strstr(benchmark_frontier, "leaf=64") != NULL);
   CHECK(strstr(benchmark_frontier, "base=") != NULL);
 #if defined(_MSC_VER) && defined(_M_X64)
@@ -2301,6 +2387,7 @@ int main(void) {
   test_scratch_bigint_square_oracle();
   test_scratch_bigint_karatsuba_middle_signs();
   test_scratch_bigint_mul_thresholds();
+  test_scratch_bigint_karatsuba_sum_probe_oracle();
   test_scratch_bigint_toom3_probe_oracle();
   test_scratch_bigint_toom3_recursive_probe_oracle();
   test_scratch_bigint_unroll4_probe_oracle();

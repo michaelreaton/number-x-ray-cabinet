@@ -11,6 +11,9 @@ parity plus a stable same-run paired win.
 - `kernel-probe` rows are evidence only. They do not change production routing.
 - A primitive-level win is not enough. The candidate must also survive the full
   operation shape before it can replace the current path.
+- Threshold or root-size candidates must survive same-run paired medians,
+  adjacent-size checks, and a product-like `/GL` build before they can become a
+  production route. Independent best/best ratios are not an adoption signal.
 
 ## 2026-06-15: Toom-3 Full-Shape Gate
 
@@ -973,3 +976,57 @@ be shape- or size-gated before it is even a product candidate, and a broad
 discovery run is not an adoption gate. Keep failed-route reporting explicit, run
 the finalists again with longer paired samples, and only then compare against
 GMP on the actual operation shape.
+
+## 2026-06-15: Karatsuba Middle Sum-vs-Difference Probe
+
+Runs:
+
+- Normal Release:
+  `native/build-codex-pair-route/native-test-runs/20260615-232726-c4b04caf`
+- Product-like `/GL`:
+  `native/build-codex-ltcg/native-test-runs/20260615-233221-c4b04caf`
+
+The benchmark now measures the classic sum-form Karatsuba middle term
+`(a0 + a1) * (b0 + b1) - z0 - z2` against the current difference-form middle
+term as a `kernel-probe`. The candidate is exact-oracle checked against GMP and
+the current implementation, but it does not affect production routing.
+
+Normal Release rows:
+
+- 1000 digits, threshold 64: ratio `0.959`, stable `4/5`, `candidate-faster`
+- 1000 digits, threshold 96: ratio `0.840`, stable `5/5`, `candidate-faster`
+- 1000 digits, threshold 128: ratio `0.939`, stable `4/5`, `observe-only`
+- 4096 digits, threshold 64: ratio `0.997`, stable `2/5`, `observe-only`
+- 4096 digits, threshold 96: ratio `1.044`, stable `1/5`, `observe-only`
+- 4096 digits, threshold 128: ratio `0.997`, stable `2/5`, `observe-only`
+- 8192 digits, threshold 64: ratio `1.140`, stable `2/5`, `observe-only`
+- 8192 digits, threshold 96: ratio `0.996`, stable `2/5`, `observe-only`
+- 8192 digits, threshold 128: ratio `1.010`, stable `2/5`, `observe-only`
+- 16384 digits, threshold 64: ratio `0.794`, stable `5/5`,
+  `candidate-faster`
+- 16384 digits, threshold 96: ratio `0.977`, stable `3/5`, `observe-only`
+- 16384 digits, threshold 128: ratio `0.951`, stable `3/5`, `observe-only`
+
+Product-like `/GL` rows:
+
+- 1000 digits, threshold 64: ratio `1.011`, stable `0/5`, `observe-only`
+- 1000 digits, threshold 96: ratio `0.884`, stable `4/5`, `candidate-faster`
+- 1000 digits, threshold 128: ratio `1.055`, stable `1/5`, `observe-only`
+- 4096 digits, threshold 64: ratio `0.943`, stable `3/5`, `observe-only`
+- 4096 digits, threshold 96: ratio `0.976`, stable `3/5`, `observe-only`
+- 4096 digits, threshold 128: ratio `0.902`, stable `3/5`, `observe-only`
+- 8192 digits, threshold 64: ratio `0.945`, stable `3/5`, `observe-only`
+- 8192 digits, threshold 96: ratio `1.028`, stable `2/5`, `observe-only`
+- 8192 digits, threshold 128: ratio `0.873`, stable `4/5`,
+  `candidate-faster`
+- 16384 digits, threshold 64: ratio `0.977`, stable `3/5`, `observe-only`
+- 16384 digits, threshold 96: ratio `0.991`, stable `1/5`, `observe-only`
+- 16384 digits, threshold 128: ratio `0.954`, stable `4/5`,
+  `candidate-faster`
+
+Decision: keep the sum-form middle as a benchmark dimension only. The normal
+Release winners did not reproduce cleanly under `/GL`, and several adjacent
+threshold/size cells were slower or unstable. This is the same failure class as
+the root-size threshold issue from MFastFermat: a pocket win is not a global
+route. A future promotion must be root-size gated, product-shape tested, and
+confirmed in the `/GL` build before touching production multiply.
