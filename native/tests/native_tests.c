@@ -1660,6 +1660,13 @@ static void test_benchmarks(void) {
   int saw_mul_policy4096_probe = 0;
   int saw_mul_policy8192_probe = 0;
   int saw_mul_policy16384_probe = 0;
+  int saw_mul_threshold_tournament_probe = 0;
+  int saw_mul_threshold_tournament512_probe = 0;
+  int saw_mul_threshold_tournament1000_probe = 0;
+  int saw_mul_threshold_tournament2048_probe = 0;
+  int saw_mul_threshold_tournament4096_probe = 0;
+  int saw_mul_threshold_tournament8192_probe = 0;
+  int saw_mul_threshold_tournament16384_probe = 0;
   int saw_karatsuba_middle_probe = 0;
   int saw_karatsuba_middle64_probe = 0;
   int saw_karatsuba_middle96_probe = 0;
@@ -1808,6 +1815,29 @@ static void test_benchmarks(void) {
       CHECK(strstr(report->results[index].detail, "gmpClue=") != NULL);
       CHECK(strstr(report->results[index].detail, "adoption=") != NULL);
       if (strcmp(report->results[index].operation, "mul-threshold") == 0) {
+        CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+      }
+      if (strcmp(report->results[index].operation, "mul-threshold-tournament") == 0) {
+        saw_mul_threshold_tournament_probe = 1;
+        if (report->results[index].digits == 512) saw_mul_threshold_tournament512_probe = 1;
+        else if (report->results[index].digits == 1000) saw_mul_threshold_tournament1000_probe = 1;
+        else if (report->results[index].digits == 2048) saw_mul_threshold_tournament2048_probe = 1;
+        else if (report->results[index].digits == 4096) saw_mul_threshold_tournament4096_probe = 1;
+        else if (report->results[index].digits == 8192) saw_mul_threshold_tournament8192_probe = 1;
+        else if (report->results[index].digits == 16384) saw_mul_threshold_tournament16384_probe = 1;
+        else CHECK(0);
+        CHECK(report->results[index].parity_verified);
+        CHECK(!report->results[index].replacement_ready);
+        CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+        CHECK(strstr(report->results[index].detail, "bestThreshold=") != NULL);
+        CHECK(strstr(report->results[index].detail, "currentThreshold=64") != NULL);
+        CHECK(strstr(report->results[index].detail, "thresholdsTested=7") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidateThresholds=32,48,64,80,96,128,160") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=best-threshold-mul-production-leaf") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=current-scratch-mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=root-size-threshold-tournament") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpClue=mpn_mul-threshold-table") != NULL);
+        CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
         CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
       }
       if (strcmp(report->results[index].operation, "qhat-u32-limb") == 0) {
@@ -3286,6 +3316,13 @@ static void test_benchmarks(void) {
   CHECK(saw_mul_policy4096_probe);
   CHECK(saw_mul_policy8192_probe);
   CHECK(saw_mul_policy16384_probe);
+  CHECK(saw_mul_threshold_tournament_probe);
+  CHECK(saw_mul_threshold_tournament512_probe);
+  CHECK(saw_mul_threshold_tournament1000_probe);
+  CHECK(saw_mul_threshold_tournament2048_probe);
+  CHECK(saw_mul_threshold_tournament4096_probe);
+  CHECK(saw_mul_threshold_tournament8192_probe);
+  CHECK(saw_mul_threshold_tournament16384_probe);
   CHECK(saw_karatsuba_middle_probe);
   CHECK(saw_karatsuba_middle64_probe);
   CHECK(saw_karatsuba_middle96_probe);
@@ -3438,6 +3475,9 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "qhat-preinv") != NULL);
   CHECK(strstr(json, "preinverted-limb-qhat") != NULL);
   CHECK(strstr(json, "division-qhat-estimator") != NULL);
+  CHECK(strstr(json, "mul-threshold-tournament") != NULL);
+  CHECK(strstr(json, "root-size-threshold-tournament") != NULL);
+  CHECK(strstr(json, "candidateThresholds=32,48,64,80,96,128,160") != NULL);
   CHECK(strstr(json, "mul-karatsuba-middle") != NULL);
   CHECK(strstr(json, "karatsuba-sum-middle") != NULL);
   CHECK(strstr(json, "karatsuba-difference-middle") != NULL);
@@ -3592,6 +3632,9 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "karatsuba-thr96") != NULL);
   CHECK(strstr(tsv, "mul-policy") != NULL);
   CHECK(strstr(tsv, "mul-policy-safety") != NULL);
+  CHECK(strstr(tsv, "mul-threshold-tournament") != NULL);
+  CHECK(strstr(tsv, "root-size-threshold-tournament") != NULL);
+  CHECK(strstr(tsv, "candidateThresholds=32,48,64,80,96,128,160") != NULL);
   CHECK(strstr(tsv, "toom3-u4-ge8192-leaf48") != NULL);
   CHECK(strstr(tsv, "toom3-u4-rec-ge16384-leaf64-depth2") != NULL);
   CHECK(strstr(tsv, "square") != NULL);
@@ -3671,6 +3714,9 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "format-policy-safety") != NULL);
   CHECK(strstr(benchmark_tsv, "format-policy-deep-safety") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-toom3") != NULL);
+  CHECK(strstr(benchmark_tsv, "mul-threshold-tournament") != NULL);
+  CHECK(strstr(benchmark_tsv, "root-size-threshold-tournament") != NULL);
+  CHECK(strstr(benchmark_tsv, "candidateThresholds=32,48,64,80,96,128,160") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-karatsuba-middle") != NULL);
   CHECK(strstr(benchmark_tsv, "karatsuba-sum-middle") != NULL);
   CHECK(strstr(benchmark_tsv, "karatsuba-difference-middle") != NULL);
@@ -3786,6 +3832,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "PRODUCT POLICY THRESHOLD GATES") != NULL);
   CHECK(strstr(benchmark_frontier, "Worst") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-threshold thr=") != NULL);
+  CHECK(strstr(benchmark_frontier, "mul-threshold-tournament thr=") != NULL);
   CHECK(strstr(benchmark_frontier, "mod-u32-precompute") != NULL);
   CHECK(strstr(benchmark_frontier, "gcd-u32-precompute") != NULL);
   CHECK(strstr(benchmark_frontier, "powmod-u32-precompute") != NULL);
