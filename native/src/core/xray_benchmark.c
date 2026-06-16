@@ -1443,6 +1443,114 @@ static void append_format_policy_safety_result(
   append_result(report, &result);
 }
 
+typedef struct {
+  size_t digits;
+  int candidate_available;
+  int parity;
+  unsigned long long candidate_us;
+  unsigned long long gmp_us;
+  double paired_ratio;
+  size_t stable_sample_count;
+  size_t sample_count;
+  double worst_pair_ratio;
+} XrayMulPolicySafetyPoint;
+
+static void append_mul_policy_safety_result(
+  XrayBenchmarkReport *report,
+  const char *policy,
+  const char *candidate,
+  const char *feature_gate,
+  const char *gmp_clue,
+  size_t min_digits,
+  size_t leaf_threshold,
+  size_t depth_limit,
+  int candidate_available,
+  const XrayMulPolicySafetyPoint *points,
+  size_t point_count) {
+  if (!points || point_count == 0) return;
+
+  int parity = 1;
+  double max_ratio = 0.0;
+  double max_worst_pair_ratio = 0.0;
+  size_t safe_size_count = 0;
+  size_t measured_size_count = 0;
+  size_t max_digits = 0;
+  size_t min_measured_digits = SIZE_MAX;
+  size_t required_stable = policy_required_stable_samples(XRAY_BENCH_SAMPLES);
+  unsigned long long candidate_us = 0;
+  unsigned long long gmp_us = 0;
+  char sizes[128] = {0};
+
+  for (size_t index = 0; index < point_count; ++index) {
+    const XrayMulPolicySafetyPoint *point = &points[index];
+    if (point->digits == 0 || point->sample_count == 0) continue;
+    measured_size_count++;
+    parity = parity && point->parity;
+    if (point->candidate_us > candidate_us) candidate_us = point->candidate_us;
+    if (point->gmp_us > gmp_us) gmp_us = point->gmp_us;
+    if (point->paired_ratio > max_ratio) max_ratio = point->paired_ratio;
+    if (point->worst_pair_ratio > max_worst_pair_ratio) max_worst_pair_ratio = point->worst_pair_ratio;
+    if (point->digits > max_digits) max_digits = point->digits;
+    if (point->digits < min_measured_digits) min_measured_digits = point->digits;
+    if (candidate_available &&
+        point->candidate_available &&
+        point->parity &&
+        point->paired_ratio <= 1.0 &&
+        point->worst_pair_ratio <= 1.0 &&
+        point->stable_sample_count >= required_stable) {
+      safe_size_count++;
+    }
+    size_t used = strlen(sizes);
+    if (used < sizeof(sizes)) {
+      snprintf(sizes + used, sizeof(sizes) - used, "%s%zu", sizes[0] ? "," : "", point->digits);
+    }
+  }
+  if (measured_size_count == 0) return;
+
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "policy gate mul %s %zu-%zu digits", policy, min_measured_digits, max_digits);
+  snprintf(result.category, sizeof(result.category), "policy-gate");
+  snprintf(result.operation, sizeof(result.operation), "mul-policy-safety");
+  result.digits = max_digits;
+  result.scratch_us = candidate_us ? candidate_us : 1;
+  result.gmp_us = gmp_us ? gmp_us : 1;
+  result.speed_ratio = max_ratio > 0.0 ? max_ratio : 1.0;
+  result.max_allowed_speed_ratio = 1.0;
+  result.stable_sample_count = safe_size_count;
+  result.sample_count = measured_size_count;
+  result.worst_pair_ratio = max_worst_pair_ratio > 0.0 ? max_worst_pair_ratio : 1.0;
+  result.parity_verified = parity;
+  result.replacement_ready = 0;
+  snprintf(result.adoption, sizeof(result.adoption), "%s",
+    !parity ? "blocked-output-mismatch" : "observe-only");
+  snprintf(result.status, sizeof(result.status), "%s",
+    !parity ? "mismatch" :
+    (!candidate_available ? "candidate-unavailable" :
+    (safe_size_count == measured_size_count ? "safety-window-clean" : "neighbor-regression")));
+  result.passed = parity;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  snprintf(result.detail, sizeof(result.detail),
+    "op=mul-policy-safety policy=%s sizes=%s minDigits=%zu leafThreshold=%zu depthLimit=%zu forcedCandidate=yes thresholdSafety=forced-neighbor safeSizes=%zu/%zu requiredStablePairs=%zu/%u maxRatio=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median candidate=%s candidateAvailable=%s baseline=mpz_mul oracle=mpz_mul featureGate=%s gmpClue=%s noAutoRoute=1 adoption=%s",
+    policy,
+    sizes,
+    min_digits,
+    leaf_threshold,
+    depth_limit,
+    safe_size_count,
+    measured_size_count,
+    required_stable,
+    XRAY_BENCH_SAMPLES,
+    result.speed_ratio,
+    result.worst_pair_ratio,
+    candidate,
+    candidate_available ? "yes" : "no",
+    feature_gate,
+    gmp_clue,
+    result.adoption);
+  append_result(report, &result);
+}
+
 static void append_parse_chunk_probe_result(
   XrayBenchmarkReport *report,
   size_t digits,
@@ -3973,6 +4081,136 @@ static int mul_policy_toom3_unroll4_recursive(
 #endif
 }
 
+static XrayMulPolicySafetyPoint measure_forced_mul_policy_candidate(
+  size_t digits,
+  size_t leaf_threshold,
+  size_t depth_limit,
+  int candidate_available,
+  XrayMulPolicyProbeFn probe) {
+  XrayMulPolicySafetyPoint measurement;
+  memset(&measurement, 0, sizeof(measurement));
+  measurement.digits = digits;
+  measurement.candidate_available = candidate_available;
+  measurement.sample_count = XRAY_BENCH_SAMPLES;
+
+  char *left_text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  char *right_text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  XrayScratchBigInt a[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt b[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt out[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t ga[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gb[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gout[XRAY_MUL_OPERAND_FAMILIES];
+
+  unsigned int iterations = perf_iterations("mul", digits);
+  int ok = probe != NULL;
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    xray_bigint_init(&a[family]);
+    xray_bigint_init(&b[family]);
+    xray_bigint_init(&out[family]);
+    mpz_inits(ga[family], gb[family], gout[family], NULL);
+    left_text[family] = benchmark_decimal(digits, mul_operand_families[family].left_seed, mul_operand_families[family].left_high_lead);
+    right_text[family] = benchmark_decimal(digits, mul_operand_families[family].right_seed, mul_operand_families[family].right_high_lead);
+    ok = ok &&
+      left_text[family] &&
+      right_text[family] &&
+      xray_bigint_set_decimal(&a[family], left_text[family]) &&
+      xray_bigint_set_decimal(&b[family], right_text[family]) &&
+      mpz_set_str(ga[family], left_text[family], 10) == 0 &&
+      mpz_set_str(gb[family], right_text[family], 10) == 0;
+  }
+
+  unsigned long long candidate_samples[XRAY_BENCH_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_SAMPLES] = {0};
+  int parity = 1;
+  for (unsigned int sample = 0; sample < XRAY_BENCH_SAMPLES; ++sample) {
+    unsigned long long candidate_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+        if (candidate_available) {
+          ok = probe(&out[family], &a[family], &b[family], digits, 0, leaf_threshold, depth_limit);
+        } else {
+          ok = xray_bigint_mul(&out[family], &a[family], &b[family]);
+        }
+      }
+    }
+    candidate_samples[sample] = xray_now_us() - candidate_started;
+
+    unsigned long long gmp_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+        mpz_mul(gout[family], ga[family], gb[family]);
+      }
+    }
+    gmp_samples[sample] = xray_now_us() - gmp_started;
+
+    for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+      char *candidate_text = xray_bigint_get_decimal(&out[family]);
+      char *gmp_text = mpz_get_str(NULL, 10, gout[family]);
+      parity = parity && ok && candidate_text && gmp_text && strcmp(candidate_text, gmp_text) == 0;
+      free(candidate_text);
+      free(gmp_text);
+    }
+  }
+
+  measurement.parity = parity;
+  measurement.candidate_us = median_samples(candidate_samples, XRAY_BENCH_SAMPLES);
+  measurement.gmp_us = median_samples(gmp_samples, XRAY_BENCH_SAMPLES);
+  measurement.paired_ratio = median_paired_ratio(candidate_samples, gmp_samples, XRAY_BENCH_SAMPLES);
+  measurement.stable_sample_count = paired_ratio_wins(candidate_samples, gmp_samples, XRAY_BENCH_SAMPLES, 1.0);
+  measurement.worst_pair_ratio = max_paired_ratio(candidate_samples, gmp_samples, XRAY_BENCH_SAMPLES);
+
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    mpz_clears(ga[family], gb[family], gout[family], NULL);
+    xray_bigint_clear(&a[family]);
+    xray_bigint_clear(&b[family]);
+    xray_bigint_clear(&out[family]);
+    free(left_text[family]);
+    free(right_text[family]);
+  }
+
+  return measurement;
+}
+
+static void run_mul_policy_safety_case(
+  XrayBenchmarkReport *report,
+  const char *policy,
+  const char *candidate,
+  const char *feature_gate,
+  const char *gmp_clue,
+  size_t min_digits,
+  size_t leaf_threshold,
+  size_t depth_limit,
+  int candidate_available,
+  XrayMulPolicyProbeFn probe,
+  const size_t *digits,
+  size_t digit_count) {
+  if (!digits || digit_count == 0) return;
+  XrayMulPolicySafetyPoint *points = (XrayMulPolicySafetyPoint *)calloc(digit_count, sizeof(XrayMulPolicySafetyPoint));
+  if (!points) return;
+  for (size_t index = 0; index < digit_count; ++index) {
+    points[index] = measure_forced_mul_policy_candidate(
+      digits[index],
+      leaf_threshold,
+      depth_limit,
+      candidate_available,
+      probe);
+  }
+  append_mul_policy_safety_result(
+    report,
+    policy,
+    candidate,
+    feature_gate,
+    gmp_clue,
+    min_digits,
+    leaf_threshold,
+    depth_limit,
+    candidate_available,
+    points,
+    digit_count);
+  free(points);
+}
+
 static void run_mul_policy_probe_case(
   XrayBenchmarkReport *report,
   size_t digits,
@@ -6136,6 +6374,34 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
       XRAY_HAS_MUL_UNROLL4_POLICY_PROBES,
       mul_policy_toom3_unroll4_recursive);
   }
+  const size_t mul_policy_toom_leaf48_safety_digits[] = {4096, 8192, 16384};
+  run_mul_policy_safety_case(
+    report,
+    "toom3-u4-ge8192-leaf48",
+    "one-level-toom3+unroll4-leaf",
+    "mul-policy-toom3-u4-ge8192-leaf48",
+    "toom33-leaf-schedule",
+    8192,
+    48,
+    1,
+    XRAY_HAS_MUL_UNROLL4_POLICY_PROBES,
+    mul_policy_toom3_unroll4,
+    mul_policy_toom_leaf48_safety_digits,
+    sizeof(mul_policy_toom_leaf48_safety_digits) / sizeof(mul_policy_toom_leaf48_safety_digits[0]));
+  const size_t mul_policy_toom_rec_safety_digits[] = {8192, 16384};
+  run_mul_policy_safety_case(
+    report,
+    "toom3-u4-rec-ge16384-leaf64-depth2",
+    "recursive-toom3+unroll4",
+    "mul-policy-toom3-u4-rec-ge16384-leaf64-depth2",
+    "toom33-recursive",
+    16384,
+    64,
+    2,
+    XRAY_HAS_MUL_UNROLL4_POLICY_PROBES,
+    mul_policy_toom3_unroll4_recursive,
+    mul_policy_toom_rec_safety_digits,
+    sizeof(mul_policy_toom_rec_safety_digits) / sizeof(mul_policy_toom_rec_safety_digits[0]));
 
   const size_t digits[] = {512, 1000, 2048, 4096, 8192, 16384};
   const size_t thresholds[] = {16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 256};

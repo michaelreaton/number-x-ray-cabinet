@@ -298,6 +298,9 @@ neighboring sizes show stable wins without worst-pair regressions. The
 `divmod-preinv-qhat-safety` policy-gate row aggregates the measured 4096,
 8192, and 16384 digit rows so a tempting large-size pocket win cannot become a
 global or root-size threshold unless the neighboring window is clean.
+Multiply policy scouts use the same discipline: `mul-policy-safety` forces the
+Toom-3+unroll4 candidate at adjacent sizes and keeps the policy
+`observe-only`/`noAutoRoute=1` when Release or `/GL` shows a regression.
 
 Primary references: [GMP multiplication algorithms](https://gmplib.org/manual/Multiplication-Algorithms.html), [GMP FFT multiplication](https://gmplib.org/manual/FFT-Multiplication.html), [GMP single-limb division](https://gmplib.org/manual/Single-Limb-Division.html), and the official GMP 6.3.0 source tarball from [gmplib.org](https://gmplib.org/download/gmp/gmp-6.3.0.tar.xz).
 
