@@ -13,6 +13,23 @@ typedef enum XrayLayoutProfile {
 
 #define XRAY_BENCHMARK_LIVE_ROWS 8
 #define XRAY_BENCHMARK_LIVE_COLS 6
+#define XRAY_BENCHMARK_HISTORY_ROWS 96
+
+typedef enum BenchmarkLaneFilter {
+  BENCHMARK_FILTER_ALL = 0,
+  BENCHMARK_FILTER_PROMOTION = 1,
+  BENCHMARK_FILTER_ORACLE = 2,
+  BENCHMARK_FILTER_SAFETY = 3,
+  BENCHMARK_FILTER_COUNT = 4
+} BenchmarkLaneFilter;
+
+typedef struct BenchmarkLiveRow {
+  char values[XRAY_BENCHMARK_LIVE_COLS][128];
+  char tone[16];
+  int promotion_ready;
+  int oracle_only;
+  int safety_rejected;
+} BenchmarkLiveRow;
 
 typedef struct AppState {
   GtkWidget *window;
@@ -50,6 +67,7 @@ typedef struct AppState {
   GtkWidget *benchmark_failed_label;
   GtkWidget *benchmark_current_label;
   GtkWidget *benchmark_row_labels[XRAY_BENCHMARK_LIVE_ROWS][XRAY_BENCHMARK_LIVE_COLS];
+  GtkWidget *benchmark_filter_buttons[BENCHMARK_FILTER_COUNT];
   GtkWidget *benchmark_lane_ready_count_label;
   GtkWidget *benchmark_lane_ready_detail_label;
   GtkWidget *benchmark_lane_oracle_count_label;
@@ -66,6 +84,9 @@ typedef struct AppState {
   size_t live_benchmark_blocked_count;
   size_t live_benchmark_failed_count;
   size_t live_benchmark_safety_count;
+  BenchmarkLaneFilter benchmark_filter;
+  BenchmarkLiveRow benchmark_history[XRAY_BENCHMARK_HISTORY_ROWS];
+  size_t benchmark_history_count;
   char live_stage_name[48];
   char live_stage_status[32];
   char live_stage_detail[256];
@@ -450,6 +471,8 @@ static const char *workbench_css =
   ".muted { color: #929da1; }"
   ".control-row { padding: 2px 0; }"
   ".select-face { background: #0a0e10; color: #d5dcde; border: 1px solid #2b3338; border-radius: 3px; padding: 4px 8px; font-size: 12px; }"
+  ".lane-filter { min-width: 84px; padding: 4px 9px; color: #aeb8bb; background: #0a0e10; border-color: #2b3338; font-size: 11px; }"
+  ".lane-filter.selected { color: #24e4f2; background: #10242a; border-color: #1e7180; }"
   ".run-button { background: #10272d; color: #28e5f6; border: 1px solid #27dced; border-radius: 3px; padding: 9px 12px; font-size: 17px; font-weight: 700; }"
   ".run-button:hover { background: #12323a; border-color: #62f1ff; }"
   ".reset-button { background: #0b0f11; color: #8a9498; border: 1px solid #30383d; border-radius: 3px; padding: 9px 12px; font-size: 12px; }"
@@ -639,6 +662,16 @@ static int benchmark_status_is_safety_rejected(const char *status) {
     strstr(status, "mismatch"));
 }
 
+static const char *benchmark_filter_name(BenchmarkLaneFilter filter) {
+  switch (filter) {
+    case BENCHMARK_FILTER_PROMOTION: return "promotion-ready";
+    case BENCHMARK_FILTER_ORACLE: return "oracle-only";
+    case BENCHMARK_FILTER_SAFETY: return "safety-rejected";
+    case BENCHMARK_FILTER_ALL:
+    default: return "all";
+  }
+}
+
 static void apply_tone(GtkWidget *label, const char *tone) {
   if (!label) return;
   gtk_widget_remove_css_class(label, "good");
@@ -701,6 +734,9 @@ static void benchmark_event_brief(const UiStageEvent *event, char *out, size_t o
     stable[0] ? stable : "n/a");
 }
 
+static void set_benchmark_filter_button_states(AppState *app);
+static size_t render_benchmark_table(AppState *app);
+
 static void reset_benchmark_dashboard(AppState *app, const char *current) {
   if (!app) return;
   set_benchmark_dashboard_counts(app);
@@ -709,12 +745,10 @@ static void reset_benchmark_dashboard(AppState *app, const char *current) {
   set_label_if(app->benchmark_lane_oracle_detail_label, "No oracle-only rows yet.");
   set_label_if(app->benchmark_lane_safety_detail_label, "No safety rejection yet.");
   set_label_if(app->benchmark_current_label, current ? current : "Waiting for Run Proof.");
-  for (int row = 0; row < XRAY_BENCHMARK_LIVE_ROWS; ++row) {
-    for (int col = 0; col < XRAY_BENCHMARK_LIVE_COLS; ++col) {
-      set_label_if(app->benchmark_row_labels[row][col], row == 0 && col == 3 ? "waiting" : "");
-      apply_tone(app->benchmark_row_labels[row][col], "muted");
-    }
-  }
+  app->benchmark_history_count = 0;
+  memset(app->benchmark_history, 0, sizeof(app->benchmark_history));
+  set_benchmark_filter_button_states(app);
+  render_benchmark_table(app);
 }
 
 static void set_benchmark_table_row(AppState *app, int row, const char *values[XRAY_BENCHMARK_LIVE_COLS], const char *tone) {
@@ -726,19 +760,55 @@ static void set_benchmark_table_row(AppState *app, int row, const char *values[X
   }
 }
 
+static int benchmark_row_matches_filter(const BenchmarkLiveRow *row, BenchmarkLaneFilter filter) {
+  if (!row) return 0;
+  switch (filter) {
+    case BENCHMARK_FILTER_PROMOTION: return row->promotion_ready;
+    case BENCHMARK_FILTER_ORACLE: return row->oracle_only;
+    case BENCHMARK_FILTER_SAFETY: return row->safety_rejected;
+    case BENCHMARK_FILTER_ALL:
+    default: return 1;
+  }
+}
+
+static void set_benchmark_filter_button_states(AppState *app) {
+  if (!app) return;
+  for (int index = 0; index < BENCHMARK_FILTER_COUNT; ++index) {
+    GtkWidget *button = app->benchmark_filter_buttons[index];
+    if (!button) continue;
+    gtk_widget_remove_css_class(button, "selected");
+    if ((BenchmarkLaneFilter)index == app->benchmark_filter) gtk_widget_add_css_class(button, "selected");
+  }
+}
+
+static size_t render_benchmark_table(AppState *app) {
+  if (!app || !app->benchmark_row_labels[0][0]) return 0;
+  size_t visible = 0;
+  size_t matches = 0;
+  for (size_t index = 0; index < app->benchmark_history_count; ++index) {
+    BenchmarkLiveRow *row = &app->benchmark_history[index];
+    if (!benchmark_row_matches_filter(row, app->benchmark_filter)) continue;
+    matches++;
+    if (visible < XRAY_BENCHMARK_LIVE_ROWS) {
+      const char *values[XRAY_BENCHMARK_LIVE_COLS];
+      for (int col = 0; col < XRAY_BENCHMARK_LIVE_COLS; ++col) values[col] = row->values[col];
+      set_benchmark_table_row(app, (int)visible, values, row->tone);
+      visible++;
+    }
+  }
+  for (size_t row = visible; row < XRAY_BENCHMARK_LIVE_ROWS; ++row) {
+    const char *blank[XRAY_BENCHMARK_LIVE_COLS] = {"", "", "", "", "", ""};
+    if (row == 0) {
+      blank[1] = app->benchmark_history_count ? "filter" : "";
+      blank[3] = app->benchmark_history_count ? "no matching rows" : "waiting";
+    }
+    set_benchmark_table_row(app, (int)row, blank, "muted");
+  }
+  return matches;
+}
+
 static void push_benchmark_table_row(AppState *app, const UiStageEvent *event) {
   if (!app || !event) return;
-  char existing[XRAY_BENCHMARK_LIVE_COLS][128];
-  const char *shift_values[XRAY_BENCHMARK_LIVE_COLS];
-  for (int row = XRAY_BENCHMARK_LIVE_ROWS - 1; row > 0; --row) {
-    for (int col = 0; col < XRAY_BENCHMARK_LIVE_COLS; ++col) {
-      const char *text = gtk_label_get_text(GTK_LABEL(app->benchmark_row_labels[row - 1][col]));
-      snprintf(existing[col], sizeof(existing[col]), "%s", text ? text : "");
-      shift_values[col] = existing[col];
-    }
-    set_benchmark_table_row(app, row, shift_values, benchmark_status_tone(existing[1]));
-  }
-
   char row_id[32] = "";
   char category[40] = "";
   char operation[64] = "";
@@ -754,15 +824,47 @@ static void push_benchmark_table_row(AppState *app, const UiStageEvent *event) {
   detail_token_value(event->detail, "stable", stable, sizeof(stable));
   snprintf(metric, sizeof(metric), "r=%s s=%s", ratio[0] ? ratio : "n/a", stable[0] ? stable : "n/a");
 
-  const char *new_values[XRAY_BENCHMARK_LIVE_COLS] = {
-    row_id[0] ? row_id : "?",
-    event->status[0] ? event->status : "row",
-    category[0] ? category : "benchmark",
-    operation[0] ? operation : "unknown",
-    digits[0] ? digits : "-",
-    metric
-  };
-  set_benchmark_table_row(app, 0, new_values, benchmark_status_tone(event->status));
+  if (app->benchmark_history_count) {
+    size_t move_count = app->benchmark_history_count < XRAY_BENCHMARK_HISTORY_ROWS ?
+      app->benchmark_history_count :
+      XRAY_BENCHMARK_HISTORY_ROWS - 1U;
+    memmove(&app->benchmark_history[1], &app->benchmark_history[0], sizeof(app->benchmark_history[0]) * move_count);
+  }
+  if (app->benchmark_history_count < XRAY_BENCHMARK_HISTORY_ROWS) app->benchmark_history_count++;
+  BenchmarkLiveRow *row = &app->benchmark_history[0];
+  memset(row, 0, sizeof(*row));
+  snprintf(row->values[0], sizeof(row->values[0]), "%s", row_id[0] ? row_id : "?");
+  snprintf(row->values[1], sizeof(row->values[1]), "%s", event->status[0] ? event->status : "row");
+  snprintf(row->values[2], sizeof(row->values[2]), "%s", category[0] ? category : "benchmark");
+  snprintf(row->values[3], sizeof(row->values[3]), "%s", operation[0] ? operation : "unknown");
+  snprintf(row->values[4], sizeof(row->values[4]), "%s", digits[0] ? digits : "-");
+  snprintf(row->values[5], sizeof(row->values[5]), "%s", metric);
+  snprintf(row->tone, sizeof(row->tone), "%s", benchmark_status_tone(event->status));
+  row->promotion_ready = benchmark_status_is_promotion_ready(event->status);
+  row->oracle_only = strcmp(event->status, "oracle-only") == 0;
+  row->safety_rejected = benchmark_status_is_safety_rejected(event->status);
+  render_benchmark_table(app);
+}
+
+static void on_benchmark_filter_clicked(GtkButton *button, gpointer user_data) {
+  AppState *app = (AppState *)user_data;
+  if (!app) return;
+  app->benchmark_filter = (BenchmarkLaneFilter)GPOINTER_TO_INT(g_object_get_data(G_OBJECT(button), "benchmark-filter"));
+  set_benchmark_filter_button_states(app);
+  size_t matches = render_benchmark_table(app);
+  char current[160];
+  snprintf(current, sizeof(current), "Filter: %s | showing %zu recent matches", benchmark_filter_name(app->benchmark_filter), matches);
+  set_label_if(app->benchmark_current_label, current);
+}
+
+static GtkWidget *benchmark_filter_button(AppState *app, const char *label, BenchmarkLaneFilter filter) {
+  GtkWidget *button = gtk_button_new_with_label(label);
+  gtk_widget_add_css_class(button, "lane-filter");
+  if (filter == app->benchmark_filter) gtk_widget_add_css_class(button, "selected");
+  g_object_set_data(G_OBJECT(button), "benchmark-filter", GINT_TO_POINTER((int)filter));
+  g_signal_connect(button, "clicked", G_CALLBACK(on_benchmark_filter_clicked), app);
+  app->benchmark_filter_buttons[filter] = button;
+  return button;
 }
 
 static void cpu_gate_summary(char *out, size_t out_size, int compact) {
@@ -955,10 +1057,11 @@ static gboolean live_run_tick(gpointer user_data) {
   snprintf(proof, sizeof(proof), "Product proof: running | elapsed %lu.%03lus", elapsed / 1000UL, elapsed % 1000UL);
   snprintf(cyclo, sizeof(cyclo), "Live stage: %s | %s", app->cancel_requested ? "Cancel checkpoint" : current_live_stage(app), app->live_stage_status[0] ? app->live_stage_status : "running");
   if (app->live_benchmark_row_count) {
-    snprintf(bench, sizeof(bench), "Benchmark rows %zu | ready %zu | oracle %zu%s",
+    snprintf(bench, sizeof(bench), "Benchmark rows %zu | promotion %zu | oracle %zu | safety %zu%s",
       app->live_benchmark_row_count,
       app->live_benchmark_ready_count,
       app->live_benchmark_oracle_count,
+      app->live_benchmark_safety_count,
       app->cancel_requested ? " | cancel pending" : "");
   } else {
     snprintf(bench, sizeof(bench), "%s | %s%s", current_live_stage(app), app->live_stage_status[0] ? app->live_stage_status : "worker active", app->cancel_requested ? " | cancel pending" : "");
@@ -987,10 +1090,11 @@ static gboolean apply_stage_event(gpointer data) {
     snprintf(proof, sizeof(proof), "Product proof: %s | %s", event->stage, event->status);
     snprintf(cyclo, sizeof(cyclo), "Live stage: %s | %s", event->stage, event->status);
     if (app->live_benchmark_row_count) {
-      snprintf(bench, sizeof(bench), "Benchmark rows %zu | ready %zu | oracle %zu",
+      snprintf(bench, sizeof(bench), "Benchmark rows %zu | promotion %zu | oracle %zu | safety %zu",
         app->live_benchmark_row_count,
         app->live_benchmark_ready_count,
-        app->live_benchmark_oracle_count);
+        app->live_benchmark_oracle_count,
+        app->live_benchmark_safety_count);
     } else {
       snprintf(bench, sizeof(bench), "%s | %s", event->stage, event->status);
     }
@@ -1431,6 +1535,13 @@ static GtkWidget *build_benchmark_page(AppState *app) {
   gtk_widget_set_hexpand(app->benchmark_current_label, TRUE);
   gtk_box_append(GTK_BOX(stream_title), app->benchmark_current_label);
   gtk_box_append(GTK_BOX(stream), stream_title);
+
+  GtkWidget *filters = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+  gtk_box_append(GTK_BOX(filters), benchmark_filter_button(app, "All", BENCHMARK_FILTER_ALL));
+  gtk_box_append(GTK_BOX(filters), benchmark_filter_button(app, "Promotion", BENCHMARK_FILTER_PROMOTION));
+  gtk_box_append(GTK_BOX(filters), benchmark_filter_button(app, "Oracle", BENCHMARK_FILTER_ORACLE));
+  gtk_box_append(GTK_BOX(filters), benchmark_filter_button(app, "Safety", BENCHMARK_FILTER_SAFETY));
+  gtk_box_append(GTK_BOX(stream), filters);
 
   GtkWidget *grid = gtk_grid_new();
   gtk_grid_set_column_spacing(GTK_GRID(grid), 8);
