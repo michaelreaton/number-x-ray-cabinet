@@ -1421,6 +1421,8 @@ static void test_benchmarks(void) {
   int saw_format_policy_gate_static4096 = 0;
   int saw_format_policy_gate_static8192 = 0;
   int saw_divmod_preinv_qhat_safety_gate = 0;
+  int saw_mul_policy_safety_toom_leaf48_gate = 0;
+  int saw_mul_policy_safety_toom_rec_gate = 0;
   int saw_format_policy1000_probe = 0;
   int saw_format_policy4096_probe = 0;
   int saw_format_policy8192_probe = 0;
@@ -2368,6 +2370,45 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "gmpClue=mpn_sbpi1_div_qr-qhat") != NULL);
         CHECK(strstr(report->results[index].detail, "precomputeScope=per-divisor") != NULL);
         CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+      } else if (strcmp(report->results[index].operation, "mul-policy-safety") == 0) {
+        CHECK(!report->results[index].replacement_ready);
+        CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+        CHECK(strstr(report->results[index].detail, "op=mul-policy-safety") != NULL);
+        CHECK(strstr(report->results[index].detail, "requiredStablePairs=4/5") != NULL);
+        CHECK(strstr(report->results[index].detail, "maxRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "maxWorstPairRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=mpz_mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "oracle=mpz_mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "safeSizes=") != NULL);
+        CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+#if defined(_MSC_VER) && defined(_M_X64)
+        CHECK(strstr(report->results[index].detail, "candidateAvailable=yes") != NULL);
+#else
+        CHECK(strstr(report->results[index].detail, "candidateAvailable=no") != NULL);
+#endif
+        if (strstr(report->results[index].detail, "policy=toom3-u4-ge8192-leaf48") != NULL) {
+          saw_mul_policy_safety_toom_leaf48_gate = 1;
+          CHECK(report->results[index].sample_count == 3);
+          CHECK(strstr(report->results[index].detail, "sizes=4096,8192,16384") != NULL);
+          CHECK(strstr(report->results[index].detail, "minDigits=8192") != NULL);
+          CHECK(strstr(report->results[index].detail, "leafThreshold=48") != NULL);
+          CHECK(strstr(report->results[index].detail, "depthLimit=1") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=one-level-toom3+unroll4-leaf") != NULL);
+          CHECK(strstr(report->results[index].detail, "featureGate=mul-policy-toom3-u4-ge8192-leaf48") != NULL);
+          CHECK(strstr(report->results[index].detail, "gmpClue=toom33-leaf-schedule") != NULL);
+        } else if (strstr(report->results[index].detail, "policy=toom3-u4-rec-ge16384-leaf64-depth2") != NULL) {
+          saw_mul_policy_safety_toom_rec_gate = 1;
+          CHECK(report->results[index].sample_count == 2);
+          CHECK(strstr(report->results[index].detail, "sizes=8192,16384") != NULL);
+          CHECK(strstr(report->results[index].detail, "minDigits=16384") != NULL);
+          CHECK(strstr(report->results[index].detail, "leafThreshold=64") != NULL);
+          CHECK(strstr(report->results[index].detail, "depthLimit=2") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=recursive-toom3+unroll4") != NULL);
+          CHECK(strstr(report->results[index].detail, "featureGate=mul-policy-toom3-u4-rec-ge16384-leaf64-depth2") != NULL);
+          CHECK(strstr(report->results[index].detail, "gmpClue=toom33-recursive") != NULL);
+        } else {
+          CHECK(0);
+        }
       } else {
         CHECK(0);
       }
@@ -2489,6 +2530,8 @@ static void test_benchmarks(void) {
   CHECK(saw_format_policy_gate_static4096);
   CHECK(saw_format_policy_gate_static8192);
   CHECK(saw_divmod_preinv_qhat_safety_gate);
+  CHECK(saw_mul_policy_safety_toom_leaf48_gate);
+  CHECK(saw_mul_policy_safety_toom_rec_gate);
   CHECK(saw_format_policy1000_probe);
   CHECK(saw_format_policy4096_probe);
   CHECK(saw_format_policy8192_probe);
@@ -2666,6 +2709,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "square-policy") != NULL);
   CHECK(strstr(json, "karatsuba-thr96") != NULL);
   CHECK(strstr(json, "mul-policy") != NULL);
+  CHECK(strstr(json, "mul-policy-safety") != NULL);
   CHECK(strstr(json, "toom3-u4-ge8192-leaf48") != NULL);
   CHECK(strstr(json, "toom3-u4-rec-ge16384-leaf64-depth2") != NULL);
   CHECK(strstr(json, "\"operation\":\"square\"") != NULL);
@@ -2729,6 +2773,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "square-policy") != NULL);
   CHECK(strstr(tsv, "karatsuba-thr96") != NULL);
   CHECK(strstr(tsv, "mul-policy") != NULL);
+  CHECK(strstr(tsv, "mul-policy-safety") != NULL);
   CHECK(strstr(tsv, "toom3-u4-ge8192-leaf48") != NULL);
   CHECK(strstr(tsv, "toom3-u4-rec-ge16384-leaf64-depth2") != NULL);
   CHECK(strstr(tsv, "square") != NULL);
@@ -2828,6 +2873,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "square-policy") != NULL);
   CHECK(strstr(benchmark_tsv, "karatsuba-thr96") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-policy") != NULL);
+  CHECK(strstr(benchmark_tsv, "mul-policy-safety") != NULL);
   CHECK(strstr(benchmark_tsv, "toom3-u4-ge8192-leaf48") != NULL);
   CHECK(strstr(benchmark_tsv, "toom3-u4-rec-ge16384-leaf64-depth2") != NULL);
   CHECK(strstr(benchmark_tsv, "square") != NULL);
@@ -2907,6 +2953,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "mul-policy current-default") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-policy toom3-u4-ge8192-leaf48") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-policy toom3-u4-rec-ge16384-leaf64-depth2") != NULL);
+  CHECK(strstr(benchmark_frontier, "mul-policy-safety toom3-u4-ge8192-leaf48") != NULL);
+  CHECK(strstr(benchmark_frontier, "mul-policy-safety toom3-u4-rec-ge16384-leaf64-depth2") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-karatsuba-middle") != NULL);
   CHECK(strstr(benchmark_frontier, "mode=sum-vs-difference") != NULL);
   CHECK(strstr(benchmark_frontier, "base=karatsuba-difference-") != NULL);

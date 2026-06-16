@@ -19,6 +19,50 @@ parity plus a stable same-run paired win.
   `noAutoRoute=1`, `replacementReady=false`, and `adoption=observe-only` until a
   dedicated forced-neighbor safety row passes.
 
+## 2026-06-16: Multiply Threshold Forced-Neighbor Gate
+
+Runs:
+
+- Release: `native/build-codex-pair-route/native-test-runs/20260616-052236-c4b04caf`
+- `/GL`: `native/build-codex-ltcg/native-test-runs/20260616-052910-c4b04caf`
+
+The benchmark now emits `mul-policy-safety` policy-gate rows for the two
+tempting Toom-3+unroll4 route candidates. These rows force the candidate below
+and at the proposed handoff instead of reusing ordinary `mul-policy` rows, which
+can fall back to current scratch multiplication below `minDigits`. This prevents
+the exact failure mode where a root-size or threshold candidate looks good at
+one size, then hurts an adjacent size or flips under product-like `/GL` codegen.
+
+Release rows:
+
+- `mul-policy-safety toom3-u4-ge8192-leaf48`: `neighbor-regression`, safe sizes
+  `2/3`, max ratio `1.073`, max worst pair `1.298`, `replacementReady=false`,
+  `observe-only`
+- `mul-policy-safety toom3-u4-rec-ge16384-leaf64-depth2`:
+  `neighbor-regression`, safe sizes `0/2`, max ratio `1.035`, max worst pair
+  `1.218`, `replacementReady=false`, `observe-only`
+- Ordinary `mul-policy toom3-u4-ge8192-leaf48`, 4096 digits: ratio `0.803`,
+  stable `5/5`, but `activeCandidate=current-scratch-mul`; this row is useful
+  product-route evidence, not proof that the candidate is safe below threshold.
+- Ordinary `mul-policy toom3-u4-ge8192-leaf48`, 8192 digits: ratio `1.059`,
+  stable `1/5`, `observe-only`
+
+`/GL` rows:
+
+- `mul-policy-safety toom3-u4-ge8192-leaf48`: `neighbor-regression`, safe sizes
+  `0/3`, max ratio `1.081`, max worst pair `1.234`, `replacementReady=false`,
+  `observe-only`
+- `mul-policy-safety toom3-u4-rec-ge16384-leaf64-depth2`:
+  `neighbor-regression`, safe sizes `0/2`, max ratio `1.101`, max worst pair
+  `1.537`, `replacementReady=false`, `observe-only`
+- Some standalone `/GL` kernel probes for one-level Toom-3+unroll4 reported
+  `promote-candidate` at 8192/16384 digits, but the forced policy gate rejected
+  the route window. Kernel wins remain evidence only.
+
+Decision: do not route either Toom-3+unroll4 multiply policy. The safety gate
+proved that both candidates have adjacent-size or `/GL` regressions, so a
+global or root-size-gated threshold would be harmful.
+
 ## 2026-06-16: Threshold Policy No-Auto-Route Guard
 
 Runs:
