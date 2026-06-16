@@ -32,6 +32,13 @@ typedef struct XrayScratchBigInt {
   size_t capacity;
 } XrayScratchBigInt;
 
+typedef struct XrayBigIntDivisorContext {
+  XrayScratchBigInt divisor;
+  XrayScratchBigInt normalized_divisor;
+  unsigned int normalization_shift;
+  int valid;
+} XrayBigIntDivisorContext;
+
 typedef struct XrayBigIntRouteConfig {
   unsigned int word_bits;
   size_t karatsuba_threshold_limbs;
@@ -510,6 +517,38 @@ XRAY_API int xray_bigint_divmod_u32(XrayScratchBigInt *quotient, uint32_t *remai
  * failure, invalid divisor, or identical quotient/remainder outputs.
  */
 XRAY_API int xray_bigint_divmod(XrayScratchBigInt *quotient, XrayScratchBigInt *remainder, const XrayScratchBigInt *numerator, const XrayScratchBigInt *divisor);
+
+/**
+ * Initialize a reusable full-width divisor context.
+ *
+ * The context stores a private copy of the divisor plus precomputed
+ * normalization state for repeated division by the same value. Call
+ * xray_bigint_divisor_context_clear() when done.
+ */
+XRAY_API void xray_bigint_divisor_context_init(XrayBigIntDivisorContext *context);
+
+/**
+ * Release memory owned by a reusable divisor context.
+ */
+XRAY_API void xray_bigint_divisor_context_clear(XrayBigIntDivisorContext *context);
+
+/**
+ * Precompute divisor state for repeated full-width division.
+ *
+ * divisor must be non-zero. The context keeps its own copy, so the caller may
+ * clear or mutate divisor after this returns. Returns 1 on success and 0 on
+ * allocation failure or invalid divisor.
+ */
+XRAY_API int xray_bigint_divisor_context_set(XrayBigIntDivisorContext *context, const XrayScratchBigInt *divisor);
+
+/**
+ * Divide numerator by a precomputed divisor context.
+ *
+ * quotient and remainder must be different objects. quotient or remainder may
+ * alias numerator. Returns 1 on success and 0 on allocation failure, invalid
+ * context, invalid divisor, or identical quotient/remainder outputs.
+ */
+XRAY_API int xray_bigint_divmod_precomputed(XrayScratchBigInt *quotient, XrayScratchBigInt *remainder, const XrayScratchBigInt *numerator, const XrayBigIntDivisorContext *context);
 
 /**
  * Return gcd(value, other) for a 32-bit other operand.

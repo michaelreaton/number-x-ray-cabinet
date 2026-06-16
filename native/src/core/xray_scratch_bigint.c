@@ -730,37 +730,20 @@ static int product_gt_two_limb(uint64_t left, uint64_t right, uint64_t high, uin
   return product_high > high || (product_high == high && product_low > low);
 }
 
-static int divmod_bigint_probe(
+static int divmod_bigint_normalized_probe(
   XrayScratchBigInt *quotient,
   XrayScratchBigInt *remainder,
   const XrayScratchBigInt *numerator,
-  const XrayScratchBigInt *divisor) {
-  if (!quotient || !remainder || !numerator || !divisor || divisor->count == 0) return 0;
-  int ordering = xray_bigint_compare(numerator, divisor);
-  if (ordering < 0) {
-    quotient->count = 0;
-    return xray_bigint_copy(remainder, numerator);
-  }
-  if (ordering == 0) {
-    remainder->count = 0;
-    return set_u32(quotient, 1U);
-  }
-  if (divisor->count == 1U) {
-    return divmod_bigint_u64_probe(quotient, remainder, numerator, divisor->limbs[0]);
-  }
-
-  size_t n = divisor->count;
+  const XrayScratchBigInt *normalized_divisor,
+  unsigned int shift) {
+  size_t n = normalized_divisor->count;
   size_t m = numerator->count - n;
-  unsigned int shift = clz_u64(divisor->limbs[n - 1U]);
-  XrayScratchBigInt normalized_divisor;
   XrayScratchBigInt normalized_numerator;
   XrayScratchBigInt remainder_slice;
-  xray_bigint_init(&normalized_divisor);
   xray_bigint_init(&normalized_numerator);
   xray_bigint_init(&remainder_slice);
 
-  int ok = shift_left_bits_copy(&normalized_divisor, divisor, shift) &&
-    shift_left_bits_copy(&normalized_numerator, numerator, shift) &&
+  int ok = shift_left_bits_copy(&normalized_numerator, numerator, shift) &&
     reserve_limbs(&normalized_numerator, n + m + 1U) &&
     reserve_limbs(quotient, m + 1U);
   if (ok) {
@@ -776,7 +759,7 @@ static int divmod_bigint_probe(
       uint64_t rhat = 0;
       uint64_t ujn = normalized_numerator.limbs[j + n];
       uint64_t ujn1 = normalized_numerator.limbs[j + n - 1U];
-      uint64_t vn1 = normalized_divisor.limbs[n - 1U];
+      uint64_t vn1 = normalized_divisor->limbs[n - 1U];
       int rhat_overflow = 0;
       if (ujn == vn1) {
         qhat = UINT64_MAX;
@@ -787,7 +770,7 @@ static int divmod_bigint_probe(
       }
 
       if (n > 1U) {
-        uint64_t vn2 = normalized_divisor.limbs[n - 2U];
+        uint64_t vn2 = normalized_divisor->limbs[n - 2U];
         uint64_t ujn2 = normalized_numerator.limbs[j + n - 2U];
         while (!rhat_overflow && product_gt_two_limb(qhat, vn2, rhat, ujn2)) {
           qhat--;
@@ -801,7 +784,7 @@ static int divmod_bigint_probe(
       unsigned char borrow = 0;
       for (size_t index = 0; index < n; ++index) {
         uint64_t product_low = 0;
-        carry = mul_add_small_word(normalized_divisor.limbs[index], qhat, carry, &product_low);
+        carry = mul_add_small_word(normalized_divisor->limbs[index], qhat, carry, &product_low);
         borrow = sub_with_borrow_u64(
           normalized_numerator.limbs[j + index],
           product_low,
@@ -820,7 +803,7 @@ static int divmod_bigint_probe(
         for (size_t index = 0; index < n; ++index) {
           carry_back = add_with_carry_u64(
             normalized_numerator.limbs[j + index],
-            normalized_divisor.limbs[index],
+            normalized_divisor->limbs[index],
             carry_back,
             &normalized_numerator.limbs[j + index]);
         }
@@ -843,10 +826,104 @@ static int divmod_bigint_probe(
     }
   }
 
-  xray_bigint_clear(&normalized_divisor);
   xray_bigint_clear(&normalized_numerator);
   xray_bigint_clear(&remainder_slice);
   return ok;
+}
+
+static int divmod_bigint_probe(
+  XrayScratchBigInt *quotient,
+  XrayScratchBigInt *remainder,
+  const XrayScratchBigInt *numerator,
+  const XrayScratchBigInt *divisor) {
+  if (!quotient || !remainder || !numerator || !divisor || divisor->count == 0) return 0;
+  int ordering = xray_bigint_compare(numerator, divisor);
+  if (ordering < 0) {
+    quotient->count = 0;
+    return xray_bigint_copy(remainder, numerator);
+  }
+  if (ordering == 0) {
+    remainder->count = 0;
+    return set_u32(quotient, 1U);
+  }
+  if (divisor->count == 1U) {
+    return divmod_bigint_u64_probe(quotient, remainder, numerator, divisor->limbs[0]);
+  }
+
+  size_t n = divisor->count;
+  unsigned int shift = clz_u64(divisor->limbs[n - 1U]);
+  XrayScratchBigInt normalized_divisor;
+  xray_bigint_init(&normalized_divisor);
+
+  int ok = shift_left_bits_copy(&normalized_divisor, divisor, shift) &&
+    divmod_bigint_normalized_probe(quotient, remainder, numerator, &normalized_divisor, shift);
+
+  xray_bigint_clear(&normalized_divisor);
+  return ok;
+}
+
+void xray_bigint_divisor_context_init(XrayBigIntDivisorContext *context) {
+  if (!context) return;
+  xray_bigint_init(&context->divisor);
+  xray_bigint_init(&context->normalized_divisor);
+  context->normalization_shift = 0;
+  context->valid = 0;
+}
+
+void xray_bigint_divisor_context_clear(XrayBigIntDivisorContext *context) {
+  if (!context) return;
+  xray_bigint_clear(&context->divisor);
+  xray_bigint_clear(&context->normalized_divisor);
+  context->normalization_shift = 0;
+  context->valid = 0;
+}
+
+int xray_bigint_divisor_context_set(XrayBigIntDivisorContext *context, const XrayScratchBigInt *divisor) {
+  if (!context) return 0;
+  context->valid = 0;
+  context->normalization_shift = 0;
+  if (!divisor || divisor->count == 0) {
+    context->divisor.count = 0;
+    context->normalized_divisor.count = 0;
+    return 0;
+  }
+  unsigned int shift = clz_u64(divisor->limbs[divisor->count - 1U]);
+  int ok = xray_bigint_copy(&context->divisor, divisor) &&
+    shift_left_bits_copy(&context->normalized_divisor, divisor, shift);
+  if (!ok) {
+    context->divisor.count = 0;
+    context->normalized_divisor.count = 0;
+    return 0;
+  }
+  context->normalization_shift = shift;
+  context->valid = 1;
+  return 1;
+}
+
+static int divmod_bigint_precomputed_probe(
+  XrayScratchBigInt *quotient,
+  XrayScratchBigInt *remainder,
+  const XrayScratchBigInt *numerator,
+  const XrayBigIntDivisorContext *context) {
+  if (!quotient || !remainder || !numerator || !context || !context->valid || context->divisor.count == 0) return 0;
+  int ordering = xray_bigint_compare(numerator, &context->divisor);
+  if (ordering < 0) {
+    quotient->count = 0;
+    return xray_bigint_copy(remainder, numerator);
+  }
+  if (ordering == 0) {
+    remainder->count = 0;
+    return set_u32(quotient, 1U);
+  }
+  if (context->divisor.count == 1U) {
+    return divmod_bigint_u64_probe(quotient, remainder, numerator, context->divisor.limbs[0]);
+  }
+  return divmod_bigint_normalized_probe(
+    quotient,
+    remainder,
+    numerator,
+    &context->normalized_divisor,
+    context->normalization_shift);
 }
 
 int xray_bigint_divmod(
@@ -867,6 +944,31 @@ int xray_bigint_divmod(
     return ok;
   }
   return divmod_bigint_probe(quotient, remainder, numerator, divisor);
+}
+
+int xray_bigint_divmod_precomputed(
+  XrayScratchBigInt *quotient,
+  XrayScratchBigInt *remainder,
+  const XrayScratchBigInt *numerator,
+  const XrayBigIntDivisorContext *context) {
+  if (!quotient || !remainder || quotient == remainder || !numerator || !context || !context->valid || context->divisor.count == 0) return 0;
+  if (quotient == numerator ||
+      remainder == numerator ||
+      quotient == &context->divisor ||
+      quotient == &context->normalized_divisor ||
+      remainder == &context->divisor ||
+      remainder == &context->normalized_divisor) {
+    XrayScratchBigInt quotient_temp;
+    XrayScratchBigInt remainder_temp;
+    xray_bigint_init(&quotient_temp);
+    xray_bigint_init(&remainder_temp);
+    int ok = divmod_bigint_precomputed_probe(&quotient_temp, &remainder_temp, numerator, context);
+    if (ok) ok = xray_bigint_copy(quotient, &quotient_temp) && xray_bigint_copy(remainder, &remainder_temp);
+    xray_bigint_clear(&quotient_temp);
+    xray_bigint_clear(&remainder_temp);
+    return ok;
+  }
+  return divmod_bigint_precomputed_probe(quotient, remainder, numerator, context);
 }
 
 typedef struct {
