@@ -70,6 +70,40 @@ Decision: keep threshold/root-size ideas as measured scouts until they pass
 forced neighbor rows and product-like `/GL` rows. Do not promote a global or
 root-size-gated threshold from a single fast row.
 
+## 2026-06-16: Pre-Inverted Qhat Probe
+
+Runs:
+
+- Release: `native/build-codex-pair-route/native-test-runs/20260616-033345-c4b04caf`
+- `/GL`: `native/build-codex-ltcg/native-test-runs/20260616-033820-c4b04caf`
+
+The qhat tournament now tests a normalized pre-inverted top-limb estimator
+beside the failed 32-bit-limb Knuth estimator. This follows the same direction
+as GMP's documented single-limb division strategy: pay a reciprocal setup cost
+once for a divisor, then replace repeated hardware divides with multiply-high
+plus correction. The benchmark keeps the setup out of the timed qhat loop and
+labels the scope as `precomputeScope=per-divisor`.
+
+Release rows:
+
+- `qhat-preinv`: ratio `0.505`, stable `5/5`, worst pair `0.570`, exact
+  parity, `replacementReady=false`, `observe-only`
+- `qhat-u32-limb`: ratio `1.618`, stable `0/5`, worst pair `2.079`, exact
+  parity, `replacementReady=false`, `observe-only`
+
+`/GL` rows:
+
+- `qhat-preinv`: ratio `0.523`, stable `5/5`, worst pair `0.580`, exact
+  parity, `replacementReady=false`, `observe-only`
+- `qhat-u32-limb`: ratio `1.794`, stable `0/5`, worst pair `1.931`, exact
+  parity, `replacementReady=false`, `observe-only`
+
+Decision: the pre-inverted qhat micro-kernel is promising and survived `/GL`,
+but it is still `noAutoRoute=1`. The next proof must be a full division probe
+that uses the pre-inverted estimator inside the normalized Knuth loop and
+compares quotient/remainder parity plus product-like timings. Do not route the
+micro-kernel by itself.
+
 ## 2026-06-16: Reusable Division Workspace Probe
 
 Runs:
