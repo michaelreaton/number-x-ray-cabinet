@@ -1280,6 +1280,12 @@ typedef struct {
   int use_static_ladder;
 } XrayDecimalDcPowerCache;
 
+typedef enum {
+  XRAY_DECIMAL_DC_DIVMOD_DEFAULT = 0,
+  XRAY_DECIMAL_DC_DIVMOD_WORKSPACE = 1,
+  XRAY_DECIMAL_DC_DIVMOD_PREINV_QHAT = 2
+} XrayDecimalDcDivmodMode;
+
 static const XrayScratchBigInt *decimal_dc_static_ladder_get(size_t bit_index) {
   size_t count = sizeof(decimal_dc_static_ladder_values) / sizeof(decimal_dc_static_ladder_values[0]);
   return bit_index < count ? &decimal_dc_static_ladder_values[bit_index] : NULL;
@@ -1454,6 +1460,32 @@ static size_t estimate_decimal_wide_chunks_from_bits(const XrayScratchBigInt *va
   return digits / XRAY_BIGINT_DECIMAL_WIDE_CHUNK_DIGITS + 1U;
 }
 
+static int decimal_dc_divmod_with_mode(
+  XrayScratchBigInt *quotient,
+  XrayScratchBigInt *remainder,
+  const XrayScratchBigInt *numerator,
+  const XrayScratchBigInt *divisor,
+  XrayDecimalDcDivmodMode mode,
+  XrayBigIntDivisionWorkspace *workspace) {
+  if (mode == XRAY_DECIMAL_DC_DIVMOD_DEFAULT) {
+    return divmod_bigint_probe(quotient, remainder, numerator, divisor);
+  }
+  if (!workspace) return 0;
+
+  XrayBigIntDivisorContext context;
+  xray_bigint_divisor_context_init(&context);
+  int ok = xray_bigint_divisor_context_set(&context, divisor);
+  if (ok && mode == XRAY_DECIMAL_DC_DIVMOD_WORKSPACE) {
+    ok = xray_bigint_divmod_precomputed_workspace(quotient, remainder, numerator, &context, workspace);
+  } else if (ok && mode == XRAY_DECIMAL_DC_DIVMOD_PREINV_QHAT) {
+    ok = xray_bigint_divmod_preinv_qhat_probe(quotient, remainder, numerator, &context, workspace);
+  } else {
+    ok = 0;
+  }
+  xray_bigint_divisor_context_clear(&context);
+  return ok;
+}
+
 static char *format_decimal_dc_internal(
   const XrayScratchBigInt *value,
   XrayDecimalDcPowerCache *cache,
@@ -1590,6 +1622,8 @@ static int format_decimal_dc_write_leaf(
 static int format_decimal_dc_write_internal(
   const XrayScratchBigInt *value,
   XrayDecimalDcPowerCache *cache,
+  XrayDecimalDcDivmodMode divmod_mode,
+  XrayBigIntDivisionWorkspace *division_workspace,
   size_t leaf_chunks,
   unsigned int depth,
   char *buffer,
@@ -1622,7 +1656,13 @@ static int format_decimal_dc_write_internal(
   XrayScratchBigInt remainder;
   xray_bigint_init(&quotient);
   xray_bigint_init(&remainder);
-  int ok = divmod_bigint_probe(&quotient, &remainder, value, power);
+  int ok = decimal_dc_divmod_with_mode(
+    &quotient,
+    &remainder,
+    value,
+    power,
+    divmod_mode,
+    division_workspace);
   if (ok && quotient.count == 0) {
     ok = format_decimal_dc_write_leaf(value, buffer, end, min_width, start_out);
     xray_bigint_clear(&quotient);
@@ -1639,6 +1679,8 @@ static int format_decimal_dc_write_internal(
     ok = format_decimal_dc_write_internal(
       &remainder,
       cache,
+      divmod_mode,
+      division_workspace,
       leaf_chunks,
       depth + 1U,
       buffer,
@@ -1651,6 +1693,8 @@ static int format_decimal_dc_write_internal(
     ok = format_decimal_dc_write_internal(
       &quotient,
       cache,
+      divmod_mode,
+      division_workspace,
       leaf_chunks,
       depth + 1U,
       buffer,
@@ -2147,7 +2191,11 @@ char *xray_bigint_get_decimal_dc_static_ladder_probe(const XrayScratchBigInt *va
   return text;
 }
 
-char *xray_bigint_get_decimal_dc_direct_probe(const XrayScratchBigInt *value, size_t leaf_chunks) {
+static char *get_decimal_dc_direct_with_divmod_mode(
+  const XrayScratchBigInt *value,
+  size_t leaf_chunks,
+  int use_static_ladder,
+  XrayDecimalDcDivmodMode divmod_mode) {
   if (!value || value->count == 0) {
     char *zero = (char *)calloc(2, 1);
     if (zero) zero[0] = '0';
@@ -2160,17 +2208,26 @@ char *xray_bigint_get_decimal_dc_direct_probe(const XrayScratchBigInt *value, si
   if (!text) return NULL;
 
   XrayDecimalDcPowerCache cache;
-  decimal_dc_power_cache_init(&cache, 1, 0);
+  decimal_dc_power_cache_init(&cache, 1, use_static_ladder);
+  XrayBigIntDivisionWorkspace division_workspace;
+  XrayBigIntDivisionWorkspace *workspace = NULL;
+  if (divmod_mode != XRAY_DECIMAL_DC_DIVMOD_DEFAULT) {
+    xray_bigint_division_workspace_init(&division_workspace);
+    workspace = &division_workspace;
+  }
   size_t start = 0;
   int ok = format_decimal_dc_write_internal(
     value,
     &cache,
+    divmod_mode,
+    workspace,
     leaf_chunks ? leaf_chunks : 32U,
     0,
     text,
     text_capacity - 1U,
     0,
     &start);
+  if (workspace) xray_bigint_division_workspace_clear(workspace);
   decimal_dc_power_cache_clear(&cache);
   if (!ok) {
     free(text);
@@ -2182,39 +2239,36 @@ char *xray_bigint_get_decimal_dc_direct_probe(const XrayScratchBigInt *value, si
   return text;
 }
 
-char *xray_bigint_get_decimal_dc_static_direct_probe(const XrayScratchBigInt *value, size_t leaf_chunks) {
-  if (!value || value->count == 0) {
-    char *zero = (char *)calloc(2, 1);
-    if (zero) zero[0] = '0';
-    return zero;
-  }
-  size_t chunk_capacity = estimate_decimal_wide_chunk_capacity(value);
-  if (chunk_capacity > (SIZE_MAX - 3U) / XRAY_BIGINT_DECIMAL_WIDE_CHUNK_DIGITS) return NULL;
-  size_t text_capacity = (chunk_capacity + 2U) * XRAY_BIGINT_DECIMAL_WIDE_CHUNK_DIGITS + 1U;
-  char *text = (char *)calloc(text_capacity, 1);
-  if (!text) return NULL;
-
-  XrayDecimalDcPowerCache cache;
-  decimal_dc_power_cache_init(&cache, 1, 1);
-  size_t start = 0;
-  int ok = format_decimal_dc_write_internal(
+char *xray_bigint_get_decimal_dc_direct_probe(const XrayScratchBigInt *value, size_t leaf_chunks) {
+  return get_decimal_dc_direct_with_divmod_mode(
     value,
-    &cache,
-    leaf_chunks ? leaf_chunks : 32U,
+    leaf_chunks,
     0,
-    text,
-    text_capacity - 1U,
+    XRAY_DECIMAL_DC_DIVMOD_DEFAULT);
+}
+
+char *xray_bigint_get_decimal_dc_static_direct_probe(const XrayScratchBigInt *value, size_t leaf_chunks) {
+  return get_decimal_dc_direct_with_divmod_mode(
+    value,
+    leaf_chunks,
+    1,
+    XRAY_DECIMAL_DC_DIVMOD_DEFAULT);
+}
+
+char *xray_bigint_get_decimal_dc_workspace_probe(const XrayScratchBigInt *value, size_t leaf_chunks) {
+  return get_decimal_dc_direct_with_divmod_mode(
+    value,
+    leaf_chunks,
     0,
-    &start);
-  decimal_dc_power_cache_clear(&cache);
-  if (!ok) {
-    free(text);
-    return NULL;
-  }
-  size_t used = text_capacity - 1U - start;
-  memmove(text, text + start, used);
-  text[used] = '\0';
-  return text;
+    XRAY_DECIMAL_DC_DIVMOD_WORKSPACE);
+}
+
+char *xray_bigint_get_decimal_dc_preinv_qhat_probe(const XrayScratchBigInt *value, size_t leaf_chunks) {
+  return get_decimal_dc_direct_with_divmod_mode(
+    value,
+    leaf_chunks,
+    0,
+    XRAY_DECIMAL_DC_DIVMOD_PREINV_QHAT);
 }
 
 char *xray_bigint_get_decimal_wide_probe(const XrayScratchBigInt *value) {

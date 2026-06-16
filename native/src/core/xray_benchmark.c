@@ -3635,6 +3635,22 @@ static char *format_dc_direct_leaf64_probe(const XrayScratchBigInt *value) {
   return xray_bigint_get_decimal_dc_direct_probe(value, 64U);
 }
 
+static char *format_dc_workspace_leaf8_probe(const XrayScratchBigInt *value) {
+  return xray_bigint_get_decimal_dc_workspace_probe(value, 8U);
+}
+
+static char *format_dc_workspace_leaf16_probe(const XrayScratchBigInt *value) {
+  return xray_bigint_get_decimal_dc_workspace_probe(value, 16U);
+}
+
+static char *format_dc_preinv_qhat_leaf8_probe(const XrayScratchBigInt *value) {
+  return xray_bigint_get_decimal_dc_preinv_qhat_probe(value, 8U);
+}
+
+static char *format_dc_preinv_qhat_leaf16_probe(const XrayScratchBigInt *value) {
+  return xray_bigint_get_decimal_dc_preinv_qhat_probe(value, 16U);
+}
+
 static char *format_policy_current_default(
   const XrayScratchBigInt *value,
   size_t digits,
@@ -6274,6 +6290,15 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     format_dc_static_direct_leaf8_probe,
     format_dc_static_direct_leaf16_probe
   };
+  const size_t format_dc_division_leaf_chunks[] = {8, 16};
+  XrayFormatProbeFn format_dc_workspace_probes[] = {
+    format_dc_workspace_leaf8_probe,
+    format_dc_workspace_leaf16_probe
+  };
+  XrayFormatProbeFn format_dc_preinv_qhat_probes[] = {
+    format_dc_preinv_qhat_leaf8_probe,
+    format_dc_preinv_qhat_leaf16_probe
+  };
   for (size_t digit_index = 0; digit_index < sizeof(format_strategy_digits) / sizeof(format_strategy_digits[0]); ++digit_index) {
     size_t digits = format_strategy_digits[digit_index];
     for (size_t leaf_index = 0; leaf_index < sizeof(format_dc_leaf_chunks) / sizeof(format_dc_leaf_chunks[0]); ++leaf_index) {
@@ -6358,6 +6383,58 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
         "static-powtab+buffer",
         19U,
         format_dc_static_direct_probes[leaf_index]);
+    }
+    for (size_t leaf_index = 0; leaf_index < sizeof(format_dc_division_leaf_chunks) / sizeof(format_dc_division_leaf_chunks[0]); ++leaf_index) {
+      char mode[80];
+      char label[80];
+      snprintf(
+        mode,
+        sizeof(mode),
+        "dc-direct-workspace leafThreshold=%zu",
+        format_dc_division_leaf_chunks[leaf_index]);
+      snprintf(
+        label,
+        sizeof(label),
+        "format D&C workspace leaf %zu",
+        format_dc_division_leaf_chunks[leaf_index]);
+      run_format_variant_pair_probe_case(
+        report,
+        digits,
+        (unsigned int)(127U + leaf_index),
+        "format-dc-workspace",
+        label,
+        mode,
+        "decimal-dc-direct-workspace",
+        "current-scratch-format",
+        "decimal-format-dc-workspace",
+        "mpn_dc_get_str-divisor-context",
+        19U,
+        format_dc_workspace_probes[leaf_index],
+        xray_bigint_get_decimal);
+      snprintf(
+        mode,
+        sizeof(mode),
+        "dc-direct-preinv-qhat leafThreshold=%zu",
+        format_dc_division_leaf_chunks[leaf_index]);
+      snprintf(
+        label,
+        sizeof(label),
+        "format D&C preinv qhat leaf %zu",
+        format_dc_division_leaf_chunks[leaf_index]);
+      run_format_variant_pair_probe_case(
+        report,
+        digits,
+        (unsigned int)(139U + leaf_index),
+        "format-dc-preinv-qhat",
+        label,
+        mode,
+        "decimal-dc-direct-preinv-qhat",
+        "current-scratch-format",
+        "decimal-format-dc-preinv-qhat",
+        "mpn_dc_get_str-preinverted-qhat",
+        19U,
+        format_dc_preinv_qhat_probes[leaf_index],
+        xray_bigint_get_decimal);
     }
   }
 

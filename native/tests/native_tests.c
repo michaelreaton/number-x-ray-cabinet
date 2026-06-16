@@ -319,6 +319,10 @@ static void test_scratch_bigint_oracle(void) {
     char *roundtrip_dc_direct32 = xray_bigint_get_decimal_dc_direct_probe(&a, 32U);
     char *roundtrip_dc_static_direct8 = xray_bigint_get_decimal_dc_static_direct_probe(&a, 8U);
     char *roundtrip_dc_static_direct32 = xray_bigint_get_decimal_dc_static_direct_probe(&a, 32U);
+    char *roundtrip_dc_workspace8 = xray_bigint_get_decimal_dc_workspace_probe(&a, 8U);
+    char *roundtrip_dc_workspace16 = xray_bigint_get_decimal_dc_workspace_probe(&a, 16U);
+    char *roundtrip_dc_preinv_qhat8 = xray_bigint_get_decimal_dc_preinv_qhat_probe(&a, 8U);
+    char *roundtrip_dc_preinv_qhat16 = xray_bigint_get_decimal_dc_preinv_qhat_probe(&a, 16U);
     char *roundtrip_wide = xray_bigint_get_decimal_wide_probe(&a);
     char *roundtrip_oracle = mpz_get_str(NULL, 10, ga);
     CHECK(roundtrip_text != NULL);
@@ -341,6 +345,10 @@ static void test_scratch_bigint_oracle(void) {
     CHECK(roundtrip_dc_direct32 != NULL);
     CHECK(roundtrip_dc_static_direct8 != NULL);
     CHECK(roundtrip_dc_static_direct32 != NULL);
+    CHECK(roundtrip_dc_workspace8 != NULL);
+    CHECK(roundtrip_dc_workspace16 != NULL);
+    CHECK(roundtrip_dc_preinv_qhat8 != NULL);
+    CHECK(roundtrip_dc_preinv_qhat16 != NULL);
     CHECK(roundtrip_wide != NULL);
     CHECK(roundtrip_oracle != NULL);
     CHECK(strcmp(roundtrip_text, roundtrip_oracle) == 0);
@@ -363,6 +371,10 @@ static void test_scratch_bigint_oracle(void) {
     CHECK(strcmp(roundtrip_dc_direct32, roundtrip_oracle) == 0);
     CHECK(strcmp(roundtrip_dc_static_direct8, roundtrip_oracle) == 0);
     CHECK(strcmp(roundtrip_dc_static_direct32, roundtrip_oracle) == 0);
+    CHECK(strcmp(roundtrip_dc_workspace8, roundtrip_oracle) == 0);
+    CHECK(strcmp(roundtrip_dc_workspace16, roundtrip_oracle) == 0);
+    CHECK(strcmp(roundtrip_dc_preinv_qhat8, roundtrip_oracle) == 0);
+    CHECK(strcmp(roundtrip_dc_preinv_qhat16, roundtrip_oracle) == 0);
     CHECK(strcmp(roundtrip_wide, roundtrip_oracle) == 0);
     free(roundtrip_input);
     free(roundtrip_text);
@@ -385,6 +397,10 @@ static void test_scratch_bigint_oracle(void) {
     free(roundtrip_dc_direct32);
     free(roundtrip_dc_static_direct8);
     free(roundtrip_dc_static_direct32);
+    free(roundtrip_dc_workspace8);
+    free(roundtrip_dc_workspace16);
+    free(roundtrip_dc_preinv_qhat8);
+    free(roundtrip_dc_preinv_qhat16);
     free(roundtrip_wide);
     free(roundtrip_oracle);
   }
@@ -1413,6 +1429,12 @@ static void test_benchmarks(void) {
   int saw_format_dc_static_direct_probe = 0;
   int saw_format_dc_static_direct_leaf8_probe = 0;
   int saw_format_dc_static_direct_leaf16_probe = 0;
+  int saw_format_dc_workspace_probe = 0;
+  int saw_format_dc_workspace_leaf8_probe = 0;
+  int saw_format_dc_workspace_leaf16_probe = 0;
+  int saw_format_dc_preinv_qhat_probe = 0;
+  int saw_format_dc_preinv_qhat_leaf8_probe = 0;
+  int saw_format_dc_preinv_qhat_leaf16_probe = 0;
   int saw_format_dc_route_probe = 0;
   int saw_format_dc_route1000_probe = 0;
   int saw_format_dc_route4096_probe = 0;
@@ -1878,6 +1900,8 @@ static void test_benchmarks(void) {
           strcmp(report->results[index].operation, "format-dc") == 0 ||
           strcmp(report->results[index].operation, "format-dc-ladder") == 0 ||
           strcmp(report->results[index].operation, "format-dc-direct") == 0 ||
+          strcmp(report->results[index].operation, "format-dc-workspace") == 0 ||
+          strcmp(report->results[index].operation, "format-dc-preinv-qhat") == 0 ||
           strcmp(report->results[index].operation, "format-dc-static-ladder") == 0 ||
           strcmp(report->results[index].operation, "format-dc-static-direct") == 0 ||
           strcmp(report->results[index].operation, "format-dc-route") == 0) {
@@ -1952,6 +1976,28 @@ static void test_benchmarks(void) {
           else if (strstr(report->results[index].detail, "leafThreshold=16") != NULL) saw_format_dc_direct_leaf16_probe = 1;
           else if (strstr(report->results[index].detail, "leafThreshold=32") != NULL) saw_format_dc_direct_leaf32_probe = 1;
           else if (strstr(report->results[index].detail, "leafThreshold=64") != NULL) saw_format_dc_direct_leaf64_probe = 1;
+          else CHECK(0);
+        } else if (strcmp(report->results[index].operation, "format-dc-workspace") == 0) {
+          saw_format_dc_workspace_probe = 1;
+          CHECK(strstr(report->results[index].detail, "mode=dc-direct-workspace") != NULL);
+          CHECK(strstr(report->results[index].detail, "timing=interleaved-alternating-batch") != NULL);
+          CHECK(strstr(report->results[index].detail, "chunkDigits=19") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=decimal-dc-direct-workspace") != NULL);
+          CHECK(strstr(report->results[index].detail, "featureGate=decimal-format-dc-workspace") != NULL);
+          CHECK(strstr(report->results[index].detail, "gmpClue=mpn_dc_get_str-divisor-context") != NULL);
+          if (strstr(report->results[index].detail, "leafThreshold=8") != NULL) saw_format_dc_workspace_leaf8_probe = 1;
+          else if (strstr(report->results[index].detail, "leafThreshold=16") != NULL) saw_format_dc_workspace_leaf16_probe = 1;
+          else CHECK(0);
+        } else if (strcmp(report->results[index].operation, "format-dc-preinv-qhat") == 0) {
+          saw_format_dc_preinv_qhat_probe = 1;
+          CHECK(strstr(report->results[index].detail, "mode=dc-direct-preinv-qhat") != NULL);
+          CHECK(strstr(report->results[index].detail, "timing=interleaved-alternating-batch") != NULL);
+          CHECK(strstr(report->results[index].detail, "chunkDigits=19") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=decimal-dc-direct-preinv-qhat") != NULL);
+          CHECK(strstr(report->results[index].detail, "featureGate=decimal-format-dc-preinv-qhat") != NULL);
+          CHECK(strstr(report->results[index].detail, "gmpClue=mpn_dc_get_str-preinverted-qhat") != NULL);
+          if (strstr(report->results[index].detail, "leafThreshold=8") != NULL) saw_format_dc_preinv_qhat_leaf8_probe = 1;
+          else if (strstr(report->results[index].detail, "leafThreshold=16") != NULL) saw_format_dc_preinv_qhat_leaf16_probe = 1;
           else CHECK(0);
         } else if (strcmp(report->results[index].operation, "format-dc-static-ladder") == 0) {
           saw_format_dc_static_ladder_probe = 1;
@@ -2545,6 +2591,12 @@ static void test_benchmarks(void) {
   CHECK(saw_format_dc_static_direct_probe);
   CHECK(saw_format_dc_static_direct_leaf8_probe);
   CHECK(saw_format_dc_static_direct_leaf16_probe);
+  CHECK(saw_format_dc_workspace_probe);
+  CHECK(saw_format_dc_workspace_leaf8_probe);
+  CHECK(saw_format_dc_workspace_leaf16_probe);
+  CHECK(saw_format_dc_preinv_qhat_probe);
+  CHECK(saw_format_dc_preinv_qhat_leaf8_probe);
+  CHECK(saw_format_dc_preinv_qhat_leaf16_probe);
   CHECK(saw_format_dc_route_probe);
   CHECK(saw_format_dc_route1000_probe);
   CHECK(saw_format_dc_route4096_probe);
@@ -2729,9 +2781,13 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "format-dc") != NULL);
   CHECK(strstr(json, "format-dc-ladder") != NULL);
   CHECK(strstr(json, "format-dc-direct") != NULL);
+  CHECK(strstr(json, "format-dc-workspace") != NULL);
+  CHECK(strstr(json, "format-dc-preinv-qhat") != NULL);
   CHECK(strstr(json, "format-dc-route") != NULL);
   CHECK(strstr(json, "format-dc-static-ladder") != NULL);
   CHECK(strstr(json, "format-dc-static-direct") != NULL);
+  CHECK(strstr(json, "decimal-dc-direct-workspace") != NULL);
+  CHECK(strstr(json, "decimal-dc-direct-preinv-qhat") != NULL);
   CHECK(strstr(json, "dc-static-pow2") != NULL);
   CHECK(strstr(json, "dc-static-direct") != NULL);
   CHECK(strstr(json, "format-policy") != NULL);
@@ -2793,9 +2849,13 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "format-dc") != NULL);
   CHECK(strstr(tsv, "format-dc-ladder") != NULL);
   CHECK(strstr(tsv, "format-dc-direct") != NULL);
+  CHECK(strstr(tsv, "format-dc-workspace") != NULL);
+  CHECK(strstr(tsv, "format-dc-preinv-qhat") != NULL);
   CHECK(strstr(tsv, "format-dc-route") != NULL);
   CHECK(strstr(tsv, "format-dc-static-ladder") != NULL);
   CHECK(strstr(tsv, "format-dc-static-direct") != NULL);
+  CHECK(strstr(tsv, "decimal-dc-direct-workspace") != NULL);
+  CHECK(strstr(tsv, "decimal-dc-direct-preinv-qhat") != NULL);
   CHECK(strstr(tsv, "dc-static-pow2") != NULL);
   CHECK(strstr(tsv, "dc-static-direct") != NULL);
   CHECK(strstr(tsv, "format-policy") != NULL);
@@ -2884,9 +2944,13 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "format-dc") != NULL);
   CHECK(strstr(benchmark_tsv, "format-dc-ladder") != NULL);
   CHECK(strstr(benchmark_tsv, "format-dc-direct") != NULL);
+  CHECK(strstr(benchmark_tsv, "format-dc-workspace") != NULL);
+  CHECK(strstr(benchmark_tsv, "format-dc-preinv-qhat") != NULL);
   CHECK(strstr(benchmark_tsv, "format-dc-route") != NULL);
   CHECK(strstr(benchmark_tsv, "format-dc-static-ladder") != NULL);
   CHECK(strstr(benchmark_tsv, "format-dc-static-direct") != NULL);
+  CHECK(strstr(benchmark_tsv, "decimal-dc-direct-workspace") != NULL);
+  CHECK(strstr(benchmark_tsv, "decimal-dc-direct-preinv-qhat") != NULL);
   CHECK(strstr(benchmark_tsv, "dc-static-pow2") != NULL);
   CHECK(strstr(benchmark_tsv, "dc-static-direct") != NULL);
   CHECK(strstr(benchmark_tsv, "format-policy") != NULL);
@@ -2973,6 +3037,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "format-dc") != NULL);
   CHECK(strstr(benchmark_frontier, "format-dc-ladder") != NULL);
   CHECK(strstr(benchmark_frontier, "format-dc-direct") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-dc-workspace") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-dc-preinv-qhat") != NULL);
   CHECK(strstr(benchmark_frontier, "format-dc-route") != NULL);
   CHECK(strstr(benchmark_frontier, "format-dc-static-ladder") != NULL);
   CHECK(strstr(benchmark_frontier, "format-dc-static-direct") != NULL);
