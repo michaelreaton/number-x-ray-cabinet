@@ -3694,6 +3694,11 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "format-pair-writer=small<=8 or horner 48..54 limbs") != NULL);
   CHECK(strstr(benchmark_frontier, "format-dc-ladder>=4096 digits leaf=8") != NULL);
   CHECK(strstr(benchmark_frontier, "FRONTIER SUMMARY") != NULL);
+  CHECK(strstr(benchmark_frontier, "MEASURABLE STATUS") != NULL);
+  CHECK(strstr(benchmark_frontier, "Better now (scratch rows allowed)") != NULL);
+  CHECK(strstr(benchmark_frontier, "Still working (scratch gaps)") != NULL);
+  CHECK(strstr(benchmark_frontier, "faster than backend") != NULL);
+  CHECK(strstr(benchmark_frontier, "slower than backend") != NULL);
   CHECK(strstr(benchmark_frontier, "Largest scratch gaps") != NULL);
   CHECK(strstr(benchmark_frontier, "Median wins rejected by worst-pair safety") != NULL);
   CHECK(strstr(benchmark_frontier, "SCRATCH VS ") != NULL);
