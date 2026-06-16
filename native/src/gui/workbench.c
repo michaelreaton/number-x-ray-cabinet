@@ -11,6 +11,9 @@ typedef enum XrayLayoutProfile {
   XRAY_LAYOUT_WIDE = 2
 } XrayLayoutProfile;
 
+#define XRAY_BENCHMARK_LIVE_ROWS 8
+#define XRAY_BENCHMARK_LIVE_COLS 6
+
 typedef struct AppState {
   GtkWidget *window;
   GtkWidget *notebook;
@@ -40,6 +43,13 @@ typedef struct AppState {
   GtkWidget *json_view;
   GtkWidget *log_view;
   GtkWidget *benchmark_view;
+  GtkWidget *benchmark_total_label;
+  GtkWidget *benchmark_ready_label;
+  GtkWidget *benchmark_oracle_label;
+  GtkWidget *benchmark_blocked_label;
+  GtkWidget *benchmark_failed_label;
+  GtkWidget *benchmark_current_label;
+  GtkWidget *benchmark_row_labels[XRAY_BENCHMARK_LIVE_ROWS][XRAY_BENCHMARK_LIVE_COLS];
   guint live_timer_id;
   unsigned long run_started_ms;
   unsigned int run_pulse;
@@ -68,6 +78,11 @@ typedef struct RunResult {
   char proof_status[128];
   char cyclo_status[128];
   char bench_status[128];
+  size_t benchmark_total_count;
+  size_t benchmark_ready_count;
+  size_t benchmark_oracle_count;
+  size_t benchmark_blocked_count;
+  size_t benchmark_failed_count;
   char *benchmark_text;
   char log_line[2048];
 } RunResult;
@@ -578,6 +593,111 @@ static void set_run_status(AppState *app, const char *factor, const char *proof,
   set_label_if(app->bench_label, bench);
 }
 
+static int detail_token_value(const char *detail, const char *key, char *out, size_t out_size) {
+  if (!detail || !key || !out || out_size == 0) return 0;
+  char needle[64];
+  snprintf(needle, sizeof(needle), "%s=", key);
+  const char *start = strstr(detail, needle);
+  if (!start) return 0;
+  start += strlen(needle);
+  size_t length = strcspn(start, " \t\r\n");
+  if (length >= out_size) length = out_size - 1U;
+  memcpy(out, start, length);
+  out[length] = '\0';
+  return length > 0;
+}
+
+static const char *benchmark_status_tone(const char *status) {
+  if (!status) return "muted";
+  if (strstr(status, "failed") || strstr(status, "blocked") || strstr(status, "mismatch")) return "bad";
+  if (strstr(status, "replacement-ready") || strstr(status, "promote") || strstr(status, "candidate-faster") || strstr(status, "passed")) return "good";
+  return "warn";
+}
+
+static void apply_tone(GtkWidget *label, const char *tone) {
+  if (!label) return;
+  gtk_widget_remove_css_class(label, "good");
+  gtk_widget_remove_css_class(label, "warn");
+  gtk_widget_remove_css_class(label, "bad");
+  gtk_widget_remove_css_class(label, "muted");
+  gtk_widget_add_css_class(label, tone ? tone : "muted");
+}
+
+static void set_benchmark_dashboard_counts(AppState *app) {
+  if (!app) return;
+  char value[48];
+  snprintf(value, sizeof(value), "%zu", app->live_benchmark_row_count);
+  set_label_if(app->benchmark_total_label, value);
+  snprintf(value, sizeof(value), "%zu", app->live_benchmark_ready_count);
+  set_label_if(app->benchmark_ready_label, value);
+  snprintf(value, sizeof(value), "%zu", app->live_benchmark_oracle_count);
+  set_label_if(app->benchmark_oracle_label, value);
+  snprintf(value, sizeof(value), "%zu", app->live_benchmark_blocked_count);
+  set_label_if(app->benchmark_blocked_label, value);
+  snprintf(value, sizeof(value), "%zu", app->live_benchmark_failed_count);
+  set_label_if(app->benchmark_failed_label, value);
+}
+
+static void reset_benchmark_dashboard(AppState *app, const char *current) {
+  if (!app) return;
+  set_benchmark_dashboard_counts(app);
+  set_label_if(app->benchmark_current_label, current ? current : "Waiting for Run Proof.");
+  for (int row = 0; row < XRAY_BENCHMARK_LIVE_ROWS; ++row) {
+    for (int col = 0; col < XRAY_BENCHMARK_LIVE_COLS; ++col) {
+      set_label_if(app->benchmark_row_labels[row][col], row == 0 && col == 3 ? "waiting" : "");
+      apply_tone(app->benchmark_row_labels[row][col], "muted");
+    }
+  }
+}
+
+static void set_benchmark_table_row(AppState *app, int row, const char *values[XRAY_BENCHMARK_LIVE_COLS], const char *tone) {
+  if (!app || row < 0 || row >= XRAY_BENCHMARK_LIVE_ROWS) return;
+  for (int col = 0; col < XRAY_BENCHMARK_LIVE_COLS; ++col) {
+    GtkWidget *label = app->benchmark_row_labels[row][col];
+    set_label_if(label, values[col] ? values[col] : "");
+    apply_tone(label, col == 1 ? tone : "muted");
+  }
+}
+
+static void push_benchmark_table_row(AppState *app, const UiStageEvent *event) {
+  if (!app || !event) return;
+  char existing[XRAY_BENCHMARK_LIVE_COLS][128];
+  const char *shift_values[XRAY_BENCHMARK_LIVE_COLS];
+  for (int row = XRAY_BENCHMARK_LIVE_ROWS - 1; row > 0; --row) {
+    for (int col = 0; col < XRAY_BENCHMARK_LIVE_COLS; ++col) {
+      const char *text = gtk_label_get_text(GTK_LABEL(app->benchmark_row_labels[row - 1][col]));
+      snprintf(existing[col], sizeof(existing[col]), "%s", text ? text : "");
+      shift_values[col] = existing[col];
+    }
+    set_benchmark_table_row(app, row, shift_values, benchmark_status_tone(existing[1]));
+  }
+
+  char row_id[32] = "";
+  char category[40] = "";
+  char operation[64] = "";
+  char digits[32] = "";
+  char ratio[32] = "";
+  char stable[32] = "";
+  char metric[80] = "";
+  detail_token_value(event->detail, "row", row_id, sizeof(row_id));
+  detail_token_value(event->detail, "category", category, sizeof(category));
+  detail_token_value(event->detail, "operation", operation, sizeof(operation));
+  detail_token_value(event->detail, "digits", digits, sizeof(digits));
+  detail_token_value(event->detail, "ratio", ratio, sizeof(ratio));
+  detail_token_value(event->detail, "stable", stable, sizeof(stable));
+  snprintf(metric, sizeof(metric), "r=%s s=%s", ratio[0] ? ratio : "n/a", stable[0] ? stable : "n/a");
+
+  const char *new_values[XRAY_BENCHMARK_LIVE_COLS] = {
+    row_id[0] ? row_id : "?",
+    event->status[0] ? event->status : "row",
+    category[0] ? category : "benchmark",
+    operation[0] ? operation : "unknown",
+    digits[0] ? digits : "-",
+    metric
+  };
+  set_benchmark_table_row(app, 0, new_values, benchmark_status_tone(event->status));
+}
+
 static void cpu_gate_summary(char *out, size_t out_size, int compact) {
   if (!out || out_size == 0) return;
   XrayCpuFeatures cpu;
@@ -657,6 +777,11 @@ static void append_live_benchmark_row(AppState *app, const UiStageEvent *event) 
   else if (strcmp(event->status, "oracle-only") == 0) app->live_benchmark_oracle_count++;
   else if (strcmp(event->status, "failed") == 0) app->live_benchmark_failed_count++;
   else if (strstr(event->status, "blocked")) app->live_benchmark_blocked_count++;
+  set_benchmark_dashboard_counts(app);
+  push_benchmark_table_row(app, event);
+  char current[320];
+  snprintf(current, sizeof(current), "%s | %s", event->status[0] ? event->status : "row", event->detail[0] ? event->detail : "benchmark row complete");
+  set_label_if(app->benchmark_current_label, current);
 
   char line[512];
   snprintf(line, sizeof(line), "%03zu  %-18s %s\n",
@@ -703,6 +828,11 @@ static void set_live_benchmark_view(AppState *app) {
     app->live_benchmark_row_log[0] ? app->live_benchmark_row_log : "(waiting for benchmark rows)\n",
     app->live_event_log[0] ? app->live_event_log : "(waiting for first engine event)\n");
   set_text_view(app->benchmark_view, text);
+  if (!app->live_benchmark_row_count) {
+    char current[320];
+    snprintf(current, sizeof(current), "%s / %s | %s", stage, status, detail);
+    set_label_if(app->benchmark_current_label, current);
+  }
 }
 
 static void set_live_log(AppState *app) {
@@ -1061,7 +1191,7 @@ static GtkWidget *stage_row(const char *index, const char *state, const char *de
 static GtkWidget *page_scroll(GtkWidget *child) {
   GtkWidget *scroll = gtk_scrolled_window_new();
   gtk_widget_add_css_class(scroll, "surface");
-  gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll), GTK_POLICY_NEVER, GTK_POLICY_NEVER);
+  gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
   gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroll), child);
   return scroll;
 }
@@ -1163,14 +1293,53 @@ static GtkWidget *build_benchmark_page(AppState *app) {
   gtk_widget_add_css_class(page, "surface");
   set_margins(page, 16, 16, 16, 16);
   gtk_box_append(GTK_BOX(page), label_with_class("LIVE BENCHMARK RESULTS", "section-title"));
+
+  GtkWidget *summary = gtk_grid_new();
+  gtk_grid_set_column_spacing(GTK_GRID(summary), 10);
+  gtk_grid_set_column_homogeneous(GTK_GRID(summary), TRUE);
+  gtk_grid_attach(GTK_GRID(summary), metric_box(&app->benchmark_total_label, "rows", "0", "good"), 0, 0, 1, 1);
+  gtk_grid_attach(GTK_GRID(summary), metric_box(&app->benchmark_ready_label, "replacement-ready", "0", "good"), 1, 0, 1, 1);
+  gtk_grid_attach(GTK_GRID(summary), metric_box(&app->benchmark_oracle_label, "oracle-only", "0", "warn"), 2, 0, 1, 1);
+  gtk_grid_attach(GTK_GRID(summary), metric_box(&app->benchmark_blocked_label, "blocked", "0", "bad"), 3, 0, 1, 1);
+  gtk_grid_attach(GTK_GRID(summary), metric_box(&app->benchmark_failed_label, "failed", "0", "bad"), 4, 0, 1, 1);
+  gtk_box_append(GTK_BOX(page), summary);
+
+  GtkWidget *stream = section_box("panel", 8);
+  GtkWidget *stream_title = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+  gtk_box_append(GTK_BOX(stream_title), label_with_class("LIVE ROW STREAM", "section-title"));
+  app->benchmark_current_label = label_with_width("Run Proof to stream benchmark rows.", "micro", 76, FALSE);
+  gtk_widget_set_halign(app->benchmark_current_label, GTK_ALIGN_END);
+  gtk_widget_set_hexpand(app->benchmark_current_label, TRUE);
+  gtk_box_append(GTK_BOX(stream_title), app->benchmark_current_label);
+  gtk_box_append(GTK_BOX(stream), stream_title);
+
+  GtkWidget *grid = gtk_grid_new();
+  gtk_grid_set_column_spacing(GTK_GRID(grid), 8);
+  gtk_grid_set_row_spacing(GTK_GRID(grid), 2);
+  const char *headers[] = {"Row", "Status", "Kind", "Operation", "Digits", "Ratio / Stable"};
+  int widths[] = {6, 18, 20, 30, 8, 18};
+  for (int col = 0; col < XRAY_BENCHMARK_LIVE_COLS; ++col) {
+    gtk_grid_attach(GTK_GRID(grid), table_label(headers[col], "table-header", widths[col]), col, 0, 1, 1);
+  }
+  for (int row = 0; row < XRAY_BENCHMARK_LIVE_ROWS; ++row) {
+    for (int col = 0; col < XRAY_BENCHMARK_LIVE_COLS; ++col) {
+      app->benchmark_row_labels[row][col] = table_label("", "table-cell muted", widths[col]);
+      gtk_grid_attach(GTK_GRID(grid), app->benchmark_row_labels[row][col], col, row + 1, 1, 1);
+    }
+  }
+  gtk_box_append(GTK_BOX(stream), grid);
+  gtk_box_append(GTK_BOX(page), stream);
+
+  gtk_box_append(GTK_BOX(page), label_with_class("FRONTIER LOG", "section-title"));
   GtkWidget *benchmark_scroll = scrolled_text_view(&app->benchmark_view, FALSE);
   gtk_widget_set_vexpand(benchmark_scroll, TRUE);
-  gtk_widget_set_size_request(benchmark_scroll, -1, app->layout == XRAY_LAYOUT_COMPACT ? 260 : 360);
+  gtk_widget_set_size_request(benchmark_scroll, -1, app->layout == XRAY_LAYOUT_COMPACT ? 180 : 280);
   gtk_box_append(GTK_BOX(page), benchmark_scroll);
   set_text_view(app->benchmark_view,
     "BENCHMARK FRONTIER\n"
     "Run Proof to measure scratch bigint primitives against GMP/MPIR.\n\n"
     "The frontier summary will show replacement-ready rows, near wins, and the largest remaining gaps before the detailed timing tables.\n");
+  reset_benchmark_dashboard(app, "Run Proof to stream benchmark rows.");
 
   GtkWidget *ladder = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
   gtk_widget_add_css_class(ladder, "panel");
@@ -1312,6 +1481,13 @@ static gboolean finish_run(gpointer data) {
   gtk_button_set_label(GTK_BUTTON(app->run_button), "RUN PROOF");
   gtk_widget_set_sensitive(app->cancel_button, FALSE);
   gtk_widget_set_visible(app->cancel_button, FALSE);
+  app->live_benchmark_row_count = result->benchmark_total_count;
+  app->live_benchmark_ready_count = result->benchmark_ready_count;
+  app->live_benchmark_oracle_count = result->benchmark_oracle_count;
+  app->live_benchmark_blocked_count = result->benchmark_blocked_count;
+  app->live_benchmark_failed_count = result->benchmark_failed_count;
+  set_benchmark_dashboard_counts(app);
+  set_label_if(app->benchmark_current_label, result->bench_status);
   set_run_status(app, result->factor_status, result->proof_status, result->cyclo_status, result->bench_status);
   set_text_view(app->json_view, result->json);
   set_text_view(app->benchmark_view, result->benchmark_text);
@@ -1331,6 +1507,13 @@ static gpointer run_worker(gpointer data) {
   result->app = job->app;
   result->json = gui_strdup(report.json ? report.json : "{}");
   result->benchmark_text = format_benchmark_report_text(&report.benchmark);
+  result->benchmark_total_count = report.benchmark.result_count;
+  result->benchmark_ready_count = report.benchmark.replacement_ready_count;
+  result->benchmark_oracle_count = report.benchmark.oracle_only_count;
+  result->benchmark_blocked_count = report.benchmark.blocked_count;
+  for (size_t index = 0; index < report.benchmark.result_count; ++index) {
+    if (!report.benchmark.results[index].passed) result->benchmark_failed_count++;
+  }
   snprintf(result->factor_status, sizeof(result->factor_status), "Factor Solver: %s", report.factor.status[0] ? report.factor.status : "invalid");
   snprintf(result->proof_status, sizeof(result->proof_status), "Product proof: %s | factors %zu | unresolved %zu | %lu ms",
     report.factor.product_verified ? "verified" : "not verified",
@@ -1399,6 +1582,7 @@ static void on_run_clicked(GtkButton *button, gpointer user_data) {
   snprintf(app->live_factor_status, sizeof(app->live_factor_status), "Factor Solver: RUNNING");
   app->live_event_log[0] = '\0';
   app->live_benchmark_row_log[0] = '\0';
+  reset_benchmark_dashboard(app, "Worker starting. Benchmark rows will appear during the benchmark stage.");
   gtk_widget_set_sensitive(app->run_button, FALSE);
   gtk_button_set_label(GTK_BUTTON(app->run_button), "RUNNING...");
   gtk_widget_set_visible(app->cancel_button, TRUE);
