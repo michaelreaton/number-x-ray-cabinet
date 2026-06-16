@@ -454,6 +454,9 @@ static void benchmark_frontier_label(const XrayBenchmarkResult *row, char *out, 
   if (benchmark_detail_value(row, "chunkDigits", value, sizeof(value))) {
     append_label_token(out, out_size, "chunk=", value);
   }
+  if (benchmark_detail_value(row, "powerChunks", value, sizeof(value))) {
+    append_label_token(out, out_size, "chunks=", value);
+  }
   if (benchmark_detail_value(row, "mode", value, sizeof(value))) {
     append_label_token(out, out_size, "mode=", value);
   }

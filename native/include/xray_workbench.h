@@ -502,6 +502,16 @@ XRAY_API uint32_t xray_bigint_mod_u32(const XrayScratchBigInt *value, uint32_t m
 XRAY_API int xray_bigint_divmod_u32(XrayScratchBigInt *quotient, uint32_t *remainder, const XrayScratchBigInt *value, uint32_t divisor);
 
 /**
+ * Divide numerator by divisor and return quotient plus remainder.
+ *
+ * divisor must be non-zero. quotient and remainder must be different objects.
+ * quotient or remainder may alias numerator or divisor; the implementation
+ * uses temporaries for those cases. Returns 1 on success and 0 on allocation
+ * failure, invalid divisor, or identical quotient/remainder outputs.
+ */
+XRAY_API int xray_bigint_divmod(XrayScratchBigInt *quotient, XrayScratchBigInt *remainder, const XrayScratchBigInt *numerator, const XrayScratchBigInt *divisor);
+
+/**
  * Return gcd(value, other) for a 32-bit other operand.
  */
 XRAY_API uint32_t xray_bigint_gcd_u32(const XrayScratchBigInt *value, uint32_t other);

@@ -822,6 +822,11 @@ static unsigned int perf_iterations(const char *operation, size_t digits) {
     if (digits > 4096) return 1200;
     return 2200;
   }
+  if (strcmp(operation, "divmod-bigint") == 0) {
+    if (digits > 8192) return 8;
+    if (digits > 4096) return 16;
+    return 32;
+  }
   if (strcmp(operation, "add") == 0 || strcmp(operation, "sub") == 0) {
     if (digits <= 40) return 20000;
     if (digits <= 150) return 8000;
@@ -1120,6 +1125,58 @@ static void append_parse_chunk_probe_result(
     "op=parse-chunk digits=%zu chunkDigits=%u operandFamilies=1 samples=%zu stablePairs=%zu/%zu candidateUs=%llu baselineUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median max=%.2f candidate=decimal-parse-chunk baseline=current-scratch-parse featureGate=decimal-parse-chunk gmpClue=mpz_set_str-chunking adoption=%s",
     digits,
     chunk_digits,
+    sample_count,
+    stable_sample_count,
+    sample_count,
+    result.scratch_us,
+    result.gmp_us,
+    result.speed_ratio,
+    result.worst_pair_ratio,
+    result.max_allowed_speed_ratio,
+    result.adoption);
+  append_result(report, &result);
+}
+
+static void append_divmod_dc_power_probe_result(
+  XrayBenchmarkReport *report,
+  size_t digits,
+  size_t power_chunks,
+  int parity,
+  unsigned long long candidate_us,
+  unsigned long long baseline_us,
+  double paired_ratio,
+  size_t stable_sample_count,
+  size_t sample_count,
+  double worst_pair_ratio) {
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "kernel divmod D&C power %zu chunks %zu digits", power_chunks, digits);
+  snprintf(result.category, sizeof(result.category), "kernel-probe");
+  snprintf(result.operation, sizeof(result.operation), "divmod-dc-power");
+  result.digits = digits;
+  result.scratch_us = candidate_us ? candidate_us : 1;
+  result.gmp_us = baseline_us ? baseline_us : 1;
+  result.speed_ratio = paired_ratio > 0.0 ? paired_ratio : (double)result.scratch_us / (double)result.gmp_us;
+  result.max_allowed_speed_ratio = 0.98;
+  result.stable_sample_count = stable_sample_count;
+  result.sample_count = sample_count;
+  result.worst_pair_ratio = worst_pair_ratio;
+  result.parity_verified = parity;
+  size_t required_stable = kernel_required_stable_samples(sample_count);
+  result.replacement_ready = parity &&
+    result.speed_ratio <= result.max_allowed_speed_ratio &&
+    result.stable_sample_count >= required_stable;
+  snprintf(result.adoption, sizeof(result.adoption), "%s",
+    !parity ? "blocked-output-mismatch" : (result.replacement_ready ? "promote-candidate" : "observe-only"));
+  snprintf(result.status, sizeof(result.status), "%s",
+    !parity ? "mismatch" : (result.replacement_ready ? "candidate-faster" : (result.speed_ratio < 1.0 ? "candidate-no-margin" : "baseline-faster")));
+  result.passed = parity;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  snprintf(result.detail, sizeof(result.detail),
+    "op=divmod-dc-power digits=%zu powerChunks=%zu divisorDigits=%zu operandFamilies=1 samples=%zu stablePairs=%zu/%zu candidateUs=%llu baselineUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median max=%.2f candidate=scratch-knuth-divmod baseline=mpz_tdiv_qr featureGate=bigint-division-dc-power gmpClue=mpn_tdiv_qr adoption=%s",
+    digits,
+    power_chunks,
+    power_chunks * 19U + 1U,
     sample_count,
     stable_sample_count,
     sample_count,
@@ -4498,6 +4555,89 @@ static void run_scratch_divmod_case(XrayBenchmarkReport *report, size_t digits) 
   free(text);
 }
 
+static char *benchmark_power_of_ten_decimal(size_t exponent) {
+  char *text = (char *)calloc(exponent + 2U, 1);
+  if (!text) return NULL;
+  text[0] = '1';
+  memset(text + 1, '0', exponent);
+  text[exponent + 1U] = '\0';
+  return text;
+}
+
+static void run_divmod_dc_power_probe_case(XrayBenchmarkReport *report, size_t digits, unsigned int seed) {
+  size_t power_chunks = digits / (2U * 19U);
+  if (power_chunks == 0) power_chunks = 1;
+  char *numerator_text = benchmark_decimal(digits, seed, 1);
+  char *divisor_text = benchmark_power_of_ten_decimal(power_chunks * 19U);
+  if (!numerator_text || !divisor_text) {
+    free(numerator_text);
+    free(divisor_text);
+    return;
+  }
+
+  unsigned int iterations = perf_iterations("divmod-bigint", digits);
+  XrayScratchBigInt numerator, divisor, quotient, remainder;
+  xray_bigint_init(&numerator);
+  xray_bigint_init(&divisor);
+  xray_bigint_init(&quotient);
+  xray_bigint_init(&remainder);
+  mpz_t gnum, gdiv, gquot, grem;
+  mpz_inits(gnum, gdiv, gquot, grem, NULL);
+  int ok = xray_bigint_set_decimal(&numerator, numerator_text) &&
+    xray_bigint_set_decimal(&divisor, divisor_text) &&
+    mpz_set_str(gnum, numerator_text, 10) == 0 &&
+    mpz_set_str(gdiv, divisor_text, 10) == 0;
+
+  unsigned long long candidate_samples[XRAY_BENCH_SAMPLES] = {0};
+  unsigned long long baseline_samples[XRAY_BENCH_SAMPLES] = {0};
+  int parity = 1;
+  for (unsigned int sample = 0; sample < XRAY_BENCH_SAMPLES; ++sample) {
+    unsigned long long candidate_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      ok = xray_bigint_divmod(&quotient, &remainder, &numerator, &divisor);
+    }
+    candidate_samples[sample] = xray_now_us() - candidate_started;
+
+    unsigned long long baseline_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      mpz_tdiv_qr(gquot, grem, gnum, gdiv);
+    }
+    baseline_samples[sample] = xray_now_us() - baseline_started;
+
+    char *quotient_text = xray_bigint_get_decimal(&quotient);
+    char *remainder_text = xray_bigint_get_decimal(&remainder);
+    char *gquot_text = mpz_get_str(NULL, 10, gquot);
+    char *grem_text = mpz_get_str(NULL, 10, grem);
+    parity = parity && ok && quotient_text && remainder_text && gquot_text && grem_text &&
+      strcmp(quotient_text, gquot_text) == 0 &&
+      strcmp(remainder_text, grem_text) == 0;
+    free(quotient_text);
+    free(remainder_text);
+    free(gquot_text);
+    free(grem_text);
+  }
+
+  append_divmod_dc_power_probe_result(
+    report,
+    digits,
+    power_chunks,
+    parity,
+    median_samples(candidate_samples, XRAY_BENCH_SAMPLES),
+    median_samples(baseline_samples, XRAY_BENCH_SAMPLES),
+    median_paired_ratio(candidate_samples, baseline_samples, XRAY_BENCH_SAMPLES),
+    paired_ratio_wins(candidate_samples, baseline_samples, XRAY_BENCH_SAMPLES, 0.98),
+    XRAY_BENCH_SAMPLES,
+    max_paired_ratio(candidate_samples, baseline_samples, XRAY_BENCH_SAMPLES));
+
+  mpz_clears(gnum, gdiv, gquot, grem, NULL);
+  xray_bigint_clear(&numerator);
+  xray_bigint_clear(&divisor);
+  xray_bigint_clear(&quotient);
+  xray_bigint_clear(&remainder);
+  free(numerator_text);
+  free(divisor_text);
+}
+
 static void run_scratch_modular_case(XrayBenchmarkReport *report, const char *operation, size_t digits) {
   char *text = benchmark_decimal(digits, 23, 1);
   if (!text) return;
@@ -4634,6 +4774,13 @@ static void run_scratch_bigint_gates(XrayBenchmarkReport *report) {
   run_scratch_mul_case(report, 16384);
   run_scratch_square_case(report, 16384);
   run_square_vs_mul_probe_case(report, 16384);
+  const size_t divmod_dc_power_digits[] = {4096, 8192, 16384};
+  for (size_t digit_index = 0; digit_index < sizeof(divmod_dc_power_digits) / sizeof(divmod_dc_power_digits[0]); ++digit_index) {
+    run_divmod_dc_power_probe_case(
+      report,
+      divmod_dc_power_digits[digit_index],
+      (unsigned int)(149U + digit_index));
+  }
   const size_t square_probe_sizes[] = {1000, 4096, 8192, 16384};
   const size_t square_probe_thresholds[] = {16, 24, 32, 48, 64, 80, 96, 112, 128, 160};
   for (size_t size_index = 0; size_index < sizeof(square_probe_sizes) / sizeof(square_probe_sizes[0]); ++size_index) {

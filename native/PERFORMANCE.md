@@ -55,6 +55,41 @@ Decision: keep all tested decimal format threshold policies unrouted. The guard
 does what we want: no single-size or non-product-codegen win can become a route
 without proving the adjacent-size behavior too.
 
+## 2026-06-16: D&C Division Primitive Probe
+
+Runs:
+
+- Release: `native/build-codex-pair-route/native-test-runs/20260616-011458-c4b04caf`
+- `/GL`: `native/build-codex-ltcg/native-test-runs/20260616-012046-c4b04caf`
+
+The benchmark now emits `divmod-dc-power` rows for the multi-limb division shape
+used by decimal divide-and-conquer formatting: a large numerator divided by
+`10^(19 * chunks)` near the half-split point. The row compares the scratch
+Knuth-style division against `mpz_tdiv_qr` with exact quotient/remainder parity.
+
+Release rows:
+
+- 4096 digits, 107 chunks: ratio `0.860`, stable `3/5`, worst pair `1.222`,
+  `observe-only`
+- 8192 digits, 215 chunks: ratio `1.275`, stable `0/5`, worst pair `2.165`,
+  `observe-only`
+- 16384 digits, 431 chunks: ratio `1.547`, stable `0/5`, worst pair `1.866`,
+  `observe-only`
+
+`/GL` rows:
+
+- 4096 digits, 107 chunks: ratio `0.770`, stable `4/5`, worst pair `1.455`,
+  `promote-candidate`
+- 8192 digits, 215 chunks: ratio `1.004`, stable `2/5`, worst pair `1.355`,
+  `observe-only`
+- 16384 digits, 431 chunks: ratio `1.254`, stable `0/5`, worst pair `1.426`,
+  `observe-only`
+
+Decision: expose exact full bigint `xray_bigint_divmod` for importers and keep
+the D&C division rows as benchmark evidence. The large-size format gap now has a
+measured primitive suspect: multi-limb division remains behind GMP/MPIR at 8192
+and 16384 digit D&C split sizes, even under `/GL`.
+
 ## 2026-06-15: Toom-3 Full-Shape Gate
 
 Run: `runs/20260615-041302-c4b04caf`
