@@ -198,6 +198,7 @@ static void test_benchmark_progress_digest(void) {
   const char *rows =
     "scratch-vs-gmp\tscratch parse 1000 digits\tparse\t1000\treplacement-ready\ttrue\ttrue\ttrue\tallowed\t10\t20\t0.500000\t1.000000\t0.700000\t5\t5\t1\tdetail\tRelease\tfalse\tMSVC\t1929\n"
     "policy-gate\tpolicy gate format preinv 1000 digits\tformat-policy-safety\t1000\tpolicy-ready\ttrue\ttrue\ttrue\tpromotion-ready\t50\t60\t0.800000\t0.980000\t0.950000\t5\t5\t1\tpolicy=preinv\tRelease\tfalse\tMSVC\t1929\n"
+    "policy-gate\tpolicy gate format product-gated 960 digits\tformat-policy-deep-safety\t960\tpolicy-ready\ttrue\ttrue\ttrue\tpromotion-ready\t45\t60\t0.750000\t0.980000\t0.880000\t5\t5\t1\tpolicy=deep-preinv gate=960 forcedCandidate=yes thresholdSafety=forced-neighbor deepConfirmation=required noAutoRoute=1\tRelease\tfalse\tMSVC\t1929\n"
     "policy-probe\tpolicy mul current-default 1000 digits\tmul-policy\t1000\tpolicy-ready\ttrue\ttrue\ttrue\tpromotion-ready\t21\t42\t0.500000\t1.000000\t0.800000\t5\t5\t1\tpolicy=current-default candidate=current-scratch-mul baseline=mpz_mul\tRelease\tfalse\tMSVC\t1929\n"
     "scratch-vs-gmp\tscratch format 896 digits\tformat\t896\tparity\ttrue\ttrue\tfalse\toracle-only\t190\t100\t1.900000\t1.000000\t1.950000\t0\t5\t1\tdetail\tRelease\tfalse\tMSVC\t1929\n"
     "frontier-scout\tfrontier scout mul 65536 digits\tmul-frontier\t65536\tnoisy-control\ttrue\ttrue\tfalse\tobserve-only\t70\t100\t0.700000\t1.000000\t1.500000\t1\t3\t1\tduplicateControl=default controlSafety=noisy-control\tRelease\tfalse\tMSVC\t1929\n"
@@ -211,23 +212,26 @@ static void test_benchmark_progress_digest(void) {
   CHECK(digest != NULL);
   CHECK(strstr(digest, "BENCHMARK PROGRESS DIGEST") != NULL);
   CHECK(strstr(digest, "Artifact: buildConfig=Release ipo=false compiler=MSVC 1929") != NULL);
-  CHECK(strstr(digest, "routeCandidates=4") != NULL);
+  CHECK(strstr(digest, "routeCandidates=5") != NULL);
   CHECK(strstr(digest, "routeCompleted=2") != NULL);
-  CHECK(strstr(digest, "routeOpen=2") != NULL);
+  CHECK(strstr(digest, "routeOpen=3") != NULL);
+  CHECK(strstr(digest, "productGatedOpen=1") != NULL);
   CHECK(strstr(digest, "baselineExcluded=1") != NULL);
   CHECK(strstr(digest, "controlsExcluded=1") != NULL);
   CHECK(strstr(digest, "noisyControls=1") != NULL);
   CHECK(strstr(digest, "safetyRejected=1") != NULL);
   CHECK(strstr(digest, "Product/backend route candidate rows observed") != NULL);
   CHECK(strstr(digest, "Open/noisy route rows observed") != NULL);
+  CHECK(strstr(digest, "Product-gated route rows observed") != NULL);
   CHECK(strstr(digest, "Safety-rejected rows observed") != NULL);
   CHECK(strstr(digest, "Baseline/current rows observed") != NULL);
   CHECK(strstr(digest, "Control/noise rows observed") != NULL);
   CHECK(strstr(digest, "parse") != NULL);
   CHECK(strstr(digest, "format-policy-safety policy=preinv") != NULL);
+  CHECK(strstr(digest, "format-policy-deep-safety policy=deep-preinv") != NULL);
   CHECK(strstr(digest, "mul-policy policy=current-default") != NULL);
   CHECK(strstr(digest, "mul-frontier") != NULL);
-  CHECK(strstr(digest, "baseline/current, duplicate-control, and noisy-control rows") != NULL);
+  CHECK(strstr(digest, "baseline/current, duplicate-control, noisy-control, and product-gated rows") != NULL);
   xray_free(digest);
   free(tsv);
 }
@@ -4169,12 +4173,14 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_progress, "BENCHMARK PROGRESS DIGEST") != NULL);
   CHECK(strstr(benchmark_progress, "Product/backend route candidate rows observed") != NULL);
   CHECK(strstr(benchmark_progress, "Open/noisy route rows observed") != NULL);
+  CHECK(strstr(benchmark_progress, "Product-gated route rows observed") != NULL);
   CHECK(strstr(benchmark_progress, "Safety-rejected rows observed") != NULL);
   CHECK(strstr(benchmark_progress, "Baseline/current rows observed") != NULL);
   CHECK(strstr(benchmark_progress, "Control/noise rows observed") != NULL);
+  CHECK(strstr(benchmark_progress, "productGatedOpen=") != NULL);
   CHECK(strstr(benchmark_progress, "baselineExcluded=") != NULL);
   CHECK(strstr(benchmark_progress, "controlsExcluded=") != NULL);
-  CHECK(strstr(benchmark_progress, "noisy-control rows") != NULL);
+  CHECK(strstr(benchmark_progress, "product-gated rows") != NULL);
   CHECK(strstr(cpu_text, "CPU:") != NULL);
   CHECK(strstr(cpu_text, "flags=") != NULL);
   free(benchmark_json);
