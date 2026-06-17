@@ -1855,6 +1855,9 @@ static void test_benchmarks(void) {
   int saw_format_policy_deep_gate_preinv10e19_pairs_window768_896 = 0;
   int saw_format_policy_deep_gate_preinv10e19_pairs_window768_960 = 0;
   int saw_format_policy_deep_gate_preinv10e19_pairs_window896_1000 = 0;
+  int saw_format_policy_route_audit = 0;
+  int saw_format_policy_route_audit_preinv10e19 = 0;
+  int saw_format_policy_route_audit_preinv10e19_pairs = 0;
   int saw_divmod_preinv_qhat_safety_gate = 0;
   int saw_mul_policy_safety_threshold96_gate = 0;
   int saw_mul_policy_safety_toom_leaf48_gate = 0;
@@ -3441,6 +3444,42 @@ static void test_benchmarks(void) {
         } else {
           CHECK(0);
         }
+      } else if (strcmp(report->results[index].operation, "format-policy-route-audit") == 0) {
+        saw_format_policy_route_audit = 1;
+        CHECK(report->results[index].sample_count == 4);
+        CHECK(strstr(report->results[index].detail, "op=format-policy-route-audit") != NULL);
+        CHECK(strstr(report->results[index].detail, "sizes=768,896,960,1000") != NULL);
+        CHECK(strstr(report->results[index].detail, "sizeCount=4") != NULL);
+        CHECK(strstr(report->results[index].detail, "samples=9") != NULL);
+        CHECK(strstr(report->results[index].detail, "requiredStablePairs=8/9") != NULL);
+        CHECK(strstr(report->results[index].detail, "safeSizes=") != NULL);
+        CHECK(strstr(report->results[index].detail, "hashSafe=") != NULL);
+        CHECK(strstr(report->results[index].detail, "hashGate=matched") != NULL);
+        CHECK(strstr(report->results[index].detail, "parity=matched") != NULL);
+        CHECK(strstr(report->results[index].detail, "forcedCandidate=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "thresholdSafety=forced-neighbor") != NULL);
+        CHECK(strstr(report->results[index].detail, "deepConfirmation=done") != NULL);
+        CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=current-scratch-format") != NULL);
+        CHECK(strstr(report->results[index].detail, "oracle=mpz_get_str") != NULL);
+        CHECK(strstr(report->results[index].detail, "candCurrentMax=") != NULL);
+        CHECK(strstr(report->results[index].detail, "candGmpMax=") != NULL);
+        CHECK(strstr(report->results[index].detail, "currentGmpMax=") != NULL);
+        CHECK(strstr(report->results[index].detail, "maxWorstPairRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
+        CHECK(strstr(report->results[index].detail, "sameInput=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "sameRunTournament=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=decimal-format-window-promotion-audit") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpClue=mfast-factor64pre-precompute") != NULL);
+        if (strstr(report->results[index].detail, "policy=audit-preinv10e19-window768-1000") != NULL) {
+          saw_format_policy_route_audit_preinv10e19 = 1;
+          CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv") != NULL);
+        } else if (strstr(report->results[index].detail, "policy=audit-preinv10e19-pairs-window768-1000") != NULL) {
+          saw_format_policy_route_audit_preinv10e19_pairs = 1;
+          CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv-pair-writer") != NULL);
+        } else {
+          CHECK(0);
+        }
       } else if (strcmp(report->results[index].operation, "format-dc-route-safety") == 0) {
         saw_format_dc_route_safety_gate = 1;
         CHECK(report->results[index].sample_count == 3);
@@ -3726,6 +3765,9 @@ static void test_benchmarks(void) {
   CHECK(saw_format_policy_deep_gate_preinv10e19_pairs_window768_896);
   CHECK(saw_format_policy_deep_gate_preinv10e19_pairs_window768_960);
   CHECK(saw_format_policy_deep_gate_preinv10e19_pairs_window896_1000);
+  CHECK(saw_format_policy_route_audit);
+  CHECK(saw_format_policy_route_audit_preinv10e19);
+  CHECK(saw_format_policy_route_audit_preinv10e19_pairs);
   CHECK(saw_divmod_preinv_qhat_safety_gate);
   CHECK(saw_mul_policy_safety_threshold96_gate);
   CHECK(saw_mul_policy_safety_toom_leaf48_gate);
@@ -3897,6 +3939,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "format-policy-deep-safety") != NULL);
   CHECK(strstr(json, "deepConfirmation=required") != NULL);
   CHECK(strstr(json, "deepConfirmation=not-required") != NULL);
+  CHECK(strstr(json, "format-policy-route-audit") != NULL);
+  CHECK(strstr(json, "decimal-format-window-promotion-audit") != NULL);
+  CHECK(strstr(json, "audit-preinv10e19-pairs-window768-1000") != NULL);
+  CHECK(strstr(json, "candCurrentMax=") != NULL);
   CHECK(strstr(json, "\"avx\"") != NULL);
   CHECK(strstr(json, "\"avx2\"") != NULL);
   CHECK(strstr(json, "\"scratchRows\"") != NULL);
@@ -4055,6 +4101,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "format-policy-deep-safety") != NULL);
   CHECK(strstr(tsv, "deepConfirmation=required") != NULL);
   CHECK(strstr(tsv, "deepConfirmation=not-required") != NULL);
+  CHECK(strstr(tsv, "format-policy-route-audit") != NULL);
+  CHECK(strstr(tsv, "decimal-format-window-promotion-audit") != NULL);
+  CHECK(strstr(tsv, "audit-preinv10e19-pairs-window768-1000") != NULL);
+  CHECK(strstr(tsv, "candCurrentMax=") != NULL);
   CHECK(strstr(tsv, "gmpClue=") != NULL);
   CHECK(strstr(tsv, "mul-toom3") != NULL);
   CHECK(strstr(tsv, "mod-u32-precompute") != NULL);
@@ -4241,6 +4291,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "format-policy-deep-safety") != NULL);
   CHECK(strstr(benchmark_tsv, "deepConfirmation=required") != NULL);
   CHECK(strstr(benchmark_tsv, "deepConfirmation=not-required") != NULL);
+  CHECK(strstr(benchmark_tsv, "format-policy-route-audit") != NULL);
+  CHECK(strstr(benchmark_tsv, "decimal-format-window-promotion-audit") != NULL);
+  CHECK(strstr(benchmark_tsv, "audit-preinv10e19-pairs-window768-1000") != NULL);
+  CHECK(strstr(benchmark_tsv, "candCurrentMax=") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-toom3") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-threshold-tournament") != NULL);
   CHECK(strstr(benchmark_tsv, "root-size-threshold-tournament") != NULL);
@@ -4477,6 +4531,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "format-policy-deep-safety deep-preinv10e19-pairs-window768-896") != NULL);
   CHECK(strstr(benchmark_frontier, "format-policy-deep-safety deep-preinv10e19-pairs-window768-960") != NULL);
   CHECK(strstr(benchmark_frontier, "format-policy-deep-safety deep-preinv10e19-pairs-window896-1000") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-policy-route-audit audit-preinv10e19-window768-1000") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-policy-route-audit audit-preinv10e19-pairs-window768-1000") != NULL);
   CHECK(strstr(benchmark_frontier, "square-policy current-default") != NULL);
   CHECK(strstr(benchmark_frontier, "square-policy karatsuba-thr96") != NULL);
   CHECK(strstr(benchmark_frontier, "square-leaf-order") != NULL);
