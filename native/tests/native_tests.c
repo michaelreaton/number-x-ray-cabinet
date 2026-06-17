@@ -246,6 +246,17 @@ static void test_benchmark_progress_digest(void) {
   CHECK(strstr(digest, "baseline/current, duplicate-control, noisy-control, product-gated, warmup-review, and lower-bound/incomplete rows") != NULL);
   CHECK(strstr(digest, "Setup/warmup context rows are reported for review but are not scored") != NULL);
   xray_free(digest);
+
+  char *classification = xray_benchmark_progress_classification_tsv(tsv);
+  CHECK(classification != NULL);
+  CHECK(strstr(classification, "primaryLane\trouteCandidate\trouteCompleted\trouteOpen\tproductGated\thasSetupContext") != NULL);
+  CHECK(strstr(classification, "format-policy-safety policy=preinv\tcompleted\ttrue\ttrue\tfalse\tfalse\ttrue\tfalse\tfalse") != NULL);
+  CHECK(strstr(classification, "format-policy-deep-safety policy=deep-preinv\tproduct-gated\ttrue\tfalse\ttrue\ttrue\tfalse\tfalse\tfalse") != NULL);
+  CHECK(strstr(classification, "mul-policy policy=current-default baseline=mpz_mul candidate=current-scratch-mul\tbaseline\tfalse\tfalse\tfalse") != NULL);
+  CHECK(strstr(classification, "mul-frontier\tcontrol\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\ttrue\ttrue") != NULL);
+  CHECK(strstr(classification, "divmod-precomputed\twarmup-review\tfalse\tfalse\tfalse\tfalse\ttrue\ttrue\tfalse") != NULL);
+  CHECK(strstr(classification, "divmod-precomputed\tlower-bound\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\ttrue") != NULL);
+  xray_free(classification);
   free(tsv);
 }
 
@@ -1434,6 +1445,7 @@ static void test_workspace_and_gnfs_artifacts(void) {
   CHECK(report.benchmark_tsv_path == NULL);
   CHECK(report.benchmark_frontier_path == NULL);
   CHECK(report.benchmark_progress_path == NULL);
+  CHECK(report.benchmark_progress_tsv_path == NULL);
   CHECK(report.cpu.logical_cpus >= 1);
   CHECK(report.gnfs.stage_count == 7);
   CHECK(strstr(report.json, "\"expression\"") != NULL);
@@ -1441,6 +1453,7 @@ static void test_workspace_and_gnfs_artifacts(void) {
   CHECK(strstr(report.json, "\"artifactPaths\"") != NULL);
   CHECK(strstr(report.json, "\"benchmarkFrontier\":null") != NULL);
   CHECK(strstr(report.json, "\"benchmarkProgress\":null") != NULL);
+  CHECK(strstr(report.json, "\"benchmarkProgressTsv\":null") != NULL);
   CHECK(strstr(report.json, "\"avx\"") != NULL);
   CHECK(strstr(report.json, "\"gnfsReport\"") != NULL);
   CHECK(strstr(report.events_jsonl, "\"stage\":\"benchmark\",\"status\":\"skipped\"") != NULL);
@@ -3991,11 +4004,14 @@ static void test_benchmarks(void) {
   CHECK(workbench.benchmark_tsv_path != NULL);
   CHECK(workbench.benchmark_frontier_path != NULL);
   CHECK(workbench.benchmark_progress_path != NULL);
+  CHECK(workbench.benchmark_progress_tsv_path != NULL);
   CHECK(strstr(workbench.json, "\"artifactPaths\"") != NULL);
   CHECK(strstr(workbench.json, "\"benchmarkFrontier\"") != NULL);
   CHECK(strstr(workbench.json, "\"benchmarkProgress\"") != NULL);
+  CHECK(strstr(workbench.json, "\"benchmarkProgressTsv\"") != NULL);
   CHECK(strstr(workbench.benchmark_frontier_path, workbench.run_dir) != NULL);
   CHECK(strstr(workbench.benchmark_progress_path, workbench.run_dir) != NULL);
+  CHECK(strstr(workbench.benchmark_progress_tsv_path, workbench.run_dir) != NULL);
   CHECK(strstr(workbench.events_jsonl, "\"stage\":\"benchmark\"") != NULL);
   CHECK(strstr(workbench.events_jsonl, "lanePromotionReady=") != NULL);
   CHECK(strstr(workbench.events_jsonl, "laneSafetyRejected=") != NULL);
@@ -4004,6 +4020,7 @@ static void test_benchmarks(void) {
   char *benchmark_tsv = read_text_file(workbench.benchmark_tsv_path);
   char *benchmark_frontier = read_text_file(workbench.benchmark_frontier_path);
   char *benchmark_progress = read_text_file(workbench.benchmark_progress_path);
+  char *benchmark_progress_tsv = read_text_file(workbench.benchmark_progress_tsv_path);
   char *cpu_text = read_text_file(workbench.cpu_features_path);
   CHECK(strstr(benchmark_json, "\"benchmarkReport\"") != NULL);
   CHECK(strstr(benchmark_json, "\"cpu\"") != NULL);
@@ -4299,12 +4316,17 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_progress, "baselineExcluded=") != NULL);
   CHECK(strstr(benchmark_progress, "controlsExcluded=") != NULL);
   CHECK(strstr(benchmark_progress, "product-gated rows") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "primaryLane\trouteCandidate\trouteCompleted\trouteOpen\tproductGated\thasSetupContext") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "hasSetupContext") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "divmod-precomputed") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "\ttrue\tfalse\ttrue\ttrue\ttrue") != NULL);
   CHECK(strstr(cpu_text, "CPU:") != NULL);
   CHECK(strstr(cpu_text, "flags=") != NULL);
   free(benchmark_json);
   free(benchmark_tsv);
   free(benchmark_frontier);
   free(benchmark_progress);
+  free(benchmark_progress_tsv);
   free(cpu_text);
   xray_workbench_report_clear(&workbench);
 }

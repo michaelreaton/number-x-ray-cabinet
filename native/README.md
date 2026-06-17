@@ -271,12 +271,13 @@ threshold, or depth limit must report
 forced-neighbor safety row and a product-like `/GL` run both pass. This keeps a
 one-pocket win from becoming a harmful global default.
 
-Every benchmark run writes four benchmark artifacts in its run folder:
+Every benchmark run writes five benchmark artifacts in its run folder:
 
 - `benchmark.json`: machine-readable rows, CPU features, timings, gates, and status labels
 - `benchmark.tsv`: spreadsheet-friendly rows for sorting and comparison
 - `benchmark_frontier.txt`: human-readable CPU feature summary, measurable status, near wins, largest scratch gaps, and scratch/kernel timing tables
 - `benchmark_progress.txt`: human-readable completed/open/noisy digest for status updates and PR review
+- `benchmark_progress.tsv`: machine-readable progress lanes and booleans for external tools
 
 Kernel rows in `benchmark_frontier.txt` include compact route tags such as
 `thr=`, `leaf=`, `depth=`, and `base=` when those values are present in the
@@ -297,6 +298,10 @@ mirrors the MFastFermat progress-digest lesson: duplicate controls,
 `noisy-control` rows, current-default baseline rows, and rows tagged with
 `noAutoRoute=1`, forced-neighbor safety, or required deep confirmation stay out
 of route-completed progress even when their median ratio looks favorable.
+The matching `benchmark_progress.tsv` artifact and `--bench-progress-tsv` CLI
+mode expose the same row classification with importable booleans such as
+`routeCandidate`, `routeCompleted`, `productGated`, `hasSetupContext`,
+`warmupReview`, `lowerBound`, `baseline`, `control`, and `noisyControl`.
 Rows tagged with ordinary setup metadata such as
 `setupPolicy=reported-not-scored`, `setupUs=`, `warmup_s=`, or
 `WarmupSecondsMedian=` are listed in `setupContextRows`. They can still appear
@@ -390,6 +395,7 @@ native\build\Release\xray_cli.exe --help
 native\build\Release\xray_cli.exe --bench 10403
 native\build\Release\xray_cli.exe --bench-frontier 10403
 native\build\Release\xray_cli.exe --bench-progress native\build\native-test-runs\<run>\benchmark.tsv
+native\build\Release\xray_cli.exe --bench-progress-tsv native\build\native-test-runs\<run>\benchmark.tsv
 native\build\Release\xray_cli.exe --bench-compare native\build-release\native-test-runs\<run>\benchmark.tsv native\build-ltcg\native-test-runs\<run>\benchmark.tsv
 native\build\Release\xray_cli.exe --rsa260
 ```
@@ -398,9 +404,11 @@ The CLI emits the same reproducible JSON shape used by the GTK app. Use
 `--bench-frontier` when you want stdout to show the human-readable benchmark
 frontier while still writing the full run artifacts. Use `--bench-progress` for
 a one-artifact digest of what is completed, still open, noisy, or excluded as
-control evidence. Use `--bench-compare` to review two benchmark TSV artifacts,
-such as Release versus `/GL`, and surface rows that are ready in both builds,
-ready in only one build, or rejected by worst-pair safety:
+control evidence. Use `--bench-progress-tsv` when another tool needs the same
+progress classification as a TSV table instead of prose. Use `--bench-compare`
+to review two benchmark TSV artifacts, such as Release versus `/GL`, and
+surface rows that are ready in both builds, ready in only one build, or
+rejected by worst-pair safety:
 
 - `factorReport`
 - `cyclotomicReport`

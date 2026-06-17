@@ -152,8 +152,8 @@ XRAY_API char *xray_build_info_summary(const XrayBuildInfo *info);
  * Pass pointers returned by functions such as xray_bigint_get_decimal(),
  * xray_preview_decimal(), xray_*_report_json(), and
  * xray_benchmark_compare_tsv_text(), xray_benchmark_progress_tsv_text(),
- * xray_cpu_features_summary(), or xray_build_info_summary(). Passing NULL is
- * allowed. Use this instead of
+ * xray_benchmark_progress_classification_tsv(), xray_cpu_features_summary(),
+ * or xray_build_info_summary(). Passing NULL is allowed. Use this instead of
  * plain free() across shared-library or foreign-language boundaries.
  */
 XRAY_API void xray_free(void *ptr);
@@ -954,6 +954,7 @@ typedef struct XrayWorkbenchReport {
   char *benchmark_tsv_path;
   char *benchmark_frontier_path;
   char *benchmark_progress_path;
+  char *benchmark_progress_tsv_path;
   char *json;
   char *events_jsonl;
   char *source_notes;
@@ -1247,6 +1248,19 @@ XRAY_API char *xray_benchmark_compare_tsv_text(const char *left_tsv, const char 
  * xray_free().
  */
 XRAY_API char *xray_benchmark_progress_tsv_text(const char *tsv);
+
+/**
+ * Classify benchmark TSV rows into machine-readable progress lanes.
+ *
+ * The returned TSV preserves each row's benchmark identity and adds route
+ * booleans such as routeCandidate, routeCompleted, productGated,
+ * hasSetupContext, warmupReview, lowerBound, baseline, control, and
+ * noisyControl. This is intended for external tools that need the same
+ * benchmark-progress classification as xray_benchmark_progress_tsv_text()
+ * without parsing the human-readable digest. The caller owns the returned
+ * string and must release it with xray_free().
+ */
+XRAY_API char *xray_benchmark_progress_classification_tsv(const char *tsv);
 
 /**
  * Format the benchmark frontier summary as newly allocated text.
