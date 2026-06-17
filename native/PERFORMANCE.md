@@ -29,6 +29,22 @@ parity plus a stable same-run paired win.
   benchmarks show exact parity, adjacent-size safety, and product-like build
   confirmation.
 
+## 2026-06-17: Focused Benchmark Digit Windows
+
+The hourly MFastFermat watch advanced `main` to `8d9735e` with a focused
+known-factor bit-band filter. The useful import for Number X-Ray is benchmark
+review discipline, not a direct CUDA route: when an optimization is only
+credible for a narrow size or shape, the review artifact should make that
+window explicit.
+
+Number X-Ray now exposes `xray_benchmark_filter_tsv_digits()` and matching CLI
+flags `--bench-min-digits` / `--bench-max-digits` for `--bench-progress`,
+`--bench-progress-tsv`, and `--bench-compare`. The filter preserves the full
+raw benchmark artifact and slices only the review view, so a 768..1000 digit
+formatter pocket or a 4096..8192 digit D&C formatter scout can be inspected
+without pretending it is a global route. This does not promote any arithmetic
+or formatting path; it makes the evidence harder to overstate.
+
 ## 2026-06-16: Benchmark Progress Digest
 
 MFastFermat `2ffb290` added a completed/open progress digest for benchmark TSV
