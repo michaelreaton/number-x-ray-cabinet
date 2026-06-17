@@ -190,6 +190,9 @@ static void test_runtime_version_contract(void) {
   CHECK(strstr(route_json, "\"sparseSquareMinLimbs\":") != NULL);
   CHECK(strstr(route_json, "\"sparseMulMinProducts\":") != NULL);
   CHECK(strstr(route_json, "\"productionRoutes\"") != NULL);
+  CHECK(strstr(route_json, "\"decimal-dc-ladder\"") != NULL);
+  CHECK(strstr(route_json, "D&C ladder at >=4096 digits") != NULL);
+  CHECK(strstr(route_json, "\"decimal-dc-preinv-qhat\"") != NULL);
   CHECK(strstr(route_json, "\"decimal-parse-large\"") != NULL);
   CHECK(strstr(route_json, "\"diagnosticProbeFamilies\"") != NULL);
   CHECK(strstr(route_json, "\"decimal-parse-chunk\"") != NULL);
