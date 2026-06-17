@@ -2546,12 +2546,33 @@ static int square_schoolbook(XrayScratchBigInt *out, const XrayScratchBigInt *va
   return 1;
 }
 
+static int square_schoolbook_fused_leaf_order(XrayScratchBigInt *out, const XrayScratchBigInt *value) {
+  if (!out || !value) return 0;
+  if (value->count == 0) return set_u32(out, 0);
+  size_t needed = value->count * 2U;
+  if (!reserve_limbs(out, needed + 2U)) return 0;
+  memset(out->limbs, 0, sizeof(uint64_t) * (needed + 2U));
+  out->count = needed + 2U;
+
+  for (size_t row = 0; row < value->count; ++row) {
+    square_add_diagonal_word(out, row * 2U, value->limbs[row]);
+    square_add_doubled_cross_row(out, value->limbs, value->count, row);
+  }
+  normalize(out);
+  return 1;
+}
+
 static int slice_bigint(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t offset, size_t count);
 static int add_shifted_inplace(XrayScratchBigInt *out, const XrayScratchBigInt *addend, size_t shift);
 static int mul_schoolbook_mode(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, int use_unroll4);
+static int square_dispatch_threshold_mode(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t threshold, int use_fused_leaf_order);
 static int square_dispatch_threshold(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t threshold);
 
-static int square_karatsuba_threshold(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t threshold) {
+static int square_karatsuba_threshold_mode(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value,
+  size_t threshold,
+  int use_fused_leaf_order) {
   if (!out || !value) return 0;
   if (value->count == 0) return set_u32(out, 0);
   if (value->count <= XRAY_BIGINT_SQUARE_SELF_MUL_MAX_LIMBS) {
@@ -2563,7 +2584,11 @@ static int square_karatsuba_threshold(XrayScratchBigInt *out, const XrayScratchB
     return mul_schoolbook_mode(out, value, value, use_unroll4);
   }
   size_t active_threshold = threshold >= 2U ? threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
-  if (value->count < active_threshold) return square_schoolbook(out, value);
+  if (value->count < active_threshold) {
+    return use_fused_leaf_order ?
+      square_schoolbook_fused_leaf_order(out, value) :
+      square_schoolbook(out, value);
+  }
 
   size_t split = value->count / 2U;
   XrayScratchBigInt a0, a1, z0, z1, z2, sum;
@@ -2576,10 +2601,10 @@ static int square_karatsuba_threshold(XrayScratchBigInt *out, const XrayScratchB
 
   int ok = slice_bigint(&a0, value, 0, split) &&
     slice_bigint(&a1, value, split, value->count - split) &&
-    square_dispatch_threshold(&z0, &a0, active_threshold) &&
-    square_dispatch_threshold(&z2, &a1, active_threshold) &&
+    square_dispatch_threshold_mode(&z0, &a0, active_threshold, use_fused_leaf_order) &&
+    square_dispatch_threshold_mode(&z2, &a1, active_threshold, use_fused_leaf_order) &&
     xray_bigint_add(&sum, &a0, &a1) &&
-    square_dispatch_threshold(&z1, &sum, active_threshold) &&
+    square_dispatch_threshold_mode(&z1, &sum, active_threshold, use_fused_leaf_order) &&
     xray_bigint_sub(&z1, &z1, &z0) &&
     xray_bigint_sub(&z1, &z1, &z2);
 
@@ -2599,6 +2624,14 @@ static int square_karatsuba_threshold(XrayScratchBigInt *out, const XrayScratchB
   xray_bigint_clear(&z2);
   xray_bigint_clear(&sum);
   return ok;
+}
+
+static int square_karatsuba_threshold(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t threshold) {
+  return square_karatsuba_threshold_mode(out, value, threshold, 0);
+}
+
+static int square_dispatch_threshold_mode(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t threshold, int use_fused_leaf_order) {
+  return square_karatsuba_threshold_mode(out, value, threshold, use_fused_leaf_order);
 }
 
 static int square_dispatch_threshold(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t threshold) {
@@ -3342,6 +3375,20 @@ int xray_bigint_square_karatsuba_probe(XrayScratchBigInt *out, const XrayScratch
     return ok;
   }
   return square_dispatch_threshold(out, value, active_threshold);
+}
+
+int xray_bigint_square_fused_leaf_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t threshold) {
+  if (!out || !value) return 0;
+  size_t active_threshold = threshold >= 2U ? threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  if (out == value) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = square_dispatch_threshold_mode(&temp, value, active_threshold, 1);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return square_dispatch_threshold_mode(out, value, active_threshold, 1);
 }
 
 int xray_bigint_mul_with_threshold(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t threshold) {

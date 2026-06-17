@@ -332,6 +332,17 @@ XRAY_API uint32_t xray_bigint_powmod_u32_precomputed(const XrayScratchBigInt *ba
 XRAY_API int xray_bigint_square_karatsuba_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t threshold);
 
 /**
+ * Compute a square with Karatsuba recursion but fused schoolbook leaf order.
+ *
+ * This diagnostic probe keeps the production square algorithm shape and
+ * threshold semantics, but each schoolbook square leaf emits the diagonal term
+ * in the same row pass as doubled cross terms. It tests whether avoiding a
+ * separate leaf-order pass helps local square-product workloads. out may alias
+ * value. Returns 1 on success and 0 on allocation failure.
+ */
+XRAY_API int xray_bigint_square_fused_leaf_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t threshold);
+
+/**
  * Format value using an explicit Horner handoff threshold for benchmarking.
  *
  * The caller owns the returned string and must release it with xray_free().
