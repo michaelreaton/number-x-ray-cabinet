@@ -202,7 +202,8 @@ static void test_benchmark_progress_digest(void) {
     "policy-probe\tpolicy mul current-default 1000 digits\tmul-policy\t1000\tpolicy-ready\ttrue\ttrue\ttrue\tpromotion-ready\t21\t42\t0.500000\t1.000000\t0.800000\t5\t5\t1\tpolicy=current-default candidate=current-scratch-mul baseline=mpz_mul\tRelease\tfalse\tMSVC\t1929\n"
     "scratch-vs-gmp\tscratch format 896 digits\tformat\t896\tparity\ttrue\ttrue\tfalse\toracle-only\t190\t100\t1.900000\t1.000000\t1.950000\t0\t5\t1\tdetail\tRelease\tfalse\tMSVC\t1929\n"
     "frontier-scout\tfrontier scout mul 65536 digits\tmul-frontier\t65536\tnoisy-control\ttrue\ttrue\tfalse\tobserve-only\t70\t100\t0.700000\t1.000000\t1.500000\t1\t3\t1\tduplicateControl=default controlSafety=noisy-control\tRelease\tfalse\tMSVC\t1929\n"
-    "policy-gate\tpolicy gate format window 896 digits\tformat-policy-deep-safety\t896\tworst-pair-regression\ttrue\ttrue\tfalse\tobserve-only\t70\t100\t0.700000\t0.980000\t1.300000\t7\t9\t1\tpolicy=window threshold=16\tRelease\tfalse\tMSVC\t1929\n";
+    "policy-gate\tpolicy gate format window 896 digits\tformat-policy-deep-safety\t896\tworst-pair-regression\ttrue\ttrue\tfalse\tobserve-only\t70\t100\t0.700000\t0.980000\t1.300000\t7\t9\t1\tpolicy=window threshold=16\tRelease\tfalse\tMSVC\t1929\n"
+    "kernel-probe\tkernel divmod timeout 16384 digits\tdivmod-precomputed\t16384\ttimeout lower-bound\tfalse\tfalse\tfalse\tobserve-only\t300\t100\t3.000000\t0.980000\t3.000000\t0\t0\t300\tCompletedRuns=0 Status=timeout lower-bound\tRelease\tfalse\tMSVC\t1929\n";
   size_t tsv_len = strlen(header) + strlen(rows) + 1U;
   char *tsv = (char *)calloc(tsv_len, 1);
   CHECK(tsv != NULL);
@@ -220,10 +221,12 @@ static void test_benchmark_progress_digest(void) {
   CHECK(strstr(digest, "controlsExcluded=1") != NULL);
   CHECK(strstr(digest, "noisyControls=1") != NULL);
   CHECK(strstr(digest, "safetyRejected=1") != NULL);
+  CHECK(strstr(digest, "lowerBoundRows=1") != NULL);
   CHECK(strstr(digest, "Product/backend route candidate rows observed") != NULL);
   CHECK(strstr(digest, "Open/noisy route rows observed") != NULL);
   CHECK(strstr(digest, "Product-gated route rows observed") != NULL);
   CHECK(strstr(digest, "Safety-rejected rows observed") != NULL);
+  CHECK(strstr(digest, "Lower-bound/incomplete rows observed") != NULL);
   CHECK(strstr(digest, "Baseline/current rows observed") != NULL);
   CHECK(strstr(digest, "Control/noise rows observed") != NULL);
   CHECK(strstr(digest, "parse") != NULL);
@@ -231,7 +234,9 @@ static void test_benchmark_progress_digest(void) {
   CHECK(strstr(digest, "format-policy-deep-safety policy=deep-preinv") != NULL);
   CHECK(strstr(digest, "mul-policy policy=current-default") != NULL);
   CHECK(strstr(digest, "mul-frontier") != NULL);
-  CHECK(strstr(digest, "baseline/current, duplicate-control, noisy-control, and product-gated rows") != NULL);
+  CHECK(strstr(digest, "divmod-precomputed") != NULL);
+  CHECK(strstr(digest, "lower-bound/incomplete rows") != NULL);
+  CHECK(strstr(digest, "baseline/current, duplicate-control, noisy-control, product-gated, and lower-bound/incomplete rows") != NULL);
   xray_free(digest);
   free(tsv);
 }
