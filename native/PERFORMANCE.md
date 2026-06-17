@@ -29,6 +29,20 @@ parity plus a stable same-run paired win.
   benchmarks show exact parity, adjacent-size safety, and product-like build
   confirmation.
 
+## 2026-06-16: Benchmark Progress Digest
+
+MFastFermat `2ffb290` added a completed/open progress digest for benchmark TSV
+artifacts. Number X-Ray now mirrors that measurement hygiene with
+`xray_benchmark_progress_tsv_text()`, the CLI `--bench-progress` mode, and a
+saved `benchmark_progress.txt` artifact in each benchmark run folder.
+
+The digest is deliberately a reporting guardrail, not a route change. It
+separates completed product/backend candidates from open/noisy rows, safety
+rejections, and controls. Rows labeled `duplicateControl=` or
+`controlSafety=noisy-control` are excluded from completed candidate totals, so
+a favorable median in a control row cannot be misreported as production
+progress.
+
 ## 2026-06-16: Formatter Window Promotion Rejected
 
 MFastFermat `main` is at `96117fd` and its newest tail-control DIF/DIT evidence
