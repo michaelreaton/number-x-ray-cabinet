@@ -285,6 +285,7 @@ static void test_benchmark_progress_digest(void) {
     "scratch-vs-gmp\tscratch format 896 digits\tformat\t896\tparity\ttrue\ttrue\tfalse\toracle-only\t190\t100\t1.900000\t1.000000\t1.950000\t0\t5\t1\tdetail\tRelease\tfalse\tMSVC\t1929\n"
     "frontier-scout\tfrontier scout mul 65536 digits\tmul-frontier\t65536\tnoisy-control\ttrue\ttrue\tfalse\tobserve-only\t70\t100\t0.700000\t1.000000\t1.500000\t1\t3\t1\tduplicateControl=default controlSafety=noisy-control\tRelease\tfalse\tMSVC\t1929\n"
     "policy-gate\tpolicy gate format window 896 digits\tformat-policy-deep-safety\t896\tworst-pair-regression\ttrue\ttrue\tfalse\tobserve-only\t70\t100\t0.700000\t0.980000\t1.300000\t7\t9\t1\tpolicy=window threshold=16\tRelease\tfalse\tMSVC\t1929\n"
+    "kernel-probe\tkernel format stability shortfall 512 digits\tformat-route-scout\t512\tcandidate-no-margin\ttrue\ttrue\tfalse\tobserve-only\t90\t100\t0.900000\t0.980000\t0.950000\t4\t5\t1\tpolicy=stable-window candidate=decimal-stability-scout baseline=current-scratch-format\tRelease\tfalse\tMSVC\t1929\n"
     "kernel-probe\tkernel divmod warmup review 32768 digits\tdivmod-precomputed\t32768\treview-warmup\tfalse\tfalse\tfalse\tobserve-only\t180\t100\t1.800000\t0.980000\t1.900000\t0\t3\t240\tWarmupPolicy=review-warmup setupUs=450000 setupPolicy=review-warmup cacheRole=divisor-context\tRelease\tfalse\tMSVC\t1929\n"
     "kernel-probe\tkernel divmod timeout 16384 digits\tdivmod-precomputed\t16384\ttimeout lower-bound\tfalse\tfalse\tfalse\tobserve-only\t300\t100\t3.000000\t0.980000\t3.000000\t0\t0\t300\tCompletedRuns=0 Status=timeout lower-bound\tRelease\tfalse\tMSVC\t1929\n"
     "kernel-probe\tkernel product failed 32768 digits\tproduct-prefix\t32768\trun failed\tfalse\tfalse\tfalse\tobserve-only\t0\t0\t0.000000\t0.980000\t0.000000\t0\t0\t300\tRuns=1 CompletedRuns=0 Status=run failed exitCode=1\tRelease\tfalse\tMSVC\t1929\n";
@@ -297,9 +298,9 @@ static void test_benchmark_progress_digest(void) {
   CHECK(digest != NULL);
   CHECK(strstr(digest, "BENCHMARK PROGRESS DIGEST") != NULL);
   CHECK(strstr(digest, "Artifact: buildConfig=Release ipo=false compiler=MSVC 1929") != NULL);
-  CHECK(strstr(digest, "routeCandidates=5") != NULL);
+  CHECK(strstr(digest, "routeCandidates=6") != NULL);
   CHECK(strstr(digest, "routeCompleted=2") != NULL);
-  CHECK(strstr(digest, "routeOpen=3") != NULL);
+  CHECK(strstr(digest, "routeOpen=4") != NULL);
   CHECK(strstr(digest, "productGatedOpen=1") != NULL);
   CHECK(strstr(digest, "baselineExcluded=1") != NULL);
   CHECK(strstr(digest, "controlsExcluded=1") != NULL);
@@ -310,6 +311,7 @@ static void test_benchmark_progress_digest(void) {
   CHECK(strstr(digest, "lowerBoundRows=1") != NULL);
   CHECK(strstr(digest, "runFailedRows=1") != NULL);
   CHECK(strstr(digest, "Product/backend route candidate rows observed") != NULL);
+  CHECK(strstr(digest, "Fast-looking promotion blockers") != NULL);
   CHECK(strstr(digest, "Open/noisy route rows observed") != NULL);
   CHECK(strstr(digest, "Product-gated route rows observed") != NULL);
   CHECK(strstr(digest, "Setup/warmup context rows observed") != NULL);
@@ -323,6 +325,9 @@ static void test_benchmark_progress_digest(void) {
   CHECK(strstr(digest, "format-policy-safety policy=preinv") != NULL);
   CHECK(strstr(digest, "setup-context") != NULL);
   CHECK(strstr(digest, "format-policy-deep-safety policy=deep-preinv") != NULL);
+  CHECK(strstr(digest, "blocked=forced-neighbor-required") != NULL);
+  CHECK(strstr(digest, "blocked=worst-pair-regression") != NULL);
+  CHECK(strstr(digest, "blocked=stability-shortfall") != NULL);
   CHECK(strstr(digest, "mul-policy policy=current-default") != NULL);
   CHECK(strstr(digest, "mul-frontier") != NULL);
   CHECK(strstr(digest, "divmod-precomputed") != NULL);
@@ -335,12 +340,15 @@ static void test_benchmark_progress_digest(void) {
   char *classification = xray_benchmark_progress_classification_tsv(tsv);
   CHECK(classification != NULL);
   CHECK(strstr(classification, "primaryLane\trouteCandidate\trouteCompleted\trouteOpen\tproductGated\thasSetupContext\tsetupSeconds\twarmupReview\tlowerBound\trunFailed\tattemptedRuns\tcompletedRuns") != NULL);
-  CHECK(strstr(classification, "compilerVersion\tdigitBand\tworkloadShape\tpolicy\tcandidate\tactiveCandidate\tbaseline\tfeatureGate\tgmpClue\tcontrolSafety\tthresholdSafety\thashGate") != NULL);
+  CHECK(strstr(classification, "compilerVersion\tdigitBand\tworkloadShape\tpolicy\tcandidate\tactiveCandidate\tbaseline\tfeatureGate\tgmpClue\tcontrolSafety\tthresholdSafety\thashGate\tblockerReason") != NULL);
   CHECK(strstr(classification, "format-policy-safety policy=preinv baseline=mpz_get_str featureGate=decimal-format-policy-divide-1e19-preinv candidate=decimal-divide-1e19-preinv\tcompleted\ttrue\ttrue\tfalse\tfalse\ttrue\t0.123456\tfalse\tfalse") != NULL);
   CHECK(strstr(classification, "0.123456\tfalse\tfalse\tfalse\t0\t0\tfalse\tfalse\tfalse\tfalse\ttrue\tpolicy-ready\tpromotion-ready\t0.800000") != NULL);
   CHECK(strstr(classification, "MSVC\t1929\tmedium\tdecimal-format\tpreinv\tdecimal-divide-1e19-preinv\tdecimal-divide-1e19-preinv\tmpz_get_str\tdecimal-format-policy-divide-1e19-preinv\tmpn_get_str\t\t\tmatched") != NULL);
   CHECK(strstr(classification, "format-policy-deep-safety policy=deep-preinv baseline=mpz_get_str featureGate=decimal-format-policy-divide-1e19-preinv candidate=decimal-divide-1e19-preinv\tproduct-gated\ttrue\tfalse\ttrue\ttrue\tfalse\t0.000000\tfalse\tfalse") != NULL);
   CHECK(strstr(classification, "MSVC\t1929\tmedium\tdecimal-format\tdeep-preinv\tdecimal-divide-1e19-preinv\tdecimal-divide-1e19-preinv\tmpz_get_str\tdecimal-format-policy-divide-1e19-preinv\tproduct-codegen\t\tforced-neighbor\tmatched") != NULL);
+  CHECK(strstr(classification, "forced-neighbor-required") != NULL);
+  CHECK(strstr(classification, "worst-pair-regression") != NULL);
+  CHECK(strstr(classification, "stability-shortfall") != NULL);
   CHECK(strstr(classification, "mul-policy policy=current-default baseline=mpz_mul candidate=current-scratch-mul\tbaseline\tfalse\tfalse\tfalse") != NULL);
   CHECK(strstr(classification, "mul-frontier\tcontrol\tfalse\tfalse\tfalse\tfalse\tfalse\t0.000000\tfalse\tfalse\tfalse\t0\t0\tfalse\tfalse\ttrue\ttrue") != NULL);
   CHECK(strstr(classification, "MSVC\t1929\tfrontier\tfrontier-scout") != NULL);
@@ -4767,6 +4775,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "no worst-pair regression above 1.0") != NULL);
   CHECK(strstr(benchmark_progress, "BENCHMARK PROGRESS DIGEST") != NULL);
   CHECK(strstr(benchmark_progress, "Product/backend route candidate rows observed") != NULL);
+  CHECK(strstr(benchmark_progress, "Fast-looking promotion blockers") != NULL);
   CHECK(strstr(benchmark_progress, "Open/noisy route rows observed") != NULL);
   CHECK(strstr(benchmark_progress, "Product-gated route rows observed") != NULL);
   CHECK(strstr(benchmark_progress, "Setup/warmup context rows observed") != NULL);
@@ -4781,8 +4790,9 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_progress, "controlsExcluded=") != NULL);
   CHECK(strstr(benchmark_progress, "product-gated rows") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "primaryLane\trouteCandidate\trouteCompleted\trouteOpen\tproductGated\thasSetupContext\tsetupSeconds\twarmupReview\tlowerBound\trunFailed\tattemptedRuns\tcompletedRuns") != NULL);
-  CHECK(strstr(benchmark_progress_tsv, "compilerVersion\tdigitBand\tworkloadShape\tpolicy\tcandidate\tactiveCandidate\tbaseline\tfeatureGate\tgmpClue\tcontrolSafety\tthresholdSafety\thashGate") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "compilerVersion\tdigitBand\tworkloadShape\tpolicy\tcandidate\tactiveCandidate\tbaseline\tfeatureGate\tgmpClue\tcontrolSafety\tthresholdSafety\thashGate\tblockerReason") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "hasSetupContext") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "blockerReason") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "setupSeconds") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "runFailed") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "\tlarge\tdecimal-format\t") != NULL);

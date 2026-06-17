@@ -709,6 +709,57 @@ static int compare_row_is_product_gated(const CompareRow *row) {
   return compare_contains(row->detail, "forcedCandidate=yes");
 }
 
+static const char *compare_row_blocker_reason(const CompareRow *row) {
+  if (!row) return "";
+  if (compare_row_is_run_failed(row)) return "run-failed";
+  if (compare_row_is_lower_bound(row)) return "lower-bound";
+  if (compare_row_is_warmup_review(row)) return "warmup-review";
+  if (compare_row_is_noisy_control(row)) return "noisy-control";
+  if (compare_row_is_control(row)) return "control-row";
+  if (compare_row_is_baseline_subject(row)) return "baseline-row";
+  if (compare_contains(row->status, "mismatch") ||
+      compare_contains(row->adoption, "mismatch")) {
+    return "output-mismatch";
+  }
+  if (compare_contains(row->status, "neighbor") ||
+      compare_contains(row->adoption, "neighbor")) {
+    return "neighbor-regression";
+  }
+  if (compare_contains(row->status, "worst-pair") ||
+      compare_contains(row->adoption, "worst-pair")) {
+    return "worst-pair-regression";
+  }
+  if (compare_contains(row->status, "blocked") ||
+      compare_contains(row->adoption, "blocked")) {
+    return "safety-blocked";
+  }
+  if (compare_row_is_safety_rejected(row)) return "safety-rejected";
+
+  char value[128];
+  if (detail_value(row->detail, "thresholdSafety", value, sizeof(value)) &&
+      value[0] &&
+      !compare_streq(value, "passed")) {
+    return compare_streq(value, "forced-neighbor") ||
+      compare_streq(value, "requires-forced-neighbor") ?
+      "forced-neighbor-required" : "threshold-safety-required";
+  }
+  if (detail_value(row->detail, "deepConfirmation", value, sizeof(value)) &&
+      compare_streq(value, "required")) {
+    return "deep-confirmation-required";
+  }
+  if (detail_value(row->detail, "noAutoRoute", value, sizeof(value)) &&
+      (compare_streq(value, "1") || compare_streq(value, "true") || compare_streq(value, "yes"))) {
+    return "no-auto-route";
+  }
+  if (compare_contains(row->detail, "forcedCandidate=yes")) return "forced-neighbor-required";
+  if (row->worst_pair_ratio > 1.0) return "worst-pair-regression";
+  if (!compare_row_is_promotion_ready(row)) {
+    if (row->sample_count > 0 && row->stable_sample_count < row->sample_count) return "stability-shortfall";
+    return "not-promotion-ready";
+  }
+  return "";
+}
+
 static int compare_row_has_progress_signal(const CompareRow *row) {
   if (!row) return 0;
   if (compare_row_is_lower_bound(row) ||
@@ -828,6 +879,23 @@ static void append_progress_line(CompareBuffer *buffer, const CompareRow *row, c
     row->adoption ? row->adoption : "");
 }
 
+static void append_progress_blocker_line(CompareBuffer *buffer, const CompareRow *row) {
+  if (!buffer || !row) return;
+  double factor = row->speed_ratio > 0.0 ? 1.0 / row->speed_ratio : 0.0;
+  cb_printf(buffer,
+    "  %-36s %6zu digits   %.2fx faster median   ratio %.3f   worst %.3f   stable %zu/%zu   blocked=%s   %s/%s\n",
+    row_label(row),
+    row->digits,
+    factor,
+    row->speed_ratio,
+    row->worst_pair_ratio,
+    row->stable_sample_count,
+    row->sample_count,
+    compare_row_blocker_reason(row),
+    row->status ? row->status : "",
+    row->adoption ? row->adoption : "");
+}
+
 static void append_progress_tsv_field(CompareBuffer *buffer, const char *text) {
   if (!buffer || !text) return;
   for (const unsigned char *p = (const unsigned char *)text; *p; ++p) {
@@ -927,13 +995,14 @@ char *xray_benchmark_progress_classification_tsv(const char *tsv) {
   int ok = parse_compare_set(tsv, &set, "benchmark");
 
   cb_append(&buffer,
-    "category\tname\toperation\tdigits\tdisplay\tprimaryLane\trouteCandidate\trouteCompleted\trouteOpen\tproductGated\thasSetupContext\tsetupSeconds\twarmupReview\tlowerBound\trunFailed\tattemptedRuns\tcompletedRuns\tsafetyRejected\tbaseline\tcontrol\tnoisyControl\tpromotionReady\tstatus\tadoption\tspeedRatio\tworstPairRatio\tstableSampleCount\tsampleCount\tdetail\tbuildConfig\tipo\tcompiler\tcompilerVersion\tdigitBand\tworkloadShape\tpolicy\tcandidate\tactiveCandidate\tbaseline\tfeatureGate\tgmpClue\tcontrolSafety\tthresholdSafety\thashGate\n");
+    "category\tname\toperation\tdigits\tdisplay\tprimaryLane\trouteCandidate\trouteCompleted\trouteOpen\tproductGated\thasSetupContext\tsetupSeconds\twarmupReview\tlowerBound\trunFailed\tattemptedRuns\tcompletedRuns\tsafetyRejected\tbaseline\tcontrol\tnoisyControl\tpromotionReady\tstatus\tadoption\tspeedRatio\tworstPairRatio\tstableSampleCount\tsampleCount\tdetail\tbuildConfig\tipo\tcompiler\tcompilerVersion\tdigitBand\tworkloadShape\tpolicy\tcandidate\tactiveCandidate\tbaseline\tfeatureGate\tgmpClue\tcontrolSafety\tthresholdSafety\thashGate\tblockerReason\n");
   if (!ok) {
     cb_append(&buffer, "error\t");
     append_progress_tsv_field(&buffer, set.error);
     cb_append(&buffer, "\t\t0\terror\tinvalid\tfalse\tfalse\tfalse\tfalse\tfalse\t0.000000\tfalse\tfalse\tfalse\t0\t0\tfalse\tfalse\tfalse\tfalse\tfalse\tparse-error\t\t0.000000\t0.000000\t0\t0\t");
     append_progress_tsv_field(&buffer, set.error);
     for (size_t field = 0; field < 15U; ++field) cb_append(&buffer, "\t");
+    cb_append(&buffer, "parse-error");
     cb_append(&buffer, "\n");
     return cb_take(&buffer);
   }
@@ -1013,6 +1082,8 @@ char *xray_benchmark_progress_classification_tsv(const char *tsv) {
     append_detail_value_or_empty(&buffer, row, "thresholdSafety");
     cb_append(&buffer, "\t");
     append_detail_value_or_empty(&buffer, row, "hashGate");
+    cb_append(&buffer, "\t");
+    append_progress_tsv_field(&buffer, compare_row_blocker_reason(row));
     cb_append(&buffer, "\n");
   }
 
@@ -1036,6 +1107,7 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
   ComparePair baselines[8] = {0};
   ComparePair controls[8] = {0};
   ComparePair rejected[8] = {0};
+  ComparePair blockers[12] = {0};
   ComparePair product_gated[8] = {0};
   ComparePair lower_bound[8] = {0};
   ComparePair run_failed[8] = {0};
@@ -1046,6 +1118,7 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
   size_t baseline_count = 0;
   size_t control_count = 0;
   size_t rejected_count = 0;
+  size_t blocker_count = 0;
   size_t product_gated_count = 0;
   size_t lower_bound_count = 0;
   size_t run_failed_count = 0;
@@ -1058,6 +1131,7 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
   size_t controls_total = 0;
   size_t noisy_controls_total = 0;
   size_t rejected_total = 0;
+  size_t blocker_total = 0;
   size_t product_gated_total = 0;
   size_t lower_bound_total = 0;
   size_t run_failed_total = 0;
@@ -1077,6 +1151,7 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
     int safety_rejected = compare_row_is_safety_rejected(row);
     int ready = compare_row_is_promotion_ready(row);
     int product_gate_blocked = compare_row_is_product_gated(row);
+    const char *blocker_reason = compare_row_blocker_reason(row);
     if (run_failed_row) {
       run_failed_total++;
       insert_progress_row(
@@ -1162,6 +1237,18 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
         progress_open_score(row),
         1);
     }
+    if (!control && !baseline && row->speed_ratio > 0.0 && row->speed_ratio < 1.0 &&
+        blocker_reason && blocker_reason[0] &&
+        (!ready || product_gate_blocked || safety_rejected || row->worst_pair_ratio > 1.0)) {
+      blocker_total++;
+      insert_progress_row(
+        blockers,
+        &blocker_count,
+        sizeof(blockers) / sizeof(blockers[0]),
+        row,
+        1.0 / row->speed_ratio,
+        1);
+    }
     if (ready && !control && !baseline && !noisy_control && !safety_rejected) {
       if (!product_gate_blocked) {
         completed_total++;
@@ -1215,6 +1302,11 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
   if (!completed_count) cb_append(&buffer, "  none\n");
   for (size_t index = 0; index < completed_count; ++index) append_progress_line(&buffer, completed[index].left, "completed");
   if (completed_total > completed_count) cb_printf(&buffer, "  ... %zu more completed rows\n", completed_total - completed_count);
+
+  cb_append(&buffer, "\nFast-looking promotion blockers (median win, blocked by safety/product evidence):\n");
+  if (!blocker_count) cb_append(&buffer, "  none\n");
+  for (size_t index = 0; index < blocker_count; ++index) append_progress_blocker_line(&buffer, blockers[index].left);
+  if (blocker_total > blocker_count) cb_printf(&buffer, "  ... %zu more blocked fast-looking rows\n", blocker_total - blocker_count);
 
   cb_append(&buffer, "\nOpen/noisy route rows observed:\n");
   if (!open_count) cb_append(&buffer, "  none\n");
