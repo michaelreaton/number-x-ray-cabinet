@@ -1660,6 +1660,7 @@ static void test_benchmarks(void) {
   int saw_format_dc_route4096_probe = 0;
   int saw_format_dc_route8192_probe = 0;
   int saw_format_dc_route16384_probe = 0;
+  int saw_format_dc_route_safety_gate = 0;
   int saw_policy_probe = 0;
   int saw_policy_gate = 0;
   int saw_format_policy_current = 0;
@@ -3229,6 +3230,28 @@ static void test_benchmarks(void) {
         } else {
           CHECK(0);
         }
+      } else if (strcmp(report->results[index].operation, "format-dc-route-safety") == 0) {
+        saw_format_dc_route_safety_gate = 1;
+        CHECK(report->results[index].sample_count == 3);
+        CHECK(!report->results[index].replacement_ready);
+        CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+        CHECK(strstr(report->results[index].detail, "op=format-dc-route-safety") != NULL);
+        CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+        CHECK(strstr(report->results[index].detail, "deepConfirmation=required") != NULL);
+        CHECK(strstr(report->results[index].detail, "policy=direct16-vs-ladder8") != NULL);
+        CHECK(strstr(report->results[index].detail, "sizes=4096,8192,16384") != NULL);
+        CHECK(strstr(report->results[index].detail, "minDigits=4096") != NULL);
+        CHECK(strstr(report->results[index].detail, "safeSizes=") != NULL);
+        CHECK(strstr(report->results[index].detail, "samples=9") != NULL);
+        CHECK(strstr(report->results[index].detail, "requiredStablePairs=8/9") != NULL);
+        CHECK(strstr(report->results[index].detail, "maxWorstPairRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=decimal-dc-direct-writer-leaf16") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=decimal-dc-pow2-ladder-leaf8") != NULL);
+        CHECK(strstr(report->results[index].detail, "oracle=mpz_get_str") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=decimal-format-dc-route-deep") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpClue=mfast16m-preflight-b025856") != NULL);
+        CHECK(strstr(report->results[index].detail, "warmupPolicy=not-counted") != NULL);
       } else if (strcmp(report->results[index].operation, "divmod-preinv-qhat-safety") == 0) {
         saw_divmod_preinv_qhat_safety_gate = 1;
         CHECK(report->results[index].sample_count == 3);
@@ -3441,6 +3464,7 @@ static void test_benchmarks(void) {
   CHECK(saw_format_dc_route4096_probe);
   CHECK(saw_format_dc_route8192_probe);
   CHECK(saw_format_dc_route16384_probe);
+  CHECK(saw_format_dc_route_safety_gate);
   CHECK(saw_policy_probe);
   CHECK(saw_format_policy_current);
   CHECK(saw_format_policy_direct4096);
@@ -3711,8 +3735,11 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "format-dc-workspace") != NULL);
   CHECK(strstr(json, "format-dc-preinv-qhat") != NULL);
   CHECK(strstr(json, "format-dc-route") != NULL);
+  CHECK(strstr(json, "format-dc-route-safety") != NULL);
   CHECK(strstr(json, "format-dc-static-ladder") != NULL);
   CHECK(strstr(json, "format-dc-static-direct") != NULL);
+  CHECK(strstr(json, "direct16-vs-ladder8") != NULL);
+  CHECK(strstr(json, "mfast16m-preflight-b025856") != NULL);
   CHECK(strstr(json, "decimal-dc-direct-workspace") != NULL);
   CHECK(strstr(json, "decimal-dc-direct-preinv-qhat") != NULL);
   CHECK(strstr(json, "dc-static-pow2") != NULL);
@@ -3825,8 +3852,11 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "format-dc-workspace") != NULL);
   CHECK(strstr(tsv, "format-dc-preinv-qhat") != NULL);
   CHECK(strstr(tsv, "format-dc-route") != NULL);
+  CHECK(strstr(tsv, "format-dc-route-safety") != NULL);
   CHECK(strstr(tsv, "format-dc-static-ladder") != NULL);
   CHECK(strstr(tsv, "format-dc-static-direct") != NULL);
+  CHECK(strstr(tsv, "direct16-vs-ladder8") != NULL);
+  CHECK(strstr(tsv, "mfast16m-preflight-b025856") != NULL);
   CHECK(strstr(tsv, "decimal-dc-direct-workspace") != NULL);
   CHECK(strstr(tsv, "decimal-dc-direct-preinv-qhat") != NULL);
   CHECK(strstr(tsv, "dc-static-pow2") != NULL);
@@ -3992,8 +4022,11 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "format-dc-workspace") != NULL);
   CHECK(strstr(benchmark_tsv, "format-dc-preinv-qhat") != NULL);
   CHECK(strstr(benchmark_tsv, "format-dc-route") != NULL);
+  CHECK(strstr(benchmark_tsv, "format-dc-route-safety") != NULL);
   CHECK(strstr(benchmark_tsv, "format-dc-static-ladder") != NULL);
   CHECK(strstr(benchmark_tsv, "format-dc-static-direct") != NULL);
+  CHECK(strstr(benchmark_tsv, "direct16-vs-ladder8") != NULL);
+  CHECK(strstr(benchmark_tsv, "mfast16m-preflight-b025856") != NULL);
   CHECK(strstr(benchmark_tsv, "decimal-dc-direct-workspace") != NULL);
   CHECK(strstr(benchmark_tsv, "decimal-dc-direct-preinv-qhat") != NULL);
   CHECK(strstr(benchmark_tsv, "dc-static-pow2") != NULL);
@@ -4136,6 +4169,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "format-dc-workspace") != NULL);
   CHECK(strstr(benchmark_frontier, "format-dc-preinv-qhat") != NULL);
   CHECK(strstr(benchmark_frontier, "format-dc-route") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-dc-route-safety") != NULL);
   CHECK(strstr(benchmark_frontier, "format-dc-static-ladder") != NULL);
   CHECK(strstr(benchmark_frontier, "format-dc-static-direct") != NULL);
   CHECK(strstr(benchmark_frontier, "format-policy current-default") != NULL);
