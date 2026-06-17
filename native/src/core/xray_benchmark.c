@@ -5029,6 +5029,87 @@ static void append_format_route_tournament_result(
   append_result(report, &result);
 }
 
+static void append_format_route_tournament_detail_result(
+  XrayBenchmarkReport *report,
+  size_t digits,
+  const char *route,
+  size_t route_index,
+  size_t route_count,
+  const char *winner,
+  const char *current,
+  int parity,
+  int hash_gate,
+  size_t hash_match_count,
+  unsigned long long route_us,
+  unsigned long long current_us,
+  unsigned long long oracle_us,
+  double route_current_ratio,
+  double route_gmp_ratio,
+  double current_gmp_ratio,
+  size_t stable_sample_count,
+  size_t sample_count,
+  double worst_pair_ratio) {
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "policy format route detail %s %zu digits", route ? route : "unknown", digits);
+  snprintf(result.category, sizeof(result.category), "policy-probe");
+  snprintf(result.operation, sizeof(result.operation), "format-route-tournament-detail");
+  result.digits = digits;
+  result.scratch_us = route_us ? route_us : 1;
+  result.gmp_us = current_us ? current_us : 1;
+  result.speed_ratio = route_current_ratio > 0.0 ? route_current_ratio : (double)result.scratch_us / (double)result.gmp_us;
+  result.max_allowed_speed_ratio = 1.0;
+  result.stable_sample_count = stable_sample_count;
+  result.sample_count = sample_count;
+  result.worst_pair_ratio = worst_pair_ratio > 0.0 ? worst_pair_ratio : 1.0;
+  result.parity_verified = parity && hash_gate;
+  result.replacement_ready = 0;
+  size_t required_stable = policy_required_stable_samples(sample_count);
+  int is_current = route && current && strcmp(route, current) == 0;
+  int is_winner = route && winner && strcmp(route, winner) == 0;
+  int route_margin_ready = !is_current &&
+    result.parity_verified &&
+    xray_benchmark_readiness_gate(
+      result.speed_ratio,
+      0.98,
+      result.stable_sample_count,
+      required_stable,
+      result.worst_pair_ratio);
+  snprintf(result.adoption, sizeof(result.adoption), "%s",
+    result.parity_verified ? "observe-only" : "blocked-output-mismatch");
+  snprintf(result.status, sizeof(result.status), "%s",
+    !parity ? "mismatch" :
+    (!hash_gate ? "hash-mismatch" :
+    (is_current ? "tournament-baseline" :
+    (is_winner ? "tournament-winner" :
+    (route_margin_ready ? "candidate-faster" :
+    (result.speed_ratio < 1.0 ? "candidate-no-margin" : "baseline-faster"))))));
+  result.passed = result.parity_verified;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + oracle_us + 999ULL) / 1000ULL);
+  snprintf(result.detail, sizeof(result.detail),
+    "op=format-route-tournament-detail policy=tournament tournamentDetail=1 controlSafety=tournament-detail noAutoRoute=1 thresholdSafety=tournament-observe featureGate=decimal-format-route-policy-tournament gmpClue=mfast-cuda-tournament-detail route=%s routeIndex=%zu/%zu isWinner=%s winner=%s current=%s activeCandidate=%s candidate=%s baseline=current-scratch-format oracle=mpz_get_str routeCurrentRatio=%.3f routeGmpRatio=%.3f currentGmpRatio=%.3f worstPairRatio=%.3f stablePairs=%zu/%zu requiredStablePairs=%zu/%zu ratioMethod=paired-median tournamentMethod=same-run hashSafe=%zu/%zu hashGate=%s sameInput=yes sameRunTournament=yes",
+    route ? route : "unknown",
+    route_index + 1U,
+    route_count,
+    is_winner ? "yes" : "no",
+    winner ? winner : "unknown",
+    current ? current : "unknown",
+    route ? route : "unknown",
+    route ? route : "unknown",
+    result.speed_ratio,
+    route_gmp_ratio,
+    current_gmp_ratio,
+    result.worst_pair_ratio,
+    stable_sample_count,
+    sample_count,
+    required_stable,
+    sample_count,
+    hash_match_count,
+    sample_count,
+    hash_gate ? "matched" : "blocked");
+  append_result(report, &result);
+}
+
 static void run_format_route_tournament_case(
   XrayBenchmarkReport *report,
   size_t digits) {
@@ -5158,6 +5239,39 @@ static void run_format_route_tournament_case(
     stable_sample_count,
     XRAY_BENCH_SAMPLES,
     worst_pair_ratio);
+
+  for (size_t route_index = 0; route_index < route_count; ++route_index) {
+    double route_current_ratio = route_index == 0 ?
+      1.0 :
+      median_paired_ratio(route_samples[route_index], route_samples[0], XRAY_BENCH_SAMPLES);
+    double route_gmp_ratio = median_paired_ratio(route_samples[route_index], gmp_samples, XRAY_BENCH_SAMPLES);
+    size_t route_stable = route_index == 0 ?
+      XRAY_BENCH_SAMPLES :
+      paired_ratio_wins(route_samples[route_index], route_samples[0], XRAY_BENCH_SAMPLES, 0.98);
+    double route_worst = route_index == 0 ?
+      1.0 :
+      max_paired_ratio(route_samples[route_index], route_samples[0], XRAY_BENCH_SAMPLES);
+    append_format_route_tournament_detail_result(
+      report,
+      digits,
+      routes[route_index].name,
+      route_index,
+      route_count,
+      routes[best_index].name,
+      routes[0].name,
+      parity && ok,
+      hash_gate && hash_match_count == XRAY_BENCH_SAMPLES && result_hash != 0ULL,
+      hash_match_count,
+      median_samples(route_samples[route_index], XRAY_BENCH_SAMPLES),
+      median_samples(route_samples[0], XRAY_BENCH_SAMPLES),
+      median_samples(gmp_samples, XRAY_BENCH_SAMPLES),
+      route_current_ratio,
+      route_gmp_ratio,
+      current_gmp_ratio,
+      route_stable,
+      XRAY_BENCH_SAMPLES,
+      route_worst);
+  }
 
   mpz_clear(gmp);
   xray_bigint_clear(&scratch);

@@ -49,6 +49,21 @@ formatting, parser, or solver route changes in this step. The value is that
 external tools and future PRs can tie benchmark artifacts to the exact route
 map and MPIR/GMP clue trail before testing another formatter threshold.
 
+## 2026-06-17: Formatter Tournament Detail Rows
+
+MFastFermat `5fce429` made its CUDA tournament easier to audit by exporting
+detail rows for every kernel contender instead of only the recommendation.
+Number X-Ray now mirrors that measurement hygiene for the formatter route
+tournament: each `format-route-tournament` winner row is followed by
+`format-route-tournament-detail` control rows for every contender timed on the
+same input and same run.
+
+Decision: reporting only. The detail rows use
+`controlSafety=tournament-detail`, `noAutoRoute=1`, exact hash gates, and
+paired route/current plus route/GMP ratios. They make broad formatter swatches
+importable without changing production decimal formatting or route-completed
+progress counts.
+
 ## 2026-06-17: Focused Benchmark Digit Windows
 
 The hourly MFastFermat watch advanced `main` to `8d9735e` with a focused
