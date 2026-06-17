@@ -90,9 +90,13 @@ warmup/planning evidence out of route-completed totals.
 Number X-Ray now adds a `format-dc-route-safety` gate for the tempting
 direct-output D&C formatter route. It compares `direct16` against the current
 `ladder8` route at 4096, 8192, and 16384 digits with 9 paired samples, requires
-8 stable wins per size, records the worst same-run pair, and emits
+8 stable wins per size, records the worst same-run pair, hash-verifies the
+candidate/baseline/GMP output strings, and emits `hashSafe`, `hashGate`,
 `noAutoRoute=1`, `thresholdSafety=forced-neighbor`, and
-`deepConfirmation=required`. Even a clean row remains `observe-only` until a
+`deepConfirmation=required`. This follows the current MFastFermat hash-gated
+preflight discipline (`615fe9e`/`4bfa54b`): warmup and preflight timings can
+rank ideas, but output hashes must agree before any row is allowed into a
+route-safety decision. Even a clean row remains `observe-only` until a
 repeat/product-shaped build proves that changing production formatting is not
 harmful.
 
