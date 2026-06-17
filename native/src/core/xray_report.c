@@ -424,6 +424,7 @@ static void append_artifact_paths_json(JsonBuffer *buffer, const XrayWorkbenchRe
   jb_append(buffer, ",\"benchmarkTsv\":"); jb_nullable_string(buffer, report ? report->benchmark_tsv_path : NULL);
   jb_append(buffer, ",\"benchmarkFrontier\":"); jb_nullable_string(buffer, report ? report->benchmark_frontier_path : NULL);
   jb_append(buffer, ",\"benchmarkProgress\":"); jb_nullable_string(buffer, report ? report->benchmark_progress_path : NULL);
+  jb_append(buffer, ",\"benchmarkProgressTsv\":"); jb_nullable_string(buffer, report ? report->benchmark_progress_tsv_path : NULL);
   jb_append(buffer, "}");
 }
 

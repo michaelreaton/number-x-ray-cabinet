@@ -11,6 +11,7 @@ static const char *rsa260(void) {
 static void usage(const char *argv0) {
   fprintf(stderr, "Usage: %s [--bench|--bench-frontier] [--rsa260] [exact-integer-expression]\n", argv0);
   fprintf(stderr, "       %s --bench-progress artifact.tsv\n", argv0);
+  fprintf(stderr, "       %s --bench-progress-tsv artifact.tsv\n", argv0);
   fprintf(stderr, "       %s --bench-compare left.tsv right.tsv\n", argv0);
 }
 
@@ -70,6 +71,24 @@ int main(int argc, char **argv) {
       if (digest) {
         puts(digest);
         xray_free(digest);
+      }
+      free(tsv);
+      return 0;
+    }
+    else if (strcmp(argv[index], "--bench-progress-tsv") == 0) {
+      if (index + 1 >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      char *tsv = read_all_text(argv[index + 1]);
+      if (!tsv) {
+        fprintf(stderr, "Could not read benchmark TSV input.\n");
+        return 3;
+      }
+      char *progress_tsv = xray_benchmark_progress_classification_tsv(tsv);
+      if (progress_tsv) {
+        puts(progress_tsv);
+        xray_free(progress_tsv);
       }
       free(tsv);
       return 0;

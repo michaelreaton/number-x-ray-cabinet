@@ -47,6 +47,22 @@ typedef struct ComparePair {
   double score;
 } ComparePair;
 
+typedef struct ProgressClass {
+  const char *primary_lane;
+  int route_candidate;
+  int route_completed;
+  int route_open;
+  int product_gated;
+  int setup_context;
+  int warmup_review;
+  int lower_bound;
+  int safety_rejected;
+  int baseline;
+  int control;
+  int noisy_control;
+  int promotion_ready;
+} ProgressClass;
+
 static int cb_reserve(CompareBuffer *buffer, size_t extra) {
   size_t needed = buffer->length + extra + 1U;
   if (needed <= buffer->capacity) return 1;
@@ -589,6 +605,57 @@ static double progress_open_score(const CompareRow *row) {
   return score;
 }
 
+static ProgressClass progress_classify_row(const CompareRow *row) {
+  ProgressClass progress;
+  memset(&progress, 0, sizeof(progress));
+  progress.primary_lane = "ignored";
+  if (!row || !compare_row_has_progress_signal(row)) return progress;
+
+  progress.lower_bound = compare_row_is_lower_bound(row);
+  progress.warmup_review = compare_row_is_warmup_review(row);
+  progress.setup_context = compare_row_has_setup_context(row);
+  progress.control = compare_row_is_control(row);
+  progress.baseline = compare_row_is_baseline_subject(row);
+  progress.noisy_control = compare_row_is_noisy_control(row);
+  progress.safety_rejected = compare_row_is_safety_rejected(row);
+  progress.promotion_ready = compare_row_is_promotion_ready(row);
+  progress.product_gated = compare_row_is_product_gated(row);
+
+  if (progress.lower_bound) {
+    progress.primary_lane = "lower-bound";
+    return progress;
+  }
+  if (progress.warmup_review) {
+    progress.primary_lane = "warmup-review";
+    return progress;
+  }
+
+  if (!progress.control && !progress.baseline) {
+    progress.route_candidate = 1;
+  }
+  if (progress.promotion_ready && !progress.control && !progress.baseline &&
+      !progress.noisy_control && !progress.safety_rejected) {
+    if (!progress.product_gated) {
+      progress.route_completed = 1;
+      progress.primary_lane = "completed";
+    } else {
+      progress.route_open = 1;
+      progress.primary_lane = "product-gated";
+    }
+  } else if (!progress.control && !progress.baseline) {
+    progress.route_open = 1;
+    if (progress.safety_rejected) progress.primary_lane = "safety-rejected";
+    else if (progress.product_gated) progress.primary_lane = "product-gated";
+    else progress.primary_lane = "open";
+  } else if (progress.control) {
+    progress.primary_lane = "control";
+  } else if (progress.baseline) {
+    progress.primary_lane = "baseline";
+  }
+
+  return progress;
+}
+
 static void append_progress_line(CompareBuffer *buffer, const CompareRow *row, const char *lane) {
   if (!buffer || !row) return;
   double factor = row->speed_ratio;
@@ -610,6 +677,86 @@ static void append_progress_line(CompareBuffer *buffer, const CompareRow *row, c
     lane ? lane : "open",
     row->status ? row->status : "",
     row->adoption ? row->adoption : "");
+}
+
+static void append_progress_tsv_field(CompareBuffer *buffer, const char *text) {
+  if (!buffer || !text) return;
+  for (const unsigned char *p = (const unsigned char *)text; *p; ++p) {
+    char ch[2] = {(char)*p, 0};
+    if (*p == '\t' || *p == '\r' || *p == '\n') ch[0] = ' ';
+    cb_append(buffer, ch);
+  }
+}
+
+static const char *progress_bool_text(int value) {
+  return value ? "true" : "false";
+}
+
+char *xray_benchmark_progress_classification_tsv(const char *tsv) {
+  CompareSet set;
+  CompareBuffer buffer = {0};
+  int ok = parse_compare_set(tsv, &set, "benchmark");
+
+  cb_append(&buffer,
+    "category\tname\toperation\tdigits\tdisplay\tprimaryLane\trouteCandidate\trouteCompleted\trouteOpen\tproductGated\thasSetupContext\twarmupReview\tlowerBound\tsafetyRejected\tbaseline\tcontrol\tnoisyControl\tpromotionReady\tstatus\tadoption\tspeedRatio\tworstPairRatio\tstableSampleCount\tsampleCount\tdetail\tbuildConfig\tipo\tcompiler\tcompilerVersion\n");
+  if (!ok) {
+    cb_append(&buffer, "error\t");
+    append_progress_tsv_field(&buffer, set.error);
+    cb_append(&buffer, "\t\t0\terror\tinvalid\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\tparse-error\t\t0.000000\t0.000000\t0\t0\t");
+    append_progress_tsv_field(&buffer, set.error);
+    cb_append(&buffer, "\t\t\t\t\n");
+    return cb_take(&buffer);
+  }
+
+  for (size_t index = 0; index < set.count; ++index) {
+    const CompareRow *row = &set.rows[index];
+    if (!compare_row_has_progress_signal(row)) continue;
+    ProgressClass progress = progress_classify_row(row);
+    append_progress_tsv_field(&buffer, row->category);
+    cb_append(&buffer, "\t");
+    append_progress_tsv_field(&buffer, row->name);
+    cb_append(&buffer, "\t");
+    append_progress_tsv_field(&buffer, row->operation);
+    cb_printf(&buffer, "\t%zu\t", row->digits);
+    append_progress_tsv_field(&buffer, row_label(row));
+    cb_append(&buffer, "\t");
+    append_progress_tsv_field(&buffer, progress.primary_lane);
+    cb_printf(&buffer,
+      "\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t",
+      progress_bool_text(progress.route_candidate),
+      progress_bool_text(progress.route_completed),
+      progress_bool_text(progress.route_open),
+      progress_bool_text(progress.product_gated),
+      progress_bool_text(progress.setup_context),
+      progress_bool_text(progress.warmup_review),
+      progress_bool_text(progress.lower_bound),
+      progress_bool_text(progress.safety_rejected),
+      progress_bool_text(progress.baseline),
+      progress_bool_text(progress.control),
+      progress_bool_text(progress.noisy_control),
+      progress_bool_text(progress.promotion_ready));
+    append_progress_tsv_field(&buffer, row->status);
+    cb_append(&buffer, "\t");
+    append_progress_tsv_field(&buffer, row->adoption);
+    cb_printf(&buffer, "\t%.6f\t%.6f\t%zu\t%zu\t",
+      row->speed_ratio,
+      row->worst_pair_ratio,
+      row->stable_sample_count,
+      row->sample_count);
+    append_progress_tsv_field(&buffer, row->detail);
+    cb_append(&buffer, "\t");
+    append_progress_tsv_field(&buffer, row->build_config);
+    cb_append(&buffer, "\t");
+    append_progress_tsv_field(&buffer, row->ipo);
+    cb_append(&buffer, "\t");
+    append_progress_tsv_field(&buffer, row->compiler);
+    cb_append(&buffer, "\t");
+    append_progress_tsv_field(&buffer, row->compiler_version);
+    cb_append(&buffer, "\n");
+  }
+
+  compare_set_clear(&set);
+  return cb_take(&buffer);
 }
 
 char *xray_benchmark_progress_tsv_text(const char *tsv) {

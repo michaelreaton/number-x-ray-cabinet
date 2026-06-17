@@ -82,6 +82,14 @@ finer: prefix scouts print measured `warmup_s` beside the scored
 review but not scored as throughput; review-warmup and lower-bound rows still
 take precedence and remain excluded from route candidate totals.
 
+MFastFermat `0070fae` then made that lane importable by adding
+`HasSetupContext` to its progress TSV output. Number X-Ray mirrors the same
+handoff shape with `benchmark_progress.tsv` and
+`xray_benchmark_progress_classification_tsv()`. External tools can now read
+`routeCandidate`, `routeCompleted`, `productGated`, `hasSetupContext`,
+`warmupReview`, `lowerBound`, `baseline`, `control`, and `noisyControl`
+directly instead of scraping the human digest.
+
 ## 2026-06-17: Static Formatter Leaf Expansion
 
 MFastFermat follow-up evidence around `d942c12`, `34ba68b`, and `f479009`

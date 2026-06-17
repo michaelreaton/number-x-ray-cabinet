@@ -840,17 +840,19 @@ static void format_benchmark_artifact_labels(
     if (!report || !report->run_dir) {
       snprintf(artifacts_out, artifacts_out_size,
         "Artifacts: waiting for a completed run.\n"
-        "Benchmark frontier, progress digest, TSV, JSON, report JSON, and events JSONL are written after Run Proof.");
+        "Benchmark frontier, progress digest, progress TSV, benchmark TSV, JSON, report JSON, and events JSONL are written after Run Proof.");
     } else {
       snprintf(artifacts_out, artifacts_out_size,
         "Benchmark frontier: %s\n"
         "Benchmark progress: %s\n"
+        "Benchmark progress TSV: %s\n"
         "Benchmark TSV: %s\n"
         "Benchmark JSON: %s\n"
         "Report JSON: %s\n"
         "Events JSONL: %s",
         report->benchmark_frontier_path ? report->benchmark_frontier_path : "not written",
         report->benchmark_progress_path ? report->benchmark_progress_path : "not written",
+        report->benchmark_progress_tsv_path ? report->benchmark_progress_tsv_path : "not written",
         report->benchmark_tsv_path ? report->benchmark_tsv_path : "not written",
         report->benchmark_json_path ? report->benchmark_json_path : "not written",
         report->report_json_path ? report->report_json_path : "not written",
@@ -2109,6 +2111,7 @@ static gpointer run_worker(gpointer data) {
     "Run dir: %s\n"
     "Benchmark frontier: %s\n"
     "Benchmark progress: %s\n"
+    "Benchmark progress TSV: %s\n"
     "Benchmark TSV: %s\n"
     "Benchmark JSON: %s\n"
     "Report JSON: %s\n"
@@ -2122,6 +2125,7 @@ static gpointer run_worker(gpointer data) {
     report.run_dir ? report.run_dir : "n/a",
     report.benchmark_frontier_path ? report.benchmark_frontier_path : "not written",
     report.benchmark_progress_path ? report.benchmark_progress_path : "not written",
+    report.benchmark_progress_tsv_path ? report.benchmark_progress_tsv_path : "not written",
     report.benchmark_tsv_path ? report.benchmark_tsv_path : "not written",
     report.benchmark_json_path ? report.benchmark_json_path : "not written",
     report.report_json_path ? report.report_json_path : "not written",

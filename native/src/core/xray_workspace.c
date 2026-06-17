@@ -282,6 +282,7 @@ int xray_workbench_run(const char *raw_input, const XrayRunConfig *config_input,
       report->benchmark_tsv_path = path_for(report->run_dir, "benchmark.tsv");
       report->benchmark_frontier_path = path_for(report->run_dir, "benchmark_frontier.txt");
       report->benchmark_progress_path = path_for(report->run_dir, "benchmark_progress.txt");
+      report->benchmark_progress_tsv_path = path_for(report->run_dir, "benchmark_progress.tsv");
     }
   }
   report->json = xray_workbench_full_report_json(report);
@@ -293,14 +294,17 @@ int xray_workbench_run(const char *raw_input, const XrayRunConfig *config_input,
       char *benchmark_tsv = xray_benchmark_report_tsv(&report->benchmark);
       char *benchmark_frontier = xray_benchmark_frontier_text(&report->benchmark);
       char *benchmark_progress = xray_benchmark_progress_tsv_text(benchmark_tsv);
+      char *benchmark_progress_tsv = xray_benchmark_progress_classification_tsv(benchmark_tsv);
       write_text_file(report->benchmark_json_path, benchmark_json);
       write_text_file(report->benchmark_tsv_path, benchmark_tsv);
       write_text_file(report->benchmark_frontier_path, benchmark_frontier);
       write_text_file(report->benchmark_progress_path, benchmark_progress);
+      write_text_file(report->benchmark_progress_tsv_path, benchmark_progress_tsv);
       free(benchmark_json);
       free(benchmark_tsv);
       free(benchmark_frontier);
       free(benchmark_progress);
+      free(benchmark_progress_tsv);
     }
   }
   emit_run_event(&config, "assemble", "complete", "Report JSON, events, and artifacts written");
@@ -328,6 +332,7 @@ void xray_workbench_report_clear(XrayWorkbenchReport *report) {
   free(report->benchmark_tsv_path);
   free(report->benchmark_frontier_path);
   free(report->benchmark_progress_path);
+  free(report->benchmark_progress_tsv_path);
   free(report->json);
   free(report->events_jsonl);
   free(report->source_notes);
