@@ -29,6 +29,21 @@ parity plus a stable same-run paired win.
   benchmarks show exact parity, adjacent-size safety, and product-like build
   confirmation.
 
+## 2026-06-17: Promotion Blocker Reporting
+
+MFastFermat's latest CUDA tournament reporting exported external baseline
+templates and cross-bit safety labels so a single fast row does not masquerade
+as a safe route. Number X-Ray now mirrors that evidence discipline in
+`xray_benchmark_progress_tsv_text()` and
+`xray_benchmark_progress_classification_tsv()`: fast-looking median wins that
+remain blocked by neighbor checks, worst-pair regressions, product gates,
+deep-confirmation requirements, or stability shortfalls are surfaced in a
+dedicated digest section and a machine-readable `blockerReason` column.
+
+Decision: reporting only. This does not change arithmetic routes, but it makes
+the next formatter, division, or multiplication threshold review harder to
+misread and easier for external tools to import.
+
 ## 2026-06-17: Large Decimal Formatter Route Rejection
 
 The focused formatter run
