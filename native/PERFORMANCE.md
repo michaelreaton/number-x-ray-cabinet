@@ -44,6 +44,15 @@ safety rejections, baseline/current rows, and controls. Rows labeled
 favorable median in a control or current-default row cannot be misreported as
 production progress.
 
+MFastFermat `017736c` tightened that rule for product-shaped rows: a route can
+look good against an internal/control-adjusted gate and still fail the true
+Product/GMP gate. Number X-Ray now mirrors the same distinction in the progress
+digest with `productGatedOpen`. Rows carrying `noAutoRoute=1`,
+`thresholdSafety=requires-forced-neighbor`, `thresholdSafety=forced-neighbor`,
+`forcedCandidate=yes`, or `deepConfirmation=required` are listed as
+product-gated/open and cannot contribute to `routeCompleted` until a
+product-like proof row removes those blockers.
+
 ## 2026-06-16: Formatter Window Promotion Rejected
 
 MFastFermat `main` is at `96117fd` and its newest tail-control DIF/DIT evidence
