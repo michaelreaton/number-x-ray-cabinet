@@ -29,6 +29,33 @@ parity plus a stable same-run paired win.
   benchmarks show exact parity, adjacent-size safety, and product-like build
   confirmation.
 
+## 2026-06-17: Focused 768/896 Formatter Route Audit
+
+The 10^19 preinverse formatter family has repeatedly shown a tempting 768 and
+896 digit pocket while broader 768..1001 policies exposed route ambiguity. This
+pass adds focused `format-policy-route-audit` rows for exactly 768 and 896
+digits, alongside the existing broad audit. The new rows force the candidate,
+compare it against the current production formatter and `mpz_get_str` on the
+same inputs, and keep `noAutoRoute=1`.
+
+Decision: evidence only. A 768/896 formatter route still must survive local
+benchmark output and repeat/product-shaped confirmation before any production
+formatter branch changes.
+
+Local Release validation artifact
+`native/build-codex-parse-large/native-test-runs/20260617-173352-c4b04caf`
+kept both focused audits exact but unrouted:
+
+- `audit-preinv10e19-window768-896`: `candCurrentMax=0.386`,
+  `candGmpMax=0.764`, `safeSizes=1/2`, rejected by worst-pair regression
+  (`maxWorstPairRatio=1.400`).
+- `audit-preinv10e19-pairs-window768-896`: `candCurrentMax=0.361`,
+  `candGmpMax=0.767`, `safeSizes=1/2`, rejected by worst-pair regression
+  (`maxWorstPairRatio=1.173`).
+
+This proves the median pocket is real but also proves it is not harmless enough
+to route yet.
+
 ## 2026-06-17: Promotion Blocker Reporting
 
 MFastFermat's latest CUDA tournament reporting exported external baseline

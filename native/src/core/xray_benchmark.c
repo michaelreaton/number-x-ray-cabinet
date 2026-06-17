@@ -9071,6 +9071,30 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     0,
     format_policy_divide_1e19_preinv_pairs);
 
+  const size_t format_window_768_896_audit_sizes[] = {768, 896};
+  run_format_route_audit_case(
+    report,
+    293U,
+    "audit-preinv10e19-window768-896",
+    "decimal-divide-1e19-preinv",
+    768,
+    896,
+    0,
+    format_policy_divide_1e19_preinv,
+    format_window_768_896_audit_sizes,
+    sizeof(format_window_768_896_audit_sizes) / sizeof(format_window_768_896_audit_sizes[0]));
+  run_format_route_audit_case(
+    report,
+    297U,
+    "audit-preinv10e19-pairs-window768-896",
+    "decimal-divide-1e19-preinv-pair-writer",
+    768,
+    896,
+    0,
+    format_policy_divide_1e19_preinv_pairs,
+    format_window_768_896_audit_sizes,
+    sizeof(format_window_768_896_audit_sizes) / sizeof(format_window_768_896_audit_sizes[0]));
+
   const size_t format_window_audit_sizes[] = {768, 896, 960, 1000, 1001};
   run_format_route_audit_case(
     report,
