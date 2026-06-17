@@ -4262,6 +4262,14 @@ static char *format_dc_static_ladder_leaf16_probe(const XrayScratchBigInt *value
   return xray_bigint_get_decimal_dc_static_ladder_probe(value, 16U);
 }
 
+static char *format_dc_static_ladder_leaf32_probe(const XrayScratchBigInt *value) {
+  return xray_bigint_get_decimal_dc_static_ladder_probe(value, 32U);
+}
+
+static char *format_dc_static_ladder_leaf64_probe(const XrayScratchBigInt *value) {
+  return xray_bigint_get_decimal_dc_static_ladder_probe(value, 64U);
+}
+
 static char *format_dc_ladder_leaf32_probe(const XrayScratchBigInt *value) {
   return xray_bigint_get_decimal_dc_ladder_probe(value, 32U);
 }
@@ -4284,6 +4292,14 @@ static char *format_dc_static_direct_leaf8_probe(const XrayScratchBigInt *value)
 
 static char *format_dc_static_direct_leaf16_probe(const XrayScratchBigInt *value) {
   return xray_bigint_get_decimal_dc_static_direct_probe(value, 16U);
+}
+
+static char *format_dc_static_direct_leaf32_probe(const XrayScratchBigInt *value) {
+  return xray_bigint_get_decimal_dc_static_direct_probe(value, 32U);
+}
+
+static char *format_dc_static_direct_leaf64_probe(const XrayScratchBigInt *value) {
+  return xray_bigint_get_decimal_dc_static_direct_probe(value, 64U);
 }
 
 static char *format_dc_direct_leaf32_probe(const XrayScratchBigInt *value) {
@@ -7239,10 +7255,12 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     format_dc_ladder_leaf32_probe,
     format_dc_ladder_leaf64_probe
   };
-  const size_t format_dc_static_leaf_chunks[] = {8, 16};
+  const size_t format_dc_static_leaf_chunks[] = {8, 16, 32, 64};
   XrayFormatProbeFn format_dc_static_ladder_probes[] = {
     format_dc_static_ladder_leaf8_probe,
-    format_dc_static_ladder_leaf16_probe
+    format_dc_static_ladder_leaf16_probe,
+    format_dc_static_ladder_leaf32_probe,
+    format_dc_static_ladder_leaf64_probe
   };
   XrayFormatProbeFn format_dc_direct_probes[] = {
     format_dc_direct_leaf8_probe,
@@ -7252,7 +7270,9 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
   };
   XrayFormatProbeFn format_dc_static_direct_probes[] = {
     format_dc_static_direct_leaf8_probe,
-    format_dc_static_direct_leaf16_probe
+    format_dc_static_direct_leaf16_probe,
+    format_dc_static_direct_leaf32_probe,
+    format_dc_static_direct_leaf64_probe
   };
   const size_t format_dc_division_leaf_chunks[] = {8, 16};
   XrayFormatProbeFn format_dc_workspace_probes[] = {
