@@ -29,6 +29,37 @@ parity plus a stable same-run paired win.
   benchmarks show exact parity, adjacent-size safety, and product-like build
   confirmation.
 
+## 2026-06-17: Focused Square Route Audit
+
+MFastFermat's CUDA-only benchmark mode is a useful measurement clue: isolate the
+dimension being judged instead of letting a mixed tournament answer a different
+question. Number X-Ray applies that lesson to dense square. Existing rows showed
+current 1000 digit production square sometimes beating MPIR, while the ordinary
+scratch row remained one stable pair short. This pass adds
+`square-route-audit` rows that time current production square against `mpz_mul`
+on the same input with deep interleaved samples:
+
+- `current-default-1000` isolates the 1000 digit pocket.
+- `current-default-1000-16384` keeps the larger square gap visible in the same
+  artifact without letting it hide the focused pocket result.
+
+Decision: evidence only. Production square routing is unchanged; any claim that
+the 1000 digit square route is MPIR-clean must come from the local benchmark
+row's parity, hash, stable-pair, and worst-pair gates.
+
+Local Release validation artifact
+`native/build-codex-parse-large/native-test-runs/20260617-181326-c4b04caf`
+split the conclusion:
+
+- `current-default-1000`: exact parity/hash (`9/9`), `candGmpMax=0.931`,
+  `maxWorstPairRatio=0.996`, `safeSizes=1/1`, `promotion-ready`.
+- `current-default-1000-16384`: exact parity/hash (`36/36`), but
+  `candGmpMax=1.549`, `maxWorstPairRatio=1.756`, `safeSizes=0/4`,
+  `observe-only`.
+
+This makes the 1000 digit square pocket measurable without pretending the same
+route is clean for 4096+ digit square workloads.
+
 ## 2026-06-17: Focused 768/896 Formatter Route Audit
 
 The 10^19 preinverse formatter family has repeatedly shown a tempting 768 and
