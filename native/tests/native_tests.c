@@ -205,7 +205,7 @@ static void test_benchmark_progress_digest(void) {
     "policy-gate\tpolicy gate format window 896 digits\tformat-policy-deep-safety\t896\tworst-pair-regression\ttrue\ttrue\tfalse\tobserve-only\t70\t100\t0.700000\t0.980000\t1.300000\t7\t9\t1\tpolicy=window threshold=16\tRelease\tfalse\tMSVC\t1929\n"
     "kernel-probe\tkernel divmod warmup review 32768 digits\tdivmod-precomputed\t32768\treview-warmup\tfalse\tfalse\tfalse\tobserve-only\t180\t100\t1.800000\t0.980000\t1.900000\t0\t3\t240\tWarmupPolicy=review-warmup setupUs=450000 setupPolicy=review-warmup cacheRole=divisor-context\tRelease\tfalse\tMSVC\t1929\n"
     "kernel-probe\tkernel divmod timeout 16384 digits\tdivmod-precomputed\t16384\ttimeout lower-bound\tfalse\tfalse\tfalse\tobserve-only\t300\t100\t3.000000\t0.980000\t3.000000\t0\t0\t300\tCompletedRuns=0 Status=timeout lower-bound\tRelease\tfalse\tMSVC\t1929\n"
-    "kernel-probe\tkernel product failed 32768 digits\tproduct-prefix\t32768\trun failed\tfalse\tfalse\tfalse\tobserve-only\t0\t0\t0.000000\t0.980000\t0.000000\t0\t0\t300\tStatus=run failed exitCode=1\tRelease\tfalse\tMSVC\t1929\n";
+    "kernel-probe\tkernel product failed 32768 digits\tproduct-prefix\t32768\trun failed\tfalse\tfalse\tfalse\tobserve-only\t0\t0\t0.000000\t0.980000\t0.000000\t0\t0\t300\tRuns=1 CompletedRuns=0 Status=run failed exitCode=1\tRelease\tfalse\tMSVC\t1929\n";
   size_t tsv_len = strlen(header) + strlen(rows) + 1U;
   char *tsv = (char *)calloc(tsv_len, 1);
   CHECK(tsv != NULL);
@@ -252,16 +252,16 @@ static void test_benchmark_progress_digest(void) {
 
   char *classification = xray_benchmark_progress_classification_tsv(tsv);
   CHECK(classification != NULL);
-  CHECK(strstr(classification, "primaryLane\trouteCandidate\trouteCompleted\trouteOpen\tproductGated\thasSetupContext\tsetupSeconds\twarmupReview\tlowerBound\trunFailed") != NULL);
+  CHECK(strstr(classification, "primaryLane\trouteCandidate\trouteCompleted\trouteOpen\tproductGated\thasSetupContext\tsetupSeconds\twarmupReview\tlowerBound\trunFailed\tattemptedRuns\tcompletedRuns") != NULL);
   CHECK(strstr(classification, "format-policy-safety policy=preinv\tcompleted\ttrue\ttrue\tfalse\tfalse\ttrue\t0.123456\tfalse\tfalse") != NULL);
-  CHECK(strstr(classification, "0.123456\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\ttrue\tpolicy-ready\tpromotion-ready\t0.800000") != NULL);
+  CHECK(strstr(classification, "0.123456\tfalse\tfalse\tfalse\t0\t0\tfalse\tfalse\tfalse\tfalse\ttrue\tpolicy-ready\tpromotion-ready\t0.800000") != NULL);
   CHECK(strstr(classification, "format-policy-deep-safety policy=deep-preinv\tproduct-gated\ttrue\tfalse\ttrue\ttrue\tfalse\t0.000000\tfalse\tfalse") != NULL);
   CHECK(strstr(classification, "mul-policy policy=current-default baseline=mpz_mul candidate=current-scratch-mul\tbaseline\tfalse\tfalse\tfalse") != NULL);
-  CHECK(strstr(classification, "mul-frontier\tcontrol\tfalse\tfalse\tfalse\tfalse\tfalse\t0.000000\tfalse\tfalse\tfalse\tfalse\tfalse\ttrue\ttrue") != NULL);
+  CHECK(strstr(classification, "mul-frontier\tcontrol\tfalse\tfalse\tfalse\tfalse\tfalse\t0.000000\tfalse\tfalse\tfalse\t0\t0\tfalse\tfalse\ttrue\ttrue") != NULL);
   CHECK(strstr(classification, "divmod-precomputed\twarmup-review\tfalse\tfalse\tfalse\tfalse\ttrue\t0.450000\ttrue\tfalse") != NULL);
-  CHECK(strstr(classification, "divmod-precomputed\tlower-bound\tfalse\tfalse\tfalse\tfalse\tfalse\t0.000000\tfalse\ttrue") != NULL);
-  CHECK(strstr(classification, "product-prefix\trun-failed\tfalse\tfalse\tfalse\tfalse\tfalse\t0.000000\tfalse\tfalse\ttrue") != NULL);
-  CHECK(strstr(classification, "0.000000\tfalse\tfalse\ttrue\tfalse\tfalse\tfalse\tfalse\tfalse\trun failed\tobserve-only\t0.000000") != NULL);
+  CHECK(strstr(classification, "divmod-precomputed\tlower-bound\tfalse\tfalse\tfalse\tfalse\tfalse\t0.000000\tfalse\ttrue\tfalse\t0\t0") != NULL);
+  CHECK(strstr(classification, "product-prefix\trun-failed\tfalse\tfalse\tfalse\tfalse\tfalse\t0.000000\tfalse\tfalse\ttrue\t1\t0") != NULL);
+  CHECK(strstr(classification, "0.000000\tfalse\tfalse\ttrue\t1\t0\tfalse\tfalse\tfalse\tfalse\tfalse\trun failed\tobserve-only\t0.000000") != NULL);
   xray_free(classification);
   free(tsv);
 }
@@ -4338,7 +4338,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_progress, "baselineExcluded=") != NULL);
   CHECK(strstr(benchmark_progress, "controlsExcluded=") != NULL);
   CHECK(strstr(benchmark_progress, "product-gated rows") != NULL);
-  CHECK(strstr(benchmark_progress_tsv, "primaryLane\trouteCandidate\trouteCompleted\trouteOpen\tproductGated\thasSetupContext\tsetupSeconds\twarmupReview\tlowerBound\trunFailed") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "primaryLane\trouteCandidate\trouteCompleted\trouteOpen\tproductGated\thasSetupContext\tsetupSeconds\twarmupReview\tlowerBound\trunFailed\tattemptedRuns\tcompletedRuns") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "hasSetupContext") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "setupSeconds") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "runFailed") != NULL);

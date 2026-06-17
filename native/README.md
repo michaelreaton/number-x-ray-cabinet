@@ -310,6 +310,9 @@ when tags such as `setupUs`, `setupMs`, `warmup_s`, `WarmupSecondsMedian`, or
 measured setup/warmup tag it finds. A row can have `hasSetupContext=true` with
 `setupSeconds=0` when the row carries setup metadata but no positive measured
 setup cost of its own.
+The TSV also includes `attemptedRuns` and `completedRuns` when row details
+provide `Runs=` and `CompletedRuns=` tags. Missing tags are reported as `0`
+rather than guessed from benchmark sample counts.
 Rows tagged with ordinary setup metadata such as
 `setupPolicy=reported-not-scored`, `setupUs=`, `warmup_s=`, or
 `WarmupSecondsMedian=` are listed in `setupContextRows`. They can still appear
@@ -328,7 +331,9 @@ because a timed-out large probe can be useful evidence, but it is not a win.
 Rows tagged with `run failed`, `run-failed`, or `RunFailed=true` are listed in
 their own run-failed lane, even when no timing ratio was recorded. This keeps a
 bad helper/process run visible without confusing it with a timeout lower bound
-or ordinary open/noisy evidence.
+or ordinary open/noisy evidence. A row explicitly marked as run-failed takes
+precedence over a generic `CompletedRuns=0` tag, so process failures and
+timeout/incomplete lower bounds stay separable.
 
 The scratch-vs-GMP ladder currently measures 40, 150, 1000, 4096, and 8192 decimal digit operands so local changes have to keep scaling beyond tiny examples before they earn adoption labels. Parse and format rows are tracked separately because decimal ingestion and decimal serialization have very different bottlenecks. Multiplication and specialized square rows also have a 16384 digit discovery tier so larger-number arithmetic work can be observed before it is considered for routing. Multiplication rows aggregate two deterministic operand families because threshold-sensitive multiply code can look good on one number shape and lose on another. The tournament rows intentionally test several parse chunk sizes, decimal formatting handoff thresholds, multiply leaf thresholds, square thresholds, and Toom handoff candidates in one run; those rows are evidence-only until a bounded window wins with exact parity and stable same-run paired ratios. Decimal formatter route changes also need `format-dc-route` same-run evidence so a direct-output D&C pocket win cannot be mistaken for a global or root-size threshold; that route row uses chunked interleaved timing and alternates which side runs first to reduce scheduler and cache-warmth bias. The matching `format-dc-route-safety` row reruns the direct16-versus-ladder8 route over 4096, 8192, and 16384 digits with 9 paired samples, hash-verifies candidate/baseline/GMP output strings, and keeps `noAutoRoute=1`; it is a deep confirmation artifact, not a production formatter switch.
 
