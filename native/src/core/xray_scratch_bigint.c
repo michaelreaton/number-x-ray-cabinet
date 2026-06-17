@@ -42,6 +42,8 @@
 #define XRAY_BIGINT_SPARSE_MUL_MIN_LIMBS 16U
 #define XRAY_BIGINT_SPARSE_MUL_DENSITY_DIVISOR 4U
 #define XRAY_BIGINT_SPARSE_MUL_MIN_PRODUCTS 64U
+#define XRAY_BIGINT_SPARSE_MUL_TINY_PRODUCTS_MIN_LIMBS 32U
+#define XRAY_BIGINT_SPARSE_MUL_TINY_PRODUCTS_MAX 16U
 #define XRAY_BIGINT_SPARSE_STACK_INDEX_CAP 64U
 #define XRAY_BIGINT_FERMAT_65537 65537U
 
@@ -198,6 +200,8 @@ char *xray_bigint_route_config_json(void) {
     ",\"sparseMulMinLimbs\":%u"
     ",\"sparseMulDensityDivisor\":%u"
     ",\"sparseMulMinProducts\":%u"
+    ",\"sparseMulTinyProductsMinLimbs\":%u"
+    ",\"sparseMulTinyProductsMax\":%u"
     ",\"fermat65537\":%u"
     ",\"productionRoutes\":["
       "{\"name\":\"karatsuba-mul\",\"thresholdLimbs\":%u},"
@@ -209,7 +213,7 @@ char *xray_bigint_route_config_json(void) {
       "{\"name\":\"decimal-parse-large\",\"minDigits\":%u,\"chunkDigits\":%u},"
       "{\"name\":\"mul-unroll4\",\"enabled\":%s,\"minLimbs\":%zu,\"maxLimbs\":%zu},"
       "{\"name\":\"sparse-square\",\"minLimbs\":%u,\"densityDivisor\":%u},"
-      "{\"name\":\"sparse-mul\",\"minLimbs\":%u,\"densityDivisor\":%u,\"minProducts\":%u}"
+      "{\"name\":\"sparse-mul\",\"minLimbs\":%u,\"densityDivisor\":%u,\"minProducts\":%u,\"tinyProductsMinLimbs\":%u,\"tinyProductsMax\":%u}"
     "]"
     ",\"diagnosticProbeFamilies\":["
       "\"decimal-threshold\","
@@ -250,6 +254,8 @@ char *xray_bigint_route_config_json(void) {
     XRAY_BIGINT_SPARSE_MUL_MIN_LIMBS,
     XRAY_BIGINT_SPARSE_MUL_DENSITY_DIVISOR,
     XRAY_BIGINT_SPARSE_MUL_MIN_PRODUCTS,
+    XRAY_BIGINT_SPARSE_MUL_TINY_PRODUCTS_MIN_LIMBS,
+    XRAY_BIGINT_SPARSE_MUL_TINY_PRODUCTS_MAX,
     XRAY_BIGINT_FERMAT_65537,
     XRAY_BIGINT_KARATSUBA_THRESHOLD,
     XRAY_BIGINT_KARATSUBA_THRESHOLD,
@@ -269,7 +275,9 @@ char *xray_bigint_route_config_json(void) {
     XRAY_BIGINT_SPARSE_SQUARE_DENSITY_DIVISOR,
     XRAY_BIGINT_SPARSE_MUL_MIN_LIMBS,
     XRAY_BIGINT_SPARSE_MUL_DENSITY_DIVISOR,
-    XRAY_BIGINT_SPARSE_MUL_MIN_PRODUCTS);
+    XRAY_BIGINT_SPARSE_MUL_MIN_PRODUCTS,
+    XRAY_BIGINT_SPARSE_MUL_TINY_PRODUCTS_MIN_LIMBS,
+    XRAY_BIGINT_SPARSE_MUL_TINY_PRODUCTS_MAX);
   if (written < 0 || (size_t)written >= capacity) {
     free(json);
     return NULL;
@@ -2907,9 +2915,25 @@ static int should_use_sparse_mul(
 
   size_t sparse_cost = 0;
   if (!checked_sparse_cost(left_nonzero, right_nonzero, &sparse_cost)) return 0;
-  if (sparse_cost < XRAY_BIGINT_SPARSE_MUL_MIN_PRODUCTS) return 0;
+  if (sparse_cost < XRAY_BIGINT_SPARSE_MUL_MIN_PRODUCTS) {
+    if (max_count < XRAY_BIGINT_SPARSE_MUL_TINY_PRODUCTS_MIN_LIMBS) return 0;
+    if (sparse_cost > XRAY_BIGINT_SPARSE_MUL_TINY_PRODUCTS_MAX) return 0;
+  }
 
   return sparse_cost <= best_row_cost / 2U;
+}
+
+static int count_nonzero_limbs_bounded(const XrayScratchBigInt *value, size_t max_nonzero, size_t *out_count) {
+  if (!value || !out_count || max_nonzero == 0) return 0;
+  size_t nonzero = 0;
+  for (size_t i = 0; i < value->count; ++i) {
+    if (value->limbs[i] == 0) continue;
+    nonzero++;
+    if (nonzero > max_nonzero) return 0;
+  }
+  if (nonzero == 0) return 0;
+  *out_count = nonzero;
+  return 1;
 }
 
 static int mul_schoolbook_sparse(
@@ -2957,6 +2981,35 @@ static int mul_schoolbook_sparse(
   if (right_indices != right_stack_indices) free(right_indices);
   normalize(out);
   return 1;
+}
+
+static int try_sparse_mul_dispatch_route(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
+  if (!out || !left || !right) return 0;
+  if (left->count == 0 || right->count == 0) return 0;
+  size_t max_count = left->count > right->count ? left->count : right->count;
+  if (max_count < XRAY_BIGINT_SPARSE_MUL_TINY_PRODUCTS_MIN_LIMBS) return 0;
+
+  size_t left_cap = left->count / XRAY_BIGINT_SPARSE_MUL_DENSITY_DIVISOR;
+  size_t right_cap = right->count / XRAY_BIGINT_SPARSE_MUL_DENSITY_DIVISOR;
+  if (left_cap > XRAY_BIGINT_SPARSE_MUL_TINY_PRODUCTS_MAX) left_cap = XRAY_BIGINT_SPARSE_MUL_TINY_PRODUCTS_MAX;
+  if (right_cap > XRAY_BIGINT_SPARSE_MUL_TINY_PRODUCTS_MAX) right_cap = XRAY_BIGINT_SPARSE_MUL_TINY_PRODUCTS_MAX;
+  size_t left_nonzero = 0;
+  size_t right_nonzero = 0;
+  if (!count_nonzero_limbs_bounded(left, left_cap, &left_nonzero) ||
+      !count_nonzero_limbs_bounded(right, right_cap, &right_nonzero)) {
+    return 0;
+  }
+
+  size_t sparse_cost = 0;
+  if (!checked_sparse_cost(left_nonzero, right_nonzero, &sparse_cost) ||
+      sparse_cost > XRAY_BIGINT_SPARSE_MUL_TINY_PRODUCTS_MAX) {
+    return 0;
+  }
+  size_t left_outer_cost = left_nonzero > SIZE_MAX / right->count ? SIZE_MAX : left_nonzero * right->count;
+  size_t right_outer_cost = right_nonzero > SIZE_MAX / left->count ? SIZE_MAX : right_nonzero * left->count;
+  size_t best_scan_cost = left_outer_cost < right_outer_cost ? left_outer_cost : right_outer_cost;
+  if (!should_use_sparse_mul(left, right, left_nonzero, right_nonzero, best_scan_cost)) return 0;
+  return mul_schoolbook_sparse(out, left, right, left_nonzero, right_nonzero);
 }
 
 static int mul_schoolbook_mode(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, int use_unroll4) {
@@ -3583,6 +3636,7 @@ static int mul_toom3_probe_internal(
 }
 
 static int mul_dispatch(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
+  if (try_sparse_mul_dispatch_route(out, left, right)) return 1;
 #if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
   size_t left_count = left ? left->count : 0;
   size_t right_count = right ? right->count : 0;
@@ -3743,6 +3797,23 @@ int xray_bigint_mul_with_threshold(XrayScratchBigInt *out, const XrayScratchBigI
     return ok;
   }
   return mul_dispatch_threshold(out, left, right, active_threshold);
+}
+
+int xray_bigint_mul_sparse_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
+  if (!out || !left || !right) return 0;
+  if (left->count == 0 || right->count == 0) return set_u32(out, 0);
+  size_t left_nonzero = count_nonzero_limbs(left);
+  size_t right_nonzero = count_nonzero_limbs(right);
+  if (left_nonzero == 0 || right_nonzero == 0) return set_u32(out, 0);
+  if (out == left || out == right) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = mul_schoolbook_sparse(&temp, left, right, left_nonzero, right_nonzero);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return mul_schoolbook_sparse(out, left, right, left_nonzero, right_nonzero);
 }
 
 int xray_bigint_mul_karatsuba_sum_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t threshold) {
