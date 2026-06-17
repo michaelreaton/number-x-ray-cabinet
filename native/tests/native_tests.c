@@ -2096,6 +2096,11 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "featureGate=bigint-division-context") != NULL);
         CHECK(strstr(report->results[index].detail, "gmpClue=mpn_tdiv_qr-precomputed-divisor") != NULL);
         CHECK(strstr(report->results[index].detail, "thresholdSafety=explicit-context") != NULL);
+        CHECK(strstr(report->results[index].detail, "setupSamples=5") != NULL);
+        CHECK(strstr(report->results[index].detail, "setupIterations=") != NULL);
+        CHECK(strstr(report->results[index].detail, "setupUs=") != NULL);
+        CHECK(strstr(report->results[index].detail, "setupPolicy=reported-not-scored") != NULL);
+        CHECK(strstr(report->results[index].detail, "cacheRole=divisor-context") != NULL);
         CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
         CHECK(strstr(report->results[index].detail, "operandFamilies=1") != NULL);
         CHECK(!report->results[index].replacement_ready);
@@ -2124,6 +2129,11 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "featureGate=bigint-division-workspace") != NULL);
         CHECK(strstr(report->results[index].detail, "gmpClue=mpn_tdiv_qr-scratch-reuse") != NULL);
         CHECK(strstr(report->results[index].detail, "thresholdSafety=explicit-workspace") != NULL);
+        CHECK(strstr(report->results[index].detail, "setupSamples=5") != NULL);
+        CHECK(strstr(report->results[index].detail, "setupIterations=") != NULL);
+        CHECK(strstr(report->results[index].detail, "setupUs=") != NULL);
+        CHECK(strstr(report->results[index].detail, "setupPolicy=reported-not-scored") != NULL);
+        CHECK(strstr(report->results[index].detail, "cacheRole=divisor-context") != NULL);
         CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
         CHECK(strstr(report->results[index].detail, "operandFamilies=1") != NULL);
         CHECK(!report->results[index].replacement_ready);
@@ -2152,6 +2162,11 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "featureGate=bigint-division-preinv-qhat") != NULL);
         CHECK(strstr(report->results[index].detail, "gmpClue=mpn_sbpi1_div_qr-qhat") != NULL);
         CHECK(strstr(report->results[index].detail, "precomputeScope=per-divisor") != NULL);
+        CHECK(strstr(report->results[index].detail, "setupSamples=5") != NULL);
+        CHECK(strstr(report->results[index].detail, "setupIterations=") != NULL);
+        CHECK(strstr(report->results[index].detail, "setupUs=") != NULL);
+        CHECK(strstr(report->results[index].detail, "setupPolicy=reported-not-scored") != NULL);
+        CHECK(strstr(report->results[index].detail, "cacheRole=divisor-context") != NULL);
         CHECK(strstr(report->results[index].detail, "thresholdSafety=explicit-probe") != NULL);
         CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
         CHECK(strstr(report->results[index].detail, "operandFamilies=1") != NULL);
@@ -3693,6 +3708,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "divmod-dc-power") != NULL);
   CHECK(strstr(json, "divmod-precomputed") != NULL);
   CHECK(strstr(json, "bigint-division-context") != NULL);
+  CHECK(strstr(json, "setupPolicy=reported-not-scored") != NULL);
+  CHECK(strstr(json, "cacheRole=divisor-context") != NULL);
   CHECK(strstr(json, "divmod-workspace") != NULL);
   CHECK(strstr(json, "bigint-division-workspace") != NULL);
   CHECK(strstr(json, "divmod-preinv-qhat") != NULL);
@@ -3831,6 +3848,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "powmod-u32-precompute") != NULL);
   CHECK(strstr(tsv, "parse-chunk") != NULL);
   CHECK(strstr(tsv, "divmod-dc-power") != NULL);
+  CHECK(strstr(tsv, "setupPolicy=reported-not-scored") != NULL);
+  CHECK(strstr(tsv, "cacheRole=divisor-context") != NULL);
   CHECK(strstr(tsv, "format") != NULL);
   CHECK(strstr(tsv, "format-threshold") != NULL);
   CHECK(strstr(tsv, "format-divider") != NULL);
@@ -4043,6 +4062,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "format-policy-safety") != NULL);
   CHECK(strstr(benchmark_tsv, "divmod-precomputed") != NULL);
   CHECK(strstr(benchmark_tsv, "divmod-workspace") != NULL);
+  CHECK(strstr(benchmark_tsv, "setupPolicy=reported-not-scored") != NULL);
+  CHECK(strstr(benchmark_tsv, "cacheRole=divisor-context") != NULL);
   CHECK(strstr(benchmark_tsv, "divmod-preinv-qhat") != NULL);
   CHECK(strstr(benchmark_tsv, "divmod-preinv-qhat-safety") != NULL);
   CHECK(strstr(benchmark_tsv, "scratch-divmod-preinv-qhat") != NULL);
