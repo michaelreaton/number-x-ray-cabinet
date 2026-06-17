@@ -477,6 +477,17 @@ static int compare_row_is_lower_bound(const CompareRow *row) {
     compare_contains(row->detail, "CompletedRuns=0");
 }
 
+static int compare_row_is_warmup_review(const CompareRow *row) {
+  if (!row) return 0;
+  return compare_contains(row->status, "warmup-review") ||
+    compare_contains(row->status, "review-warmup") ||
+    compare_contains(row->adoption, "warmup-review") ||
+    compare_contains(row->adoption, "review-warmup") ||
+    compare_contains(row->detail, "WarmupPolicy=review-warmup") ||
+    compare_contains(row->detail, "warmupPolicy=review-warmup") ||
+    compare_contains(row->detail, "setupPolicy=review-warmup");
+}
+
 static int compare_row_is_noisy_control(const CompareRow *row) {
   if (!row) return 0;
   return compare_contains(row->status, "noisy-control") ||
@@ -533,6 +544,7 @@ static int compare_row_is_product_gated(const CompareRow *row) {
 static int compare_row_has_progress_signal(const CompareRow *row) {
   return row && row->speed_ratio > 0.0 &&
     (compare_row_is_lower_bound(row) ||
+     compare_row_is_warmup_review(row) ||
      row->parity_verified ||
      compare_row_is_promotion_ready(row) ||
      compare_row_is_oracle_only(row) ||
@@ -604,6 +616,7 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
   ComparePair rejected[8] = {0};
   ComparePair product_gated[8] = {0};
   ComparePair lower_bound[8] = {0};
+  ComparePair warmup_review[8] = {0};
   size_t completed_count = 0;
   size_t open_count = 0;
   size_t baseline_count = 0;
@@ -611,6 +624,7 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
   size_t rejected_count = 0;
   size_t product_gated_count = 0;
   size_t lower_bound_count = 0;
+  size_t warmup_review_count = 0;
   size_t route_candidates_total = 0;
   size_t completed_total = 0;
   size_t open_total = 0;
@@ -620,11 +634,13 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
   size_t rejected_total = 0;
   size_t product_gated_total = 0;
   size_t lower_bound_total = 0;
+  size_t warmup_review_total = 0;
 
   for (size_t index = 0; index < set.count; ++index) {
     const CompareRow *row = &set.rows[index];
     if (!compare_row_has_progress_signal(row)) continue;
     int lower_bound_row = compare_row_is_lower_bound(row);
+    int warmup_review_row = compare_row_is_warmup_review(row);
     int control = compare_row_is_control(row);
     int baseline = compare_row_is_baseline_subject(row);
     int noisy_control = compare_row_is_noisy_control(row);
@@ -637,6 +653,17 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
         lower_bound,
         &lower_bound_count,
         sizeof(lower_bound) / sizeof(lower_bound[0]),
+        row,
+        progress_open_score(row),
+        1);
+      continue;
+    }
+    if (warmup_review_row) {
+      warmup_review_total++;
+      insert_progress_row(
+        warmup_review,
+        &warmup_review_count,
+        sizeof(warmup_review) / sizeof(warmup_review[0]),
         row,
         progress_open_score(row),
         1);
@@ -718,12 +745,13 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
 
   cb_printf(&buffer, "Artifact: %s\n", set.fingerprint);
   cb_printf(&buffer,
-    "Rows: total=%zu routeCandidates=%zu routeCompleted=%zu routeOpen=%zu productGatedOpen=%zu baselineExcluded=%zu controlsExcluded=%zu noisyControls=%zu safetyRejected=%zu lowerBoundRows=%zu\n\n",
+    "Rows: total=%zu routeCandidates=%zu routeCompleted=%zu routeOpen=%zu productGatedOpen=%zu warmupReviewRows=%zu baselineExcluded=%zu controlsExcluded=%zu noisyControls=%zu safetyRejected=%zu lowerBoundRows=%zu\n\n",
     set.count,
     route_candidates_total,
     completed_total,
     open_total,
     product_gated_total,
+    warmup_review_total,
     baselines_total,
     controls_total,
     noisy_controls_total,
@@ -744,6 +772,11 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
   if (!product_gated_count) cb_append(&buffer, "  none\n");
   for (size_t index = 0; index < product_gated_count; ++index) append_progress_line(&buffer, product_gated[index].left, "product-gated");
   if (product_gated_total > product_gated_count) cb_printf(&buffer, "  ... %zu more product-gated rows\n", product_gated_total - product_gated_count);
+
+  cb_append(&buffer, "\nWarmup-review rows observed (setup too expensive for ordinary route progress):\n");
+  if (!warmup_review_count) cb_append(&buffer, "  none\n");
+  for (size_t index = 0; index < warmup_review_count; ++index) append_progress_line(&buffer, warmup_review[index].left, "warmup-review");
+  if (warmup_review_total > warmup_review_count) cb_printf(&buffer, "  ... %zu more warmup-review rows\n", warmup_review_total - warmup_review_count);
 
   cb_append(&buffer, "\nSafety-rejected rows observed:\n");
   if (!rejected_count) cb_append(&buffer, "  none\n");
@@ -766,7 +799,7 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
   if (controls_total > control_count) cb_printf(&buffer, "  ... %zu more control rows\n", controls_total - control_count);
 
   cb_append(&buffer,
-    "\nRule: route-completed progress excludes baseline/current, duplicate-control, noisy-control, product-gated, and lower-bound/incomplete rows. Median wins still stay open when worst-pair, control, baseline, noAutoRoute, forced-neighbor, deep-confirmation, timeout, or safety labels reject them.\n");
+    "\nRule: route-completed progress excludes baseline/current, duplicate-control, noisy-control, product-gated, warmup-review, and lower-bound/incomplete rows. Median wins still stay open when worst-pair, control, baseline, noAutoRoute, forced-neighbor, deep-confirmation, review-warmup, timeout, or safety labels reject them.\n");
 
   compare_set_clear(&set);
   return cb_take(&buffer);

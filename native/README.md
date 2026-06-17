@@ -291,12 +291,18 @@ scratch gaps with ratio, worst-pair, and stable-sample evidence.
 `benchmark_progress.txt` and the matching `--bench-progress` CLI mode turn a
 TSV artifact into the after-PR status view: completed product/backend route
 candidates, open/noisy route rows, product-gated evidence, safety rejections,
-lower-bound/incomplete rows, baseline/current rows, and controls excluded from
-candidate totals. This
+warmup-review rows, lower-bound/incomplete rows, baseline/current rows, and
+controls excluded from candidate totals. This
 mirrors the MFastFermat progress-digest lesson: duplicate controls,
 `noisy-control` rows, current-default baseline rows, and rows tagged with
 `noAutoRoute=1`, forced-neighbor safety, or required deep confirmation stay out
 of route-completed progress even when their median ratio looks favorable.
+Rows tagged with `WarmupPolicy=review-warmup`, `warmupPolicy=review-warmup`, or
+`setupPolicy=review-warmup` are listed in their own warmup-review lane and stay
+out of route candidate, route-completed, and route-open totals. Ordinary
+`setupPolicy=reported-not-scored` rows remain visible setup context, but
+review-warmup means the setup cost is large enough to require human review
+before any route claim.
 Rows tagged with `timeout`, `lower-bound`, `no-complete-run`, `incomplete`, or
 `CompletedRuns=0` are listed in their own lower-bound lane and also stay out of
 route candidate, route-completed, and route-open totals. They are still visible
