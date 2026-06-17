@@ -7718,8 +7718,28 @@ static void set_sparse_pair_probe_bits(mpz_t value, const size_t *limb_indices, 
 static void run_sparse_pair_product_probe_case(XrayBenchmarkReport *report, size_t bits) {
   const size_t sample_count = XRAY_BENCH_SAMPLES;
   const unsigned int iterations = bits <= 4096U ? 8U : 4U;
-  const size_t left_indices[] = {0U, 5U, 11U, 19U, 31U, 43U, 57U, 64U};
-  const size_t right_indices[] = {0U, 7U, 13U, 23U, 37U, 47U, 59U, 64U};
+  size_t limb_span = bits / XRAY_BENCH_WORD_BITS;
+  if (limb_span < 64U) limb_span = 64U;
+  const size_t left_indices[] = {
+    0U,
+    limb_span / 12U,
+    limb_span / 6U,
+    limb_span / 3U,
+    limb_span / 2U,
+    (limb_span * 2U) / 3U,
+    (limb_span * 5U) / 6U,
+    limb_span
+  };
+  const size_t right_indices[] = {
+    0U,
+    limb_span / 10U,
+    limb_span / 5U,
+    (limb_span * 3U) / 8U,
+    (limb_span * 9U) / 16U,
+    (limb_span * 3U) / 4U,
+    (limb_span * 7U) / 8U,
+    limb_span
+  };
   mpz_t left, right, expected;
   mpz_inits(left, right, expected, NULL);
   set_sparse_pair_probe_bits(left, left_indices, sizeof(left_indices) / sizeof(left_indices[0]));
@@ -8415,9 +8435,12 @@ static void run_scratch_bigint_gates(XrayBenchmarkReport *report) {
   run_scratch_mul_case(report, 16384);
   run_scratch_square_case(report, 16384);
   run_square_vs_mul_probe_case(report, 16384);
-  run_sparse_zero_limb_probe_case(report, "square", 4096);
-  run_sparse_zero_limb_probe_case(report, "mul", 4096);
-  run_sparse_pair_product_probe_case(report, 4096);
+  const size_t sparse_shape_bits[] = {4096, 8192, 16384};
+  for (size_t index = 0; index < sizeof(sparse_shape_bits) / sizeof(sparse_shape_bits[0]); ++index) {
+    run_sparse_zero_limb_probe_case(report, "square", sparse_shape_bits[index]);
+    run_sparse_zero_limb_probe_case(report, "mul", sparse_shape_bits[index]);
+    run_sparse_pair_product_probe_case(report, sparse_shape_bits[index]);
+  }
   const size_t frontier_scout_digits[] = {32768, 65536};
   for (size_t index = 0; index < sizeof(frontier_scout_digits) / sizeof(frontier_scout_digits[0]); ++index) {
     run_frontier_scout_case(report, "mul", frontier_scout_digits[index]);
