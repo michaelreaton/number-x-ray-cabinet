@@ -64,6 +64,21 @@ and direct-buffer output. These rows are exact-parity, default-off probes for
 the 8k/16k formatting gap and must not be treated as production policy until
 same-run stability and product-like route checks pass.
 
+## 2026-06-17: MFastFermat 8M DIF/DIT Promotion Signal
+
+MFastFermat `f3f1ab9` moved `8,192,036` from strong-open to default-off
+route-completed evidence. Its current 8M winner is the 24k wide61 DIF/DIT
+handoff: `1.612x` median Product/GMP, `2/2` GMP wins, `1.205x` worst GMP
+pair, `8.359x` over release, `6.416x` control-adjusted, and low duplicate-base
+noise with `1.303x` median and `1.078x` worst. Number X-Ray's frontier-scout
+rows now cite that current signal as
+`gmpClue=mfast8m-difdit24-complete`, `mfastKnob=difdit24k`,
+`mfastPG=1.612`, and `mfastCW=1.078`. The emitted tags are intentionally
+compact so the benchmark detail still retains `noAutoRoute=1` and duplicate
+control metadata. This still does not promote a Number X-Ray arithmetic route;
+it keeps the sparse-transform clue accurate for future large-number
+square/multiply work.
+
 ## 2026-06-16: Formatter Window Promotion Rejected
 
 MFastFermat `main` is at `96117fd` and its newest tail-control DIF/DIT evidence
