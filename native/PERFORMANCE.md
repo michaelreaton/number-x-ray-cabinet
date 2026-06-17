@@ -72,6 +72,16 @@ that in `--bench-progress` for rows carrying `WarmupPolicy=review-warmup`,
 large-number precompute work because a fast timed kernel is not actionable if
 its required setup is close to timeout, budget, or practical usability limits.
 
+MFastFermat's current `codex/prefix-warmup-seconds` feedback goes one step
+finer: prefix scouts print measured `warmup_s` beside the scored
+`median_prefix-round/s`, and product-prefix TSVs carry
+`WarmupSecondsMedian`. Number X-Ray now mirrors that visibility in
+`--bench-progress` with a non-exclusive `setupContextRows` lane for
+`setupPolicy=reported-not-scored`, `setupUs`, `warmup_s`,
+`WarmupSecondsMedian`, and related setup tags. These rows are reported for
+review but not scored as throughput; review-warmup and lower-bound rows still
+take precedence and remain excluded from route candidate totals.
+
 ## 2026-06-17: Static Formatter Leaf Expansion
 
 MFastFermat follow-up evidence around `d942c12`, `34ba68b`, and `f479009`

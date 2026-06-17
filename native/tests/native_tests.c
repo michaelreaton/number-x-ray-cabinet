@@ -197,7 +197,7 @@ static void test_benchmark_progress_digest(void) {
     "category\tname\toperation\tdigits\tstatus\tpassed\tparityVerified\treplacementReady\tadoption\tscratchUs\tgmpUs\tspeedRatio\tmaxAllowedSpeedRatio\tworstPairRatio\tstableSampleCount\tsampleCount\telapsedMs\tdetail\tbuildConfig\tipo\tcompiler\tcompilerVersion\n";
   const char *rows =
     "scratch-vs-gmp\tscratch parse 1000 digits\tparse\t1000\treplacement-ready\ttrue\ttrue\ttrue\tallowed\t10\t20\t0.500000\t1.000000\t0.700000\t5\t5\t1\tdetail\tRelease\tfalse\tMSVC\t1929\n"
-    "policy-gate\tpolicy gate format preinv 1000 digits\tformat-policy-safety\t1000\tpolicy-ready\ttrue\ttrue\ttrue\tpromotion-ready\t50\t60\t0.800000\t0.980000\t0.950000\t5\t5\t1\tpolicy=preinv\tRelease\tfalse\tMSVC\t1929\n"
+    "policy-gate\tpolicy gate format preinv 1000 digits\tformat-policy-safety\t1000\tpolicy-ready\ttrue\ttrue\ttrue\tpromotion-ready\t50\t60\t0.800000\t0.980000\t0.950000\t5\t5\t1\tpolicy=preinv setupUs=42 setupSamples=5 setupPolicy=reported-not-scored WarmupSecondsMedian=0.000042\tRelease\tfalse\tMSVC\t1929\n"
     "policy-gate\tpolicy gate format product-gated 960 digits\tformat-policy-deep-safety\t960\tpolicy-ready\ttrue\ttrue\ttrue\tpromotion-ready\t45\t60\t0.750000\t0.980000\t0.880000\t5\t5\t1\tpolicy=deep-preinv gate=960 forcedCandidate=yes thresholdSafety=forced-neighbor deepConfirmation=required noAutoRoute=1\tRelease\tfalse\tMSVC\t1929\n"
     "policy-probe\tpolicy mul current-default 1000 digits\tmul-policy\t1000\tpolicy-ready\ttrue\ttrue\ttrue\tpromotion-ready\t21\t42\t0.500000\t1.000000\t0.800000\t5\t5\t1\tpolicy=current-default candidate=current-scratch-mul baseline=mpz_mul\tRelease\tfalse\tMSVC\t1929\n"
     "scratch-vs-gmp\tscratch format 896 digits\tformat\t896\tparity\ttrue\ttrue\tfalse\toracle-only\t190\t100\t1.900000\t1.000000\t1.950000\t0\t5\t1\tdetail\tRelease\tfalse\tMSVC\t1929\n"
@@ -223,10 +223,12 @@ static void test_benchmark_progress_digest(void) {
   CHECK(strstr(digest, "noisyControls=1") != NULL);
   CHECK(strstr(digest, "safetyRejected=1") != NULL);
   CHECK(strstr(digest, "warmupReviewRows=1") != NULL);
+  CHECK(strstr(digest, "setupContextRows=1") != NULL);
   CHECK(strstr(digest, "lowerBoundRows=1") != NULL);
   CHECK(strstr(digest, "Product/backend route candidate rows observed") != NULL);
   CHECK(strstr(digest, "Open/noisy route rows observed") != NULL);
   CHECK(strstr(digest, "Product-gated route rows observed") != NULL);
+  CHECK(strstr(digest, "Setup/warmup context rows observed") != NULL);
   CHECK(strstr(digest, "Warmup-review rows observed") != NULL);
   CHECK(strstr(digest, "Safety-rejected rows observed") != NULL);
   CHECK(strstr(digest, "Lower-bound/incomplete rows observed") != NULL);
@@ -234,6 +236,7 @@ static void test_benchmark_progress_digest(void) {
   CHECK(strstr(digest, "Control/noise rows observed") != NULL);
   CHECK(strstr(digest, "parse") != NULL);
   CHECK(strstr(digest, "format-policy-safety policy=preinv") != NULL);
+  CHECK(strstr(digest, "setup-context") != NULL);
   CHECK(strstr(digest, "format-policy-deep-safety policy=deep-preinv") != NULL);
   CHECK(strstr(digest, "mul-policy policy=current-default") != NULL);
   CHECK(strstr(digest, "mul-frontier") != NULL);
@@ -241,6 +244,7 @@ static void test_benchmark_progress_digest(void) {
   CHECK(strstr(digest, "review-warmup") != NULL);
   CHECK(strstr(digest, "lower-bound/incomplete rows") != NULL);
   CHECK(strstr(digest, "baseline/current, duplicate-control, noisy-control, product-gated, warmup-review, and lower-bound/incomplete rows") != NULL);
+  CHECK(strstr(digest, "Setup/warmup context rows are reported for review but are not scored") != NULL);
   xray_free(digest);
   free(tsv);
 }
@@ -4284,12 +4288,14 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_progress, "Product/backend route candidate rows observed") != NULL);
   CHECK(strstr(benchmark_progress, "Open/noisy route rows observed") != NULL);
   CHECK(strstr(benchmark_progress, "Product-gated route rows observed") != NULL);
+  CHECK(strstr(benchmark_progress, "Setup/warmup context rows observed") != NULL);
   CHECK(strstr(benchmark_progress, "Warmup-review rows observed") != NULL);
   CHECK(strstr(benchmark_progress, "Safety-rejected rows observed") != NULL);
   CHECK(strstr(benchmark_progress, "Baseline/current rows observed") != NULL);
   CHECK(strstr(benchmark_progress, "Control/noise rows observed") != NULL);
   CHECK(strstr(benchmark_progress, "productGatedOpen=") != NULL);
   CHECK(strstr(benchmark_progress, "warmupReviewRows=") != NULL);
+  CHECK(strstr(benchmark_progress, "setupContextRows=") != NULL);
   CHECK(strstr(benchmark_progress, "baselineExcluded=") != NULL);
   CHECK(strstr(benchmark_progress, "controlsExcluded=") != NULL);
   CHECK(strstr(benchmark_progress, "product-gated rows") != NULL);
