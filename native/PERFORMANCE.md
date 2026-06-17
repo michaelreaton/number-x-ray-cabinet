@@ -29,6 +29,41 @@ parity plus a stable same-run paired win.
   benchmarks show exact parity, adjacent-size safety, and product-like build
   confirmation.
 
+## 2026-06-16: Large Frontier Scout Rows
+
+MFastFermat `main` advanced to `697745b` with two lessons relevant to Number
+X-Ray: frontier benchmark families now extend to 8M/16M-bit cases, and very
+large Karatsuba tuning avoids the unsafe 96-limb recursive band by gating a
+128-limb fallback at a much larger root floor. Number X-Ray is not ready to run
+multi-million-bit product rows inside the default native test ladder, but the
+old 16,384-digit ceiling also hid the first above-64k-bit behavior.
+
+Run:
+
+- Release: `native/build-codex-gtk-autodetect2/native-test-runs/20260616-210038-c4b04caf`
+
+This pass adds bounded `frontier-scout` rows for 32,768 and 65,536 decimal
+digits across multiply and square. They use full-width operands, exact
+`mpz_mul` oracle checks through limb import, three paired samples, one warmup
+pass, and `noAutoRoute=1`. These rows are evidence only; they cannot set
+`replacementReady`.
+
+Fresh local rows:
+
+- 32,768-digit multiply: ratio `1.588`, worst `2.434`, stable `0/3`,
+  `observe-only`.
+- 32,768-digit square: ratio `1.559`, worst `1.580`, stable `0/3`,
+  `observe-only`.
+- 65,536-digit multiply: ratio `1.810`, worst `1.862`, stable `0/3`,
+  `observe-only`.
+- 65,536-digit square: ratio `2.069`, worst `2.098`, stable `0/3`,
+  `observe-only`.
+
+Decision: use the scout rows to make large-root gaps visible in the GUI,
+frontier text, TSV, and JSON before testing any new large multiplication route.
+Do not promote threshold pockets from these rows; they are a bounded map of
+where to aim next.
+
 ## 2026-06-16: Karatsuba Threshold96 Root-Size Gate
 
 Run:

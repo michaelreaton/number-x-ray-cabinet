@@ -1511,6 +1511,11 @@ static void test_benchmarks(void) {
   size_t lane_safety_rejected_rows = 0;
   int saw_8192_scratch = 0;
   int saw_16384_scratch_mul = 0;
+  int saw_frontier_scout = 0;
+  int saw_frontier_mul32768 = 0;
+  int saw_frontier_mul65536 = 0;
+  int saw_frontier_square32768 = 0;
+  int saw_frontier_square65536 = 0;
   int saw_scratch_square = 0;
   int saw_scratch_format = 0;
   int saw_scratch_format768 = 0;
@@ -1810,6 +1815,37 @@ static void test_benchmarks(void) {
       }
       else if (strcmp(adoption, "oracle-only") == 0) oracle_only_rows++;
       else blocked_rows++;
+    } else if (strcmp(report->results[index].category, "frontier-scout") == 0) {
+      saw_frontier_scout = 1;
+      CHECK(report->results[index].passed);
+      CHECK(report->results[index].parity_verified);
+      CHECK(!report->results[index].replacement_ready);
+      CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+      CHECK(strcmp(report->results[index].status, "bounded-frontier-scout") == 0);
+      CHECK(report->results[index].scratch_us > 0);
+      CHECK(report->results[index].gmp_us > 0);
+      CHECK(report->results[index].speed_ratio > 0.0);
+      CHECK(report->results[index].max_allowed_speed_ratio == 1.0);
+      CHECK(report->results[index].sample_count == 3);
+      CHECK(report->results[index].stable_sample_count <= report->results[index].sample_count);
+      CHECK(strstr(report->results[index].detail, "op=frontier-scout") != NULL);
+      CHECK(strstr(report->results[index].detail, "estimatedBits=") != NULL);
+      CHECK(strstr(report->results[index].detail, "warmupPasses=1") != NULL);
+      CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
+      CHECK(strstr(report->results[index].detail, "baseline=mpz_mul") != NULL);
+      CHECK(strstr(report->results[index].detail, "oracle=mpz_mul") != NULL);
+      CHECK(strstr(report->results[index].detail, "featureGate=very-large-frontier-scout") != NULL);
+      CHECK(strstr(report->results[index].detail, "gmpClue=mfastfermat-frontier8m16m+steady-warmup") != NULL);
+      CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+      if (strcmp(report->results[index].operation, "mul-frontier") == 0 &&
+          report->results[index].digits == 32768) saw_frontier_mul32768 = 1;
+      else if (strcmp(report->results[index].operation, "mul-frontier") == 0 &&
+          report->results[index].digits == 65536) saw_frontier_mul65536 = 1;
+      else if (strcmp(report->results[index].operation, "square-frontier") == 0 &&
+          report->results[index].digits == 32768) saw_frontier_square32768 = 1;
+      else if (strcmp(report->results[index].operation, "square-frontier") == 0 &&
+          report->results[index].digits == 65536) saw_frontier_square65536 = 1;
+      else CHECK(0);
     } else if (strcmp(report->results[index].category, "kernel-probe") == 0) {
       kernel_rows++;
       if (report->results[index].digits == 8192) saw_8192_kernel_probe = 1;
@@ -3238,6 +3274,11 @@ static void test_benchmarks(void) {
   CHECK(scratch_rows >= 40);
   CHECK(saw_8192_scratch);
   CHECK(saw_16384_scratch_mul);
+  CHECK(saw_frontier_scout);
+  CHECK(saw_frontier_mul32768);
+  CHECK(saw_frontier_mul65536);
+  CHECK(saw_frontier_square32768);
+  CHECK(saw_frontier_square65536);
   CHECK(saw_scratch_square);
   CHECK(saw_scratch_format);
   CHECK(saw_scratch_format768);
@@ -3637,6 +3678,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "karatsuba-thr96") != NULL);
   CHECK(strstr(json, "mul-policy") != NULL);
   CHECK(strstr(json, "mul-policy-safety") != NULL);
+  CHECK(strstr(json, "frontier-scout") != NULL);
+  CHECK(strstr(json, "mul-frontier") != NULL);
+  CHECK(strstr(json, "square-frontier") != NULL);
+  CHECK(strstr(json, "mfastfermat-frontier8m16m+steady-warmup") != NULL);
   CHECK(strstr(json, "threshold96-ge8192") != NULL);
   CHECK(strstr(json, "karatsuba-threshold96") != NULL);
   CHECK(strstr(json, "toom3-u4-ge8192-leaf48") != NULL);
@@ -3733,6 +3778,11 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "karatsuba-thr96") != NULL);
   CHECK(strstr(tsv, "mul-policy") != NULL);
   CHECK(strstr(tsv, "mul-policy-safety") != NULL);
+  CHECK(strstr(tsv, "frontier-scout") != NULL);
+  CHECK(strstr(tsv, "mul-frontier") != NULL);
+  CHECK(strstr(tsv, "square-frontier") != NULL);
+  CHECK(strstr(tsv, "very-large-frontier-scout") != NULL);
+  CHECK(strstr(tsv, "mfastfermat-frontier8m16m+steady-warmup") != NULL);
   CHECK(strstr(tsv, "threshold96-ge8192") != NULL);
   CHECK(strstr(tsv, "karatsuba-threshold96") != NULL);
   CHECK(strstr(tsv, "mul-policy-threshold96-ge8192") != NULL);
@@ -3902,6 +3952,11 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "karatsuba-thr96") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-policy") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-policy-safety") != NULL);
+  CHECK(strstr(benchmark_tsv, "frontier-scout") != NULL);
+  CHECK(strstr(benchmark_tsv, "mul-frontier") != NULL);
+  CHECK(strstr(benchmark_tsv, "square-frontier") != NULL);
+  CHECK(strstr(benchmark_tsv, "very-large-frontier-scout") != NULL);
+  CHECK(strstr(benchmark_tsv, "mfastfermat-frontier8m16m+steady-warmup") != NULL);
   CHECK(strstr(benchmark_tsv, "threshold96-ge8192") != NULL);
   CHECK(strstr(benchmark_tsv, "karatsuba-threshold96") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-policy-threshold96-ge8192") != NULL);
@@ -3941,6 +3996,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "SCRATCH VS ") != NULL);
   CHECK(strstr(benchmark_frontier, "PRODUCT POLICY PROBES") != NULL);
   CHECK(strstr(benchmark_frontier, "PRODUCT POLICY THRESHOLD GATES") != NULL);
+  CHECK(strstr(benchmark_frontier, "LARGE FRONTIER SCOUTS") != NULL);
   CHECK(strstr(benchmark_frontier, "Worst") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-threshold thr=") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-threshold-tournament thr=") != NULL);
@@ -4026,6 +4082,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "mul-policy-safety threshold96-ge8192") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-policy-safety toom3-u4-ge8192-leaf48") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-policy-safety toom3-u4-rec-ge16384-leaf64-depth2") != NULL);
+  CHECK(strstr(benchmark_frontier, "mul-frontier") != NULL);
+  CHECK(strstr(benchmark_frontier, "square-frontier") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-karatsuba-middle") != NULL);
   CHECK(strstr(benchmark_frontier, "mode=sum-vs-difference") != NULL);
   CHECK(strstr(benchmark_frontier, "base=karatsuba-difference-") != NULL);
