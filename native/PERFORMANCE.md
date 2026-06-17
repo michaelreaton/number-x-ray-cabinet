@@ -107,6 +107,15 @@ but 8192 and 16384 digits had worst-pair misses (`1.036` and `1.004`). The new
 `2/3`, and status `neighbor-regression`, so the production formatter stays on
 the current ladder route.
 
+Follow-up MFastFermat feedback added warmup-cache accounting for 16M swatches:
+the default helper pays the warmup once, variants reuse that residue, and the
+TSV records helper setup separately from scored work. Number X-Ray mirrors that
+measurement discipline in the division precompute rows. `divmod-precomputed`,
+`divmod-workspace`, and `divmod-preinv-qhat` now report `setupUs`,
+`setupSamples`, `setupIterations`, `setupPolicy=reported-not-scored`, and
+`cacheRole=divisor-context`. The timed ratio still measures only candidate
+division work, while setup cost remains visible in JSON/TSV for reviewers.
+
 ## 2026-06-16: Formatter Window Promotion Rejected
 
 MFastFermat `main` is at `96117fd` and its newest tail-control DIF/DIT evidence

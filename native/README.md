@@ -322,6 +322,12 @@ direct-buffer output. These rows are default-off probes; they exist to measure
 whether a larger static leaf changes the 8k/16k formatter gap before any route
 policy can be considered.
 
+Division precompute rows also report one-time setup separately from scored
+work. `divmod-precomputed`, `divmod-workspace`, and `divmod-preinv-qhat` rows
+include `setupUs`, `setupSamples`, `setupIterations`,
+`setupPolicy=reported-not-scored`, and `cacheRole=divisor-context` so
+cached-context wins cannot hide the cost of building that context.
+
 Add/sub benchmark rows use a higher iteration floor at 1000+ digits because those operations are fast enough that sub-millisecond timing windows can flip adoption labels from scheduler noise rather than real algorithm behavior.
 
 On MSVC x64 builds, the benchmark also emits evidence-only `mul-toom3-unroll4-*` rows. These combine the one-level Toom-3 split with the bounded `_umul128`/`_addcarry_u64` unroll4 leaf schedule so larger-number work can tell whether GMP's advantage is coming from algorithm selection, leaf scheduling, or both. Extra GMP-facing handoff scout rows test leaf thresholds near GMP's tuned Toom region (`24`, `48`, `96`) without adding production routes. The `mul-toom3-u4-rec-vs-gmp` rows test a depth-limited recursive Toom-3 variant at the 16384 digit frontier. Deep rows such as `mul-toom3-unroll4-deep-vs-gmp` and `mul-toom3-u4-rec-deep-vs-gmp` rerun selected promising GMP comparisons with 9 paired samples, including the recursive leaf `64` and `96` gates, so a noisy near-win cannot influence routing. They do not widen the production route unless parity and the same-run stability gate both pass.

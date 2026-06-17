@@ -211,6 +211,33 @@ static unsigned long long median_samples(const unsigned long long *samples, size
   return sorted[count / 2];
 }
 
+static unsigned long long measure_divisor_context_setup_us(
+  const XrayScratchBigInt *divisor,
+  unsigned int iterations,
+  size_t sample_count,
+  int *ok) {
+  if (!divisor || !ok || !*ok) return 0;
+  if (iterations == 0) iterations = 1;
+  if (sample_count == 0 || sample_count > XRAY_BENCH_MAX_SAMPLES) sample_count = XRAY_BENCH_SAMPLES;
+  unsigned long long setup_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  for (size_t sample = 0; sample < sample_count; ++sample) {
+    XrayBigIntDivisorContext setup_context;
+    xray_bigint_divisor_context_init(&setup_context);
+    unsigned long long started = xray_now_us();
+    int setup_ok = 1;
+    for (unsigned int index = 0; setup_ok && index < iterations; ++index) {
+      setup_ok = xray_bigint_divisor_context_set(&setup_context, divisor);
+    }
+    setup_samples[sample] = xray_now_us() - started;
+    xray_bigint_divisor_context_clear(&setup_context);
+    if (!setup_ok) {
+      *ok = 0;
+      break;
+    }
+  }
+  return median_samples(setup_samples, sample_count);
+}
+
 static double median_paired_ratio(const unsigned long long *numerator, const unsigned long long *denominator, size_t count) {
   double ratios[XRAY_BENCH_MAX_SAMPLES] = {0.0};
   if (!numerator || !denominator || count == 0 || count > XRAY_BENCH_MAX_SAMPLES) return 0.0;
@@ -1979,6 +2006,8 @@ static void append_divmod_precomputed_probe_result(
   size_t digits,
   size_t power_chunks,
   int parity,
+  unsigned int setup_iterations,
+  unsigned long long setup_us,
   unsigned long long candidate_us,
   unsigned long long baseline_us,
   double paired_ratio,
@@ -2015,13 +2044,16 @@ static void append_divmod_precomputed_probe_result(
   result.passed = parity;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=divmod-precomputed digits=%zu powerChunks=%zu divisorDigits=%zu operandFamilies=1 samples=%zu stablePairs=%zu/%zu candidateUs=%llu baselineUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median max=%.2f candidate=scratch-divmod-precomputed baseline=current-scratch-divmod oracle=mpz_tdiv_qr featureGate=bigint-division-context gmpClue=mpn_tdiv_qr-precomputed-divisor thresholdSafety=explicit-context noAutoRoute=1 adoption=%s",
+    "op=divmod-precomputed digits=%zu powerChunks=%zu divisorDigits=%zu operandFamilies=1 samples=%zu stablePairs=%zu/%zu setupSamples=%u setupIterations=%u setupUs=%llu setupPolicy=reported-not-scored cacheRole=divisor-context candidateUs=%llu baselineUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median max=%.2f candidate=scratch-divmod-precomputed baseline=current-scratch-divmod oracle=mpz_tdiv_qr featureGate=bigint-division-context gmpClue=mpn_tdiv_qr-precomputed-divisor thresholdSafety=explicit-context noAutoRoute=1 adoption=%s",
     digits,
     power_chunks,
     power_chunks * 19U + 1U,
     sample_count,
     stable_sample_count,
     sample_count,
+    XRAY_BENCH_SAMPLES,
+    setup_iterations,
+    setup_us,
     result.scratch_us,
     result.gmp_us,
     result.speed_ratio,
@@ -2036,6 +2068,8 @@ static void append_divmod_workspace_probe_result(
   size_t digits,
   size_t power_chunks,
   int parity,
+  unsigned int setup_iterations,
+  unsigned long long setup_us,
   unsigned long long candidate_us,
   unsigned long long baseline_us,
   double paired_ratio,
@@ -2072,13 +2106,16 @@ static void append_divmod_workspace_probe_result(
   result.passed = parity;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=divmod-workspace digits=%zu powerChunks=%zu divisorDigits=%zu operandFamilies=1 samples=%zu stablePairs=%zu/%zu candidateUs=%llu baselineUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median max=%.2f candidate=scratch-divmod-context-workspace baseline=scratch-divmod-precomputed oracle=mpz_tdiv_qr featureGate=bigint-division-workspace gmpClue=mpn_tdiv_qr-scratch-reuse thresholdSafety=explicit-workspace noAutoRoute=1 adoption=%s",
+    "op=divmod-workspace digits=%zu powerChunks=%zu divisorDigits=%zu operandFamilies=1 samples=%zu stablePairs=%zu/%zu setupSamples=%u setupIterations=%u setupUs=%llu setupPolicy=reported-not-scored cacheRole=divisor-context candidateUs=%llu baselineUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median max=%.2f candidate=scratch-divmod-context-workspace baseline=scratch-divmod-precomputed oracle=mpz_tdiv_qr featureGate=bigint-division-workspace gmpClue=mpn_tdiv_qr-scratch-reuse thresholdSafety=explicit-workspace noAutoRoute=1 adoption=%s",
     digits,
     power_chunks,
     power_chunks * 19U + 1U,
     sample_count,
     stable_sample_count,
     sample_count,
+    XRAY_BENCH_SAMPLES,
+    setup_iterations,
+    setup_us,
     result.scratch_us,
     result.gmp_us,
     result.speed_ratio,
@@ -2093,6 +2130,8 @@ static void append_divmod_preinv_qhat_probe_result(
   size_t digits,
   size_t power_chunks,
   int parity,
+  unsigned int setup_iterations,
+  unsigned long long setup_us,
   unsigned long long candidate_us,
   unsigned long long baseline_us,
   double paired_ratio,
@@ -2129,13 +2168,16 @@ static void append_divmod_preinv_qhat_probe_result(
   result.passed = parity;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=divmod-preinv-qhat digits=%zu powerChunks=%zu divisorDigits=%zu operandFamilies=1 samples=%zu stablePairs=%zu/%zu candidateUs=%llu baselineUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median max=%.2f candidate=scratch-divmod-preinv-qhat baseline=scratch-divmod-context-workspace oracle=mpz_tdiv_qr featureGate=bigint-division-preinv-qhat gmpClue=mpn_sbpi1_div_qr-qhat precomputeScope=per-divisor thresholdSafety=explicit-probe noAutoRoute=1 adoption=%s",
+    "op=divmod-preinv-qhat digits=%zu powerChunks=%zu divisorDigits=%zu operandFamilies=1 samples=%zu stablePairs=%zu/%zu setupSamples=%u setupIterations=%u setupUs=%llu setupPolicy=reported-not-scored cacheRole=divisor-context candidateUs=%llu baselineUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median max=%.2f candidate=scratch-divmod-preinv-qhat baseline=scratch-divmod-context-workspace oracle=mpz_tdiv_qr featureGate=bigint-division-preinv-qhat gmpClue=mpn_sbpi1_div_qr-qhat precomputeScope=per-divisor thresholdSafety=explicit-probe noAutoRoute=1 adoption=%s",
     digits,
     power_chunks,
     power_chunks * 19U + 1U,
     sample_count,
     stable_sample_count,
     sample_count,
+    XRAY_BENCH_SAMPLES,
+    setup_iterations,
+    setup_us,
     result.scratch_us,
     result.gmp_us,
     result.speed_ratio,
@@ -6796,6 +6838,7 @@ static void run_divmod_precomputed_probe_case(XrayBenchmarkReport *report, size_
     xray_bigint_divisor_context_set(&divisor_context, &divisor) &&
     mpz_set_str(gnum, numerator_text, 10) == 0 &&
     mpz_set_str(gdiv, divisor_text, 10) == 0;
+  unsigned long long setup_us = measure_divisor_context_setup_us(&divisor, iterations, XRAY_BENCH_SAMPLES, &ok);
 
   unsigned long long candidate_samples[XRAY_BENCH_SAMPLES] = {0};
   unsigned long long baseline_samples[XRAY_BENCH_SAMPLES] = {0};
@@ -6844,6 +6887,8 @@ static void run_divmod_precomputed_probe_case(XrayBenchmarkReport *report, size_
     digits,
     power_chunks,
     parity,
+    iterations,
+    setup_us,
     median_samples(candidate_samples, XRAY_BENCH_SAMPLES),
     median_samples(baseline_samples, XRAY_BENCH_SAMPLES),
     median_paired_ratio(candidate_samples, baseline_samples, XRAY_BENCH_SAMPLES),
@@ -6893,6 +6938,7 @@ static void run_divmod_workspace_probe_case(XrayBenchmarkReport *report, size_t 
     xray_bigint_divisor_context_set(&divisor_context, &divisor) &&
     mpz_set_str(gnum, numerator_text, 10) == 0 &&
     mpz_set_str(gdiv, divisor_text, 10) == 0;
+  unsigned long long setup_us = measure_divisor_context_setup_us(&divisor, iterations, XRAY_BENCH_SAMPLES, &ok);
 
   unsigned long long candidate_samples[XRAY_BENCH_SAMPLES] = {0};
   unsigned long long baseline_samples[XRAY_BENCH_SAMPLES] = {0};
@@ -6946,6 +6992,8 @@ static void run_divmod_workspace_probe_case(XrayBenchmarkReport *report, size_t 
     digits,
     power_chunks,
     parity,
+    iterations,
+    setup_us,
     median_samples(candidate_samples, XRAY_BENCH_SAMPLES),
     median_samples(baseline_samples, XRAY_BENCH_SAMPLES),
     median_paired_ratio(candidate_samples, baseline_samples, XRAY_BENCH_SAMPLES),
@@ -7002,6 +7050,7 @@ static void run_divmod_preinv_qhat_probe_case(
     xray_bigint_divisor_context_set(&divisor_context, &divisor) &&
     mpz_set_str(gnum, numerator_text, 10) == 0 &&
     mpz_set_str(gdiv, divisor_text, 10) == 0;
+  unsigned long long setup_us = measure_divisor_context_setup_us(&divisor, iterations, XRAY_BENCH_SAMPLES, &ok);
 
   if (ok) {
     ok = xray_bigint_divmod_preinv_qhat_probe(
@@ -7090,6 +7139,8 @@ static void run_divmod_preinv_qhat_probe_case(
     digits,
     power_chunks,
     parity,
+    iterations,
+    setup_us,
     candidate_median,
     baseline_median,
     paired_ratio,
