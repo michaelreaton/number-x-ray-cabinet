@@ -87,13 +87,21 @@ MFastFermat `0070fae` then made that lane importable by adding
 handoff shape with `benchmark_progress.tsv` and
 `xray_benchmark_progress_classification_tsv()`. External tools can now read
 `routeCandidate`, `routeCompleted`, `productGated`, `hasSetupContext`,
-`setupSeconds`, `warmupReview`, `lowerBound`, `baseline`, `control`, and
+`setupSeconds`, `warmupReview`, `lowerBound`, `runFailed`, `baseline`, `control`, and
 `noisyControl` directly instead of scraping the human digest. The numeric setup
 column follows the latest MFast `SetupSeconds` lesson: explicit
 `SetupSeconds`/`setupSeconds` tags win, otherwise measured setup and warmup tags
 such as `setupUs`, `setupMs`, `warmup_s`, `WarmupSecondsMedian`, and
 `HelperWarmupSeconds` are converted to seconds. The value is context for review,
 not route score.
+
+MFastFermat's in-progress `codex/product-prefix-timeout-rows` feedback extends
+that same discipline to product-prefix failures: timed-out product rows carry
+`Runs`, `CompletedRuns`, and `Status`, and plain failed rows are separated from
+timeout lower bounds. Number X-Ray mirrors the import side with a `runFailed`
+classification column and a `Run-failed rows observed` digest lane. A failed
+row remains visible even if no speed ratio was recorded, but it does not count
+as completed, open, product-gated, or lower-bound progress.
 
 ## 2026-06-17: Static Formatter Leaf Expansion
 

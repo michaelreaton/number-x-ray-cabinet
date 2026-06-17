@@ -204,7 +204,8 @@ static void test_benchmark_progress_digest(void) {
     "frontier-scout\tfrontier scout mul 65536 digits\tmul-frontier\t65536\tnoisy-control\ttrue\ttrue\tfalse\tobserve-only\t70\t100\t0.700000\t1.000000\t1.500000\t1\t3\t1\tduplicateControl=default controlSafety=noisy-control\tRelease\tfalse\tMSVC\t1929\n"
     "policy-gate\tpolicy gate format window 896 digits\tformat-policy-deep-safety\t896\tworst-pair-regression\ttrue\ttrue\tfalse\tobserve-only\t70\t100\t0.700000\t0.980000\t1.300000\t7\t9\t1\tpolicy=window threshold=16\tRelease\tfalse\tMSVC\t1929\n"
     "kernel-probe\tkernel divmod warmup review 32768 digits\tdivmod-precomputed\t32768\treview-warmup\tfalse\tfalse\tfalse\tobserve-only\t180\t100\t1.800000\t0.980000\t1.900000\t0\t3\t240\tWarmupPolicy=review-warmup setupUs=450000 setupPolicy=review-warmup cacheRole=divisor-context\tRelease\tfalse\tMSVC\t1929\n"
-    "kernel-probe\tkernel divmod timeout 16384 digits\tdivmod-precomputed\t16384\ttimeout lower-bound\tfalse\tfalse\tfalse\tobserve-only\t300\t100\t3.000000\t0.980000\t3.000000\t0\t0\t300\tCompletedRuns=0 Status=timeout lower-bound\tRelease\tfalse\tMSVC\t1929\n";
+    "kernel-probe\tkernel divmod timeout 16384 digits\tdivmod-precomputed\t16384\ttimeout lower-bound\tfalse\tfalse\tfalse\tobserve-only\t300\t100\t3.000000\t0.980000\t3.000000\t0\t0\t300\tCompletedRuns=0 Status=timeout lower-bound\tRelease\tfalse\tMSVC\t1929\n"
+    "kernel-probe\tkernel product failed 32768 digits\tproduct-prefix\t32768\trun failed\tfalse\tfalse\tfalse\tobserve-only\t0\t0\t0.000000\t0.980000\t0.000000\t0\t0\t300\tStatus=run failed exitCode=1\tRelease\tfalse\tMSVC\t1929\n";
   size_t tsv_len = strlen(header) + strlen(rows) + 1U;
   char *tsv = (char *)calloc(tsv_len, 1);
   CHECK(tsv != NULL);
@@ -225,6 +226,7 @@ static void test_benchmark_progress_digest(void) {
   CHECK(strstr(digest, "warmupReviewRows=1") != NULL);
   CHECK(strstr(digest, "setupContextRows=1") != NULL);
   CHECK(strstr(digest, "lowerBoundRows=1") != NULL);
+  CHECK(strstr(digest, "runFailedRows=1") != NULL);
   CHECK(strstr(digest, "Product/backend route candidate rows observed") != NULL);
   CHECK(strstr(digest, "Open/noisy route rows observed") != NULL);
   CHECK(strstr(digest, "Product-gated route rows observed") != NULL);
@@ -232,6 +234,7 @@ static void test_benchmark_progress_digest(void) {
   CHECK(strstr(digest, "Warmup-review rows observed") != NULL);
   CHECK(strstr(digest, "Safety-rejected rows observed") != NULL);
   CHECK(strstr(digest, "Lower-bound/incomplete rows observed") != NULL);
+  CHECK(strstr(digest, "Run-failed rows observed") != NULL);
   CHECK(strstr(digest, "Baseline/current rows observed") != NULL);
   CHECK(strstr(digest, "Control/noise rows observed") != NULL);
   CHECK(strstr(digest, "parse") != NULL);
@@ -242,20 +245,23 @@ static void test_benchmark_progress_digest(void) {
   CHECK(strstr(digest, "mul-frontier") != NULL);
   CHECK(strstr(digest, "divmod-precomputed") != NULL);
   CHECK(strstr(digest, "review-warmup") != NULL);
-  CHECK(strstr(digest, "lower-bound/incomplete rows") != NULL);
-  CHECK(strstr(digest, "baseline/current, duplicate-control, noisy-control, product-gated, warmup-review, and lower-bound/incomplete rows") != NULL);
+  CHECK(strstr(digest, "Lower-bound/incomplete rows") != NULL);
+  CHECK(strstr(digest, "baseline/current, duplicate-control, noisy-control, product-gated, warmup-review, lower-bound/incomplete, and run-failed rows") != NULL);
   CHECK(strstr(digest, "Setup/warmup context rows are reported for review but are not scored") != NULL);
   xray_free(digest);
 
   char *classification = xray_benchmark_progress_classification_tsv(tsv);
   CHECK(classification != NULL);
-  CHECK(strstr(classification, "primaryLane\trouteCandidate\trouteCompleted\trouteOpen\tproductGated\thasSetupContext\tsetupSeconds") != NULL);
+  CHECK(strstr(classification, "primaryLane\trouteCandidate\trouteCompleted\trouteOpen\tproductGated\thasSetupContext\tsetupSeconds\twarmupReview\tlowerBound\trunFailed") != NULL);
   CHECK(strstr(classification, "format-policy-safety policy=preinv\tcompleted\ttrue\ttrue\tfalse\tfalse\ttrue\t0.123456\tfalse\tfalse") != NULL);
+  CHECK(strstr(classification, "0.123456\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\ttrue\tpolicy-ready\tpromotion-ready\t0.800000") != NULL);
   CHECK(strstr(classification, "format-policy-deep-safety policy=deep-preinv\tproduct-gated\ttrue\tfalse\ttrue\ttrue\tfalse\t0.000000\tfalse\tfalse") != NULL);
   CHECK(strstr(classification, "mul-policy policy=current-default baseline=mpz_mul candidate=current-scratch-mul\tbaseline\tfalse\tfalse\tfalse") != NULL);
-  CHECK(strstr(classification, "mul-frontier\tcontrol\tfalse\tfalse\tfalse\tfalse\tfalse\t0.000000\tfalse\tfalse\tfalse\tfalse\ttrue\ttrue") != NULL);
+  CHECK(strstr(classification, "mul-frontier\tcontrol\tfalse\tfalse\tfalse\tfalse\tfalse\t0.000000\tfalse\tfalse\tfalse\tfalse\tfalse\ttrue\ttrue") != NULL);
   CHECK(strstr(classification, "divmod-precomputed\twarmup-review\tfalse\tfalse\tfalse\tfalse\ttrue\t0.450000\ttrue\tfalse") != NULL);
   CHECK(strstr(classification, "divmod-precomputed\tlower-bound\tfalse\tfalse\tfalse\tfalse\tfalse\t0.000000\tfalse\ttrue") != NULL);
+  CHECK(strstr(classification, "product-prefix\trun-failed\tfalse\tfalse\tfalse\tfalse\tfalse\t0.000000\tfalse\tfalse\ttrue") != NULL);
+  CHECK(strstr(classification, "0.000000\tfalse\tfalse\ttrue\tfalse\tfalse\tfalse\tfalse\tfalse\trun failed\tobserve-only\t0.000000") != NULL);
   xray_free(classification);
   free(tsv);
 }
@@ -4332,9 +4338,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_progress, "baselineExcluded=") != NULL);
   CHECK(strstr(benchmark_progress, "controlsExcluded=") != NULL);
   CHECK(strstr(benchmark_progress, "product-gated rows") != NULL);
-  CHECK(strstr(benchmark_progress_tsv, "primaryLane\trouteCandidate\trouteCompleted\trouteOpen\tproductGated\thasSetupContext\tsetupSeconds") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "primaryLane\trouteCandidate\trouteCompleted\trouteOpen\tproductGated\thasSetupContext\tsetupSeconds\twarmupReview\tlowerBound\trunFailed") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "hasSetupContext") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "setupSeconds") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "runFailed") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "divmod-precomputed") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "\ttrue\tfalse\ttrue\ttrue\ttrue") != NULL);
   CHECK(strstr(cpu_text, "CPU:") != NULL);
