@@ -1906,6 +1906,11 @@ static void test_benchmarks(void) {
       CHECK(strstr(report->results[index].detail, "mfastKnob=difdit24k") != NULL);
       CHECK(strstr(report->results[index].detail, "mfastPG=1.612") != NULL);
       CHECK(strstr(report->results[index].detail, "mfastCW=1.078") != NULL);
+      CHECK(strstr(report->results[index].detail, "mfastPocket=difdit98304") != NULL);
+      CHECK(strstr(report->results[index].detail, "mfastPocketFloor=98304") != NULL);
+      CHECK(strstr(report->results[index].detail, "mfastPocket6144=1.019") != NULL);
+      CHECK(strstr(report->results[index].detail, "mfastPocket8192PG=1.320") != NULL);
+      CHECK(strstr(report->results[index].detail, "mfastPocketGate=noisy-control") != NULL);
       CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
       if (strcmp(report->results[index].operation, "mul-frontier") == 0 &&
           report->results[index].digits == 32768) saw_frontier_mul32768 = 1;
@@ -3814,6 +3819,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "mfastKnob=difdit24k") != NULL);
   CHECK(strstr(json, "mfastPG=1.612") != NULL);
   CHECK(strstr(json, "mfastCW=1.078") != NULL);
+  CHECK(strstr(json, "mfastPocket=difdit98304") != NULL);
+  CHECK(strstr(json, "mfastPocketFloor=98304") != NULL);
+  CHECK(strstr(json, "mfastPocket8192PG=1.320") != NULL);
+  CHECK(strstr(json, "mfastPocketGate=noisy-control") != NULL);
   CHECK(strstr(json, "threshold96-ge8192") != NULL);
   CHECK(strstr(json, "karatsuba-threshold96") != NULL);
   CHECK(strstr(json, "toom3-u4-ge8192-leaf48") != NULL);
@@ -3929,6 +3938,11 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "mfastKnob=difdit24k") != NULL);
   CHECK(strstr(tsv, "mfastPG=1.612") != NULL);
   CHECK(strstr(tsv, "mfastCW=1.078") != NULL);
+  CHECK(strstr(tsv, "mfastPocket=difdit98304") != NULL);
+  CHECK(strstr(tsv, "mfastPocketFloor=98304") != NULL);
+  CHECK(strstr(tsv, "mfastPocket6144=1.019") != NULL);
+  CHECK(strstr(tsv, "mfastPocket8192PG=1.320") != NULL);
+  CHECK(strstr(tsv, "mfastPocketGate=noisy-control") != NULL);
   CHECK(strstr(tsv, "threshold96-ge8192") != NULL);
   CHECK(strstr(tsv, "karatsuba-threshold96") != NULL);
   CHECK(strstr(tsv, "mul-policy-threshold96-ge8192") != NULL);
@@ -4121,6 +4135,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "mfastKnob=difdit24k") != NULL);
   CHECK(strstr(benchmark_tsv, "mfastPG=1.612") != NULL);
   CHECK(strstr(benchmark_tsv, "mfastCW=1.078") != NULL);
+  CHECK(strstr(benchmark_tsv, "mfastPocket=difdit98304") != NULL);
+  CHECK(strstr(benchmark_tsv, "mfastPocketFloor=98304") != NULL);
+  CHECK(strstr(benchmark_tsv, "mfastPocket8192PG=1.320") != NULL);
+  CHECK(strstr(benchmark_tsv, "mfastPocketGate=noisy-control") != NULL);
   CHECK(strstr(benchmark_tsv, "threshold96-ge8192") != NULL);
   CHECK(strstr(benchmark_tsv, "karatsuba-threshold96") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-policy-threshold96-ge8192") != NULL);

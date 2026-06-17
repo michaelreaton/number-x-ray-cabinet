@@ -98,6 +98,29 @@ control metadata. This still does not promote a Number X-Ray arithmetic route;
 it keeps the sparse-transform clue accurate for future large-number
 square/multiply work.
 
+## 2026-06-17: MFastFermat DIF/DIT 98,304-Limb Pocket
+
+The latest MFastFermat watch tested a stricter wide61 DIF/DIT handoff,
+`ntt16_wide61_difdit_98304`, with the handoff gated to 98,304+ limbs. The
+product-matrix run
+`product_matrix_difdit98304_u6144_u8192_r1_20260617.tsv` is useful as a
+threshold-pocket warning, not a promotion signal:
+
+- At `6,144,036` bits, `difdit98304` was only `1.054x` versus release and
+  `0.209x` versus GMP, or `1.019x` after duplicate-base control adjustment.
+- At `8,192,036` bits, it jumped to `6.194x` versus release and `1.320x`
+  versus GMP, with `6.726x` control-adjusted.
+- The same run reported high duplicate-base control noise on the 8M case
+  (`base_control=0.921x`), so the range gate stayed `noisy-control`.
+
+Number X-Ray's `frontier-scout` rows now carry this clue as compact metadata:
+`mfastPocket=difdit98304`, `mfastPocketFloor=98304`,
+`mfastPocket6144=1.019`, `mfastPocket8192PG=1.320`,
+`mfastPocket8192VB=6.194`, and `mfastPocketGate=noisy-control`. The rows still
+emit `noAutoRoute=1` and `adoption=observe-only`. The actionable lesson is to
+keep testing root-size-gated threshold pockets with adjacent-size and duplicate
+control evidence before touching production arithmetic.
+
 ## 2026-06-17: MFastFermat 16M Preflight Discipline
 
 MFastFermat `b025856` added repeated dense-residue preflight medians for the
