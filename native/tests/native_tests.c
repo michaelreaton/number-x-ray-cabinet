@@ -84,6 +84,24 @@ static void set_toom3_parts(XrayScratchBigInt *value, uint64_t part0_top, uint64
   value->limbs[part * 3 - 1] = part2_top;
 }
 
+static void set_sparse_limbs(
+  XrayScratchBigInt *value,
+  size_t count,
+  const size_t *indices,
+  const uint64_t *words,
+  size_t used) {
+  value->limbs = (uint64_t *)calloc(count, sizeof(uint64_t));
+  CHECK(value->limbs != NULL);
+  value->capacity = count;
+  value->count = count;
+  for (size_t index = 0; index < used; ++index) {
+    CHECK(indices[index] < count);
+    CHECK(words[index] != 0);
+    value->limbs[indices[index]] = words[index];
+  }
+  while (value->count && value->limbs[value->count - 1U] == 0) value->count--;
+}
+
 static void mpz_set_from_scratch_limbs(mpz_t out, const XrayScratchBigInt *value) {
   mpz_import(out, value->count, -1, sizeof(uint64_t), 0, 0, value->limbs);
 }
@@ -1028,17 +1046,29 @@ static void test_scratch_bigint_square_oracle(void) {
 }
 
 static void test_scratch_bigint_sparse_zero_limb_oracle(void) {
-  mpz_t fermat_like, shifted_like, expected;
-  mpz_inits(fermat_like, shifted_like, expected, NULL);
+  mpz_t fermat_like, shifted_like, three_term_like, second_three_term_like, expected;
+  mpz_inits(fermat_like, shifted_like, three_term_like, second_three_term_like, expected, NULL);
   mpz_ui_pow_ui(fermat_like, 2U, 4096U);
   mpz_add_ui(fermat_like, fermat_like, 1U);
   mpz_ui_pow_ui(shifted_like, 2U, 2048U);
   mpz_add_ui(shifted_like, shifted_like, 1U);
+  mpz_ui_pow_ui(three_term_like, 2U, 4096U);
+  mpz_ui_pow_ui(expected, 2U, 2048U);
+  mpz_add(three_term_like, three_term_like, expected);
+  mpz_add_ui(three_term_like, three_term_like, 1U);
+  mpz_ui_pow_ui(second_three_term_like, 2U, 3072U);
+  mpz_ui_pow_ui(expected, 2U, 128U);
+  mpz_add(second_three_term_like, second_three_term_like, expected);
+  mpz_add_ui(second_three_term_like, second_three_term_like, 1U);
 
   char *fermat_text = mpz_get_str(NULL, 10, fermat_like);
   char *shifted_text = mpz_get_str(NULL, 10, shifted_like);
+  char *three_term_text = mpz_get_str(NULL, 10, three_term_like);
+  char *second_three_term_text = mpz_get_str(NULL, 10, second_three_term_like);
   CHECK(fermat_text != NULL);
   CHECK(shifted_text != NULL);
+  CHECK(three_term_text != NULL);
+  CHECK(second_three_term_text != NULL);
 
   XrayScratchBigInt a, b, out;
   xray_bigint_init(&a);
@@ -1066,12 +1096,49 @@ static void test_scratch_bigint_sparse_zero_limb_oracle(void) {
   CHECK(xray_bigint_mul(&b, &a, &b));
   check_scratch_matches_mpz(&b, expected);
 
+  CHECK(xray_bigint_set_decimal(&a, three_term_text));
+  CHECK(xray_bigint_set_decimal(&b, second_three_term_text));
+  mpz_mul(expected, three_term_like, second_three_term_like);
+  CHECK(xray_bigint_mul(&out, &a, &b));
+  check_scratch_matches_mpz(&out, expected);
+  CHECK(xray_bigint_mul(&a, &a, &b));
+  check_scratch_matches_mpz(&a, expected);
+
+  xray_bigint_clear(&a);
+  xray_bigint_clear(&b);
+  xray_bigint_init(&a);
+  xray_bigint_init(&b);
+  const size_t left_indices[] = {0U, 5U, 11U, 19U, 31U, 43U, 57U, 64U};
+  const uint64_t left_words[] = {
+    UINT64_MAX, UINT64_C(17), UINT64_C(29), UINT64_C(41),
+    UINT64_C(53), UINT64_C(67), UINT64_C(79), UINT64_C(3)
+  };
+  const size_t right_indices[] = {0U, 7U, 13U, 23U, 37U, 47U, 59U, 64U};
+  const uint64_t right_words[] = {
+    UINT64_MAX, UINT64_C(23), UINT64_C(31), UINT64_C(43),
+    UINT64_C(59), UINT64_C(71), UINT64_C(83), UINT64_C(5)
+  };
+  set_sparse_limbs(&a, 65U, left_indices, left_words, sizeof(left_indices) / sizeof(left_indices[0]));
+  set_sparse_limbs(&b, 65U, right_indices, right_words, sizeof(right_indices) / sizeof(right_indices[0]));
+  mpz_t ga, gb;
+  mpz_inits(ga, gb, NULL);
+  mpz_set_from_scratch_limbs(ga, &a);
+  mpz_set_from_scratch_limbs(gb, &b);
+  mpz_mul(expected, ga, gb);
+  CHECK(xray_bigint_mul(&out, &a, &b));
+  check_scratch_matches_mpz(&out, expected);
+  CHECK(xray_bigint_mul(&b, &a, &b));
+  check_scratch_matches_mpz(&b, expected);
+  mpz_clears(ga, gb, NULL);
+
   xray_bigint_clear(&a);
   xray_bigint_clear(&b);
   xray_bigint_clear(&out);
   free(fermat_text);
   free(shifted_text);
-  mpz_clears(fermat_like, shifted_like, expected, NULL);
+  free(three_term_text);
+  free(second_three_term_text);
+  mpz_clears(fermat_like, shifted_like, three_term_like, second_three_term_like, expected, NULL);
 }
 
 static void test_scratch_bigint_karatsuba_middle_signs(void) {
@@ -4240,6 +4307,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "square-karatsuba-vs-gmp") != NULL);
   CHECK(strstr(benchmark_tsv, "sparse-zero-square") != NULL);
   CHECK(strstr(benchmark_tsv, "sparse-zero-mul") != NULL);
+  CHECK(strstr(benchmark_tsv, "sparse-pair-product") != NULL);
   CHECK(strstr(benchmark_tsv, "mfastFeedback=zero-scalar-row-addmul") != NULL);
 #if defined(_MSC_VER) && defined(_M_X64)
   CHECK(strstr(benchmark_tsv, "mul-toom3-unroll4-vs-scratch") != NULL);
@@ -4354,6 +4422,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "square-leaf-order") != NULL);
   CHECK(strstr(benchmark_frontier, "sparse-zero-square") != NULL);
   CHECK(strstr(benchmark_frontier, "sparse-zero-mul") != NULL);
+  CHECK(strstr(benchmark_frontier, "sparse-pair-product") != NULL);
   CHECK(strstr(benchmark_frontier, "base=current-scratch-square") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-policy current-default") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-policy threshold96-ge8192") != NULL);

@@ -607,6 +607,9 @@ static void benchmark_frontier_label(const XrayBenchmarkResult *row, char *out, 
   if (benchmark_detail_value(row, "baseline", value, sizeof(value))) {
     append_label_token(out, out_size, "base=", value);
   }
+  if (benchmark_detail_value(row, "candidate", value, sizeof(value))) {
+    append_label_token(out, out_size, "candidate=", value);
+  }
 }
 
 static void benchmark_insert_ratio_sorted(
