@@ -11,9 +11,9 @@ static const char *rsa260(void) {
 
 static void usage(const char *argv0) {
   fprintf(stderr, "Usage: %s [--bench|--bench-frontier] [--rsa260] [exact-integer-expression]\n", argv0);
-  fprintf(stderr, "       %s [--bench-min-digits N] [--bench-max-digits N] --bench-progress artifact.tsv\n", argv0);
-  fprintf(stderr, "       %s [--bench-min-digits N] [--bench-max-digits N] --bench-progress-tsv artifact.tsv\n", argv0);
-  fprintf(stderr, "       %s [--bench-min-digits N] [--bench-max-digits N] --bench-compare left.tsv right.tsv\n", argv0);
+  fprintf(stderr, "       %s [--bench-min-digits N] [--bench-max-digits N] [--bench-filter TEXT] --bench-progress artifact.tsv\n", argv0);
+  fprintf(stderr, "       %s [--bench-min-digits N] [--bench-max-digits N] [--bench-filter TEXT] --bench-progress-tsv artifact.tsv\n", argv0);
+  fprintf(stderr, "       %s [--bench-min-digits N] [--bench-max-digits N] [--bench-filter TEXT] --bench-compare left.tsv right.tsv\n", argv0);
 }
 
 static int parse_size_arg(const char *text, size_t *out) {
@@ -72,6 +72,7 @@ int main(int argc, char **argv) {
   int print_frontier = 0;
   size_t bench_min_digits = 0;
   size_t bench_max_digits = 0;
+  const char *bench_filter = NULL;
 
   for (int index = 1; index < argc; ++index) {
     if (strcmp(argv[index], "--help") == 0 || strcmp(argv[index], "-h") == 0) {
@@ -92,6 +93,13 @@ int main(int argc, char **argv) {
         return 2;
       }
       index++;
+    }
+    else if (strcmp(argv[index], "--bench-filter") == 0 || strcmp(argv[index], "--filter") == 0) {
+      if (index + 1 >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      bench_filter = argv[++index];
     }
     else if (strcmp(argv[index], "--bench-progress") == 0) {
       if (index + 1 >= argc) {
@@ -142,10 +150,18 @@ int main(int argc, char **argv) {
       fprintf(stderr, "Could not read benchmark TSV input.\n");
       return 3;
     }
-    char *filtered = xray_benchmark_filter_tsv_digits(tsv, bench_min_digits, bench_max_digits);
-    const char *input_tsv = filtered ? filtered : tsv;
+    char *digit_filtered = xray_benchmark_filter_tsv_digits(tsv, bench_min_digits, bench_max_digits);
+    const char *input_tsv = digit_filtered ? digit_filtered : tsv;
+    char *text_filtered = NULL;
+    if (bench_filter && bench_filter[0]) {
+      text_filtered = xray_benchmark_filter_tsv_text(input_tsv, bench_filter);
+      if (text_filtered) input_tsv = text_filtered;
+    }
     if (bench_min_digits || bench_max_digits) {
       printf("Focused digit window: min=%zu max=%zu\n", bench_min_digits, bench_max_digits);
+    }
+    if (bench_filter && bench_filter[0]) {
+      printf("Focused row filter: %s\n", bench_filter);
     }
     char *output = mode == XRAY_CLI_PROGRESS ?
       xray_benchmark_progress_tsv_text(input_tsv) :
@@ -154,7 +170,8 @@ int main(int argc, char **argv) {
       puts(output);
       xray_free(output);
     }
-    xray_free(filtered);
+    xray_free(text_filtered);
+    xray_free(digit_filtered);
     free(tsv);
     return 0;
   }
@@ -168,20 +185,33 @@ int main(int argc, char **argv) {
       free(right);
       return 3;
     }
-    char *filtered_left = xray_benchmark_filter_tsv_digits(left, bench_min_digits, bench_max_digits);
-    char *filtered_right = xray_benchmark_filter_tsv_digits(right, bench_min_digits, bench_max_digits);
-    const char *left_tsv = filtered_left ? filtered_left : left;
-    const char *right_tsv = filtered_right ? filtered_right : right;
+    char *digit_filtered_left = xray_benchmark_filter_tsv_digits(left, bench_min_digits, bench_max_digits);
+    char *digit_filtered_right = xray_benchmark_filter_tsv_digits(right, bench_min_digits, bench_max_digits);
+    const char *left_tsv = digit_filtered_left ? digit_filtered_left : left;
+    const char *right_tsv = digit_filtered_right ? digit_filtered_right : right;
+    char *text_filtered_left = NULL;
+    char *text_filtered_right = NULL;
+    if (bench_filter && bench_filter[0]) {
+      text_filtered_left = xray_benchmark_filter_tsv_text(left_tsv, bench_filter);
+      text_filtered_right = xray_benchmark_filter_tsv_text(right_tsv, bench_filter);
+      if (text_filtered_left) left_tsv = text_filtered_left;
+      if (text_filtered_right) right_tsv = text_filtered_right;
+    }
     if (bench_min_digits || bench_max_digits) {
       printf("Focused digit window: min=%zu max=%zu\n", bench_min_digits, bench_max_digits);
+    }
+    if (bench_filter && bench_filter[0]) {
+      printf("Focused row filter: %s\n", bench_filter);
     }
     char *review = xray_benchmark_compare_tsv_text(left_tsv, right_tsv);
     if (review) {
       puts(review);
       xray_free(review);
     }
-    xray_free(filtered_left);
-    xray_free(filtered_right);
+    xray_free(text_filtered_left);
+    xray_free(text_filtered_right);
+    xray_free(digit_filtered_left);
+    xray_free(digit_filtered_right);
     free(left);
     free(right);
     return 0;

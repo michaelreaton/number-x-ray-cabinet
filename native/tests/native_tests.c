@@ -248,6 +248,25 @@ static void test_benchmark_tsv_comparison(void) {
   CHECK(strstr(review, "mul-threshold") != NULL);
   CHECK(strstr(review, "format-policy-safety") != NULL);
   xray_free(review);
+
+  char *left_mul = xray_benchmark_filter_tsv_text(left, "mul-threshold");
+  char *right_mul = xray_benchmark_filter_tsv_text(right, "mul-threshold");
+  CHECK(left_mul != NULL);
+  CHECK(right_mul != NULL);
+  CHECK(strstr(left_mul, "kernel mul threshold") != NULL);
+  CHECK(strstr(left_mul, "scratch parse") == NULL);
+  CHECK(strstr(right_mul, "format preinv") == NULL);
+  char *mul_review = xray_benchmark_compare_tsv_text(left_mul, right_mul);
+  CHECK(mul_review != NULL);
+  CHECK(strstr(mul_review, "matched=1") != NULL);
+  CHECK(strstr(mul_review, "bothReady=0") != NULL);
+  CHECK(strstr(mul_review, "oneBuildOnly=1") != NULL);
+  CHECK(strstr(mul_review, "worstPairRejected=1") != NULL);
+  CHECK(strstr(mul_review, "mul-threshold") != NULL);
+  CHECK(strstr(mul_review, "format-policy-safety") == NULL);
+  xray_free(mul_review);
+  xray_free(left_mul);
+  xray_free(right_mul);
   free(left);
   free(right);
 }
@@ -359,6 +378,28 @@ static void test_benchmark_progress_digest(void) {
   CHECK(strstr(focused_classification, "32768") == NULL);
   xray_free(focused_classification);
   xray_free(focused);
+
+  char *mul_focused = xray_benchmark_filter_tsv_text(tsv, "mul");
+  CHECK(mul_focused != NULL);
+  CHECK(strstr(mul_focused, "policy mul current-default") != NULL);
+  CHECK(strstr(mul_focused, "frontier scout mul") != NULL);
+  CHECK(strstr(mul_focused, "scratch parse") == NULL);
+  CHECK(strstr(mul_focused, "policy gate format") == NULL);
+  char *mul_digest = xray_benchmark_progress_tsv_text(mul_focused);
+  CHECK(mul_digest != NULL);
+  CHECK(strstr(mul_digest, "Rows: total=2") != NULL);
+  CHECK(strstr(mul_digest, "routeCandidates=0") != NULL);
+  CHECK(strstr(mul_digest, "baselineExcluded=1") != NULL);
+  CHECK(strstr(mul_digest, "controlsExcluded=1") != NULL);
+  CHECK(strstr(mul_digest, "noisyControls=1") != NULL);
+  CHECK(strstr(mul_digest, "parse") == NULL);
+  CHECK(strstr(mul_digest, "format-policy") == NULL);
+  xray_free(mul_digest);
+  char *empty_filter = xray_benchmark_filter_tsv_text(tsv, "");
+  CHECK(empty_filter != NULL);
+  CHECK(strcmp(empty_filter, tsv) == 0);
+  xray_free(empty_filter);
+  xray_free(mul_focused);
   free(tsv);
 }
 
