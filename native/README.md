@@ -347,6 +347,10 @@ control rows for every tested contender on the same input and in the same run.
 Those rows expose each route's current-format and GMP ratios for external
 review tools, while `controlSafety=tournament-detail` keeps them out of
 route-completed progress totals.
+The matching `benchmark_progress.tsv` file appends import columns such as
+`digitBand`, `workloadShape`, `policy`, `candidate`, `featureGate`, `gmpClue`,
+and safety gates so external optimizer tools can group rows without scraping
+free-form detail text.
 
 Formatter policy probes also include explicit endpoint tournaments for the
 GMP-inspired base-`1e19` preinverse route. The `preinv10e19-window*` and
