@@ -32,6 +32,8 @@
 #define XRAY_MUL_OPERAND_FAMILIES 2
 #define XRAY_SCRATCH_REQUIRED_STABLE_SAMPLES 4
 #define XRAY_KERNEL_REQUIRED_STABLE_SAMPLES 4
+#define XRAY_BENCH_WORD_BITS 64U
+#define XRAY_BENCH_SPARSE_PAIR_MIN_PRODUCTS 64U
 
 static volatile unsigned long long kernel_probe_sink = 0;
 
@@ -6700,8 +6702,12 @@ static void append_sparse_zero_limb_probe_result(
     !parity ? "mismatch" : (result.speed_ratio < 1.0 ? "candidate-faster" : "backend-faster"));
   result.passed = parity;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  const char *candidate =
+    strcmp(operation, "mul") == 0 ? "zero-limb-row-skip" : "sparse-square";
+  const char *feature_gate =
+    "sparse-bigint-schoolbook";
   snprintf(result.detail, sizeof(result.detail),
-    "op=sparse-zero-%s bits=%zu digits=%zu samples=%zu stablePairs=%zu/%zu scratchUs=%llu gmpUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median max=%.2f candidate=zero-limb-row-skip baseline=%s featureGate=sparse-bigint-schoolbook gmpClue=skip-zero-limb-work mfastFeedback=zero-scalar-row-addmul mfastLesson=check-verification-tail sparseShape=2^n+1 noAutoRoute=1 adoption=%s",
+    "op=sparse-zero-%s bits=%zu digits=%zu samples=%zu stablePairs=%zu/%zu scratchUs=%llu gmpUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median max=%.2f candidate=%s baseline=%s featureGate=%s gmpClue=skip-zero-limb-work mfastFeedback=zero-scalar-row-addmul mfastLesson=check-verification-tail sparseShape=2^n+1 noAutoRoute=1 adoption=%s",
     operation,
     bits,
     digits,
@@ -6713,7 +6719,9 @@ static void append_sparse_zero_limb_probe_result(
     result.speed_ratio,
     result.worst_pair_ratio,
     result.max_allowed_speed_ratio,
+    candidate,
     strcmp(operation, "mul") == 0 ? "mpz_mul-sparse-product" : "mpz_mul-sparse-square",
+    feature_gate,
     result.adoption);
   append_result(report, &result);
 }
@@ -6765,6 +6773,129 @@ static void run_sparse_zero_limb_probe_case(XrayBenchmarkReport *report, const c
   append_sparse_zero_limb_probe_result(
     report,
     operation,
+    bits,
+    left_text ? strlen(left_text) : 0,
+    parity,
+    median_samples(scratch_samples, sample_count),
+    median_samples(gmp_samples, sample_count),
+    median_paired_ratio(scratch_samples, gmp_samples, sample_count),
+    paired_ratio_wins(scratch_samples, gmp_samples, sample_count, 0.98),
+    sample_count,
+    max_paired_ratio(scratch_samples, gmp_samples, sample_count));
+
+  xray_bigint_clear(&scratch_left);
+  xray_bigint_clear(&scratch_right);
+  xray_bigint_clear(&scratch_out);
+  free(left_text);
+  free(right_text);
+  mpz_clears(left, right, expected, NULL);
+}
+
+static void append_sparse_pair_product_probe_result(
+  XrayBenchmarkReport *report,
+  size_t bits,
+  size_t digits,
+  int parity,
+  unsigned long long scratch_us,
+  unsigned long long gmp_us,
+  double paired_ratio,
+  size_t stable_sample_count,
+  size_t sample_count,
+  double worst_pair_ratio) {
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "kernel sparse pair-product mul %zu-bit", bits);
+  snprintf(result.category, sizeof(result.category), "kernel-probe");
+  snprintf(result.operation, sizeof(result.operation), "sparse-pair-mul");
+  result.digits = digits;
+  result.scratch_us = scratch_us ? scratch_us : 1;
+  result.gmp_us = gmp_us ? gmp_us : 1;
+  result.speed_ratio = paired_ratio > 0.0 ? paired_ratio : (double)result.scratch_us / (double)result.gmp_us;
+  result.max_allowed_speed_ratio = 0.98;
+  result.stable_sample_count = stable_sample_count;
+  result.sample_count = sample_count;
+  result.worst_pair_ratio = worst_pair_ratio;
+  result.parity_verified = parity;
+  result.replacement_ready = 0;
+  snprintf(result.adoption, sizeof(result.adoption), "%s",
+    !parity ? "blocked-output-mismatch" : "observe-only");
+  snprintf(result.status, sizeof(result.status), "%s",
+    !parity ? "mismatch" : (result.speed_ratio < 1.0 ? "candidate-faster" : "backend-faster"));
+  result.passed = parity;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  snprintf(result.detail, sizeof(result.detail),
+    "op=sparse-pair-mul bits=%zu digits=%zu samples=%zu stablePairs=%zu/%zu scratchUs=%llu gmpUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median max=%.2f candidate=sparse-pair-product baseline=mpz_mul-sparse-product featureGate=sparse-bigint-pair-product minProducts=%u gmpClue=skip-zero-limb-work mfastFeedback=zero-scalar-row-addmul mfastLesson=shape-family-gates sparseShape=8-live-limbs noAutoRoute=1 adoption=%s",
+    bits,
+    digits,
+    sample_count,
+    stable_sample_count,
+    sample_count,
+    result.scratch_us,
+    result.gmp_us,
+    result.speed_ratio,
+    result.worst_pair_ratio,
+    result.max_allowed_speed_ratio,
+    XRAY_BENCH_SPARSE_PAIR_MIN_PRODUCTS,
+    result.adoption);
+  append_result(report, &result);
+}
+
+static void set_sparse_pair_probe_bits(mpz_t value, const size_t *limb_indices, size_t count) {
+  mpz_set_ui(value, 0U);
+  for (size_t index = 0; index < count; ++index) {
+    mpz_setbit(value, limb_indices[index] * XRAY_BENCH_WORD_BITS);
+  }
+}
+
+static void run_sparse_pair_product_probe_case(XrayBenchmarkReport *report, size_t bits) {
+  const size_t sample_count = XRAY_BENCH_SAMPLES;
+  const unsigned int iterations = bits <= 4096U ? 8U : 4U;
+  const size_t left_indices[] = {0U, 5U, 11U, 19U, 31U, 43U, 57U, 64U};
+  const size_t right_indices[] = {0U, 7U, 13U, 23U, 37U, 47U, 59U, 64U};
+  mpz_t left, right, expected;
+  mpz_inits(left, right, expected, NULL);
+  set_sparse_pair_probe_bits(left, left_indices, sizeof(left_indices) / sizeof(left_indices[0]));
+  set_sparse_pair_probe_bits(right, right_indices, sizeof(right_indices) / sizeof(right_indices[0]));
+  mpz_mul(expected, left, right);
+
+  char *left_text = mpz_get_str(NULL, 10, left);
+  char *right_text = mpz_get_str(NULL, 10, right);
+
+  XrayScratchBigInt scratch_left, scratch_right, scratch_out;
+  xray_bigint_init(&scratch_left);
+  xray_bigint_init(&scratch_right);
+  xray_bigint_init(&scratch_out);
+  int ok = left_text && right_text &&
+    xray_bigint_set_decimal(&scratch_left, left_text) &&
+    xray_bigint_set_decimal(&scratch_right, right_text);
+
+  unsigned long long scratch_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  for (size_t sample = 0; ok && sample < sample_count; ++sample) {
+    unsigned long long scratch_started = xray_now_us();
+    for (unsigned int iteration = 0; ok && iteration < iterations; ++iteration) {
+      ok = xray_bigint_mul(&scratch_out, &scratch_left, &scratch_right);
+    }
+    scratch_samples[sample] = (xray_now_us() - scratch_started) / iterations;
+
+    unsigned long long gmp_started = xray_now_us();
+    for (unsigned int iteration = 0; iteration < iterations; ++iteration) {
+      mpz_mul(expected, left, right);
+    }
+    gmp_samples[sample] = (xray_now_us() - gmp_started) / iterations;
+  }
+
+  int parity = ok;
+  if (ok) {
+    char *scratch_text = xray_bigint_get_decimal(&scratch_out);
+    char *expected_text = mpz_get_str(NULL, 10, expected);
+    parity = scratch_text && expected_text && strcmp(scratch_text, expected_text) == 0;
+    free(scratch_text);
+    free(expected_text);
+  }
+
+  append_sparse_pair_product_probe_result(
+    report,
     bits,
     left_text ? strlen(left_text) : 0,
     parity,
@@ -7418,6 +7549,7 @@ static void run_scratch_bigint_gates(XrayBenchmarkReport *report) {
   run_square_vs_mul_probe_case(report, 16384);
   run_sparse_zero_limb_probe_case(report, "square", 4096);
   run_sparse_zero_limb_probe_case(report, "mul", 4096);
+  run_sparse_pair_product_probe_case(report, 4096);
   const size_t frontier_scout_digits[] = {32768, 65536};
   for (size_t index = 0; index < sizeof(frontier_scout_digits) / sizeof(frontier_scout_digits[0]); ++index) {
     run_frontier_scout_case(report, "mul", frontier_scout_digits[index]);

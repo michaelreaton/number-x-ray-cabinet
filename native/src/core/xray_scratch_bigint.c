@@ -35,6 +35,10 @@
 #define XRAY_BIGINT_SQUARE_SELF_MUL_MAX_LIMBS 8U
 #define XRAY_BIGINT_SPARSE_SQUARE_MIN_LIMBS 16U
 #define XRAY_BIGINT_SPARSE_SQUARE_DENSITY_DIVISOR 4U
+#define XRAY_BIGINT_SPARSE_MUL_MIN_LIMBS 16U
+#define XRAY_BIGINT_SPARSE_MUL_DENSITY_DIVISOR 4U
+#define XRAY_BIGINT_SPARSE_MUL_MIN_PRODUCTS 64U
+#define XRAY_BIGINT_SPARSE_STACK_INDEX_CAP 64U
 #define XRAY_BIGINT_FERMAT_65537 65537U
 
 static const uint64_t parse_decimal_powers[] = {
@@ -2493,6 +2497,13 @@ static void square_add_diagonal_word(XrayScratchBigInt *out, size_t position, ui
 #endif
 }
 
+static void add_product_at(XrayScratchBigInt *out, size_t position, uint64_t left, uint64_t right) {
+  if (left == 0 || right == 0) return;
+  uint64_t low = 0;
+  uint64_t high = mul_add_small_word(left, right, 0, &low);
+  add_two_limb_at(out, position, low, high);
+}
+
 static void square_add_doubled_product_at(XrayScratchBigInt *out, size_t position, uint64_t left, uint64_t right) {
   if (left == 0 || right == 0) return;
   uint64_t low = 0;
@@ -2558,6 +2569,18 @@ static int should_use_sparse_square(const XrayScratchBigInt *value, size_t nonze
   return nonzero_count > 0 && nonzero_count <= value->count / XRAY_BIGINT_SPARSE_SQUARE_DENSITY_DIVISOR;
 }
 
+static int collect_nonzero_indices(const XrayScratchBigInt *value, size_t *indices, size_t expected_count) {
+  if (!value || !indices || expected_count == 0) return 0;
+  size_t used = 0;
+  for (size_t index = 0; index < value->count; ++index) {
+    if (value->limbs[index] != 0) {
+      if (used >= expected_count) return 0;
+      indices[used++] = index;
+    }
+  }
+  return used == expected_count;
+}
+
 static int square_schoolbook_sparse(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t nonzero_count) {
   if (!out || !value || nonzero_count == 0) return 0;
   size_t needed = value->count * 2U;
@@ -2565,24 +2588,27 @@ static int square_schoolbook_sparse(XrayScratchBigInt *out, const XrayScratchBig
   memset(out->limbs, 0, sizeof(uint64_t) * (needed + 2U));
   out->count = needed + 2U;
 
-  size_t *indices = (size_t *)malloc(sizeof(size_t) * nonzero_count);
+  size_t stack_indices[XRAY_BIGINT_SPARSE_STACK_INDEX_CAP];
+  size_t *indices = nonzero_count <= XRAY_BIGINT_SPARSE_STACK_INDEX_CAP ?
+    stack_indices :
+    (size_t *)malloc(sizeof(size_t) * nonzero_count);
   if (!indices) return 0;
-  size_t used = 0;
-  for (size_t index = 0; index < value->count; ++index) {
-    if (value->limbs[index] != 0) indices[used++] = index;
+  if (!collect_nonzero_indices(value, indices, nonzero_count)) {
+    if (indices != stack_indices) free(indices);
+    return 0;
   }
 
-  for (size_t i = 0; i < used; ++i) {
+  for (size_t i = 0; i < nonzero_count; ++i) {
     size_t row = indices[i];
     uint64_t row_word = value->limbs[row];
     square_add_diagonal_word(out, row * 2U, row_word);
-    for (size_t j = i + 1U; j < used; ++j) {
+    for (size_t j = i + 1U; j < nonzero_count; ++j) {
       size_t column = indices[j];
       square_add_doubled_product_at(out, row + column, row_word, value->limbs[column]);
     }
   }
 
-  free(indices);
+  if (indices != stack_indices) free(indices);
   normalize(out);
   return 1;
 }
@@ -2707,6 +2733,80 @@ static int square_dispatch_threshold(XrayScratchBigInt *out, const XrayScratchBi
   return square_karatsuba_threshold(out, value, threshold);
 }
 
+static int checked_sparse_cost(size_t left_nonzero, size_t right_nonzero, size_t *out_cost) {
+  if (!out_cost || left_nonzero == 0 || right_nonzero == 0) return 0;
+  if (left_nonzero > SIZE_MAX / right_nonzero) return 0;
+  *out_cost = left_nonzero * right_nonzero;
+  return 1;
+}
+
+static int should_use_sparse_mul(
+  const XrayScratchBigInt *left,
+  const XrayScratchBigInt *right,
+  size_t left_nonzero,
+  size_t right_nonzero,
+  size_t best_row_cost) {
+  if (!left || !right) return 0;
+  size_t max_count = left->count > right->count ? left->count : right->count;
+  if (max_count < XRAY_BIGINT_SPARSE_MUL_MIN_LIMBS) return 0;
+  if (left_nonzero == 0 || right_nonzero == 0) return 0;
+  if (left_nonzero > left->count / XRAY_BIGINT_SPARSE_MUL_DENSITY_DIVISOR) return 0;
+  if (right_nonzero > right->count / XRAY_BIGINT_SPARSE_MUL_DENSITY_DIVISOR) return 0;
+
+  size_t sparse_cost = 0;
+  if (!checked_sparse_cost(left_nonzero, right_nonzero, &sparse_cost)) return 0;
+  if (sparse_cost < XRAY_BIGINT_SPARSE_MUL_MIN_PRODUCTS) return 0;
+
+  return sparse_cost <= best_row_cost / 2U;
+}
+
+static int mul_schoolbook_sparse(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *left,
+  const XrayScratchBigInt *right,
+  size_t left_nonzero,
+  size_t right_nonzero) {
+  if (!out || !left || !right || left_nonzero == 0 || right_nonzero == 0) return 0;
+  size_t needed = left->count + right->count;
+  if (!reserve_limbs(out, needed + 2U)) return 0;
+  memset(out->limbs, 0, sizeof(uint64_t) * (needed + 2U));
+  out->count = needed + 2U;
+
+  size_t left_stack_indices[XRAY_BIGINT_SPARSE_STACK_INDEX_CAP];
+  size_t right_stack_indices[XRAY_BIGINT_SPARSE_STACK_INDEX_CAP];
+  size_t *left_indices = left_nonzero <= XRAY_BIGINT_SPARSE_STACK_INDEX_CAP ?
+    left_stack_indices :
+    (size_t *)malloc(sizeof(size_t) * left_nonzero);
+  size_t *right_indices = right_nonzero <= XRAY_BIGINT_SPARSE_STACK_INDEX_CAP ?
+    right_stack_indices :
+    (size_t *)malloc(sizeof(size_t) * right_nonzero);
+  if (!left_indices || !right_indices) {
+    if (left_indices != left_stack_indices) free(left_indices);
+    if (right_indices != right_stack_indices) free(right_indices);
+    return 0;
+  }
+  if (!collect_nonzero_indices(left, left_indices, left_nonzero) ||
+      !collect_nonzero_indices(right, right_indices, right_nonzero)) {
+    if (left_indices != left_stack_indices) free(left_indices);
+    if (right_indices != right_stack_indices) free(right_indices);
+    return 0;
+  }
+
+  for (size_t i = 0; i < left_nonzero; ++i) {
+    size_t left_index = left_indices[i];
+    uint64_t left_word = left->limbs[left_index];
+    for (size_t j = 0; j < right_nonzero; ++j) {
+      size_t right_index = right_indices[j];
+      add_product_at(out, left_index + right_index, left_word, right->limbs[right_index]);
+    }
+  }
+
+  if (left_indices != left_stack_indices) free(left_indices);
+  if (right_indices != right_stack_indices) free(right_indices);
+  normalize(out);
+  return 1;
+}
+
 static int mul_schoolbook_mode(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, int use_unroll4) {
   if (!out || !left || !right) return 0;
   if (left->count == 0 || right->count == 0) return set_u32(out, 0);
@@ -2716,10 +2816,15 @@ static int mul_schoolbook_mode(XrayScratchBigInt *out, const XrayScratchBigInt *
   size_t right_nonzero = count_nonzero_limbs(right);
   size_t left_outer_cost = left_nonzero > SIZE_MAX / right->count ? SIZE_MAX : left_nonzero * right->count;
   size_t right_outer_cost = right_nonzero > SIZE_MAX / left->count ? SIZE_MAX : right_nonzero * left->count;
+  size_t best_scan_cost = left_outer_cost < right_outer_cost ? left_outer_cost : right_outer_cost;
   if (left_outer_cost <= SIZE_MAX - left->count) left_outer_cost += left->count;
   else left_outer_cost = SIZE_MAX;
   if (right_outer_cost <= SIZE_MAX - right->count) right_outer_cost += right->count;
   else right_outer_cost = SIZE_MAX;
+  if (should_use_sparse_mul(left, right, left_nonzero, right_nonzero, best_scan_cost) &&
+      mul_schoolbook_sparse(out, left, right, left_nonzero, right_nonzero)) {
+    return 1;
+  }
   if (right_outer_cost < left_outer_cost ||
       (right_outer_cost == left_outer_cost && outer->count > inner->count)) {
     outer = right;
