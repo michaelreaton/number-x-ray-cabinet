@@ -26,6 +26,8 @@
 #define XRAY_BIGINT_DECIMAL_HORNER_MIN_LIMBS 48U
 #define XRAY_BIGINT_DECIMAL_PAIR_WRITER_SMALL_MAX_LIMBS 8U
 #define XRAY_BIGINT_DECIMAL_PAIR_WRITER_HORNER_MAX_LIMBS 54U
+#define XRAY_BIGINT_DECIMAL_PREINV_PAIR_MIN_EST_DIGITS 1001U
+#define XRAY_BIGINT_DECIMAL_PREINV_PAIR_MAX_EST_DIGITS 1001U
 #define XRAY_BIGINT_DECIMAL_DC_MIN_WIDE_CHUNKS 216U
 #define XRAY_BIGINT_DECIMAL_DC_LEAF_CHUNKS 8U
 #define XRAY_BIGINT_PARSE_CHUNK_DIGITS 19U
@@ -172,6 +174,8 @@ char *xray_bigint_route_config_json(void) {
     ",\"decimalHornerMinLimbs\":%zu"
     ",\"decimalPairWriterSmallMaxLimbs\":%u"
     ",\"decimalPairWriterHornerMaxLimbs\":%u"
+    ",\"decimalPreinvPairMinEstimatedDigits\":%u"
+    ",\"decimalPreinvPairMaxEstimatedDigits\":%u"
     ",\"decimalDcMinWideChunks\":%u"
     ",\"decimalDcLeafChunks\":%u"
     ",\"decimalWideChunkDigits\":%u"
@@ -187,7 +191,7 @@ char *xray_bigint_route_config_json(void) {
     ",\"msvcUint128Helpers\":%s"
     ",\"squareSelfMulMaxLimbs\":%u"
     ",\"squareTinySelfMulPolicy\":\"<=8 limbs\""
-    ",\"decimalPairWriterPolicy\":\"small<=8 limbs or horner 48..54 limbs\""
+    ",\"decimalPairWriterPolicy\":\"small<=8 limbs, horner 48..54 limbs, or preinv base-1e19 pair writer for estimated 1001-digit inputs\""
     ",\"decimalDcPolicy\":\"base-1e19 D&C ladder at >=4096 digits, leaf=8 chunks\""
     ",\"sparseSquareMinLimbs\":%u"
     ",\"sparseSquareDensityDivisor\":%u"
@@ -200,6 +204,7 @@ char *xray_bigint_route_config_json(void) {
       "{\"name\":\"karatsuba-square\",\"thresholdLimbs\":%u},"
       "{\"name\":\"decimal-horner\",\"minLimbs\":%u},"
       "{\"name\":\"decimal-pair-writer\",\"smallMaxLimbs\":%u,\"hornerMaxLimbs\":%u},"
+      "{\"name\":\"decimal-preinv1e19-pair-window\",\"minEstimatedDigits\":%u,\"maxEstimatedDigits\":%u},"
       "{\"name\":\"decimal-dc-ladder\",\"minWideChunks\":%u,\"leafChunks\":%u},"
       "{\"name\":\"decimal-parse-large\",\"minDigits\":%u,\"chunkDigits\":%u},"
       "{\"name\":\"mul-unroll4\",\"enabled\":%s,\"minLimbs\":%zu,\"maxLimbs\":%zu},"
@@ -227,6 +232,8 @@ char *xray_bigint_route_config_json(void) {
     config.decimal_horner_min_limbs,
     XRAY_BIGINT_DECIMAL_PAIR_WRITER_SMALL_MAX_LIMBS,
     XRAY_BIGINT_DECIMAL_PAIR_WRITER_HORNER_MAX_LIMBS,
+    XRAY_BIGINT_DECIMAL_PREINV_PAIR_MIN_EST_DIGITS,
+    XRAY_BIGINT_DECIMAL_PREINV_PAIR_MAX_EST_DIGITS,
     XRAY_BIGINT_DECIMAL_DC_MIN_WIDE_CHUNKS,
     XRAY_BIGINT_DECIMAL_DC_LEAF_CHUNKS,
     XRAY_BIGINT_DECIMAL_WIDE_CHUNK_DIGITS,
@@ -249,6 +256,8 @@ char *xray_bigint_route_config_json(void) {
     XRAY_BIGINT_DECIMAL_HORNER_MIN_LIMBS,
     XRAY_BIGINT_DECIMAL_PAIR_WRITER_SMALL_MAX_LIMBS,
     XRAY_BIGINT_DECIMAL_PAIR_WRITER_HORNER_MAX_LIMBS,
+    XRAY_BIGINT_DECIMAL_PREINV_PAIR_MIN_EST_DIGITS,
+    XRAY_BIGINT_DECIMAL_PREINV_PAIR_MAX_EST_DIGITS,
     XRAY_BIGINT_DECIMAL_DC_MIN_WIDE_CHUNKS,
     XRAY_BIGINT_DECIMAL_DC_LEAF_CHUNKS,
     XRAY_BIGINT_PARSE_LARGE_MIN_DIGITS,
@@ -1595,12 +1604,20 @@ static const XrayScratchBigInt *decimal_dc_power_cache_get(XrayDecimalDcPowerCac
   return &cache->items[cache->count - 1U].value;
 }
 
-static size_t estimate_decimal_wide_chunks_from_bits(const XrayScratchBigInt *value) {
+static size_t estimate_decimal_digits_from_bits(const XrayScratchBigInt *value) {
   if (!value || value->count == 0) return 1U;
   unsigned int top_bits = XRAY_BIGINT_WORD_BITS - clz_u64(value->limbs[value->count - 1U]);
   size_t bits = (value->count - 1U) * XRAY_BIGINT_WORD_BITS + top_bits;
-  if (bits > (SIZE_MAX - 4096U) / 1233U) return estimate_decimal_wide_chunk_capacity(value);
-  size_t digits = (bits * 1233U) / 4096U + 1U;
+  if (bits > (SIZE_MAX - 4096U) / 1233U) {
+    size_t chunks = estimate_decimal_wide_chunk_capacity(value);
+    if (chunks > SIZE_MAX / XRAY_BIGINT_DECIMAL_WIDE_CHUNK_DIGITS) return SIZE_MAX;
+    return chunks * XRAY_BIGINT_DECIMAL_WIDE_CHUNK_DIGITS;
+  }
+  return (bits * 1233U) / 4096U + 1U;
+}
+
+static size_t estimate_decimal_wide_chunks_from_bits(const XrayScratchBigInt *value) {
+  size_t digits = estimate_decimal_digits_from_bits(value);
   return digits / XRAY_BIGINT_DECIMAL_WIDE_CHUNK_DIGITS + 1U;
 }
 
@@ -2214,6 +2231,13 @@ static int use_decimal_pair_writer_route(const XrayScratchBigInt *value) {
      limbs <= XRAY_BIGINT_DECIMAL_PAIR_WRITER_HORNER_MAX_LIMBS);
 }
 
+static int use_decimal_preinv_pair_window_route(const XrayScratchBigInt *value) {
+  if (!value || value->count == 0) return 0;
+  size_t digits = estimate_decimal_digits_from_bits(value);
+  return digits >= XRAY_BIGINT_DECIMAL_PREINV_PAIR_MIN_EST_DIGITS &&
+    digits <= XRAY_BIGINT_DECIMAL_PREINV_PAIR_MAX_EST_DIGITS;
+}
+
 char *xray_bigint_get_decimal_folded_probe(const XrayScratchBigInt *value) {
   if (!value || value->count == 0) {
     char *zero = (char *)calloc(2, 1);
@@ -2512,6 +2536,10 @@ char *xray_bigint_get_decimal_wide_probe(const XrayScratchBigInt *value) {
 }
 
 char *xray_bigint_get_decimal(const XrayScratchBigInt *value) {
+  if (use_decimal_preinv_pair_window_route(value)) {
+    char *preinv_pair_text = xray_bigint_get_decimal_divide_1e19_preinv_pair_writer_probe(value);
+    if (preinv_pair_text) return preinv_pair_text;
+  }
   if (value && value->count > 0 &&
       estimate_decimal_wide_chunks_from_bits(value) >= XRAY_BIGINT_DECIMAL_DC_MIN_WIDE_CHUNKS) {
     char *dc_text = xray_bigint_get_decimal_dc_ladder_probe(value, XRAY_BIGINT_DECIMAL_DC_LEAF_CHUNKS);

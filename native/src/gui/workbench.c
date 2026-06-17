@@ -812,7 +812,7 @@ static void format_benchmark_context_labels(
     XrayBigIntRouteConfig route = xray_bigint_route_config();
     char *build = xray_build_info_summary(NULL);
     snprintf(build_out, build_out_size,
-      "%s\nBigint route: word=%ub | karatsuba>=%zu limbs | format-horner>=%zu limbs | mul-unroll4=%s %zu..%zu limbs | msvc128=%s",
+      "%s\nBigint route: word=%ub | karatsuba>=%zu limbs | format-horner>=%zu limbs | format-preinv1e19-pairs=est1001 digits | mul-unroll4=%s %zu..%zu limbs | msvc128=%s",
       build ? build : "Build: unavailable",
       route.word_bits,
       route.karatsuba_threshold_limbs,

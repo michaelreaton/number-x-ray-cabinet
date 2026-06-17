@@ -8727,24 +8727,24 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
       report,
       digits,
       191U,
-      "preinv10e19-window768-1000",
+      "preinv10e19-window768-1001",
       "decimal-divide-1e19-preinv",
       "decimal-format-policy-divide-1e19-preinv",
       "mpn_sb_get_str-preinverted-divrem-1",
       768,
-      1000,
+      1001,
       0,
       format_policy_divide_1e19_preinv);
     run_format_policy_probe_case(
       report,
       digits,
       193U,
-      "preinv10e19-pairs-window768-1000",
+      "preinv10e19-pairs-window768-1001",
       "decimal-divide-1e19-preinv-pair-writer",
       "decimal-format-policy-divide-1e19-preinv-pairs",
       "mpn_sb_get_str-preinverted-divrem-1+digit-emission",
       768,
-      1000,
+      1001,
       0,
       format_policy_divide_1e19_preinv_pairs);
   }
@@ -8845,23 +8845,23 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
   run_format_policy_safety_case(
     report,
     197U,
-    "preinv10e19-window768-1000",
+    "preinv10e19-window768-1001",
     "decimal-divide-1e19-preinv",
     768,
-    1000,
+    1001,
     768,
-    1000,
+    1001,
     0,
     format_policy_divide_1e19_preinv);
   run_format_policy_safety_case(
     report,
     199U,
-    "preinv10e19-pairs-window768-1000",
+    "preinv10e19-pairs-window768-1001",
     "decimal-divide-1e19-preinv-pair-writer",
     768,
-    1000,
+    1001,
     768,
-    1000,
+    1001,
     0,
     format_policy_divide_1e19_preinv_pairs);
 
@@ -8996,12 +8996,12 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
   run_format_policy_deep_safety_case(
     report,
     273U,
-    "deep-preinv10e19-window768-1000",
+    "deep-preinv10e19-window768-1001",
     "decimal-divide-1e19-preinv",
     768,
-    1000,
+    1001,
     768,
-    1000,
+    1001,
     0,
     format_policy_divide_1e19_preinv);
   run_format_policy_deep_safety_case(
@@ -9071,14 +9071,14 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     0,
     format_policy_divide_1e19_preinv_pairs);
 
-  const size_t format_window_audit_sizes[] = {768, 896, 960, 1000};
+  const size_t format_window_audit_sizes[] = {768, 896, 960, 1000, 1001};
   run_format_route_audit_case(
     report,
     307U,
-    "audit-preinv10e19-window768-1000",
+    "audit-preinv10e19-window768-1001",
     "decimal-divide-1e19-preinv",
     768,
-    1000,
+    1001,
     0,
     format_policy_divide_1e19_preinv,
     format_window_audit_sizes,
@@ -9086,10 +9086,10 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
   run_format_route_audit_case(
     report,
     311U,
-    "audit-preinv10e19-pairs-window768-1000",
+    "audit-preinv10e19-pairs-window768-1001",
     "decimal-divide-1e19-preinv-pair-writer",
     768,
-    1000,
+    1001,
     0,
     format_policy_divide_1e19_preinv_pairs,
     format_window_audit_sizes,

@@ -44,6 +44,25 @@ Decision: reporting only. This does not change arithmetic routes, but it makes
 the next formatter, division, or multiplication threshold review harder to
 misread and easier for external tools to import.
 
+## 2026-06-17: Decimal 1000-Digit Pair-Writer Route
+
+The benchmark artifact
+`native/build-codex-parse-large/native-test-runs/20260617-163404-c4b04caf`
+identified `decimal-divide-1e19-preinv-pair-writer` as the best route across
+768 to 1000 actual decimal digits. A later product run showed that the wider
+window was not uniformly safe: 768 and 896 digit scratch rows were median wins
+but had worst-pair regressions above 1.0. The production gate therefore routes
+only estimated 1001-digit inputs, which captures the benchmarked 1000-digit
+sample whose bit-length estimate rounds up by one. The original route audit
+showed `safeSizes=4/4`, `hashSafe=36/36`, `maxWorstPairRatio=1.000`,
+`candCurrentMax=0.467`, and `candGmpMax=0.859` for the 768, 896, 960, and 1000
+digit proof points.
+
+Decision: route only the 1000-digit bucket before the 4096+ D&C ladder. Do not
+route the broader 768-896 window or extend the same family to larger formatter
+sizes; product probes at 4096, 8192, and 16384 digits remain slower and stay
+default-off.
+
 ## 2026-06-17: Large Decimal Formatter Route Rejection
 
 The focused formatter run
