@@ -53,6 +53,17 @@ digest with `productGatedOpen`. Rows carrying `noAutoRoute=1`,
 product-gated/open and cannot contribute to `routeCompleted` until a
 product-like proof row removes those blockers.
 
+## 2026-06-17: Static Formatter Leaf Expansion
+
+MFastFermat follow-up evidence around `d942c12`, `34ba68b`, and `f479009`
+keeps a strong transform signal open because duplicate controls still fail.
+The local analogue is to widen benchmark evidence before moving any route:
+the D&C decimal formatter now tests static power-table leaves `32` and `64`
+alongside the existing `8` and `16` rows, for both recursive string assembly
+and direct-buffer output. These rows are exact-parity, default-off probes for
+the 8k/16k formatting gap and must not be treated as production policy until
+same-run stability and product-like route checks pass.
+
 ## 2026-06-16: Formatter Window Promotion Rejected
 
 MFastFermat `main` is at `96117fd` and its newest tail-control DIF/DIT evidence

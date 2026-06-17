@@ -1642,9 +1642,13 @@ static void test_benchmarks(void) {
   int saw_format_dc_static_ladder_probe = 0;
   int saw_format_dc_static_ladder_leaf8_probe = 0;
   int saw_format_dc_static_ladder_leaf16_probe = 0;
+  int saw_format_dc_static_ladder_leaf32_probe = 0;
+  int saw_format_dc_static_ladder_leaf64_probe = 0;
   int saw_format_dc_static_direct_probe = 0;
   int saw_format_dc_static_direct_leaf8_probe = 0;
   int saw_format_dc_static_direct_leaf16_probe = 0;
+  int saw_format_dc_static_direct_leaf32_probe = 0;
+  int saw_format_dc_static_direct_leaf64_probe = 0;
   int saw_format_dc_workspace_probe = 0;
   int saw_format_dc_workspace_leaf8_probe = 0;
   int saw_format_dc_workspace_leaf16_probe = 0;
@@ -2379,6 +2383,8 @@ static void test_benchmarks(void) {
           CHECK(strstr(report->results[index].detail, "gmpClue=static-powtab") != NULL);
           if (strstr(report->results[index].detail, "leafThreshold=8") != NULL) saw_format_dc_static_ladder_leaf8_probe = 1;
           else if (strstr(report->results[index].detail, "leafThreshold=16") != NULL) saw_format_dc_static_ladder_leaf16_probe = 1;
+          else if (strstr(report->results[index].detail, "leafThreshold=32") != NULL) saw_format_dc_static_ladder_leaf32_probe = 1;
+          else if (strstr(report->results[index].detail, "leafThreshold=64") != NULL) saw_format_dc_static_ladder_leaf64_probe = 1;
           else CHECK(0);
         } else if (strcmp(report->results[index].operation, "format-dc-route") == 0) {
           saw_format_dc_route_probe = 1;
@@ -2402,6 +2408,8 @@ static void test_benchmarks(void) {
           CHECK(strstr(report->results[index].detail, "gmpClue=static-powtab+buffer") != NULL);
           if (strstr(report->results[index].detail, "leafThreshold=8") != NULL) saw_format_dc_static_direct_leaf8_probe = 1;
           else if (strstr(report->results[index].detail, "leafThreshold=16") != NULL) saw_format_dc_static_direct_leaf16_probe = 1;
+          else if (strstr(report->results[index].detail, "leafThreshold=32") != NULL) saw_format_dc_static_direct_leaf32_probe = 1;
+          else if (strstr(report->results[index].detail, "leafThreshold=64") != NULL) saw_format_dc_static_direct_leaf64_probe = 1;
           else CHECK(0);
         }
       }
@@ -3413,9 +3421,13 @@ static void test_benchmarks(void) {
   CHECK(saw_format_dc_static_ladder_probe);
   CHECK(saw_format_dc_static_ladder_leaf8_probe);
   CHECK(saw_format_dc_static_ladder_leaf16_probe);
+  CHECK(saw_format_dc_static_ladder_leaf32_probe);
+  CHECK(saw_format_dc_static_ladder_leaf64_probe);
   CHECK(saw_format_dc_static_direct_probe);
   CHECK(saw_format_dc_static_direct_leaf8_probe);
   CHECK(saw_format_dc_static_direct_leaf16_probe);
+  CHECK(saw_format_dc_static_direct_leaf32_probe);
+  CHECK(saw_format_dc_static_direct_leaf64_probe);
   CHECK(saw_format_dc_workspace_probe);
   CHECK(saw_format_dc_workspace_leaf8_probe);
   CHECK(saw_format_dc_workspace_leaf16_probe);
