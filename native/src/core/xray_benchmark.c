@@ -4286,6 +4286,13 @@ static void run_format_pair_writer_probe_case(XrayBenchmarkReport *report, size_
 
 typedef char *(*XrayFormatProbeFn)(const XrayScratchBigInt *value);
 
+#define XRAY_FORMAT_ROUTE_TOURNAMENT_MAX 8U
+
+typedef struct XrayFormatRouteTournamentEntry {
+  const char *name;
+  XrayFormatProbeFn probe;
+} XrayFormatRouteTournamentEntry;
+
 static char *format_dc_leaf8_probe(const XrayScratchBigInt *value) {
   return xray_bigint_get_decimal_dc_probe(value, 8U);
 }
@@ -4882,6 +4889,237 @@ static int run_format_probe_batch(
   }
   *elapsed_us += xray_now_us() - started;
   return ok;
+}
+
+static int run_format_gmp_batch(
+  const mpz_t value,
+  unsigned int iterations,
+  unsigned long long *elapsed_us) {
+  if (!elapsed_us) return 0;
+  unsigned long long started = xray_now_us();
+  int ok = 1;
+  for (unsigned int index = 0; index < iterations; ++index) {
+    char *text = mpz_get_str(NULL, 10, value);
+    if (!text) {
+      ok = 0;
+      break;
+    }
+    free(text);
+  }
+  *elapsed_us += xray_now_us() - started;
+  return ok;
+}
+
+static void append_format_route_tournament_result(
+  XrayBenchmarkReport *report,
+  size_t digits,
+  const char *winner,
+  const char *current,
+  const char *routes,
+  size_t route_count,
+  int parity,
+  int hash_gate,
+  size_t hash_match_count,
+  unsigned long long winner_us,
+  unsigned long long current_us,
+  unsigned long long gmp_us,
+  double winner_current_ratio,
+  double winner_gmp_ratio,
+  double current_gmp_ratio,
+  size_t stable_sample_count,
+  size_t sample_count,
+  double worst_pair_ratio) {
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "policy format route tournament %zu digits", digits);
+  snprintf(result.category, sizeof(result.category), "policy-probe");
+  snprintf(result.operation, sizeof(result.operation), "format-route-tournament");
+  result.digits = digits;
+  result.scratch_us = winner_us ? winner_us : 1;
+  result.gmp_us = current_us ? current_us : 1;
+  result.speed_ratio = winner_current_ratio > 0.0 ? winner_current_ratio : (double)result.scratch_us / (double)result.gmp_us;
+  result.max_allowed_speed_ratio = 1.0;
+  result.stable_sample_count = stable_sample_count;
+  result.sample_count = sample_count;
+  result.worst_pair_ratio = worst_pair_ratio;
+  result.parity_verified = parity && hash_gate;
+  size_t required_stable = policy_required_stable_samples(sample_count);
+  int current_won = winner && current && strcmp(winner, current) == 0;
+  int route_margin_ready = !current_won &&
+    parity &&
+    hash_gate &&
+    xray_benchmark_readiness_gate(
+      result.speed_ratio,
+      0.98,
+      result.stable_sample_count,
+      required_stable,
+      result.worst_pair_ratio);
+  result.replacement_ready = 0;
+  snprintf(result.adoption, sizeof(result.adoption), "%s",
+    !parity || !hash_gate ? "blocked-output-mismatch" : "observe-only");
+  snprintf(result.status, sizeof(result.status), "%s",
+    !parity ? "mismatch" :
+    (!hash_gate ? "hash-mismatch" :
+    (current_won ? "current-best" :
+    (route_margin_ready ? "candidate-faster" :
+    (result.speed_ratio < 1.0 ? "candidate-no-margin" : "current-best")))));
+  result.passed = parity && hash_gate;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + gmp_us + 999ULL) / 1000ULL);
+  snprintf(result.detail, sizeof(result.detail),
+    "op=format-route-tournament policy=tournament noAutoRoute=1 thresholdSafety=tournament-observe featureGate=decimal-format-route-policy-tournament gmpClue=mfast-factor64pre-precompute activeCandidate=%s candidate=best-format-route baseline=current-scratch-format oracle=mpz_get_str digits=%zu winner=%s current=%s routes=%s routesTested=%zu stablePairs=%zu/%zu requiredStablePairs=%zu/%zu winnerCurrentRatio=%.3f winnerGmpRatio=%.3f currentGmpRatio=%.3f worstPairRatio=%.3f ratioMethod=paired-median tournamentMethod=same-run hashSafe=%zu/%zu hashGate=%s sameInput=yes sameRunTournament=yes",
+    winner ? winner : "best-format-route",
+    digits,
+    winner ? winner : "unknown",
+    current ? current : "unknown",
+    routes ? routes : "unknown",
+    route_count,
+    stable_sample_count,
+    sample_count,
+    required_stable,
+    sample_count,
+    result.speed_ratio,
+    winner_gmp_ratio,
+    current_gmp_ratio,
+    result.worst_pair_ratio,
+    hash_match_count,
+    sample_count,
+    hash_gate ? "matched" : "blocked");
+  append_result(report, &result);
+}
+
+static void run_format_route_tournament_case(
+  XrayBenchmarkReport *report,
+  size_t digits) {
+  static const XrayFormatRouteTournamentEntry routes[] = {
+    {"current-default", xray_bigint_get_decimal},
+    {"divide1e19-preinv", format_divide_1e19_preinv_probe},
+    {"divide1e19-preinv-pairs", format_divide_1e19_preinv_pair_writer_probe},
+    {"dc-ladder8", format_dc_ladder_leaf8_probe},
+    {"dc-direct16", format_dc_direct_leaf16_probe},
+    {"dc-preinv-qhat16", format_dc_preinv_qhat_leaf16_probe}
+  };
+  const size_t route_count = sizeof(routes) / sizeof(routes[0]);
+  if (!report || route_count == 0 || route_count > XRAY_FORMAT_ROUTE_TOURNAMENT_MAX) return;
+
+  char route_list[192] = {0};
+  for (size_t route_index = 0; route_index < route_count; ++route_index) {
+    size_t used = strlen(route_list);
+    if (used < sizeof(route_list)) {
+      snprintf(route_list + used, sizeof(route_list) - used, "%s%s", route_list[0] ? "," : "", routes[route_index].name);
+    }
+  }
+
+  char *text = benchmark_decimal(digits, 263U, 1);
+  if (!text) return;
+  unsigned int iterations = perf_iterations("format", digits);
+  unsigned int batch_iterations = iterations >= 64U ? 8U : (iterations >= 16U ? 4U : 1U);
+  XrayScratchBigInt scratch;
+  xray_bigint_init(&scratch);
+  mpz_t gmp;
+  mpz_init(gmp);
+  int ok = xray_bigint_set_decimal(&scratch, text) && mpz_set_str(gmp, text, 10) == 0;
+
+  unsigned long long route_samples[XRAY_FORMAT_ROUTE_TOURNAMENT_MAX][XRAY_BENCH_SAMPLES];
+  unsigned long long gmp_samples[XRAY_BENCH_SAMPLES] = {0};
+  memset(route_samples, 0, sizeof(route_samples));
+  int parity = 1;
+  int hash_gate = 1;
+  size_t hash_match_count = 0;
+  uint64_t result_hash = 0ULL;
+
+  for (unsigned int sample = 0; ok && sample < XRAY_BENCH_SAMPLES; ++sample) {
+    if ((sample % 2U) == 0U) {
+      for (size_t route_index = 0; ok && route_index < route_count; ++route_index) {
+        unsigned int completed = 0;
+        while (ok && completed < iterations) {
+          unsigned int remaining = iterations - completed;
+          unsigned int batch = remaining < batch_iterations ? remaining : batch_iterations;
+          ok = run_format_probe_batch(&scratch, routes[route_index].probe, batch, &route_samples[route_index][sample]);
+          completed += batch;
+        }
+      }
+      ok = run_format_gmp_batch(gmp, iterations, &gmp_samples[sample]);
+    } else {
+      ok = run_format_gmp_batch(gmp, iterations, &gmp_samples[sample]);
+      for (size_t reverse = route_count; ok && reverse > 0; --reverse) {
+        size_t route_index = reverse - 1U;
+        unsigned int completed = 0;
+        while (ok && completed < iterations) {
+          unsigned int remaining = iterations - completed;
+          unsigned int batch = remaining < batch_iterations ? remaining : batch_iterations;
+          ok = run_format_probe_batch(&scratch, routes[route_index].probe, batch, &route_samples[route_index][sample]);
+          completed += batch;
+        }
+      }
+    }
+
+    char *gmp_text = mpz_get_str(NULL, 10, gmp);
+    uint64_t gmp_hash = xray_benchmark_text_hash64(gmp_text);
+    int sample_hash_match = ok && gmp_text && gmp_hash != 0ULL;
+    for (size_t route_index = 0; route_index < route_count; ++route_index) {
+      char *route_text = routes[route_index].probe(&scratch);
+      uint64_t route_hash = xray_benchmark_text_hash64(route_text);
+      int route_matches = route_text && gmp_text && strcmp(route_text, gmp_text) == 0;
+      parity = parity && ok && route_matches;
+      sample_hash_match = sample_hash_match && route_hash == gmp_hash;
+      free(route_text);
+    }
+    if (sample_hash_match) {
+      hash_match_count++;
+      if (result_hash == 0ULL) {
+        result_hash = gmp_hash;
+      } else if (result_hash != gmp_hash) {
+        hash_gate = 0;
+      }
+    } else {
+      hash_gate = 0;
+    }
+    free(gmp_text);
+  }
+
+  size_t best_index = 0;
+  double best_ratio = 1.0;
+  for (size_t route_index = 1; route_index < route_count; ++route_index) {
+    double ratio = median_paired_ratio(route_samples[route_index], route_samples[0], XRAY_BENCH_SAMPLES);
+    if (ratio > 0.0 && ratio < best_ratio) {
+      best_index = route_index;
+      best_ratio = ratio;
+    }
+  }
+
+  double winner_current_ratio = best_index == 0 ? 1.0 : best_ratio;
+  double winner_gmp_ratio = median_paired_ratio(route_samples[best_index], gmp_samples, XRAY_BENCH_SAMPLES);
+  double current_gmp_ratio = median_paired_ratio(route_samples[0], gmp_samples, XRAY_BENCH_SAMPLES);
+  size_t stable_sample_count = best_index == 0 ?
+    XRAY_BENCH_SAMPLES :
+    paired_ratio_wins(route_samples[best_index], route_samples[0], XRAY_BENCH_SAMPLES, 0.98);
+  double worst_pair_ratio = best_index == 0 ?
+    1.0 :
+    max_paired_ratio(route_samples[best_index], route_samples[0], XRAY_BENCH_SAMPLES);
+
+  append_format_route_tournament_result(
+    report,
+    digits,
+    routes[best_index].name,
+    routes[0].name,
+    route_list,
+    route_count,
+    parity && ok,
+    hash_gate && hash_match_count == XRAY_BENCH_SAMPLES && result_hash != 0ULL,
+    hash_match_count,
+    median_samples(route_samples[best_index], XRAY_BENCH_SAMPLES),
+    median_samples(route_samples[0], XRAY_BENCH_SAMPLES),
+    median_samples(gmp_samples, XRAY_BENCH_SAMPLES),
+    winner_current_ratio,
+    winner_gmp_ratio,
+    current_gmp_ratio,
+    stable_sample_count,
+    XRAY_BENCH_SAMPLES,
+    worst_pair_ratio);
+
+  mpz_clear(gmp);
+  xray_bigint_clear(&scratch);
+  free(text);
 }
 
 static void run_format_variant_pair_probe_case(
@@ -8090,6 +8328,11 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
       1000,
       0,
       format_policy_divide_1e19_preinv_pairs);
+  }
+
+  const size_t format_route_tournament_digits[] = {768, 896, 1000, 4096, 8192};
+  for (size_t digit_index = 0; digit_index < sizeof(format_route_tournament_digits) / sizeof(format_route_tournament_digits[0]); ++digit_index) {
+    run_format_route_tournament_case(report, format_route_tournament_digits[digit_index]);
   }
 
   run_format_policy_safety_case(
