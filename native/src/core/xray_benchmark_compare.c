@@ -118,6 +118,12 @@ static int compare_contains(const char *text, const char *token) {
   return text && token && strstr(text, token) != NULL;
 }
 
+static int compare_starts_with(const char *text, const char *prefix) {
+  if (!text || !prefix) return 0;
+  size_t prefix_length = strlen(prefix);
+  return strncmp(text, prefix, prefix_length) == 0;
+}
+
 static int parse_bool_field(const char *text) {
   return compare_streq(text, "true") || compare_streq(text, "1") || compare_streq(text, "yes");
 }
@@ -472,6 +478,24 @@ static int compare_row_is_control(const CompareRow *row) {
     compare_contains(row->adoption, "duplicate-control");
 }
 
+static int compare_row_is_baseline_subject(const CompareRow *row) {
+  if (!row) return 0;
+  char value[128];
+  if (detail_value(row->detail, "policy", value, sizeof(value)) &&
+      compare_streq(value, "current-default")) {
+    return 1;
+  }
+  if (detail_value(row->detail, "candidate", value, sizeof(value)) &&
+      (compare_streq(value, "default") ||
+       compare_streq(value, "release") ||
+       compare_streq(value, "baseline") ||
+       compare_streq(value, "gmp") ||
+       compare_starts_with(value, "current-scratch-"))) {
+    return 1;
+  }
+  return compare_contains(row->name, "current-default");
+}
+
 static int compare_row_has_progress_signal(const CompareRow *row) {
   return row && row->speed_ratio > 0.0 &&
     (row->parity_verified ||
@@ -540,15 +564,18 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
 
   ComparePair completed[12] = {0};
   ComparePair open_rows[12] = {0};
+  ComparePair baselines[8] = {0};
   ComparePair controls[8] = {0};
   ComparePair rejected[8] = {0};
   size_t completed_count = 0;
   size_t open_count = 0;
+  size_t baseline_count = 0;
   size_t control_count = 0;
   size_t rejected_count = 0;
-  size_t product_candidates_total = 0;
+  size_t route_candidates_total = 0;
   size_t completed_total = 0;
   size_t open_total = 0;
+  size_t baselines_total = 0;
   size_t controls_total = 0;
   size_t noisy_controls_total = 0;
   size_t rejected_total = 0;
@@ -557,10 +584,21 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
     const CompareRow *row = &set.rows[index];
     if (!compare_row_has_progress_signal(row)) continue;
     int control = compare_row_is_control(row);
+    int baseline = compare_row_is_baseline_subject(row);
     int noisy_control = compare_row_is_noisy_control(row);
     int safety_rejected = compare_row_is_safety_rejected(row);
     int ready = compare_row_is_promotion_ready(row);
-    if (!control) product_candidates_total++;
+    if (!control && !baseline) route_candidates_total++;
+    if (baseline) {
+      baselines_total++;
+      insert_progress_row(
+        baselines,
+        &baseline_count,
+        sizeof(baselines) / sizeof(baselines[0]),
+        row,
+        progress_open_score(row),
+        1);
+    }
     if (control) {
       controls_total++;
       insert_progress_row(
@@ -572,7 +610,7 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
         1);
     }
     if (noisy_control) noisy_controls_total++;
-    if (safety_rejected) {
+    if (safety_rejected && !control && !baseline) {
       rejected_total++;
       insert_progress_row(
         rejected,
@@ -582,7 +620,7 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
         progress_open_score(row),
         1);
     }
-    if (ready && !control && !noisy_control && !safety_rejected) {
+    if (ready && !control && !baseline && !noisy_control && !safety_rejected) {
       completed_total++;
       insert_progress_row(
         completed,
@@ -591,7 +629,7 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
         row,
         row->speed_ratio > 0.0 ? 1.0 / row->speed_ratio : 0.0,
         1);
-    } else {
+    } else if (!control && !baseline) {
       open_total++;
       insert_progress_row(
         open_rows,
@@ -605,21 +643,22 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
 
   cb_printf(&buffer, "Artifact: %s\n", set.fingerprint);
   cb_printf(&buffer,
-    "Rows: total=%zu productCandidates=%zu completed=%zu open=%zu controlsExcluded=%zu noisyControls=%zu safetyRejected=%zu\n\n",
+    "Rows: total=%zu routeCandidates=%zu routeCompleted=%zu routeOpen=%zu baselineExcluded=%zu controlsExcluded=%zu noisyControls=%zu safetyRejected=%zu\n\n",
     set.count,
-    product_candidates_total,
+    route_candidates_total,
     completed_total,
     open_total,
+    baselines_total,
     controls_total,
     noisy_controls_total,
     rejected_total);
 
-  cb_append(&buffer, "Product/backend candidate digit levels observed (completed):\n");
+  cb_append(&buffer, "Product/backend route candidate rows observed (completed):\n");
   if (!completed_count) cb_append(&buffer, "  none\n");
   for (size_t index = 0; index < completed_count; ++index) append_progress_line(&buffer, completed[index].left, "completed");
   if (completed_total > completed_count) cb_printf(&buffer, "  ... %zu more completed rows\n", completed_total - completed_count);
 
-  cb_append(&buffer, "\nOpen/noisy rows observed:\n");
+  cb_append(&buffer, "\nOpen/noisy route rows observed:\n");
   if (!open_count) cb_append(&buffer, "  none\n");
   for (size_t index = 0; index < open_count; ++index) append_progress_line(&buffer, open_rows[index].left, "open");
   if (open_total > open_count) cb_printf(&buffer, "  ... %zu more open rows\n", open_total - open_count);
@@ -629,13 +668,18 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
   for (size_t index = 0; index < rejected_count; ++index) append_progress_line(&buffer, rejected[index].left, "rejected");
   if (rejected_total > rejected_count) cb_printf(&buffer, "  ... %zu more rejected rows\n", rejected_total - rejected_count);
 
+  cb_append(&buffer, "\nBaseline/current rows observed (excluded from route candidate totals):\n");
+  if (!baseline_count) cb_append(&buffer, "  none\n");
+  for (size_t index = 0; index < baseline_count; ++index) append_progress_line(&buffer, baselines[index].left, "baseline");
+  if (baselines_total > baseline_count) cb_printf(&buffer, "  ... %zu more baseline rows\n", baselines_total - baseline_count);
+
   cb_append(&buffer, "\nControl/noise rows observed (excluded from completed candidate totals):\n");
   if (!control_count) cb_append(&buffer, "  none\n");
   for (size_t index = 0; index < control_count; ++index) append_progress_line(&buffer, controls[index].left, "control");
   if (controls_total > control_count) cb_printf(&buffer, "  ... %zu more control rows\n", controls_total - control_count);
 
   cb_append(&buffer,
-    "\nRule: completed progress excludes duplicate-control and noisy-control rows. Median wins still stay open when worst-pair, control, or safety labels reject them.\n");
+    "\nRule: route-completed progress excludes baseline/current, duplicate-control, and noisy-control rows. Median wins still stay open when worst-pair, control, baseline, or safety labels reject them.\n");
 
   compare_set_clear(&set);
   return cb_take(&buffer);

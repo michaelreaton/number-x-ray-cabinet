@@ -37,11 +37,12 @@ artifacts. Number X-Ray now mirrors that measurement hygiene with
 saved `benchmark_progress.txt` artifact in each benchmark run folder.
 
 The digest is deliberately a reporting guardrail, not a route change. It
-separates completed product/backend candidates from open/noisy rows, safety
-rejections, and controls. Rows labeled `duplicateControl=` or
-`controlSafety=noisy-control` are excluded from completed candidate totals, so
-a favorable median in a control row cannot be misreported as production
-progress.
+separates completed product/backend route candidates from open/noisy route rows,
+safety rejections, baseline/current rows, and controls. Rows labeled
+`duplicateControl=`, `controlSafety=noisy-control`, `policy=current-default`, or
+`candidate=current-scratch-*` are excluded from route-completed totals, so a
+favorable median in a control or current-default row cannot be misreported as
+production progress.
 
 ## 2026-06-16: Formatter Window Promotion Rejected
 
