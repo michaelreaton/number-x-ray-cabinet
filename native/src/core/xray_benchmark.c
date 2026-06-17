@@ -1400,7 +1400,7 @@ static void append_frontier_scout_result(
   result.passed = parity;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=frontier-scout operation=%s digits=%zu estimatedBits=%zu samples=%zu warmupPasses=%u iterations=%u stablePairs=%zu/%zu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median duplicateControl=default controlPlacement=tail controlSafety=%s controlRatio=%.3f controlWorst=%.3f controlStable=%zu/%zu baseline=mpz_mul oracle=mpz_mul featureGate=very-large-frontier-scout gmpClue=mfastfermat-frontier8m16m+steady-warmup mfastKnob=ntt16_wide61_difdit_32000 noAutoRoute=1 adoption=%s",
+    "op=frontier-scout operation=%s digits=%zu estimatedBits=%zu samples=%zu warmupPasses=%u iterations=%u stablePairs=%zu/%zu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median duplicateControl=default controlPlacement=tail controlSafety=%s controlRatio=%.3f controlWorst=%.3f controlStable=%zu/%zu noAutoRoute=1 adoption=%s baseline=mpz_mul oracle=mpz_mul featureGate=very-large-frontier-scout gmpClue=mfast8m-difdit24-complete mfastKnob=difdit24k mfastPG=1.612 mfastCW=1.078",
     operation,
     digits,
     benchmark_estimated_bits_from_decimal_digits(digits),
