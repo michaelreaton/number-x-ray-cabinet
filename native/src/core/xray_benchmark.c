@@ -1374,7 +1374,10 @@ static void append_frontier_scout_result(
   double paired_ratio,
   size_t stable_sample_count,
   size_t sample_count,
-  double worst_pair_ratio) {
+  double worst_pair_ratio,
+  double control_ratio,
+  double control_worst_ratio,
+  size_t control_stable_count) {
   XrayBenchmarkResult result;
   memset(&result, 0, sizeof(result));
   snprintf(result.name, sizeof(result.name), "frontier scout %s %zu digits", operation, digits);
@@ -1395,7 +1398,7 @@ static void append_frontier_scout_result(
   result.passed = parity;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=frontier-scout operation=%s digits=%zu estimatedBits=%zu operandFamilies=1 samples=%zu warmupPasses=%u iterations=%u stablePairs=%zu/%zu scratchUs=%llu gmpUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median candidate=current-scratch-%s baseline=mpz_mul oracle=mpz_mul featureGate=very-large-frontier-scout gmpClue=mfastfermat-frontier8m16m+steady-warmup noAutoRoute=1 adoption=%s",
+    "op=frontier-scout operation=%s digits=%zu estimatedBits=%zu operandFamilies=1 samples=%zu warmupPasses=%u iterations=%u stablePairs=%zu/%zu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median duplicateControl=default controlRatio=%.3f controlWorst=%.3f controlStable=%zu/%zu baseline=mpz_mul oracle=mpz_mul featureGate=very-large-frontier-scout gmpClue=mfastfermat-frontier8m16m+steady-warmup+difdit32 mfastKnob=ntt16_wide61_difdit_32000 noAutoRoute=1 adoption=%s",
     operation,
     digits,
     benchmark_estimated_bits_from_decimal_digits(digits),
@@ -1404,11 +1407,12 @@ static void append_frontier_scout_result(
     iterations,
     stable_sample_count,
     sample_count,
-    result.scratch_us,
-    result.gmp_us,
     result.speed_ratio,
     result.worst_pair_ratio,
-    operation,
+    control_ratio,
+    control_worst_ratio,
+    control_stable_count,
+    sample_count,
     result.adoption);
   append_result(report, &result);
 }
@@ -1438,6 +1442,7 @@ static void run_frontier_scout_case(XrayBenchmarkReport *report, const char *ope
 
   unsigned long long scratch_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
   unsigned long long gmp_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long control_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
   for (unsigned int pass = 0; ok && pass < warmup_passes; ++pass) {
     if (strcmp(operation, "mul") == 0) {
       ok = xray_bigint_mul(&out, &left, &right);
@@ -1462,6 +1467,13 @@ static void run_frontier_scout_case(XrayBenchmarkReport *report, const char *ope
       else mpz_mul(gout, gleft, gleft);
     }
     gmp_samples[sample] = xray_now_us() - gmp_started;
+
+    unsigned long long control_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      if (strcmp(operation, "mul") == 0) ok = xray_bigint_mul(&out, &left, &right);
+      else ok = xray_bigint_square(&out, &left);
+    }
+    control_samples[sample] = xray_now_us() - control_started;
   }
 
   int parity = ok && scratch_value_matches_mpz(&out, gout);
@@ -1477,7 +1489,10 @@ static void run_frontier_scout_case(XrayBenchmarkReport *report, const char *ope
     median_paired_ratio(scratch_samples, gmp_samples, sample_count),
     paired_ratio_wins(scratch_samples, gmp_samples, sample_count, 1.0),
     sample_count,
-    max_paired_ratio(scratch_samples, gmp_samples, sample_count));
+    max_paired_ratio(scratch_samples, gmp_samples, sample_count),
+    median_paired_ratio(scratch_samples, control_samples, sample_count),
+    max_paired_ratio(scratch_samples, control_samples, sample_count),
+    paired_ratio_wins(scratch_samples, control_samples, sample_count, 1.0));
 
   mpz_clears(gleft, gright, gout, NULL);
   xray_bigint_clear(&left);
