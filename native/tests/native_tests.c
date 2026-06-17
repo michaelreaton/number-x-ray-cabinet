@@ -183,6 +183,8 @@ static void test_runtime_version_contract(void) {
   CHECK(strstr(route_json, "\"karatsubaThresholdLimbs\":") != NULL);
   CHECK(strstr(route_json, "\"decimalHornerMinLimbs\":") != NULL);
   CHECK(strstr(route_json, "\"decimalWideChunkDigits\":19") != NULL);
+  CHECK(strstr(route_json, "\"decimalPreinvPairMinEstimatedDigits\":1001") != NULL);
+  CHECK(strstr(route_json, "\"decimalPreinvPairMaxEstimatedDigits\":1001") != NULL);
   CHECK(strstr(route_json, "\"decimalDcMinWideChunks\":") != NULL);
   CHECK(strstr(route_json, "\"parseChunkDigits\":19") != NULL);
   CHECK(strstr(route_json, "\"parseLargeMinDigits\":2048") != NULL);
@@ -190,6 +192,7 @@ static void test_runtime_version_contract(void) {
   CHECK(strstr(route_json, "\"sparseSquareMinLimbs\":") != NULL);
   CHECK(strstr(route_json, "\"sparseMulMinProducts\":") != NULL);
   CHECK(strstr(route_json, "\"productionRoutes\"") != NULL);
+  CHECK(strstr(route_json, "\"decimal-preinv1e19-pair-window\"") != NULL);
   CHECK(strstr(route_json, "\"decimal-dc-ladder\"") != NULL);
   CHECK(strstr(route_json, "D&C ladder at >=4096 digits") != NULL);
   CHECK(strstr(route_json, "\"decimal-dc-preinv-qhat\"") != NULL);
@@ -639,6 +642,9 @@ static void test_scratch_bigint_oracle(void) {
     CHECK(strcmp(roundtrip_divide_1e19_pairs, roundtrip_oracle) == 0);
     CHECK(strcmp(roundtrip_divide_1e19_preinv, roundtrip_oracle) == 0);
     CHECK(strcmp(roundtrip_divide_1e19_preinv_pairs, roundtrip_oracle) == 0);
+    if (format_roundtrip_sizes[index] == 1000U) {
+      CHECK(strcmp(roundtrip_text, roundtrip_divide_1e19_preinv_pairs) == 0);
+    }
     CHECK(strcmp(roundtrip_dc8, roundtrip_oracle) == 0);
     CHECK(strcmp(roundtrip_dc32, roundtrip_oracle) == 0);
     CHECK(strcmp(roundtrip_dc_ladder8, roundtrip_oracle) == 0);
@@ -3119,10 +3125,10 @@ static void test_benchmarks(void) {
           } else {
             CHECK(strstr(report->results[index].detail, "activeCandidate=decimal-dc-direct-preinv-qhat") != NULL);
           }
-        } else if (strstr(report->results[index].detail, "policy=preinv10e19-window768-1000") != NULL) {
+        } else if (strstr(report->results[index].detail, "policy=preinv10e19-window768-1001") != NULL) {
           saw_format_policy_preinv10e19_window = 1;
           CHECK(strstr(report->results[index].detail, "minDigits=768") != NULL);
-          CHECK(strstr(report->results[index].detail, "maxDigits=1000") != NULL);
+          CHECK(strstr(report->results[index].detail, "maxDigits=1001") != NULL);
           CHECK(strstr(report->results[index].detail, "leafThreshold=0") != NULL);
           CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv") != NULL);
           CHECK(strstr(report->results[index].detail, "featureGate=decimal-format-policy-divide-1e19-preinv") != NULL);
@@ -3136,10 +3142,10 @@ static void test_benchmarks(void) {
           } else {
             CHECK(strstr(report->results[index].detail, "activeCandidate=current-scratch-format") != NULL);
           }
-        } else if (strstr(report->results[index].detail, "policy=preinv10e19-pairs-window768-1000") != NULL) {
+        } else if (strstr(report->results[index].detail, "policy=preinv10e19-pairs-window768-1001") != NULL) {
           saw_format_policy_preinv10e19_pairs_window = 1;
           CHECK(strstr(report->results[index].detail, "minDigits=768") != NULL);
-          CHECK(strstr(report->results[index].detail, "maxDigits=1000") != NULL);
+          CHECK(strstr(report->results[index].detail, "maxDigits=1001") != NULL);
           CHECK(strstr(report->results[index].detail, "leafThreshold=0") != NULL);
           CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv-pair-writer") != NULL);
           CHECK(strstr(report->results[index].detail, "featureGate=decimal-format-policy-divide-1e19-preinv-pairs") != NULL);
@@ -3408,13 +3414,13 @@ static void test_benchmarks(void) {
           CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
           CHECK(strcmp(report->results[index].status, "policy-ready") != 0);
         }
-        if (strstr(report->results[index].detail, "policy=deep-preinv10e19-window768-1000") != NULL) {
+        if (strstr(report->results[index].detail, "policy=deep-preinv10e19-window768-1001") != NULL) {
           saw_format_policy_deep_gate_preinv10e19_window768_1000 = 1;
           CHECK(is_deep_format_gate);
           CHECK(strstr(report->results[index].detail, "neighbor=768") != NULL);
-          CHECK(strstr(report->results[index].detail, "gate=1000") != NULL);
+          CHECK(strstr(report->results[index].detail, "gate=1001") != NULL);
           CHECK(strstr(report->results[index].detail, "min=768") != NULL);
-          CHECK(strstr(report->results[index].detail, "max=1000") != NULL);
+          CHECK(strstr(report->results[index].detail, "max=1001") != NULL);
           CHECK(strstr(report->results[index].detail, "leaf=0") != NULL);
           CHECK(strstr(report->results[index].detail, "neighborStable=") != NULL);
           CHECK(strstr(report->results[index].detail, "/9") != NULL);
@@ -3549,22 +3555,22 @@ static void test_benchmarks(void) {
           CHECK(strstr(report->results[index].detail, "min=16384") != NULL);
           CHECK(strstr(report->results[index].detail, "leaf=16") != NULL);
           CHECK(strstr(report->results[index].detail, "candidate=decimal-dc-direct-preinv-qhat") != NULL);
-        } else if (strstr(report->results[index].detail, "policy=preinv10e19-window768-1000") != NULL) {
+        } else if (strstr(report->results[index].detail, "policy=preinv10e19-window768-1001") != NULL) {
           CHECK(!is_deep_format_gate);
           saw_format_policy_gate_preinv10e19_window = 1;
           CHECK(strstr(report->results[index].detail, "neighbor=768") != NULL);
-          CHECK(strstr(report->results[index].detail, "gate=1000") != NULL);
+          CHECK(strstr(report->results[index].detail, "gate=1001") != NULL);
           CHECK(strstr(report->results[index].detail, "min=768") != NULL);
-          CHECK(strstr(report->results[index].detail, "max=1000") != NULL);
+          CHECK(strstr(report->results[index].detail, "max=1001") != NULL);
           CHECK(strstr(report->results[index].detail, "leaf=0") != NULL);
           CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv") != NULL);
-        } else if (strstr(report->results[index].detail, "policy=preinv10e19-pairs-window768-1000") != NULL) {
+        } else if (strstr(report->results[index].detail, "policy=preinv10e19-pairs-window768-1001") != NULL) {
           CHECK(!is_deep_format_gate);
           saw_format_policy_gate_preinv10e19_pairs_window = 1;
           CHECK(strstr(report->results[index].detail, "neighbor=768") != NULL);
-          CHECK(strstr(report->results[index].detail, "gate=1000") != NULL);
+          CHECK(strstr(report->results[index].detail, "gate=1001") != NULL);
           CHECK(strstr(report->results[index].detail, "min=768") != NULL);
-          CHECK(strstr(report->results[index].detail, "max=1000") != NULL);
+          CHECK(strstr(report->results[index].detail, "max=1001") != NULL);
           CHECK(strstr(report->results[index].detail, "leaf=0") != NULL);
           CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv-pair-writer") != NULL);
         } else if (strstr(report->results[index].detail, "policy=preinv10e19-window768-896") != NULL) {
@@ -3626,10 +3632,10 @@ static void test_benchmarks(void) {
         }
       } else if (strcmp(report->results[index].operation, "format-policy-route-audit") == 0) {
         saw_format_policy_route_audit = 1;
-        CHECK(report->results[index].sample_count == 4);
+        CHECK(report->results[index].sample_count == 5);
         CHECK(strstr(report->results[index].detail, "op=format-policy-route-audit") != NULL);
-        CHECK(strstr(report->results[index].detail, "sizes=768,896,960,1000") != NULL);
-        CHECK(strstr(report->results[index].detail, "sizeCount=4") != NULL);
+        CHECK(strstr(report->results[index].detail, "sizes=768,896,960,1000,1001") != NULL);
+        CHECK(strstr(report->results[index].detail, "sizeCount=5") != NULL);
         CHECK(strstr(report->results[index].detail, "samples=9") != NULL);
         CHECK(strstr(report->results[index].detail, "requiredStablePairs=8/9") != NULL);
         CHECK(strstr(report->results[index].detail, "safeSizes=") != NULL);
@@ -3651,10 +3657,10 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "sameRunTournament=yes") != NULL);
         CHECK(strstr(report->results[index].detail, "featureGate=decimal-format-window-promotion-audit") != NULL);
         CHECK(strstr(report->results[index].detail, "gmpClue=mfast-factor64pre-precompute") != NULL);
-        if (strstr(report->results[index].detail, "policy=audit-preinv10e19-window768-1000") != NULL) {
+        if (strstr(report->results[index].detail, "policy=audit-preinv10e19-window768-1001") != NULL) {
           saw_format_policy_route_audit_preinv10e19 = 1;
           CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv") != NULL);
-        } else if (strstr(report->results[index].detail, "policy=audit-preinv10e19-pairs-window768-1000") != NULL) {
+        } else if (strstr(report->results[index].detail, "policy=audit-preinv10e19-pairs-window768-1001") != NULL) {
           saw_format_policy_route_audit_preinv10e19_pairs = 1;
           CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv-pair-writer") != NULL);
         } else {
@@ -4130,7 +4136,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "deepConfirmation=not-required") != NULL);
   CHECK(strstr(json, "format-policy-route-audit") != NULL);
   CHECK(strstr(json, "decimal-format-window-promotion-audit") != NULL);
-  CHECK(strstr(json, "audit-preinv10e19-pairs-window768-1000") != NULL);
+  CHECK(strstr(json, "audit-preinv10e19-pairs-window768-1001") != NULL);
   CHECK(strstr(json, "candCurrentMax=") != NULL);
   CHECK(strstr(json, "\"avx\"") != NULL);
   CHECK(strstr(json, "\"avx2\"") != NULL);
@@ -4220,9 +4226,9 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "preinv-ge4096-leaf8") != NULL);
   CHECK(strstr(json, "preinv-ge8192-leaf16") != NULL);
   CHECK(strstr(json, "preinv-ge16384-leaf16") != NULL);
-  CHECK(strstr(json, "preinv10e19-window768-1000") != NULL);
-  CHECK(strstr(json, "preinv10e19-pairs-window768-1000") != NULL);
-  CHECK(strstr(json, "deep-preinv10e19-window768-1000") != NULL);
+  CHECK(strstr(json, "preinv10e19-window768-1001") != NULL);
+  CHECK(strstr(json, "preinv10e19-pairs-window768-1001") != NULL);
+  CHECK(strstr(json, "deep-preinv10e19-window768-1001") != NULL);
   CHECK(strstr(json, "deep-preinv10e19-window768-896") != NULL);
   CHECK(strstr(json, "deep-preinv10e19-window768-960") != NULL);
   CHECK(strstr(json, "deep-preinv10e19-window896-1000") != NULL);
@@ -4297,7 +4303,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "deepConfirmation=not-required") != NULL);
   CHECK(strstr(tsv, "format-policy-route-audit") != NULL);
   CHECK(strstr(tsv, "decimal-format-window-promotion-audit") != NULL);
-  CHECK(strstr(tsv, "audit-preinv10e19-pairs-window768-1000") != NULL);
+  CHECK(strstr(tsv, "audit-preinv10e19-pairs-window768-1001") != NULL);
   CHECK(strstr(tsv, "candCurrentMax=") != NULL);
   CHECK(strstr(tsv, "format-route-tournament-detail") != NULL);
   CHECK(strstr(tsv, "controlSafety=tournament-detail") != NULL);
@@ -4363,8 +4369,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "preinv-ge4096-leaf8") != NULL);
   CHECK(strstr(tsv, "preinv-ge8192-leaf16") != NULL);
   CHECK(strstr(tsv, "preinv-ge16384-leaf16") != NULL);
-  CHECK(strstr(tsv, "preinv10e19-window768-1000") != NULL);
-  CHECK(strstr(tsv, "preinv10e19-pairs-window768-1000") != NULL);
+  CHECK(strstr(tsv, "preinv10e19-window768-1001") != NULL);
+  CHECK(strstr(tsv, "preinv10e19-pairs-window768-1001") != NULL);
   CHECK(strstr(tsv, "square-leaf-order") != NULL);
   CHECK(strstr(tsv, "fused-diagonal-cross-leaf") != NULL);
   CHECK(strstr(tsv, "decimal-format-policy-workspace") != NULL);
@@ -4500,7 +4506,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "deepConfirmation=not-required") != NULL);
   CHECK(strstr(benchmark_tsv, "format-policy-route-audit") != NULL);
   CHECK(strstr(benchmark_tsv, "decimal-format-window-promotion-audit") != NULL);
-  CHECK(strstr(benchmark_tsv, "audit-preinv10e19-pairs-window768-1000") != NULL);
+  CHECK(strstr(benchmark_tsv, "audit-preinv10e19-pairs-window768-1001") != NULL);
   CHECK(strstr(benchmark_tsv, "candCurrentMax=") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-toom3") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-threshold-tournament") != NULL);
@@ -4581,11 +4587,11 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "preinv-ge4096-leaf8") != NULL);
   CHECK(strstr(benchmark_tsv, "preinv-ge8192-leaf16") != NULL);
   CHECK(strstr(benchmark_tsv, "preinv-ge16384-leaf16") != NULL);
-  CHECK(strstr(benchmark_tsv, "preinv10e19-window768-1000") != NULL);
-  CHECK(strstr(benchmark_tsv, "preinv10e19-pairs-window768-1000") != NULL);
+  CHECK(strstr(benchmark_tsv, "preinv10e19-window768-1001") != NULL);
+  CHECK(strstr(benchmark_tsv, "preinv10e19-pairs-window768-1001") != NULL);
   CHECK(strstr(benchmark_tsv, "square-leaf-order") != NULL);
   CHECK(strstr(benchmark_tsv, "mfastfermat-wide61-dif-dit-bit-reversal-elision") != NULL);
-  CHECK(strstr(benchmark_tsv, "deep-preinv10e19-window768-1000") != NULL);
+  CHECK(strstr(benchmark_tsv, "deep-preinv10e19-window768-1001") != NULL);
   CHECK(strstr(benchmark_tsv, "deep-preinv10e19-window768-896") != NULL);
   CHECK(strstr(benchmark_tsv, "deep-preinv10e19-window768-960") != NULL);
   CHECK(strstr(benchmark_tsv, "deep-preinv10e19-window896-1000") != NULL);
@@ -4652,6 +4658,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "Bigint route:") != NULL);
   CHECK(strstr(benchmark_frontier, "square-self-mul<=8 limbs") != NULL);
   CHECK(strstr(benchmark_frontier, "format-pair-writer=small<=8 or horner 48..54 limbs") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-preinv1e19-pairs=est1001 digits") != NULL);
   CHECK(strstr(benchmark_frontier, "format-dc-ladder>=4096 digits leaf=8") != NULL);
   CHECK(strstr(benchmark_frontier, "FRONTIER SUMMARY") != NULL);
   CHECK(strstr(benchmark_frontier, "MEASURABLE STATUS") != NULL);
@@ -4723,8 +4730,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "format-policy preinv-ge4096-leaf8") != NULL);
   CHECK(strstr(benchmark_frontier, "format-policy preinv-ge8192-leaf16") != NULL);
   CHECK(strstr(benchmark_frontier, "format-policy preinv-ge16384-leaf16") != NULL);
-  CHECK(strstr(benchmark_frontier, "format-policy preinv10e19-window768-1000") != NULL);
-  CHECK(strstr(benchmark_frontier, "format-policy preinv10e19-pairs-window768-1000") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-policy preinv10e19-window768-1001") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-policy preinv10e19-pairs-window768-1001") != NULL);
   CHECK(strstr(benchmark_frontier, "format-route-tournament tournament") != NULL);
   CHECK(strstr(benchmark_frontier, "format-route-tournament-detail") != NULL);
   CHECK(strstr(benchmark_frontier, "format-policy-safety direct-ge4096-leaf8") != NULL);
@@ -4735,17 +4742,17 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "format-policy-safety preinv-ge4096-leaf8") != NULL);
   CHECK(strstr(benchmark_frontier, "format-policy-safety preinv-ge8192-leaf16") != NULL);
   CHECK(strstr(benchmark_frontier, "format-policy-safety preinv-ge16384-leaf16") != NULL);
-  CHECK(strstr(benchmark_frontier, "format-policy-safety preinv10e19-window768-1000") != NULL);
-  CHECK(strstr(benchmark_frontier, "format-policy-safety preinv10e19-pairs-window768-1000") != NULL);
-  CHECK(strstr(benchmark_frontier, "format-policy-deep-safety deep-preinv10e19-window768-1000") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-policy-safety preinv10e19-window768-1001") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-policy-safety preinv10e19-pairs-window768-1001") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-policy-deep-safety deep-preinv10e19-window768-1001") != NULL);
   CHECK(strstr(benchmark_frontier, "format-policy-deep-safety deep-preinv10e19-window768-896") != NULL);
   CHECK(strstr(benchmark_frontier, "format-policy-deep-safety deep-preinv10e19-window768-960") != NULL);
   CHECK(strstr(benchmark_frontier, "format-policy-deep-safety deep-preinv10e19-window896-1000") != NULL);
   CHECK(strstr(benchmark_frontier, "format-policy-deep-safety deep-preinv10e19-pairs-window768-896") != NULL);
   CHECK(strstr(benchmark_frontier, "format-policy-deep-safety deep-preinv10e19-pairs-window768-960") != NULL);
   CHECK(strstr(benchmark_frontier, "format-policy-deep-safety deep-preinv10e19-pairs-window896-1000") != NULL);
-  CHECK(strstr(benchmark_frontier, "format-policy-route-audit audit-preinv10e19-window768-1000") != NULL);
-  CHECK(strstr(benchmark_frontier, "format-policy-route-audit audit-preinv10e19-pairs-window768-1000") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-policy-route-audit audit-preinv10e19-window768-1001") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-policy-route-audit audit-preinv10e19-pairs-window768-1001") != NULL);
   CHECK(strstr(benchmark_frontier, "square-policy current-default") != NULL);
   CHECK(strstr(benchmark_frontier, "square-policy karatsuba-thr96") != NULL);
   CHECK(strstr(benchmark_frontier, "square-leaf-order") != NULL);
