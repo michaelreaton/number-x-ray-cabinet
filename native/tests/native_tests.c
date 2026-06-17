@@ -1648,6 +1648,7 @@ static void test_benchmarks(void) {
   int saw_format_policy_deep_gate_preinv10e19_pairs_window768_960 = 0;
   int saw_format_policy_deep_gate_preinv10e19_pairs_window896_1000 = 0;
   int saw_divmod_preinv_qhat_safety_gate = 0;
+  int saw_mul_policy_safety_threshold96_gate = 0;
   int saw_mul_policy_safety_toom_leaf48_gate = 0;
   int saw_mul_policy_safety_toom_rec_gate = 0;
   int saw_format_policy768_probe = 0;
@@ -1666,6 +1667,7 @@ static void test_benchmarks(void) {
   int saw_square_policy16384_probe = 0;
   int saw_mul_policy_probe = 0;
   int saw_mul_policy_current = 0;
+  int saw_mul_policy_threshold96 = 0;
   int saw_mul_policy_toom_leaf48 = 0;
   int saw_mul_policy_toom_rec = 0;
   int saw_mul_policy1000_probe = 0;
@@ -2789,6 +2791,24 @@ static void test_benchmarks(void) {
           CHECK(strstr(report->results[index].detail, "candidateAvailable=yes") != NULL);
           CHECK(strstr(report->results[index].detail, "thresholdSafety=direct-row") != NULL);
           CHECK(strstr(report->results[index].detail, "noAutoRoute=0") != NULL);
+        } else if (strstr(report->results[index].detail, "policy=threshold96-ge8192") != NULL) {
+          saw_mul_policy_threshold96 = 1;
+          CHECK(strstr(report->results[index].detail, "minDigits=8192") != NULL);
+          CHECK(strstr(report->results[index].detail, "leafThreshold=96") != NULL);
+          CHECK(strstr(report->results[index].detail, "depthLimit=0") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=karatsuba-threshold96") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidateAvailable=yes") != NULL);
+          CHECK(strstr(report->results[index].detail, "featureGate=mul-policy-threshold96-ge8192") != NULL);
+          CHECK(strstr(report->results[index].detail, "gmpClue=mpn_mul-threshold-table+root-size-gate") != NULL);
+          CHECK(strstr(report->results[index].detail, "thresholdSafety=requires-forced-neighbor") != NULL);
+          CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+          CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+          CHECK(!report->results[index].replacement_ready);
+          if (report->results[index].digits < 8192) {
+            CHECK(strstr(report->results[index].detail, "activeCandidate=current-scratch-mul") != NULL);
+          } else {
+            CHECK(strstr(report->results[index].detail, "activeCandidate=karatsuba-threshold96") != NULL);
+          }
         } else if (strstr(report->results[index].detail, "policy=toom3-u4-ge8192-leaf48") != NULL) {
           saw_mul_policy_toom_leaf48 = 1;
           CHECK(strstr(report->results[index].detail, "minDigits=8192") != NULL);
@@ -3138,12 +3158,18 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "oracle=mpz_mul") != NULL);
         CHECK(strstr(report->results[index].detail, "safeSizes=") != NULL);
         CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
-#if defined(_MSC_VER) && defined(_M_X64)
-        CHECK(strstr(report->results[index].detail, "candidateAvailable=yes") != NULL);
-#else
-        CHECK(strstr(report->results[index].detail, "candidateAvailable=no") != NULL);
-#endif
-        if (strstr(report->results[index].detail, "policy=toom3-u4-ge8192-leaf48") != NULL) {
+        if (strstr(report->results[index].detail, "policy=threshold96-ge8192") != NULL) {
+          saw_mul_policy_safety_threshold96_gate = 1;
+          CHECK(report->results[index].sample_count == 3);
+          CHECK(strstr(report->results[index].detail, "sizes=4096,8192,16384") != NULL);
+          CHECK(strstr(report->results[index].detail, "minDigits=8192") != NULL);
+          CHECK(strstr(report->results[index].detail, "leafThreshold=96") != NULL);
+          CHECK(strstr(report->results[index].detail, "depthLimit=0") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=karatsuba-threshold96") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidateAvailable=yes") != NULL);
+          CHECK(strstr(report->results[index].detail, "featureGate=mul-policy-threshold96-ge8192") != NULL);
+          CHECK(strstr(report->results[index].detail, "gmpClue=mpn_mul-threshold-table+root-size-gate") != NULL);
+        } else if (strstr(report->results[index].detail, "policy=toom3-u4-ge8192-leaf48") != NULL) {
           saw_mul_policy_safety_toom_leaf48_gate = 1;
           CHECK(report->results[index].sample_count == 3);
           CHECK(strstr(report->results[index].detail, "sizes=4096,8192,16384") != NULL);
@@ -3151,6 +3177,11 @@ static void test_benchmarks(void) {
           CHECK(strstr(report->results[index].detail, "leafThreshold=48") != NULL);
           CHECK(strstr(report->results[index].detail, "depthLimit=1") != NULL);
           CHECK(strstr(report->results[index].detail, "candidate=one-level-toom3+unroll4-leaf") != NULL);
+#if defined(_MSC_VER) && defined(_M_X64)
+          CHECK(strstr(report->results[index].detail, "candidateAvailable=yes") != NULL);
+#else
+          CHECK(strstr(report->results[index].detail, "candidateAvailable=no") != NULL);
+#endif
           CHECK(strstr(report->results[index].detail, "featureGate=mul-policy-toom3-u4-ge8192-leaf48") != NULL);
           CHECK(strstr(report->results[index].detail, "gmpClue=toom33-leaf-schedule") != NULL);
         } else if (strstr(report->results[index].detail, "policy=toom3-u4-rec-ge16384-leaf64-depth2") != NULL) {
@@ -3161,6 +3192,11 @@ static void test_benchmarks(void) {
           CHECK(strstr(report->results[index].detail, "leafThreshold=64") != NULL);
           CHECK(strstr(report->results[index].detail, "depthLimit=2") != NULL);
           CHECK(strstr(report->results[index].detail, "candidate=recursive-toom3+unroll4") != NULL);
+#if defined(_MSC_VER) && defined(_M_X64)
+          CHECK(strstr(report->results[index].detail, "candidateAvailable=yes") != NULL);
+#else
+          CHECK(strstr(report->results[index].detail, "candidateAvailable=no") != NULL);
+#endif
           CHECK(strstr(report->results[index].detail, "featureGate=mul-policy-toom3-u4-rec-ge16384-leaf64-depth2") != NULL);
           CHECK(strstr(report->results[index].detail, "gmpClue=toom33-recursive") != NULL);
         } else {
@@ -3339,6 +3375,7 @@ static void test_benchmarks(void) {
   CHECK(saw_format_policy_deep_gate_preinv10e19_pairs_window768_960);
   CHECK(saw_format_policy_deep_gate_preinv10e19_pairs_window896_1000);
   CHECK(saw_divmod_preinv_qhat_safety_gate);
+  CHECK(saw_mul_policy_safety_threshold96_gate);
   CHECK(saw_mul_policy_safety_toom_leaf48_gate);
   CHECK(saw_mul_policy_safety_toom_rec_gate);
   CHECK(saw_format_policy768_probe);
@@ -3357,6 +3394,7 @@ static void test_benchmarks(void) {
   CHECK(saw_square_policy16384_probe);
   CHECK(saw_mul_policy_probe);
   CHECK(saw_mul_policy_current);
+  CHECK(saw_mul_policy_threshold96);
   CHECK(saw_mul_policy_toom_leaf48);
   CHECK(saw_mul_policy_toom_rec);
   CHECK(saw_mul_policy1000_probe);
@@ -3599,6 +3637,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "karatsuba-thr96") != NULL);
   CHECK(strstr(json, "mul-policy") != NULL);
   CHECK(strstr(json, "mul-policy-safety") != NULL);
+  CHECK(strstr(json, "threshold96-ge8192") != NULL);
+  CHECK(strstr(json, "karatsuba-threshold96") != NULL);
   CHECK(strstr(json, "toom3-u4-ge8192-leaf48") != NULL);
   CHECK(strstr(json, "toom3-u4-rec-ge16384-leaf64-depth2") != NULL);
   CHECK(strstr(json, "\"operation\":\"square\"") != NULL);
@@ -3693,6 +3733,9 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "karatsuba-thr96") != NULL);
   CHECK(strstr(tsv, "mul-policy") != NULL);
   CHECK(strstr(tsv, "mul-policy-safety") != NULL);
+  CHECK(strstr(tsv, "threshold96-ge8192") != NULL);
+  CHECK(strstr(tsv, "karatsuba-threshold96") != NULL);
+  CHECK(strstr(tsv, "mul-policy-threshold96-ge8192") != NULL);
   CHECK(strstr(tsv, "mul-threshold-tournament") != NULL);
   CHECK(strstr(tsv, "root-size-threshold-tournament") != NULL);
   CHECK(strstr(tsv, "candidateThresholds=32,48,64,80,96,128,160") != NULL);
@@ -3859,6 +3902,9 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "karatsuba-thr96") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-policy") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-policy-safety") != NULL);
+  CHECK(strstr(benchmark_tsv, "threshold96-ge8192") != NULL);
+  CHECK(strstr(benchmark_tsv, "karatsuba-threshold96") != NULL);
+  CHECK(strstr(benchmark_tsv, "mul-policy-threshold96-ge8192") != NULL);
   CHECK(strstr(benchmark_tsv, "toom3-u4-ge8192-leaf48") != NULL);
   CHECK(strstr(benchmark_tsv, "toom3-u4-rec-ge16384-leaf64-depth2") != NULL);
   CHECK(strstr(benchmark_tsv, "square") != NULL);
@@ -3974,8 +4020,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "square-leaf-order") != NULL);
   CHECK(strstr(benchmark_frontier, "base=current-scratch-square") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-policy current-default") != NULL);
+  CHECK(strstr(benchmark_frontier, "mul-policy threshold96-ge8192") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-policy toom3-u4-ge8192-leaf48") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-policy toom3-u4-rec-ge16384-leaf64-depth2") != NULL);
+  CHECK(strstr(benchmark_frontier, "mul-policy-safety threshold96-ge8192") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-policy-safety toom3-u4-ge8192-leaf48") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-policy-safety toom3-u4-rec-ge16384-leaf64-depth2") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-karatsuba-middle") != NULL);

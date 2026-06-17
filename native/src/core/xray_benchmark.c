@@ -4839,6 +4839,19 @@ static int mul_policy_current_default(
   return xray_bigint_mul(out, left, right);
 }
 
+static int mul_policy_karatsuba_threshold(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *left,
+  const XrayScratchBigInt *right,
+  size_t digits,
+  size_t min_digits,
+  size_t leaf_threshold,
+  size_t depth_limit) {
+  (void)depth_limit;
+  if (digits < min_digits) return xray_bigint_mul(out, left, right);
+  return xray_bigint_mul_with_threshold(out, left, right, leaf_threshold);
+}
+
 static int mul_policy_toom3_unroll4(
   XrayScratchBigInt *out,
   const XrayScratchBigInt *left,
@@ -7697,6 +7710,18 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     run_mul_policy_probe_case(
       report,
       digits,
+      "threshold96-ge8192",
+      "karatsuba-threshold96",
+      "mul-policy-threshold96-ge8192",
+      "mpn_mul-threshold-table+root-size-gate",
+      8192,
+      96,
+      0,
+      1,
+      mul_policy_karatsuba_threshold);
+    run_mul_policy_probe_case(
+      report,
+      digits,
       "toom3-u4-ge8192-leaf48",
       "one-level-toom3+unroll4-leaf",
       "mul-policy-toom3-u4-ge8192-leaf48",
@@ -7719,6 +7744,20 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
       XRAY_HAS_MUL_UNROLL4_POLICY_PROBES,
       mul_policy_toom3_unroll4_recursive);
   }
+  const size_t mul_policy_threshold96_safety_digits[] = {4096, 8192, 16384};
+  run_mul_policy_safety_case(
+    report,
+    "threshold96-ge8192",
+    "karatsuba-threshold96",
+    "mul-policy-threshold96-ge8192",
+    "mpn_mul-threshold-table+root-size-gate",
+    8192,
+    96,
+    0,
+    1,
+    mul_policy_karatsuba_threshold,
+    mul_policy_threshold96_safety_digits,
+    sizeof(mul_policy_threshold96_safety_digits) / sizeof(mul_policy_threshold96_safety_digits[0]));
   const size_t mul_policy_toom_leaf48_safety_digits[] = {4096, 8192, 16384};
   run_mul_policy_safety_case(
     report,

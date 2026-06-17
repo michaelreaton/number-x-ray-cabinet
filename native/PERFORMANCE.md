@@ -29,6 +29,41 @@ parity plus a stable same-run paired win.
   benchmarks show exact parity, adjacent-size safety, and product-like build
   confirmation.
 
+## 2026-06-16: Karatsuba Threshold96 Root-Size Gate
+
+Run:
+
+- Release: `native/build-codex-gtk-autodetect2/native-test-runs/20260616-203743-c4b04caf`
+
+The threshold tournament made `96` limbs look attractive at 8192 and 16384
+digits in an isolated kernel pass, but that is exactly the kind of local win
+that can disappear under product-shaped codegen or adjacent sizes. This pass
+adds a portable `threshold96-ge8192` product-policy probe plus a forced-neighbor
+gate over 4096, 8192, and 16384 digits. The production multiply route is
+unchanged.
+
+Policy rows:
+
+- 1000 digits: active candidate is the current scratch multiply below the gate,
+  ratio `0.699`, worst `0.844`, stable `5/5`, `observe-only`.
+- 4096 digits: active candidate is the current scratch multiply below the gate,
+  ratio `0.926`, worst `1.369`, stable `3/5`, `observe-only`.
+- 8192 digits: active candidate is `karatsuba-threshold96`, ratio `1.053`,
+  worst `1.118`, stable `2/5`, `observe-only`.
+- 16384 digits: active candidate is `karatsuba-threshold96`, ratio `1.270`,
+  worst `1.506`, stable `0/5`, `observe-only`.
+
+Forced-neighbor gate:
+
+- `threshold96-ge8192`, sizes 4096/8192/16384: `neighbor-regression`,
+  `safeSizes=0/3`, max ratio `1.321`, max worst-pair ratio `2.273`,
+  `replacementReady=false`, `noAutoRoute=1`, `adoption=observe-only`.
+
+Decision: reject `threshold96-ge8192` as a production multiply route on this
+laptop. The probe stays in the benchmark/report surface as a guardrail and a
+reminder that threshold wins must be root-size gated, neighbor checked, and
+confirmed under product-like builds before adoption.
+
 ## 2026-06-16: MFastFermat-Inspired Square Leaf Order Probe
 
 Run:
