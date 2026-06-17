@@ -2005,6 +2005,8 @@ static void test_benchmarks(void) {
   int saw_format_policy_route_audit = 0;
   int saw_format_policy_route_audit_preinv10e19 = 0;
   int saw_format_policy_route_audit_preinv10e19_pairs = 0;
+  int saw_format_policy_route_audit_preinv10e19_window768_896 = 0;
+  int saw_format_policy_route_audit_preinv10e19_pairs_window768_896 = 0;
   int saw_divmod_preinv_qhat_safety_gate = 0;
   int saw_mul_policy_safety_threshold96_gate = 0;
   int saw_mul_policy_safety_toom_leaf48_gate = 0;
@@ -3632,10 +3634,12 @@ static void test_benchmarks(void) {
         }
       } else if (strcmp(report->results[index].operation, "format-policy-route-audit") == 0) {
         saw_format_policy_route_audit = 1;
-        CHECK(report->results[index].sample_count == 5);
         CHECK(strstr(report->results[index].detail, "op=format-policy-route-audit") != NULL);
-        CHECK(strstr(report->results[index].detail, "sizes=768,896,960,1000,1001") != NULL);
-        CHECK(strstr(report->results[index].detail, "sizeCount=5") != NULL);
+        int narrow_768_896 = strstr(report->results[index].detail, "policy=audit-preinv10e19-window768-896") != NULL ||
+          strstr(report->results[index].detail, "policy=audit-preinv10e19-pairs-window768-896") != NULL;
+        CHECK(report->results[index].sample_count == (narrow_768_896 ? 2U : 5U));
+        CHECK(strstr(report->results[index].detail, narrow_768_896 ? "sizes=768,896" : "sizes=768,896,960,1000,1001") != NULL);
+        CHECK(strstr(report->results[index].detail, narrow_768_896 ? "sizeCount=2" : "sizeCount=5") != NULL);
         CHECK(strstr(report->results[index].detail, "samples=9") != NULL);
         CHECK(strstr(report->results[index].detail, "requiredStablePairs=8/9") != NULL);
         CHECK(strstr(report->results[index].detail, "safeSizes=") != NULL);
@@ -3662,6 +3666,12 @@ static void test_benchmarks(void) {
           CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv") != NULL);
         } else if (strstr(report->results[index].detail, "policy=audit-preinv10e19-pairs-window768-1001") != NULL) {
           saw_format_policy_route_audit_preinv10e19_pairs = 1;
+          CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv-pair-writer") != NULL);
+        } else if (strstr(report->results[index].detail, "policy=audit-preinv10e19-window768-896") != NULL) {
+          saw_format_policy_route_audit_preinv10e19_window768_896 = 1;
+          CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv") != NULL);
+        } else if (strstr(report->results[index].detail, "policy=audit-preinv10e19-pairs-window768-896") != NULL) {
+          saw_format_policy_route_audit_preinv10e19_pairs_window768_896 = 1;
           CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv-pair-writer") != NULL);
         } else {
           CHECK(0);
@@ -3958,6 +3968,8 @@ static void test_benchmarks(void) {
   CHECK(saw_format_policy_route_audit);
   CHECK(saw_format_policy_route_audit_preinv10e19);
   CHECK(saw_format_policy_route_audit_preinv10e19_pairs);
+  CHECK(saw_format_policy_route_audit_preinv10e19_window768_896);
+  CHECK(saw_format_policy_route_audit_preinv10e19_pairs_window768_896);
   CHECK(saw_divmod_preinv_qhat_safety_gate);
   CHECK(saw_mul_policy_safety_threshold96_gate);
   CHECK(saw_mul_policy_safety_toom_leaf48_gate);
@@ -4136,6 +4148,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "deepConfirmation=not-required") != NULL);
   CHECK(strstr(json, "format-policy-route-audit") != NULL);
   CHECK(strstr(json, "decimal-format-window-promotion-audit") != NULL);
+  CHECK(strstr(json, "audit-preinv10e19-window768-896") != NULL);
+  CHECK(strstr(json, "audit-preinv10e19-pairs-window768-896") != NULL);
   CHECK(strstr(json, "audit-preinv10e19-pairs-window768-1001") != NULL);
   CHECK(strstr(json, "candCurrentMax=") != NULL);
   CHECK(strstr(json, "\"avx\"") != NULL);
@@ -4303,6 +4317,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "deepConfirmation=not-required") != NULL);
   CHECK(strstr(tsv, "format-policy-route-audit") != NULL);
   CHECK(strstr(tsv, "decimal-format-window-promotion-audit") != NULL);
+  CHECK(strstr(tsv, "audit-preinv10e19-window768-896") != NULL);
+  CHECK(strstr(tsv, "audit-preinv10e19-pairs-window768-896") != NULL);
   CHECK(strstr(tsv, "audit-preinv10e19-pairs-window768-1001") != NULL);
   CHECK(strstr(tsv, "candCurrentMax=") != NULL);
   CHECK(strstr(tsv, "format-route-tournament-detail") != NULL);
@@ -4506,6 +4522,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "deepConfirmation=not-required") != NULL);
   CHECK(strstr(benchmark_tsv, "format-policy-route-audit") != NULL);
   CHECK(strstr(benchmark_tsv, "decimal-format-window-promotion-audit") != NULL);
+  CHECK(strstr(benchmark_tsv, "audit-preinv10e19-window768-896") != NULL);
+  CHECK(strstr(benchmark_tsv, "audit-preinv10e19-pairs-window768-896") != NULL);
   CHECK(strstr(benchmark_tsv, "audit-preinv10e19-pairs-window768-1001") != NULL);
   CHECK(strstr(benchmark_tsv, "candCurrentMax=") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-toom3") != NULL);
@@ -4753,6 +4771,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "format-policy-deep-safety deep-preinv10e19-pairs-window896-1000") != NULL);
   CHECK(strstr(benchmark_frontier, "format-policy-route-audit audit-preinv10e19-window768-1001") != NULL);
   CHECK(strstr(benchmark_frontier, "format-policy-route-audit audit-preinv10e19-pairs-window768-1001") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-policy-route-audit audit-preinv10e19-window768-896") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-policy-route-audit audit-preinv10e19-pairs-window768-896") != NULL);
   CHECK(strstr(benchmark_frontier, "square-policy current-default") != NULL);
   CHECK(strstr(benchmark_frontier, "square-policy karatsuba-thr96") != NULL);
   CHECK(strstr(benchmark_frontier, "square-leaf-order") != NULL);
