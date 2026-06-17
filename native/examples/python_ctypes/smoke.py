@@ -34,6 +34,12 @@ def main(argv: List[str]) -> int:
     ok = ok and route["mulUnroll4RouteMinLimbs"] <= route["mulUnroll4RouteMaxLimbs"]
     if route["mulUnroll4RouteEnabled"]:
         ok = ok and route["msvcUint128Helpers"]
+    route_summary = library.bigint_route_summary() or {}
+    ok = ok and route_summary.get("wordBits") == 64
+    ok = ok and route_summary.get("decimalWideChunkDigits") == 19
+    ok = ok and route_summary.get("decimalDcMinWideChunks", 0) > 0
+    ok = ok and route_summary.get("sparseMulMinProducts", 0) > 0
+    ok = ok and "mpn_get_str" in str(route_summary.get("mpirGmpClue", ""))
     ok = ok and library.add_decimal("10,000_000 000,000_000 000", "1") == "10000000000000000001"
     ok = ok and library.sub_decimal("1000", "1") == "999"
     ok = ok and library.mul_decimal("12345", "6789") == "83810205"

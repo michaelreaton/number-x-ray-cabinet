@@ -158,6 +158,24 @@ static void test_runtime_version_contract(void) {
   CHECK(route.decimal_horner_min_limbs > 0);
   CHECK(route.mul_unroll4_route_min_limbs <= route.mul_unroll4_route_max_limbs);
   if (route.mul_unroll4_route_enabled) CHECK(route.msvc_uint128_helpers);
+  char *route_json = xray_bigint_route_config_json();
+  CHECK(route_json != NULL);
+  CHECK(strstr(route_json, "\"wordBits\":64") != NULL);
+  CHECK(strstr(route_json, "\"karatsubaThresholdLimbs\":") != NULL);
+  CHECK(strstr(route_json, "\"decimalHornerMinLimbs\":") != NULL);
+  CHECK(strstr(route_json, "\"decimalWideChunkDigits\":19") != NULL);
+  CHECK(strstr(route_json, "\"decimalDcMinWideChunks\":") != NULL);
+  CHECK(strstr(route_json, "\"sparseSquareMinLimbs\":") != NULL);
+  CHECK(strstr(route_json, "\"sparseMulMinProducts\":") != NULL);
+  CHECK(strstr(route_json, "\"productionRoutes\"") != NULL);
+  CHECK(strstr(route_json, "\"diagnosticProbeFamilies\"") != NULL);
+  CHECK(strstr(route_json, "mpn_get_str") != NULL);
+  if (route.mul_unroll4_route_enabled) {
+    CHECK(strstr(route_json, "\"mulUnroll4RouteEnabled\":true") != NULL);
+  } else {
+    CHECK(strstr(route_json, "\"mulUnroll4RouteEnabled\":false") != NULL);
+  }
+  xray_free(route_json);
   XrayBuildInfo build;
   xray_build_info_detect(&build);
   CHECK(build.compiler[0] != '\0');
@@ -3961,7 +3979,12 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "\"karatsubaThresholdLimbs\"") != NULL);
   CHECK(strstr(json, "\"squareTinySelfMulPolicy\"") != NULL);
   CHECK(strstr(json, "\"decimalHornerMinLimbs\"") != NULL);
+  CHECK(strstr(json, "\"decimalWideChunkDigits\"") != NULL);
+  CHECK(strstr(json, "\"decimalDcMinWideChunks\"") != NULL);
   CHECK(strstr(json, "\"decimalPairWriterPolicy\"") != NULL);
+  CHECK(strstr(json, "\"sparseMulMinProducts\"") != NULL);
+  CHECK(strstr(json, "\"productionRoutes\"") != NULL);
+  CHECK(strstr(json, "\"diagnosticProbeFamilies\"") != NULL);
   CHECK(strstr(json, "\"mulUnroll4RouteEnabled\"") != NULL);
   CHECK(strstr(json, "\"cpu\"") != NULL);
   CHECK(strstr(json, "kernel-probe") != NULL);
@@ -4311,7 +4334,13 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_json, "\"slowdown\"") != NULL);
   CHECK(strstr(benchmark_json, "\"squareTinySelfMulPolicy\"") != NULL);
   CHECK(strstr(benchmark_json, "\"mulUnroll4RouteMaxLimbs\"") != NULL);
+  CHECK(strstr(benchmark_json, "\"decimalWideChunkDigits\"") != NULL);
+  CHECK(strstr(benchmark_json, "\"decimalDcMinWideChunks\"") != NULL);
   CHECK(strstr(benchmark_json, "\"decimalPairWriterPolicy\"") != NULL);
+  CHECK(strstr(benchmark_json, "\"sparseMulMinProducts\"") != NULL);
+  CHECK(strstr(benchmark_json, "\"productionRoutes\"") != NULL);
+  CHECK(strstr(benchmark_json, "\"diagnosticProbeFamilies\"") != NULL);
+  CHECK(strstr(benchmark_json, "mpn_get_str") != NULL);
   CHECK(strstr(benchmark_json, "\"msvcUint128Helpers\"") != NULL);
   CHECK(strstr(benchmark_json, "\"scratchRows\"") != NULL);
   CHECK(strstr(benchmark_tsv, "scratch-vs-gmp") != NULL);

@@ -29,6 +29,26 @@ parity plus a stable same-run paired win.
   benchmarks show exact parity, adjacent-size safety, and product-like build
   confirmation.
 
+## 2026-06-17: Importable Bigint Route Map
+
+Local MPIR/GMP source review found that GMP's `mpn_get_str` separates decimal
+serialization into basecase, power-table precompute, and divide-and-conquer
+thresholds before it commits to a large conversion route. Number X-Ray now
+records that clue in an importable route summary instead of copying any GMP
+code or promoting an unproven formatter path.
+
+The new `xray_bigint_route_config_json()` API returns the full scratch bigint
+route map as JSON: ABI-stable struct fields, decimal conversion thresholds,
+base-`1e19` constants, sparse square/multiply gates, production route names,
+and default-off diagnostic probe families. Benchmark and workbench JSON now
+reuse the same object under `scratchRouteConfig`, and the Python ctypes helper
+exposes it as `bigint_route_summary()`.
+
+Decision: reporting and import surface only. No production arithmetic,
+formatting, parser, or solver route changes in this step. The value is that
+external tools and future PRs can tie benchmark artifacts to the exact route
+map and MPIR/GMP clue trail before testing another formatter threshold.
+
 ## 2026-06-17: Focused Benchmark Digit Windows
 
 The hourly MFastFermat watch advanced `main` to `8d9735e` with a focused

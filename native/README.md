@@ -171,6 +171,7 @@ from number_xray_ctypes import load
 xray = load("C:/number-xray-sdk")
 print(xray.backend_info())
 print(xray.bigint_route_config())
+print(xray.bigint_route_summary())
 print(xray.add_decimal("10,403", "1"))
 print(xray.factor_solve("10_403")["status"])
 ```
@@ -189,9 +190,14 @@ JSON records `baselineBackend`, `baselineBackendVersion`, and
 backend identity so local speed claims are not over-generalized. Consumers can
 also call `xray_bignum_backend_name()`, `xray_bignum_backend_version()`, and
 `xray_bignum_backend_library()` to label their own benchmark reports. Call
-`xray_bigint_route_config()` or the Python helper's `bigint_route_config()` to
-record the Number X-Ray scratch route thresholds used beside that backend
-baseline.
+`xray_bigint_route_config()` or the Python helper's `bigint_route_config()` for
+the ABI-stable route struct. Call `xray_bigint_route_config_json()` or the
+Python helper's `bigint_route_summary()` when a tool needs the full
+machine-readable route map, including decimal conversion thresholds, sparse
+arithmetic gates, diagnostic probe families, and MPIR/GMP formatter clues. That
+JSON summary is also embedded in benchmark and workbench reports as
+`scratchRouteConfig`, so archived runs carry the exact local route context
+beside their timing evidence.
 
 CTest enforces that documentation contract with `xray_api_doc_coverage`, which
 fails the build if a new exported `XRAY_API` function is added without a

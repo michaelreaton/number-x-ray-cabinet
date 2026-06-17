@@ -57,6 +57,12 @@ int main(void) {
     factor_json &&
     strstr(factor_json, "\"status\":\"solved\"") &&
     strstr(factor_json, "\"productVerified\":true");
+  char *route_json = ok ? xray_bigint_route_config_json() : NULL;
+  ok = ok &&
+    route_json &&
+    strstr(route_json, "\"decimalWideChunkDigits\":19") &&
+    strstr(route_json, "\"sparseMulMinProducts\":") &&
+    strstr(route_json, "mpn_get_str");
 
   if (ok) {
     printf("NumberXRay::core import ok: %s\n", ffi_sum);
@@ -67,6 +73,7 @@ int main(void) {
   xray_free(text);
   xray_free(ffi_sum);
   xray_free(factor_json);
+  xray_free(route_json);
   xray_bigint_division_workspace_clear(&division_workspace);
   xray_bigint_divisor_context_clear(&divisor_context);
   xray_bigint_clear(&value);
