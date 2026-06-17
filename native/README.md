@@ -271,11 +271,12 @@ threshold, or depth limit must report
 forced-neighbor safety row and a product-like `/GL` run both pass. This keeps a
 one-pocket win from becoming a harmful global default.
 
-Every benchmark run writes three benchmark artifacts in its run folder:
+Every benchmark run writes four benchmark artifacts in its run folder:
 
 - `benchmark.json`: machine-readable rows, CPU features, timings, gates, and status labels
 - `benchmark.tsv`: spreadsheet-friendly rows for sorting and comparison
 - `benchmark_frontier.txt`: human-readable CPU feature summary, measurable status, near wins, largest scratch gaps, and scratch/kernel timing tables
+- `benchmark_progress.txt`: human-readable completed/open/noisy digest for status updates and PR review
 
 Kernel rows in `benchmark_frontier.txt` include compact route tags such as
 `thr=`, `leaf=`, `depth=`, and `base=` when those values are present in the
@@ -286,6 +287,13 @@ The `MEASURABLE STATUS` section is the quick progress readout: `Better now`
 lists the fastest scratch rows that are currently allowed to replace the
 backend on this machine, and `Still working` lists the largest exact-parity
 scratch gaps with ratio, worst-pair, and stable-sample evidence.
+
+`benchmark_progress.txt` and the matching `--bench-progress` CLI mode turn a
+TSV artifact into the after-PR status view: completed product/backend candidate
+digit levels, open/noisy rows, safety rejections, and controls excluded from
+candidate totals. This mirrors the MFastFermat progress-digest lesson: duplicate
+controls and `noisy-control` rows stay open and never inflate completed progress
+even when their median ratio looks favorable.
 
 The scratch-vs-GMP ladder currently measures 40, 150, 1000, 4096, and 8192 decimal digit operands so local changes have to keep scaling beyond tiny examples before they earn adoption labels. Parse and format rows are tracked separately because decimal ingestion and decimal serialization have very different bottlenecks. Multiplication and specialized square rows also have a 16384 digit discovery tier so larger-number arithmetic work can be observed before it is considered for routing. Multiplication rows aggregate two deterministic operand families because threshold-sensitive multiply code can look good on one number shape and lose on another. The tournament rows intentionally test several parse chunk sizes, decimal formatting handoff thresholds, multiply leaf thresholds, square thresholds, and Toom handoff candidates in one run; those rows are evidence-only until a bounded window wins with exact parity and stable same-run paired ratios. Decimal formatter route changes also need `format-dc-route` same-run evidence so a direct-output D&C pocket win cannot be mistaken for a global or root-size threshold; that route row uses chunked interleaved timing and alternates which side runs first to reduce scheduler and cache-warmth bias.
 
@@ -351,16 +359,18 @@ Primary references: [GMP multiplication algorithms](https://gmplib.org/manual/Mu
 native\build\Release\xray_cli.exe --help
 native\build\Release\xray_cli.exe --bench 10403
 native\build\Release\xray_cli.exe --bench-frontier 10403
+native\build\Release\xray_cli.exe --bench-progress native\build\native-test-runs\<run>\benchmark.tsv
 native\build\Release\xray_cli.exe --bench-compare native\build-release\native-test-runs\<run>\benchmark.tsv native\build-ltcg\native-test-runs\<run>\benchmark.tsv
 native\build\Release\xray_cli.exe --rsa260
 ```
 
 The CLI emits the same reproducible JSON shape used by the GTK app. Use
 `--bench-frontier` when you want stdout to show the human-readable benchmark
-frontier while still writing the full run artifacts. Use `--bench-compare` to
-review two benchmark TSV artifacts, such as Release versus `/GL`, and surface
-rows that are ready in both builds, ready in only one build, or rejected by
-worst-pair safety:
+frontier while still writing the full run artifacts. Use `--bench-progress` for
+a one-artifact digest of what is completed, still open, noisy, or excluded as
+control evidence. Use `--bench-compare` to review two benchmark TSV artifacts,
+such as Release versus `/GL`, and surface rows that are ready in both builds,
+ready in only one build, or rejected by worst-pair safety:
 
 - `factorReport`
 - `cyclotomicReport`

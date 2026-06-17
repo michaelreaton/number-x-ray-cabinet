@@ -12,6 +12,7 @@ typedef struct CompareBuffer {
 } CompareBuffer;
 
 typedef struct CompareRow {
+  char *category;
   char *key;
   char *name;
   char *operation;
@@ -19,6 +20,7 @@ typedef struct CompareRow {
   char *variant;
   char *status;
   char *adoption;
+  char *detail;
   char *build_config;
   char *ipo;
   char *compiler;
@@ -110,6 +112,10 @@ static char *compare_strdup(const char *text) {
 
 static int compare_streq(const char *left, const char *right) {
   return strcmp(left ? left : "", right ? right : "") == 0;
+}
+
+static int compare_contains(const char *text, const char *token) {
+  return text && token && strstr(text, token) != NULL;
 }
 
 static int parse_bool_field(const char *text) {
@@ -222,6 +228,7 @@ static char *make_row_key(const char *operation, const char *name, size_t digits
 
 static void compare_row_clear(CompareRow *row) {
   if (!row) return;
+  free(row->category);
   free(row->key);
   free(row->name);
   free(row->operation);
@@ -229,6 +236,7 @@ static void compare_row_clear(CompareRow *row) {
   free(row->variant);
   free(row->status);
   free(row->adoption);
+  free(row->detail);
   free(row->build_config);
   free(row->ipo);
   free(row->compiler);
@@ -281,6 +289,7 @@ static int parse_compare_set(const char *tsv, CompareSet *set, const char *label
   char *header = next_line(&cursor);
   char *header_fields[64] = {0};
   size_t header_count = split_tsv_line(header, header_fields, sizeof(header_fields) / sizeof(header_fields[0]));
+  int col_category = column_index(header_fields, header_count, "category");
   int col_name = column_index(header_fields, header_count, "name");
   int col_operation = column_index(header_fields, header_count, "operation");
   int col_digits = column_index(header_fields, header_count, "digits");
@@ -310,9 +319,11 @@ static int parse_compare_set(const char *tsv, CompareSet *set, const char *label
     size_t field_count = split_tsv_line(line, fields, sizeof(fields) / sizeof(fields[0]));
     CompareRow row;
     memset(&row, 0, sizeof(row));
+    row.category = compare_strdup(field_at(fields, field_count, col_category));
     row.name = compare_strdup(field_at(fields, field_count, col_name));
     row.operation = compare_strdup(field_at(fields, field_count, col_operation));
-    row.variant = make_row_variant(field_at(fields, field_count, col_detail));
+    row.detail = compare_strdup(field_at(fields, field_count, col_detail));
+    row.variant = make_row_variant(row.detail);
     row.display = make_display_label(row.operation, row.variant);
     row.status = compare_strdup(field_at(fields, field_count, col_status));
     row.adoption = compare_strdup(field_at(fields, field_count, col_adoption));
@@ -328,8 +339,9 @@ static int parse_compare_set(const char *tsv, CompareSet *set, const char *label
     row.parity_verified = parse_bool_field(field_at(fields, field_count, col_parity));
     row.replacement_ready = parse_bool_field(field_at(fields, field_count, col_ready));
     row.key = make_row_key(row.operation, row.name, row.digits, row.variant);
-    if (!row.name || !row.operation || !row.display || !row.variant || !row.status || !row.adoption || !row.build_config ||
-        !row.ipo || !row.compiler || !row.compiler_version || !row.key || !append_compare_row(set, &row)) {
+    if (!row.category || !row.name || !row.operation || !row.display || !row.variant || !row.status || !row.adoption ||
+        !row.detail || !row.build_config || !row.ipo || !row.compiler || !row.compiler_version || !row.key ||
+        !append_compare_row(set, &row)) {
       compare_row_clear(&row);
       compare_set_clear(set);
       snprintf(set->error, sizeof(set->error), "%s TSV row allocation failed", label ? label : "input");
@@ -409,6 +421,224 @@ static void append_pair_line(CompareBuffer *buffer, const ComparePair *pair) {
     right ? right->stable_sample_count : 0U,
     right ? right->sample_count : 0U,
     right && right->adoption ? right->adoption : "");
+}
+
+static int compare_row_is_promotion_ready(const CompareRow *row) {
+  if (!row) return 0;
+  return row->replacement_ready ||
+    compare_streq(row->adoption, "allowed") ||
+    compare_streq(row->adoption, "promotion-ready") ||
+    compare_contains(row->adoption, "promote") ||
+    compare_streq(row->status, "replacement-ready") ||
+    compare_streq(row->status, "policy-ready") ||
+    compare_contains(row->status, "promote");
+}
+
+static int compare_row_is_oracle_only(const CompareRow *row) {
+  if (!row) return 0;
+  return compare_streq(row->adoption, "oracle-only") ||
+    compare_streq(row->status, "oracle-only");
+}
+
+static int compare_row_is_safety_rejected(const CompareRow *row) {
+  if (!row) return 0;
+  return compare_contains(row->status, "safety-rejected") ||
+    compare_contains(row->status, "safety-blocked") ||
+    compare_contains(row->status, "regression") ||
+    compare_contains(row->status, "neighbor") ||
+    compare_contains(row->status, "blocked") ||
+    compare_contains(row->status, "mismatch") ||
+    compare_contains(row->adoption, "safety-rejected") ||
+    compare_contains(row->adoption, "safety-blocked") ||
+    compare_contains(row->adoption, "regression") ||
+    compare_contains(row->adoption, "neighbor") ||
+    compare_contains(row->adoption, "blocked") ||
+    compare_contains(row->adoption, "mismatch");
+}
+
+static int compare_row_is_noisy_control(const CompareRow *row) {
+  if (!row) return 0;
+  return compare_contains(row->status, "noisy-control") ||
+    compare_contains(row->adoption, "noisy-control") ||
+    compare_contains(row->detail, "controlSafety=noisy-control");
+}
+
+static int compare_row_is_control(const CompareRow *row) {
+  if (!row) return 0;
+  return compare_contains(row->detail, "duplicateControl=") ||
+    compare_contains(row->detail, "IsControlSubject=true") ||
+    compare_contains(row->detail, "controlSafety=") ||
+    compare_contains(row->status, "duplicate-control") ||
+    compare_contains(row->adoption, "duplicate-control");
+}
+
+static int compare_row_has_progress_signal(const CompareRow *row) {
+  return row && row->speed_ratio > 0.0 &&
+    (row->parity_verified ||
+     compare_row_is_promotion_ready(row) ||
+     compare_row_is_oracle_only(row) ||
+     compare_row_is_safety_rejected(row) ||
+     compare_row_is_noisy_control(row));
+}
+
+static void insert_progress_row(
+  ComparePair *rows,
+  size_t *count,
+  size_t capacity,
+  const CompareRow *row,
+  double score,
+  int descending
+) {
+  ComparePair pair;
+  pair.left = row;
+  pair.right = NULL;
+  pair.score = score;
+  insert_pair(rows, count, capacity, pair, descending);
+}
+
+static double progress_open_score(const CompareRow *row) {
+  if (!row) return 0.0;
+  double score = row->speed_ratio;
+  if (row->worst_pair_ratio > score) score = row->worst_pair_ratio;
+  if (compare_row_is_noisy_control(row) && score < 1.0) score = 1.0;
+  return score;
+}
+
+static void append_progress_line(CompareBuffer *buffer, const CompareRow *row, const char *lane) {
+  if (!buffer || !row) return;
+  double factor = row->speed_ratio;
+  const char *motion = "slower";
+  if (row->speed_ratio > 0.0 && row->speed_ratio < 1.0) {
+    factor = 1.0 / row->speed_ratio;
+    motion = "faster median";
+  }
+  cb_printf(buffer,
+    "  %-36s %6zu digits   %.2fx %s   ratio %.3f   worst %.3f   stable %zu/%zu   %s   %s/%s\n",
+    row_label(row),
+    row->digits,
+    factor,
+    motion,
+    row->speed_ratio,
+    row->worst_pair_ratio,
+    row->stable_sample_count,
+    row->sample_count,
+    lane ? lane : "open",
+    row->status ? row->status : "",
+    row->adoption ? row->adoption : "");
+}
+
+char *xray_benchmark_progress_tsv_text(const char *tsv) {
+  CompareSet set;
+  CompareBuffer buffer = {0};
+  int ok = parse_compare_set(tsv, &set, "benchmark");
+
+  cb_append(&buffer, "BENCHMARK PROGRESS DIGEST\n");
+  if (!ok) {
+    cb_printf(&buffer, "Error: %s\n", set.error);
+    return cb_take(&buffer);
+  }
+
+  ComparePair completed[12] = {0};
+  ComparePair open_rows[12] = {0};
+  ComparePair controls[8] = {0};
+  ComparePair rejected[8] = {0};
+  size_t completed_count = 0;
+  size_t open_count = 0;
+  size_t control_count = 0;
+  size_t rejected_count = 0;
+  size_t product_candidates_total = 0;
+  size_t completed_total = 0;
+  size_t open_total = 0;
+  size_t controls_total = 0;
+  size_t noisy_controls_total = 0;
+  size_t rejected_total = 0;
+
+  for (size_t index = 0; index < set.count; ++index) {
+    const CompareRow *row = &set.rows[index];
+    if (!compare_row_has_progress_signal(row)) continue;
+    int control = compare_row_is_control(row);
+    int noisy_control = compare_row_is_noisy_control(row);
+    int safety_rejected = compare_row_is_safety_rejected(row);
+    int ready = compare_row_is_promotion_ready(row);
+    if (!control) product_candidates_total++;
+    if (control) {
+      controls_total++;
+      insert_progress_row(
+        controls,
+        &control_count,
+        sizeof(controls) / sizeof(controls[0]),
+        row,
+        progress_open_score(row),
+        1);
+    }
+    if (noisy_control) noisy_controls_total++;
+    if (safety_rejected) {
+      rejected_total++;
+      insert_progress_row(
+        rejected,
+        &rejected_count,
+        sizeof(rejected) / sizeof(rejected[0]),
+        row,
+        progress_open_score(row),
+        1);
+    }
+    if (ready && !control && !noisy_control && !safety_rejected) {
+      completed_total++;
+      insert_progress_row(
+        completed,
+        &completed_count,
+        sizeof(completed) / sizeof(completed[0]),
+        row,
+        row->speed_ratio > 0.0 ? 1.0 / row->speed_ratio : 0.0,
+        1);
+    } else {
+      open_total++;
+      insert_progress_row(
+        open_rows,
+        &open_count,
+        sizeof(open_rows) / sizeof(open_rows[0]),
+        row,
+        progress_open_score(row),
+        1);
+    }
+  }
+
+  cb_printf(&buffer, "Artifact: %s\n", set.fingerprint);
+  cb_printf(&buffer,
+    "Rows: total=%zu productCandidates=%zu completed=%zu open=%zu controlsExcluded=%zu noisyControls=%zu safetyRejected=%zu\n\n",
+    set.count,
+    product_candidates_total,
+    completed_total,
+    open_total,
+    controls_total,
+    noisy_controls_total,
+    rejected_total);
+
+  cb_append(&buffer, "Product/backend candidate digit levels observed (completed):\n");
+  if (!completed_count) cb_append(&buffer, "  none\n");
+  for (size_t index = 0; index < completed_count; ++index) append_progress_line(&buffer, completed[index].left, "completed");
+  if (completed_total > completed_count) cb_printf(&buffer, "  ... %zu more completed rows\n", completed_total - completed_count);
+
+  cb_append(&buffer, "\nOpen/noisy rows observed:\n");
+  if (!open_count) cb_append(&buffer, "  none\n");
+  for (size_t index = 0; index < open_count; ++index) append_progress_line(&buffer, open_rows[index].left, "open");
+  if (open_total > open_count) cb_printf(&buffer, "  ... %zu more open rows\n", open_total - open_count);
+
+  cb_append(&buffer, "\nSafety-rejected rows observed:\n");
+  if (!rejected_count) cb_append(&buffer, "  none\n");
+  for (size_t index = 0; index < rejected_count; ++index) append_progress_line(&buffer, rejected[index].left, "rejected");
+  if (rejected_total > rejected_count) cb_printf(&buffer, "  ... %zu more rejected rows\n", rejected_total - rejected_count);
+
+  cb_append(&buffer, "\nControl/noise rows observed (excluded from completed candidate totals):\n");
+  if (!control_count) cb_append(&buffer, "  none\n");
+  for (size_t index = 0; index < control_count; ++index) append_progress_line(&buffer, controls[index].left, "control");
+  if (controls_total > control_count) cb_printf(&buffer, "  ... %zu more control rows\n", controls_total - control_count);
+
+  cb_append(&buffer,
+    "\nRule: completed progress excludes duplicate-control and noisy-control rows. Median wins still stay open when worst-pair, control, or safety labels reject them.\n");
+
+  compare_set_clear(&set);
+  return cb_take(&buffer);
 }
 
 char *xray_benchmark_compare_tsv_text(const char *left_tsv, const char *right_tsv) {

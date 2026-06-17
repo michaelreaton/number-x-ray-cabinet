@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define XRAY_VERSION "0.1.0-native-proof"
-#define XRAY_ABI_VERSION 2u
+#define XRAY_ABI_VERSION 3u
 
 #ifndef XRAY_API
 #if defined(_WIN32) && defined(XRAY_SHARED)
@@ -89,7 +89,7 @@ XRAY_API const char *xray_version(void);
  * Return the runtime C ABI version for the loaded library.
  *
  * The ABI version changes when the exported C layout or calling contract makes
- * a backward-incompatible change. The current ABI is 2.
+ * a backward-incompatible change. The current ABI is 3.
  */
 XRAY_API unsigned int xray_abi_version(void);
 
@@ -151,8 +151,9 @@ XRAY_API char *xray_build_info_summary(const XrayBuildInfo *info);
  *
  * Pass pointers returned by functions such as xray_bigint_get_decimal(),
  * xray_preview_decimal(), xray_*_report_json(), and
- * xray_benchmark_compare_tsv_text(), xray_cpu_features_summary(), or
- * xray_build_info_summary(). Passing NULL is allowed. Use this instead of
+ * xray_benchmark_compare_tsv_text(), xray_benchmark_progress_tsv_text(),
+ * xray_cpu_features_summary(), or xray_build_info_summary(). Passing NULL is
+ * allowed. Use this instead of
  * plain free() across shared-library or foreign-language boundaries.
  */
 XRAY_API void xray_free(void *ptr);
@@ -952,6 +953,7 @@ typedef struct XrayWorkbenchReport {
   char *benchmark_json_path;
   char *benchmark_tsv_path;
   char *benchmark_frontier_path;
+  char *benchmark_progress_path;
   char *json;
   char *events_jsonl;
   char *source_notes;
@@ -1234,6 +1236,17 @@ XRAY_API char *xray_benchmark_report_tsv(const XrayBenchmarkReport *report);
  * with xray_free().
  */
 XRAY_API char *xray_benchmark_compare_tsv_text(const char *left_tsv, const char *right_tsv);
+
+/**
+ * Summarize one benchmark TSV artifact as a human-readable progress digest.
+ *
+ * The digest separates completed replacement candidates from open, noisy, and
+ * control rows. Rows marked as duplicate controls or noisy controls are never
+ * counted as completed candidate progress, even when their median ratio looks
+ * favorable. The caller owns the returned string and must release it with
+ * xray_free().
+ */
+XRAY_API char *xray_benchmark_progress_tsv_text(const char *tsv);
 
 /**
  * Format the benchmark frontier summary as newly allocated text.
