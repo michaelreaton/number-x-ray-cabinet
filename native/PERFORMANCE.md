@@ -99,9 +99,12 @@ MFastFermat's in-progress `codex/product-prefix-timeout-rows` feedback extends
 that same discipline to product-prefix failures: timed-out product rows carry
 `Runs`, `CompletedRuns`, and `Status`, and plain failed rows are separated from
 timeout lower bounds. Number X-Ray mirrors the import side with a `runFailed`
-classification column and a `Run-failed rows observed` digest lane. A failed
-row remains visible even if no speed ratio was recorded, but it does not count
-as completed, open, product-gated, or lower-bound progress.
+classification column, `attemptedRuns` / `completedRuns` columns, and a
+`Run-failed rows observed` digest lane. A failed row remains visible even if no
+speed ratio was recorded, but it does not count as completed, open,
+product-gated, or lower-bound progress. If `Status=run failed` and
+`CompletedRuns=0` both appear, the run-failed lane wins so process failures do
+not masquerade as timeout lower bounds.
 
 ## 2026-06-17: Static Formatter Leaf Expansion
 
