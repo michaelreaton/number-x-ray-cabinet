@@ -854,6 +854,8 @@ static void test_scratch_bigint_square_oracle(void) {
     CHECK(xray_bigint_mul(&product, &value, &value));
     CHECK(xray_bigint_compare(&square, &product) == 0);
     check_scratch_matches_mpz(&square, gsquare);
+    CHECK(xray_bigint_square_fused_leaf_probe(&square, &value, 4));
+    check_scratch_matches_mpz(&square, gsquare);
 
     CHECK(xray_bigint_set_decimal(&value, small_cases[index]));
     CHECK(xray_bigint_mul(&value, &value, &value));
@@ -889,6 +891,9 @@ static void test_scratch_bigint_square_oracle(void) {
   CHECK(xray_bigint_set_decimal(&tiny, tiny_route_text));
   CHECK(xray_bigint_square(&tiny, &tiny));
   check_scratch_matches_mpz(&tiny, gtiny_square);
+  CHECK(xray_bigint_set_decimal(&tiny, tiny_route_text));
+  CHECK(xray_bigint_square_fused_leaf_probe(&tiny, &tiny, 64));
+  check_scratch_matches_mpz(&tiny, gtiny_square);
   mpz_clears(gtiny, gtiny_square, NULL);
   xray_bigint_clear(&tiny);
   xray_bigint_clear(&tiny_square);
@@ -909,6 +914,8 @@ static void test_scratch_bigint_square_oracle(void) {
   check_scratch_matches_mpz(&mersenne_square, gmersenne_square);
   CHECK(xray_bigint_square_karatsuba_probe(&mersenne_square, &mersenne, 4));
   check_scratch_matches_mpz(&mersenne_square, gmersenne_square);
+  CHECK(xray_bigint_square_fused_leaf_probe(&mersenne_square, &mersenne, 4));
+  check_scratch_matches_mpz(&mersenne_square, gmersenne_square);
   free(mersenne_text);
   mpz_clears(gmersenne, gmersenne_square, NULL);
   xray_bigint_clear(&mersenne);
@@ -928,11 +935,16 @@ static void test_scratch_bigint_square_oracle(void) {
   check_scratch_matches_mpz(&square, gsquare);
   CHECK(xray_bigint_square_karatsuba_probe(&square, &large, 16));
   check_scratch_matches_mpz(&square, gsquare);
+  CHECK(xray_bigint_square_fused_leaf_probe(&square, &large, 16));
+  check_scratch_matches_mpz(&square, gsquare);
 
   CHECK(xray_bigint_square(&large, &large));
   check_scratch_matches_mpz(&large, gsquare);
   CHECK(xray_bigint_set_decimal(&large, large_text));
   CHECK(xray_bigint_square_karatsuba_probe(&large, &large, 16));
+  check_scratch_matches_mpz(&large, gsquare);
+  CHECK(xray_bigint_set_decimal(&large, large_text));
+  CHECK(xray_bigint_square_fused_leaf_probe(&large, &large, 16));
   check_scratch_matches_mpz(&large, gsquare);
 
   mpz_clears(glarge, gsquare, NULL);
@@ -1681,6 +1693,11 @@ static void test_benchmarks(void) {
   int saw_format_strategy16384_probe = 0;
   int saw_square_karatsuba_vs_mul_probe = 0;
   int saw_square_karatsuba_vs_gmp_probe = 0;
+  int saw_square_leaf_order_probe = 0;
+  int saw_square_leaf_order1000_probe = 0;
+  int saw_square_leaf_order4096_probe = 0;
+  int saw_square_leaf_order8192_probe = 0;
+  int saw_square_leaf_order16384_probe = 0;
   int saw_toom3_probe = 0;
   int saw_toom3_vs_scratch_probe = 0;
   int saw_toom3_unroll4_vs_scratch_probe = 0;
@@ -2315,6 +2332,25 @@ static void test_benchmarks(void) {
           CHECK(strstr(report->results[index].detail, "baseline=generic-threshold-self-mul") != NULL);
         }
         CHECK(strstr(report->results[index].detail, "featureGate=karatsuba-square-probe") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=1") != NULL);
+      }
+      if (strcmp(report->results[index].operation, "square-leaf-order") == 0) {
+        saw_square_leaf_order_probe = 1;
+        if (report->results[index].digits == 1000) saw_square_leaf_order1000_probe = 1;
+        else if (report->results[index].digits == 4096) saw_square_leaf_order4096_probe = 1;
+        else if (report->results[index].digits == 8192) saw_square_leaf_order8192_probe = 1;
+        else if (report->results[index].digits == 16384) saw_square_leaf_order16384_probe = 1;
+        else CHECK(0);
+        CHECK(report->results[index].parity_verified);
+        CHECK(!report->results[index].replacement_ready);
+        CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+        CHECK(strstr(report->results[index].detail, "threshold=64") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=fused-diagonal-cross-leaf") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=current-scratch-square") != NULL);
+        CHECK(strstr(report->results[index].detail, "oracle=mpz_mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=square-leaf-order-pass") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpClue=mfastfermat-wide61-dif-dit-bit-reversal-elision") != NULL);
+        CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
         CHECK(strstr(report->results[index].detail, "operandFamilies=1") != NULL);
       }
       if (strcmp(report->results[index].operation, "mul-toom3") == 0) {
@@ -3348,6 +3384,11 @@ static void test_benchmarks(void) {
   CHECK(saw_format_strategy16384_probe);
   CHECK(saw_square_karatsuba_vs_mul_probe);
   CHECK(saw_square_karatsuba_vs_gmp_probe);
+  CHECK(saw_square_leaf_order_probe);
+  CHECK(saw_square_leaf_order1000_probe);
+  CHECK(saw_square_leaf_order4096_probe);
+  CHECK(saw_square_leaf_order8192_probe);
+  CHECK(saw_square_leaf_order16384_probe);
   CHECK(saw_toom3_probe);
   CHECK(saw_toom3_vs_scratch_probe);
   CHECK(saw_qhat_preinv_probe);
@@ -3550,6 +3591,9 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "decimal-format-policy-workspace") != NULL);
   CHECK(strstr(json, "decimal-format-policy-preinv-qhat") != NULL);
   CHECK(strstr(json, "decimal-format-policy-divide-1e19-preinv") != NULL);
+  CHECK(strstr(json, "square-leaf-order") != NULL);
+  CHECK(strstr(json, "fused-diagonal-cross-leaf") != NULL);
+  CHECK(strstr(json, "mfastfermat-wide61-dif-dit-bit-reversal-elision") != NULL);
   CHECK(strstr(json, "decimal-format-policy-divide-1e19-preinv-pairs") != NULL);
   CHECK(strstr(json, "square-policy") != NULL);
   CHECK(strstr(json, "karatsuba-thr96") != NULL);
@@ -3639,6 +3683,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "preinv-ge16384-leaf16") != NULL);
   CHECK(strstr(tsv, "preinv10e19-window768-1000") != NULL);
   CHECK(strstr(tsv, "preinv10e19-pairs-window768-1000") != NULL);
+  CHECK(strstr(tsv, "square-leaf-order") != NULL);
+  CHECK(strstr(tsv, "fused-diagonal-cross-leaf") != NULL);
   CHECK(strstr(tsv, "decimal-format-policy-workspace") != NULL);
   CHECK(strstr(tsv, "decimal-format-policy-preinv-qhat") != NULL);
   CHECK(strstr(tsv, "decimal-format-policy-divide-1e19-preinv") != NULL);
@@ -3795,6 +3841,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "preinv-ge16384-leaf16") != NULL);
   CHECK(strstr(benchmark_tsv, "preinv10e19-window768-1000") != NULL);
   CHECK(strstr(benchmark_tsv, "preinv10e19-pairs-window768-1000") != NULL);
+  CHECK(strstr(benchmark_tsv, "square-leaf-order") != NULL);
+  CHECK(strstr(benchmark_tsv, "mfastfermat-wide61-dif-dit-bit-reversal-elision") != NULL);
   CHECK(strstr(benchmark_tsv, "deep-preinv10e19-window768-1000") != NULL);
   CHECK(strstr(benchmark_tsv, "deep-preinv10e19-window768-896") != NULL);
   CHECK(strstr(benchmark_tsv, "deep-preinv10e19-window768-960") != NULL);
@@ -3923,6 +3971,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "format-policy-deep-safety deep-preinv10e19-pairs-window896-1000") != NULL);
   CHECK(strstr(benchmark_frontier, "square-policy current-default") != NULL);
   CHECK(strstr(benchmark_frontier, "square-policy karatsuba-thr96") != NULL);
+  CHECK(strstr(benchmark_frontier, "square-leaf-order") != NULL);
+  CHECK(strstr(benchmark_frontier, "base=current-scratch-square") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-policy current-default") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-policy toom3-u4-ge8192-leaf48") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-policy toom3-u4-rec-ge16384-leaf64-depth2") != NULL);

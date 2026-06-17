@@ -24,6 +24,42 @@ parity plus a stable same-run paired win.
   `adoption=observe-only`. Only the explicit `format-policy-deep-safety` rows
   can be read as single-build promotion evidence, and production routing still
   requires cross-build confirmation before any default changes.
+- External frontier clues such as MFastFermat sparse/transform-order work enter
+  Number X-Ray only as default-off, oracle-checked probes until local paired
+  benchmarks show exact parity, adjacent-size safety, and product-like build
+  confirmation.
+
+## 2026-06-16: MFastFermat-Inspired Square Leaf Order Probe
+
+Run:
+
+- Release: `native/build-codex-gtk-autodetect2/native-test-runs/20260616-201650-c4b04caf`
+
+The hourly MFastFermat watch reported a new default-off wide61 DIF/DIT NTT
+probe on `michaelreaton/MFastFermat` `main` (`3242d72`) that avoids a separate
+bit-reversal pass in the square-product route. Number X-Ray does not have that
+NTT layer yet, so this pass translated the lesson into a safe local analogue:
+`xray_bigint_square_fused_leaf_probe()` keeps the production Karatsuba square
+shape but fuses the schoolbook leaf diagonal pass into the row pass. The probe
+is exported, documented, oracle-checked against `mpz_mul`, and benchmarked
+against current scratch square with `noAutoRoute=1`.
+
+Fresh local rows:
+
+- 1000 digits: ratio `0.959`, worst `1.021`, stable `3/5`,
+  `candidate-no-margin`, `observe-only`.
+- 4096 digits: ratio `0.998`, worst `1.163`, stable `2/5`,
+  `candidate-no-margin`, `observe-only`.
+- 8192 digits: ratio `1.021`, worst `1.378`, stable `1/5`, `current-best`,
+  `observe-only`.
+- 16384 digits: ratio `1.118`, worst `1.294`, stable `0/5`, `current-best`,
+  `observe-only`.
+
+Decision: the transform-order clue is real enough to keep testing, but this
+schoolbook-leaf analogue is not production-worthy on the Windows laptop. It
+does not clear worst-pair safety at 1000/4096 digits and regresses larger
+square workloads. Future work should keep watching MFastFermat's true sparse
+square-product/NTT path rather than routing this fused leaf into production.
 
 ## 2026-06-16: Shallow Decimal Policy Gates Need Deep Confirmation
 

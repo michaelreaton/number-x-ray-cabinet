@@ -199,6 +199,19 @@ static void benchmark_display_operation(const XrayBenchmarkResult *row, char *ou
     snprintf(out, out_size, "muladd unroll8");
     return;
   }
+  if (strcmp(row->operation, "square-leaf-order") == 0) {
+    const char *threshold = strstr(row->detail, "threshold=");
+    if (threshold) {
+      char *end = NULL;
+      unsigned long limbs = strtoul(threshold + strlen("threshold="), &end, 10);
+      if (end && end != threshold + strlen("threshold=")) {
+        snprintf(out, out_size, "square fused leaf %lu", limbs);
+        return;
+      }
+    }
+    snprintf(out, out_size, "square fused leaf");
+    return;
+  }
   if (strcmp(row->operation, "mul-unroll4-vs-scratch") == 0) {
     const char *threshold = strstr(row->detail, "leafThreshold=");
     if (threshold) {
