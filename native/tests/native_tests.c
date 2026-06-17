@@ -3250,8 +3250,10 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "baseline=decimal-dc-pow2-ladder-leaf8") != NULL);
         CHECK(strstr(report->results[index].detail, "oracle=mpz_get_str") != NULL);
         CHECK(strstr(report->results[index].detail, "featureGate=decimal-format-dc-route-deep") != NULL);
-        CHECK(strstr(report->results[index].detail, "gmpClue=mfast16m-preflight-b025856") != NULL);
-        CHECK(strstr(report->results[index].detail, "warmupPolicy=not-counted") != NULL);
+        CHECK(strstr(report->results[index].detail, "hashSafe=") != NULL);
+        CHECK(strstr(report->results[index].detail, "hashGate=matched") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpClue=mfast615fe9e-hashgate") != NULL);
+        CHECK(strstr(report->results[index].detail, "warmup=not-counted") != NULL);
       } else if (strcmp(report->results[index].operation, "divmod-preinv-qhat-safety") == 0) {
         saw_divmod_preinv_qhat_safety_gate = 1;
         CHECK(report->results[index].sample_count == 3);
@@ -3739,7 +3741,9 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "format-dc-static-ladder") != NULL);
   CHECK(strstr(json, "format-dc-static-direct") != NULL);
   CHECK(strstr(json, "direct16-vs-ladder8") != NULL);
-  CHECK(strstr(json, "mfast16m-preflight-b025856") != NULL);
+  CHECK(strstr(json, "hashGate=matched") != NULL);
+  CHECK(strstr(json, "hashSafe=") != NULL);
+  CHECK(strstr(json, "mfast615fe9e-hashgate") != NULL);
   CHECK(strstr(json, "decimal-dc-direct-workspace") != NULL);
   CHECK(strstr(json, "decimal-dc-direct-preinv-qhat") != NULL);
   CHECK(strstr(json, "dc-static-pow2") != NULL);
@@ -3856,7 +3860,9 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "format-dc-static-ladder") != NULL);
   CHECK(strstr(tsv, "format-dc-static-direct") != NULL);
   CHECK(strstr(tsv, "direct16-vs-ladder8") != NULL);
-  CHECK(strstr(tsv, "mfast16m-preflight-b025856") != NULL);
+  CHECK(strstr(tsv, "hashGate=matched") != NULL);
+  CHECK(strstr(tsv, "hashSafe=") != NULL);
+  CHECK(strstr(tsv, "mfast615fe9e-hashgate") != NULL);
   CHECK(strstr(tsv, "decimal-dc-direct-workspace") != NULL);
   CHECK(strstr(tsv, "decimal-dc-direct-preinv-qhat") != NULL);
   CHECK(strstr(tsv, "dc-static-pow2") != NULL);
@@ -4026,7 +4032,9 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "format-dc-static-ladder") != NULL);
   CHECK(strstr(benchmark_tsv, "format-dc-static-direct") != NULL);
   CHECK(strstr(benchmark_tsv, "direct16-vs-ladder8") != NULL);
-  CHECK(strstr(benchmark_tsv, "mfast16m-preflight-b025856") != NULL);
+  CHECK(strstr(benchmark_tsv, "hashGate=matched") != NULL);
+  CHECK(strstr(benchmark_tsv, "hashSafe=") != NULL);
+  CHECK(strstr(benchmark_tsv, "mfast615fe9e-hashgate") != NULL);
   CHECK(strstr(benchmark_tsv, "decimal-dc-direct-workspace") != NULL);
   CHECK(strstr(benchmark_tsv, "decimal-dc-direct-preinv-qhat") != NULL);
   CHECK(strstr(benchmark_tsv, "dc-static-pow2") != NULL);

@@ -1,5 +1,6 @@
 #include "xray_workbench.h"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -33,6 +34,17 @@
 #define XRAY_KERNEL_REQUIRED_STABLE_SAMPLES 4
 
 static volatile unsigned long long kernel_probe_sink = 0;
+
+static uint64_t xray_benchmark_text_hash64(const char *text) {
+  uint64_t hash = 1469598103934665603ULL;
+  if (!text) return 0ULL;
+  const unsigned char *cursor = (const unsigned char *)text;
+  while (*cursor) {
+    hash ^= (uint64_t)*cursor++;
+    hash *= 1099511628211ULL;
+  }
+  return hash;
+}
 
 typedef struct XrayMulOperandFamily {
   unsigned int left_seed;
@@ -4433,11 +4445,14 @@ typedef struct XrayFormatPolicyMeasurement {
 typedef struct XrayFormatPairMeasurement {
   size_t digits;
   int parity;
+  int hash_gate;
+  uint64_t result_hash;
   unsigned long long candidate_us;
   unsigned long long baseline_us;
   double paired_ratio;
   double worst_pair_ratio;
   size_t stable_sample_count;
+  size_t hash_match_count;
   size_t sample_count;
 } XrayFormatPairMeasurement;
 
@@ -4941,6 +4956,9 @@ static XrayFormatPairMeasurement measure_format_variant_pair(
   unsigned long long candidate_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
   unsigned long long baseline_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
   int parity = 1;
+  int hash_gate = 1;
+  uint64_t result_hash = 0ULL;
+  size_t hash_match_count = 0;
 
   for (size_t sample = 0; ok && sample < sample_count; ++sample) {
     unsigned int completed = 0;
@@ -4962,6 +4980,22 @@ static XrayFormatPairMeasurement measure_format_variant_pair(
     char *candidate_text = candidate_probe(&scratch);
     char *baseline_text = baseline_probe(&scratch);
     char *gmp_text = mpz_get_str(NULL, 10, gmp);
+    uint64_t candidate_hash = xray_benchmark_text_hash64(candidate_text);
+    uint64_t baseline_hash = xray_benchmark_text_hash64(baseline_text);
+    uint64_t gmp_hash = xray_benchmark_text_hash64(gmp_text);
+    int hashes_match = candidate_hash != 0ULL &&
+      candidate_hash == baseline_hash &&
+      candidate_hash == gmp_hash;
+    if (hashes_match) {
+      hash_match_count++;
+      if (result_hash == 0ULL) {
+        result_hash = candidate_hash;
+      } else if (result_hash != candidate_hash) {
+        hash_gate = 0;
+      }
+    } else {
+      hash_gate = 0;
+    }
     parity = parity && ok && candidate_text && baseline_text && gmp_text &&
       strcmp(candidate_text, baseline_text) == 0 &&
       strcmp(candidate_text, gmp_text) == 0;
@@ -4971,11 +5005,14 @@ static XrayFormatPairMeasurement measure_format_variant_pair(
   }
 
   measurement.parity = parity && ok;
+  measurement.hash_gate = hash_gate && hash_match_count == sample_count && result_hash != 0ULL;
+  measurement.result_hash = result_hash;
   measurement.candidate_us = median_samples(candidate_samples, sample_count);
   measurement.baseline_us = median_samples(baseline_samples, sample_count);
   measurement.paired_ratio = median_paired_ratio(candidate_samples, baseline_samples, sample_count);
   measurement.worst_pair_ratio = max_paired_ratio(candidate_samples, baseline_samples, sample_count);
   measurement.stable_sample_count = paired_ratio_wins(candidate_samples, baseline_samples, sample_count, 1.0);
+  measurement.hash_match_count = hash_match_count;
 
   mpz_clear(gmp);
   xray_bigint_clear(&scratch);
@@ -4993,9 +5030,11 @@ static void append_format_route_safety_result(
   if (!points || point_count == 0) return;
 
   int parity = 1;
+  int hash_gate = 1;
   double max_ratio = 0.0;
   double max_worst_pair_ratio = 0.0;
   size_t safe_size_count = 0;
+  size_t hash_safe_size_count = 0;
   size_t measured_size_count = 0;
   size_t max_digits = 0;
   size_t min_digits = SIZE_MAX;
@@ -5009,6 +5048,9 @@ static void append_format_route_safety_result(
     if (point->digits == 0 || point->sample_count == 0) continue;
     measured_size_count++;
     parity = parity && point->parity;
+    int point_hash_safe = point->hash_gate && point->hash_match_count == point->sample_count;
+    hash_gate = hash_gate && point_hash_safe;
+    if (point_hash_safe) hash_safe_size_count++;
     if (point->digits > max_digits) max_digits = point->digits;
     if (point->digits < min_digits) min_digits = point->digits;
     if (point->candidate_us > candidate_us) candidate_us = point->candidate_us;
@@ -5016,6 +5058,7 @@ static void append_format_route_safety_result(
     if (point->paired_ratio > max_ratio) max_ratio = point->paired_ratio;
     if (point->worst_pair_ratio > max_worst_pair_ratio) max_worst_pair_ratio = point->worst_pair_ratio;
     if (point->parity &&
+        point_hash_safe &&
         point->paired_ratio <= 1.0 &&
         point->worst_pair_ratio <= 1.0 &&
         point->stable_sample_count >= required_stable) {
@@ -5043,20 +5086,25 @@ static void append_format_route_safety_result(
   result.worst_pair_ratio = max_worst_pair_ratio > 0.0 ? max_worst_pair_ratio : 1.0;
   result.parity_verified = parity;
   result.replacement_ready = 0;
-  snprintf(result.adoption, sizeof(result.adoption), "%s", parity ? "observe-only" : "blocked-output-mismatch");
+  snprintf(result.adoption, sizeof(result.adoption), "%s",
+    parity && hash_gate ? "observe-only" : "blocked-output-mismatch");
   snprintf(result.status, sizeof(result.status), "%s",
     !parity ? "mismatch" :
-    (safe_size_count == measured_size_count ? "safety-window-clean" : "neighbor-regression"));
-  result.passed = parity;
+    (!hash_gate ? "hash-mismatch" :
+    (safe_size_count == measured_size_count ? "safety-window-clean" : "neighbor-regression")));
+  result.passed = parity && hash_gate;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=format-dc-route-safety adoption=%s noAutoRoute=1 forcedCandidate=yes thresholdSafety=forced-neighbor deepConfirmation=required policy=%s sizes=%s minDigits=%zu safeSizes=%zu/%zu samples=%u requiredStablePairs=%zu/%u maxWorstPairRatio=%.3f ratioMethod=paired-median candidate=%s baseline=%s oracle=mpz_get_str featureGate=decimal-format-dc-route-deep gmpClue=mfast16m-preflight-b025856 warmupPolicy=not-counted",
+    "op=format-dc-route-safety adoption=%s noAutoRoute=1 forcedCandidate=yes thresholdSafety=forced-neighbor deepConfirmation=required policy=%s sizes=%s minDigits=%zu safeSizes=%zu/%zu hashSafe=%zu/%zu hashGate=%s samples=%u requiredStablePairs=%zu/%u maxWorstPairRatio=%.3f ratioMethod=paired-median candidate=%s baseline=%s oracle=mpz_get_str featureGate=decimal-format-dc-route-deep gmpClue=mfast615fe9e-hashgate warmup=not-counted",
     result.adoption,
     policy,
     sizes,
     min_digits,
     safe_size_count,
     measured_size_count,
+    hash_safe_size_count,
+    measured_size_count,
+    hash_gate ? "matched" : "blocked",
     XRAY_BENCH_DEEP_SAMPLES,
     required_stable,
     XRAY_BENCH_DEEP_SAMPLES,
