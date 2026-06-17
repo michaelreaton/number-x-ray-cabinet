@@ -1283,7 +1283,11 @@ XRAY_API char *xray_benchmark_progress_tsv_text(const char *tsv);
  * hasSetupContext, warmupReview, lowerBound, runFailed, baseline, control, and
  * noisyControl, plus setupSeconds when measured setup/warmup timing tags are
  * available and attemptedRuns/completedRuns when benchmark detail tags provide
- * run accounting. This is intended for external tools that need the same
+ * run accounting. It also appends import metadata columns such as digitBand,
+ * workloadShape, policy, candidate, activeCandidate, baseline, featureGate,
+ * gmpClue, controlSafety, thresholdSafety, and hashGate so external tools can
+ * group optimizer evidence by size and route shape without scraping the detail
+ * field. This is intended for external tools that need the same
  * benchmark-progress classification as xray_benchmark_progress_tsv_text()
  * without parsing the human-readable digest. The caller owns the returned
  * string and must release it with xray_free().

@@ -64,6 +64,21 @@ paired route/current plus route/GMP ratios. They make broad formatter swatches
 importable without changing production decimal formatting or route-completed
 progress counts.
 
+## 2026-06-17: Importable Progress Shape Metadata
+
+MFastFermat `75241b7`, `ea5c11f`, and `5e388e2` preserved root-class masks and
+then reported root-class counts plus rejection splits beside CUDA tournament
+rows. The transferable lesson is that optimizer evidence should carry its shape
+labels next to the measured row, not in a prose-only note.
+
+Number X-Ray now appends machine-readable metadata to
+`benchmark_progress.tsv`: `digitBand`, `workloadShape`, `policy`, `candidate`,
+`activeCandidate`, `baseline`, `featureGate`, `gmpClue`, `controlSafety`,
+`thresholdSafety`, and `hashGate`. This is reporting only. It lets external
+tools group broad swatches by size band, route family, and safety gate before
+ranking contenders, while leaving all arithmetic and production routing
+unchanged.
+
 ## 2026-06-17: Focused Benchmark Digit Windows
 
 The hourly MFastFermat watch advanced `main` to `8d9735e` with a focused

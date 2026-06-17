@@ -64,6 +64,8 @@ typedef struct ProgressClass {
   int promotion_ready;
 } ProgressClass;
 
+static void append_progress_tsv_field(CompareBuffer *buffer, const char *text);
+
 static int cb_reserve(CompareBuffer *buffer, size_t extra) {
   size_t needed = buffer->length + extra + 1U;
   if (needed <= buffer->capacity) return 1;
@@ -609,6 +611,51 @@ static void compare_row_run_counts(
   }
 }
 
+static const char *compare_row_digit_band(size_t digits) {
+  if (digits <= 150U) return "small";
+  if (digits <= 1000U) return "medium";
+  if (digits <= 8192U) return "large";
+  if (digits <= 16384U) return "xlarge";
+  return "frontier";
+}
+
+static const char *compare_row_workload_shape(const CompareRow *row) {
+  if (!row) return "unknown";
+  if (compare_contains(row->detail, "sparse-zero") ||
+      compare_contains(row->detail, "sparse-pair") ||
+      compare_contains(row->detail, "sparse-square") ||
+      compare_contains(row->detail, "sparse-product")) {
+    return compare_contains(row->operation, "square") ? "sparse-square" : "sparse-multiply";
+  }
+  if (compare_contains(row->operation, "format")) return "decimal-format";
+  if (compare_contains(row->operation, "parse")) return "decimal-parse";
+  if (compare_contains(row->operation, "frontier") ||
+      compare_contains(row->detail, "frontier") ||
+      compare_contains(row->detail, "mfast")) {
+    return "frontier-scout";
+  }
+  if (compare_contains(row->operation, "square")) return "dense-square";
+  if (compare_contains(row->operation, "mul")) return "dense-multiply";
+  if (compare_contains(row->operation, "divmod") ||
+      compare_contains(row->operation, "division") ||
+      compare_contains(row->operation, "qhat") ||
+      compare_contains(row->detail, "division-qhat")) {
+    return "division";
+  }
+  if (compare_contains(row->operation, "powmod") ||
+      compare_contains(row->operation, "mod-u32") ||
+      compare_contains(row->operation, "gcd-u32")) {
+    return "single-limb-modular";
+  }
+  return "general";
+}
+
+static void append_detail_value_or_empty(CompareBuffer *buffer, const CompareRow *row, const char *key) {
+  char value[160] = {0};
+  if (row && key) detail_value(row->detail, key, value, sizeof(value));
+  append_progress_tsv_field(buffer, value);
+}
+
 static int compare_row_is_noisy_control(const CompareRow *row) {
   if (!row) return 0;
   return compare_contains(row->status, "noisy-control") ||
@@ -852,13 +899,14 @@ char *xray_benchmark_progress_classification_tsv(const char *tsv) {
   int ok = parse_compare_set(tsv, &set, "benchmark");
 
   cb_append(&buffer,
-    "category\tname\toperation\tdigits\tdisplay\tprimaryLane\trouteCandidate\trouteCompleted\trouteOpen\tproductGated\thasSetupContext\tsetupSeconds\twarmupReview\tlowerBound\trunFailed\tattemptedRuns\tcompletedRuns\tsafetyRejected\tbaseline\tcontrol\tnoisyControl\tpromotionReady\tstatus\tadoption\tspeedRatio\tworstPairRatio\tstableSampleCount\tsampleCount\tdetail\tbuildConfig\tipo\tcompiler\tcompilerVersion\n");
+    "category\tname\toperation\tdigits\tdisplay\tprimaryLane\trouteCandidate\trouteCompleted\trouteOpen\tproductGated\thasSetupContext\tsetupSeconds\twarmupReview\tlowerBound\trunFailed\tattemptedRuns\tcompletedRuns\tsafetyRejected\tbaseline\tcontrol\tnoisyControl\tpromotionReady\tstatus\tadoption\tspeedRatio\tworstPairRatio\tstableSampleCount\tsampleCount\tdetail\tbuildConfig\tipo\tcompiler\tcompilerVersion\tdigitBand\tworkloadShape\tpolicy\tcandidate\tactiveCandidate\tbaseline\tfeatureGate\tgmpClue\tcontrolSafety\tthresholdSafety\thashGate\n");
   if (!ok) {
     cb_append(&buffer, "error\t");
     append_progress_tsv_field(&buffer, set.error);
     cb_append(&buffer, "\t\t0\terror\tinvalid\tfalse\tfalse\tfalse\tfalse\tfalse\t0.000000\tfalse\tfalse\tfalse\t0\t0\tfalse\tfalse\tfalse\tfalse\tfalse\tparse-error\t\t0.000000\t0.000000\t0\t0\t");
     append_progress_tsv_field(&buffer, set.error);
-    cb_append(&buffer, "\t\t\t\t\n");
+    for (size_t field = 0; field < 15U; ++field) cb_append(&buffer, "\t");
+    cb_append(&buffer, "\n");
     return cb_take(&buffer);
   }
 
@@ -915,6 +963,28 @@ char *xray_benchmark_progress_classification_tsv(const char *tsv) {
     append_progress_tsv_field(&buffer, row->compiler);
     cb_append(&buffer, "\t");
     append_progress_tsv_field(&buffer, row->compiler_version);
+    cb_append(&buffer, "\t");
+    append_progress_tsv_field(&buffer, compare_row_digit_band(row->digits));
+    cb_append(&buffer, "\t");
+    append_progress_tsv_field(&buffer, compare_row_workload_shape(row));
+    cb_append(&buffer, "\t");
+    append_detail_value_or_empty(&buffer, row, "policy");
+    cb_append(&buffer, "\t");
+    append_detail_value_or_empty(&buffer, row, "candidate");
+    cb_append(&buffer, "\t");
+    append_detail_value_or_empty(&buffer, row, "activeCandidate");
+    cb_append(&buffer, "\t");
+    append_detail_value_or_empty(&buffer, row, "baseline");
+    cb_append(&buffer, "\t");
+    append_detail_value_or_empty(&buffer, row, "featureGate");
+    cb_append(&buffer, "\t");
+    append_detail_value_or_empty(&buffer, row, "gmpClue");
+    cb_append(&buffer, "\t");
+    append_detail_value_or_empty(&buffer, row, "controlSafety");
+    cb_append(&buffer, "\t");
+    append_detail_value_or_empty(&buffer, row, "thresholdSafety");
+    cb_append(&buffer, "\t");
+    append_detail_value_or_empty(&buffer, row, "hashGate");
     cb_append(&buffer, "\n");
   }
 
