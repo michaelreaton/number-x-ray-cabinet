@@ -334,7 +334,7 @@ static void test_scratch_bigint_oracle(void) {
   free(oracle_quotient);
 
   XrayBigIntRouteConfig route = xray_bigint_route_config();
-  const size_t format_roundtrip_sizes[] = {40U, 150U, 768U, 896U, 1000U, 4096U, 8192U};
+  const size_t format_roundtrip_sizes[] = {40U, 150U, 767U, 768U, 896U, 897U, 1000U, 4096U, 8192U};
   for (size_t index = 0; index < sizeof(format_roundtrip_sizes) / sizeof(format_roundtrip_sizes[0]); ++index) {
     char *roundtrip_input = make_pattern_decimal(format_roundtrip_sizes[index], "97531864208642135790");
     CHECK(roundtrip_input != NULL);
