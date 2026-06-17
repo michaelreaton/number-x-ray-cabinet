@@ -1254,7 +1254,7 @@ XRAY_API char *xray_benchmark_progress_tsv_text(const char *tsv);
  *
  * The returned TSV preserves each row's benchmark identity and adds route
  * booleans such as routeCandidate, routeCompleted, productGated,
- * hasSetupContext, warmupReview, lowerBound, baseline, control, and
+ * hasSetupContext, warmupReview, lowerBound, runFailed, baseline, control, and
  * noisyControl, plus setupSeconds when measured setup/warmup timing tags are
  * available. This is intended for external tools that need the same
  * benchmark-progress classification as xray_benchmark_progress_tsv_text()

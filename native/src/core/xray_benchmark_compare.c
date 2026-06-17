@@ -56,6 +56,7 @@ typedef struct ProgressClass {
   int setup_context;
   int warmup_review;
   int lower_bound;
+  int run_failed;
   int safety_rejected;
   int baseline;
   int control;
@@ -493,6 +494,21 @@ static int compare_row_is_lower_bound(const CompareRow *row) {
     compare_contains(row->detail, "CompletedRuns=0");
 }
 
+static int compare_row_is_run_failed(const CompareRow *row) {
+  if (!row) return 0;
+  return compare_contains(row->status, "run failed") ||
+    compare_contains(row->status, "run-failed") ||
+    compare_contains(row->status, "run_failed") ||
+    compare_contains(row->adoption, "run failed") ||
+    compare_contains(row->adoption, "run-failed") ||
+    compare_contains(row->adoption, "run_failed") ||
+    compare_contains(row->detail, "Status=run failed") ||
+    compare_contains(row->detail, "Status=run-failed") ||
+    compare_contains(row->detail, "Status=run_failed") ||
+    compare_contains(row->detail, "RunFailed=true") ||
+    compare_contains(row->detail, "RunFailed=1");
+}
+
 static int compare_row_is_warmup_review(const CompareRow *row) {
   if (!row) return 0;
   return compare_contains(row->status, "warmup-review") ||
@@ -619,7 +635,13 @@ static int compare_row_is_product_gated(const CompareRow *row) {
 }
 
 static int compare_row_has_progress_signal(const CompareRow *row) {
-  return row && row->speed_ratio > 0.0 &&
+  if (!row) return 0;
+  if (compare_row_is_lower_bound(row) ||
+      compare_row_is_run_failed(row) ||
+      compare_row_is_warmup_review(row)) {
+    return 1;
+  }
+  return row->speed_ratio > 0.0 &&
     (compare_row_is_lower_bound(row) ||
      compare_row_is_warmup_review(row) ||
      row->parity_verified ||
@@ -659,6 +681,7 @@ static ProgressClass progress_classify_row(const CompareRow *row) {
   if (!row || !compare_row_has_progress_signal(row)) return progress;
 
   progress.lower_bound = compare_row_is_lower_bound(row);
+  progress.run_failed = compare_row_is_run_failed(row);
   progress.warmup_review = compare_row_is_warmup_review(row);
   progress.setup_context = compare_row_has_setup_context(row);
   progress.control = compare_row_is_control(row);
@@ -670,6 +693,10 @@ static ProgressClass progress_classify_row(const CompareRow *row) {
 
   if (progress.lower_bound) {
     progress.primary_lane = "lower-bound";
+    return progress;
+  }
+  if (progress.run_failed) {
+    progress.primary_lane = "run-failed";
     return progress;
   }
   if (progress.warmup_review) {
@@ -745,11 +772,11 @@ char *xray_benchmark_progress_classification_tsv(const char *tsv) {
   int ok = parse_compare_set(tsv, &set, "benchmark");
 
   cb_append(&buffer,
-    "category\tname\toperation\tdigits\tdisplay\tprimaryLane\trouteCandidate\trouteCompleted\trouteOpen\tproductGated\thasSetupContext\tsetupSeconds\twarmupReview\tlowerBound\tsafetyRejected\tbaseline\tcontrol\tnoisyControl\tpromotionReady\tstatus\tadoption\tspeedRatio\tworstPairRatio\tstableSampleCount\tsampleCount\tdetail\tbuildConfig\tipo\tcompiler\tcompilerVersion\n");
+    "category\tname\toperation\tdigits\tdisplay\tprimaryLane\trouteCandidate\trouteCompleted\trouteOpen\tproductGated\thasSetupContext\tsetupSeconds\twarmupReview\tlowerBound\trunFailed\tsafetyRejected\tbaseline\tcontrol\tnoisyControl\tpromotionReady\tstatus\tadoption\tspeedRatio\tworstPairRatio\tstableSampleCount\tsampleCount\tdetail\tbuildConfig\tipo\tcompiler\tcompilerVersion\n");
   if (!ok) {
     cb_append(&buffer, "error\t");
     append_progress_tsv_field(&buffer, set.error);
-    cb_append(&buffer, "\t\t0\terror\tinvalid\tfalse\tfalse\tfalse\tfalse\tfalse\t0.000000\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\tparse-error\t\t0.000000\t0.000000\t0\t0\t");
+    cb_append(&buffer, "\t\t0\terror\tinvalid\tfalse\tfalse\tfalse\tfalse\tfalse\t0.000000\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\tparse-error\t\t0.000000\t0.000000\t0\t0\t");
     append_progress_tsv_field(&buffer, set.error);
     cb_append(&buffer, "\t\t\t\t\n");
     return cb_take(&buffer);
@@ -776,10 +803,11 @@ char *xray_benchmark_progress_classification_tsv(const char *tsv) {
       progress_bool_text(progress.product_gated),
       progress_bool_text(progress.setup_context));
     cb_printf(&buffer,
-      "\t%.6f\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t",
+      "\t%.6f\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t",
       compare_row_setup_seconds(row),
       progress_bool_text(progress.warmup_review),
       progress_bool_text(progress.lower_bound),
+      progress_bool_text(progress.run_failed),
       progress_bool_text(progress.safety_rejected),
       progress_bool_text(progress.baseline),
       progress_bool_text(progress.control),
@@ -827,6 +855,7 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
   ComparePair rejected[8] = {0};
   ComparePair product_gated[8] = {0};
   ComparePair lower_bound[8] = {0};
+  ComparePair run_failed[8] = {0};
   ComparePair warmup_review[8] = {0};
   ComparePair setup_context[8] = {0};
   size_t completed_count = 0;
@@ -836,6 +865,7 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
   size_t rejected_count = 0;
   size_t product_gated_count = 0;
   size_t lower_bound_count = 0;
+  size_t run_failed_count = 0;
   size_t warmup_review_count = 0;
   size_t setup_context_count = 0;
   size_t route_candidates_total = 0;
@@ -847,6 +877,7 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
   size_t rejected_total = 0;
   size_t product_gated_total = 0;
   size_t lower_bound_total = 0;
+  size_t run_failed_total = 0;
   size_t warmup_review_total = 0;
   size_t setup_context_total = 0;
 
@@ -854,6 +885,7 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
     const CompareRow *row = &set.rows[index];
     if (!compare_row_has_progress_signal(row)) continue;
     int lower_bound_row = compare_row_is_lower_bound(row);
+    int run_failed_row = compare_row_is_run_failed(row);
     int warmup_review_row = compare_row_is_warmup_review(row);
     int setup_context_row = compare_row_has_setup_context(row);
     int control = compare_row_is_control(row);
@@ -868,6 +900,17 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
         lower_bound,
         &lower_bound_count,
         sizeof(lower_bound) / sizeof(lower_bound[0]),
+        row,
+        progress_open_score(row),
+        1);
+      continue;
+    }
+    if (run_failed_row) {
+      run_failed_total++;
+      insert_progress_row(
+        run_failed,
+        &run_failed_count,
+        sizeof(run_failed) / sizeof(run_failed[0]),
         row,
         progress_open_score(row),
         1);
@@ -970,7 +1013,7 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
 
   cb_printf(&buffer, "Artifact: %s\n", set.fingerprint);
   cb_printf(&buffer,
-    "Rows: total=%zu routeCandidates=%zu routeCompleted=%zu routeOpen=%zu productGatedOpen=%zu warmupReviewRows=%zu setupContextRows=%zu baselineExcluded=%zu controlsExcluded=%zu noisyControls=%zu safetyRejected=%zu lowerBoundRows=%zu\n\n",
+    "Rows: total=%zu routeCandidates=%zu routeCompleted=%zu routeOpen=%zu productGatedOpen=%zu warmupReviewRows=%zu setupContextRows=%zu baselineExcluded=%zu controlsExcluded=%zu noisyControls=%zu safetyRejected=%zu lowerBoundRows=%zu runFailedRows=%zu\n\n",
     set.count,
     route_candidates_total,
     completed_total,
@@ -982,7 +1025,8 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
     controls_total,
     noisy_controls_total,
     rejected_total,
-    lower_bound_total);
+    lower_bound_total,
+    run_failed_total);
 
   cb_append(&buffer, "Product/backend route candidate rows observed (completed):\n");
   if (!completed_count) cb_append(&buffer, "  none\n");
@@ -1019,6 +1063,11 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
   for (size_t index = 0; index < lower_bound_count; ++index) append_progress_line(&buffer, lower_bound[index].left, "lower-bound");
   if (lower_bound_total > lower_bound_count) cb_printf(&buffer, "  ... %zu more lower-bound rows\n", lower_bound_total - lower_bound_count);
 
+  cb_append(&buffer, "\nRun-failed rows observed:\n");
+  if (!run_failed_count) cb_append(&buffer, "  none\n");
+  for (size_t index = 0; index < run_failed_count; ++index) append_progress_line(&buffer, run_failed[index].left, "run-failed");
+  if (run_failed_total > run_failed_count) cb_printf(&buffer, "  ... %zu more run-failed rows\n", run_failed_total - run_failed_count);
+
   cb_append(&buffer, "\nBaseline/current rows observed (excluded from route candidate totals):\n");
   if (!baseline_count) cb_append(&buffer, "  none\n");
   for (size_t index = 0; index < baseline_count; ++index) append_progress_line(&buffer, baselines[index].left, "baseline");
@@ -1030,7 +1079,7 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
   if (controls_total > control_count) cb_printf(&buffer, "  ... %zu more control rows\n", controls_total - control_count);
 
   cb_append(&buffer,
-    "\nRule: route-completed progress excludes baseline/current, duplicate-control, noisy-control, product-gated, warmup-review, and lower-bound/incomplete rows. Setup/warmup context rows are reported for review but are not scored as throughput unless a row explicitly promotes setup into the benchmark policy. Median wins still stay open when worst-pair, control, baseline, noAutoRoute, forced-neighbor, deep-confirmation, review-warmup, timeout, or safety labels reject them.\n");
+    "\nRule: route-completed progress excludes baseline/current, duplicate-control, noisy-control, product-gated, warmup-review, lower-bound/incomplete, and run-failed rows. Setup/warmup context rows are reported for review but are not scored as throughput unless a row explicitly promotes setup into the benchmark policy. Median wins still stay open when worst-pair, control, baseline, noAutoRoute, forced-neighbor, deep-confirmation, review-warmup, timeout, run failure, or safety labels reject them.\n");
 
   compare_set_clear(&set);
   return cb_take(&buffer);
