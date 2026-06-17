@@ -166,9 +166,10 @@ XRAY_API char *xray_build_info_summary(const XrayBuildInfo *info);
  * xray_preview_decimal(), xray_*_report_json(), and
  * xray_benchmark_compare_tsv_text(), xray_benchmark_progress_tsv_text(),
  * xray_benchmark_progress_classification_tsv(),
- * xray_benchmark_filter_tsv_digits(), xray_bigint_route_config_json(),
- * xray_cpu_features_summary(), or xray_build_info_summary(). Passing NULL is
- * allowed. Use this instead of plain free() across shared-library or
+ * xray_benchmark_filter_tsv_digits(), xray_benchmark_filter_tsv_text(),
+ * xray_bigint_route_config_json(), xray_cpu_features_summary(), or
+ * xray_build_info_summary(). Passing NULL is allowed. Use this instead of
+ * plain free() across shared-library or
  * foreign-language boundaries.
  */
 XRAY_API void xray_free(void *ptr);
@@ -1263,6 +1264,17 @@ XRAY_API char *xray_benchmark_compare_tsv_text(const char *left_tsv, const char 
  * the returned string and must release it with xray_free().
  */
 XRAY_API char *xray_benchmark_filter_tsv_digits(const char *tsv, size_t min_digits, size_t max_digits);
+
+/**
+ * Filter benchmark TSV rows by a case-sensitive row token.
+ *
+ * The header is always preserved. Rows are preserved when needle appears in
+ * the serialized TSV row. Passing NULL or an empty needle returns a copy of the
+ * input TSV. This is a review helper for focused operation, policy, route, and
+ * clue analysis; it does not rerun or alter benchmark measurements. The caller
+ * owns the returned string and must release it with xray_free().
+ */
+XRAY_API char *xray_benchmark_filter_tsv_text(const char *tsv, const char *needle);
 
 /**
  * Summarize one benchmark TSV artifact as a human-readable progress digest.

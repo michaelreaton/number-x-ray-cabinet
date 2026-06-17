@@ -893,6 +893,34 @@ char *xray_benchmark_filter_tsv_digits(const char *tsv, size_t min_digits, size_
   return cb_take(&buffer);
 }
 
+char *xray_benchmark_filter_tsv_text(const char *tsv, const char *needle) {
+  CompareBuffer buffer = {0};
+  if (!tsv) return cb_take(&buffer);
+  if (!needle || !needle[0]) return compare_strdup(tsv);
+
+  char *text = compare_strdup(tsv);
+  if (!text) return NULL;
+
+  char *cursor = text;
+  char *header = next_line(&cursor);
+  if (!header) {
+    free(text);
+    return cb_take(&buffer);
+  }
+
+  cb_append(&buffer, header);
+  cb_append(&buffer, "\n");
+  for (char *line = next_line(&cursor); line; line = next_line(&cursor)) {
+    if (!line[0]) continue;
+    if (!strstr(line, needle)) continue;
+    cb_append(&buffer, line);
+    cb_append(&buffer, "\n");
+  }
+
+  free(text);
+  return cb_take(&buffer);
+}
+
 char *xray_benchmark_progress_classification_tsv(const char *tsv) {
   CompareSet set;
   CompareBuffer buffer = {0};
