@@ -1821,7 +1821,8 @@ static void test_benchmarks(void) {
       CHECK(report->results[index].parity_verified);
       CHECK(!report->results[index].replacement_ready);
       CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
-      CHECK(strcmp(report->results[index].status, "bounded-frontier-scout") == 0);
+      CHECK(strcmp(report->results[index].status, "noisy-control") == 0 ||
+          strcmp(report->results[index].status, "stable-control") == 0);
       CHECK(report->results[index].scratch_us > 0);
       CHECK(report->results[index].gmp_us > 0);
       CHECK(report->results[index].speed_ratio > 0.0);
@@ -1833,6 +1834,8 @@ static void test_benchmarks(void) {
       CHECK(strstr(report->results[index].detail, "warmupPasses=1") != NULL);
       CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
       CHECK(strstr(report->results[index].detail, "duplicateControl=default") != NULL);
+      CHECK(strstr(report->results[index].detail, "controlPlacement=tail") != NULL);
+      CHECK(strstr(report->results[index].detail, "controlSafety=") != NULL);
       CHECK(strstr(report->results[index].detail, "controlRatio=") != NULL);
       CHECK(strstr(report->results[index].detail, "controlWorst=") != NULL);
       CHECK(strstr(report->results[index].detail, "controlStable=") != NULL);
@@ -3688,6 +3691,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "square-frontier") != NULL);
   CHECK(strstr(json, "mfastfermat-frontier8m16m+steady-warmup") != NULL);
   CHECK(strstr(json, "duplicateControl=default") != NULL);
+  CHECK(strstr(json, "controlPlacement=tail") != NULL);
+  CHECK(strstr(json, "controlSafety=") != NULL);
   CHECK(strstr(json, "controlRatio=") != NULL);
   CHECK(strstr(json, "mfastKnob=ntt16_wide61_difdit_32000") != NULL);
   CHECK(strstr(json, "threshold96-ge8192") != NULL);
@@ -3792,6 +3797,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "very-large-frontier-scout") != NULL);
   CHECK(strstr(tsv, "mfastfermat-frontier8m16m+steady-warmup") != NULL);
   CHECK(strstr(tsv, "duplicateControl=default") != NULL);
+  CHECK(strstr(tsv, "controlPlacement=tail") != NULL);
+  CHECK(strstr(tsv, "controlSafety=") != NULL);
   CHECK(strstr(tsv, "controlRatio=") != NULL);
   CHECK(strstr(tsv, "mfastKnob=ntt16_wide61_difdit_32000") != NULL);
   CHECK(strstr(tsv, "threshold96-ge8192") != NULL);
@@ -3969,6 +3976,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "very-large-frontier-scout") != NULL);
   CHECK(strstr(benchmark_tsv, "mfastfermat-frontier8m16m+steady-warmup") != NULL);
   CHECK(strstr(benchmark_tsv, "duplicateControl=default") != NULL);
+  CHECK(strstr(benchmark_tsv, "controlPlacement=tail") != NULL);
+  CHECK(strstr(benchmark_tsv, "controlSafety=") != NULL);
   CHECK(strstr(benchmark_tsv, "controlRatio=") != NULL);
   CHECK(strstr(benchmark_tsv, "mfastKnob=ntt16_wide61_difdit_32000") != NULL);
   CHECK(strstr(benchmark_tsv, "threshold96-ge8192") != NULL);
@@ -4012,6 +4021,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "PRODUCT POLICY THRESHOLD GATES") != NULL);
   CHECK(strstr(benchmark_frontier, "LARGE FRONTIER SCOUTS") != NULL);
   CHECK(strstr(benchmark_frontier, "Control") != NULL);
+  CHECK(strstr(benchmark_frontier, "CtlSafety") != NULL);
   CHECK(strstr(benchmark_frontier, "Worst") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-threshold thr=") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-threshold-tournament thr=") != NULL);

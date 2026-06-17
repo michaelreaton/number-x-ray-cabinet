@@ -936,17 +936,19 @@ char *xray_benchmark_frontier_text(const XrayBenchmarkReport *report) {
 
   jb_append(&buffer,
     "\nLARGE FRONTIER SCOUTS\n"
-    "Operation                  Digits   Status                   Adoption       ScratchUs   BackendUs   Ratio   Worst   Stable   Control\n"
-    "------------------------   ------   ----------------------   ------------   ---------   --------   -----   -----   ------   -------\n");
+    "Operation                  Digits   Status                   Adoption       ScratchUs   BackendUs   Ratio   Worst   Stable   Control   CtlSafety\n"
+    "------------------------   ------   ----------------------   ------------   ---------   --------   -----   -----   ------   -------   ----------\n");
   for (size_t index = 0; index < report->result_count; ++index) {
     const XrayBenchmarkResult *row = &report->results[index];
     if (strcmp(row->category, "frontier-scout") != 0) continue;
     char label[80];
     benchmark_frontier_label(row, label, sizeof(label));
     char control_ratio[32] = "-";
+    char control_safety[32] = "-";
     benchmark_detail_value(row, "controlRatio", control_ratio, sizeof(control_ratio));
+    benchmark_detail_value(row, "controlSafety", control_safety, sizeof(control_safety));
     jb_printf(&buffer,
-      "%-24s   %6zu   %-22s   %-12s   %9llu   %8llu   %5.2f   %5.2f   %3zu/%-3zu   %7s\n",
+      "%-24s   %6zu   %-22s   %-12s   %9llu   %8llu   %5.2f   %5.2f   %3zu/%-3zu   %7s   %-10s\n",
       label,
       row->digits,
       row->status,
@@ -957,7 +959,8 @@ char *xray_benchmark_frontier_text(const XrayBenchmarkReport *report) {
       row->worst_pair_ratio,
       row->stable_sample_count,
       row->sample_count,
-      control_ratio);
+      control_ratio,
+      control_safety);
   }
 
   jb_append(&buffer,

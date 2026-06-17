@@ -1393,12 +1393,14 @@ static void append_frontier_scout_result(
   result.worst_pair_ratio = worst_pair_ratio;
   result.parity_verified = parity;
   result.replacement_ready = 0;
+  const char *control_safety = parity && control_worst_ratio <= 1.10 &&
+      control_stable_count == sample_count ? "stable-control" : "noisy-control";
   snprintf(result.adoption, sizeof(result.adoption), "%s", parity ? "observe-only" : "blocked-output-mismatch");
-  snprintf(result.status, sizeof(result.status), "%s", parity ? "bounded-frontier-scout" : "mismatch");
+  snprintf(result.status, sizeof(result.status), "%s", parity ? control_safety : "mismatch");
   result.passed = parity;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=frontier-scout operation=%s digits=%zu estimatedBits=%zu operandFamilies=1 samples=%zu warmupPasses=%u iterations=%u stablePairs=%zu/%zu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median duplicateControl=default controlRatio=%.3f controlWorst=%.3f controlStable=%zu/%zu baseline=mpz_mul oracle=mpz_mul featureGate=very-large-frontier-scout gmpClue=mfastfermat-frontier8m16m+steady-warmup+difdit32 mfastKnob=ntt16_wide61_difdit_32000 noAutoRoute=1 adoption=%s",
+    "op=frontier-scout operation=%s digits=%zu estimatedBits=%zu samples=%zu warmupPasses=%u iterations=%u stablePairs=%zu/%zu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median duplicateControl=default controlPlacement=tail controlSafety=%s controlRatio=%.3f controlWorst=%.3f controlStable=%zu/%zu baseline=mpz_mul oracle=mpz_mul featureGate=very-large-frontier-scout gmpClue=mfastfermat-frontier8m16m+steady-warmup mfastKnob=ntt16_wide61_difdit_32000 noAutoRoute=1 adoption=%s",
     operation,
     digits,
     benchmark_estimated_bits_from_decimal_digits(digits),
@@ -1409,6 +1411,7 @@ static void append_frontier_scout_result(
     sample_count,
     result.speed_ratio,
     result.worst_pair_ratio,
+    control_safety,
     control_ratio,
     control_worst_ratio,
     control_stable_count,
