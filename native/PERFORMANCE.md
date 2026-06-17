@@ -87,8 +87,13 @@ MFastFermat `0070fae` then made that lane importable by adding
 handoff shape with `benchmark_progress.tsv` and
 `xray_benchmark_progress_classification_tsv()`. External tools can now read
 `routeCandidate`, `routeCompleted`, `productGated`, `hasSetupContext`,
-`warmupReview`, `lowerBound`, `baseline`, `control`, and `noisyControl`
-directly instead of scraping the human digest.
+`setupSeconds`, `warmupReview`, `lowerBound`, `baseline`, `control`, and
+`noisyControl` directly instead of scraping the human digest. The numeric setup
+column follows the latest MFast `SetupSeconds` lesson: explicit
+`SetupSeconds`/`setupSeconds` tags win, otherwise measured setup and warmup tags
+such as `setupUs`, `setupMs`, `warmup_s`, `WarmupSecondsMedian`, and
+`HelperWarmupSeconds` are converted to seconds. The value is context for review,
+not route score.
 
 ## 2026-06-17: Static Formatter Leaf Expansion
 

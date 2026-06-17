@@ -197,7 +197,7 @@ static void test_benchmark_progress_digest(void) {
     "category\tname\toperation\tdigits\tstatus\tpassed\tparityVerified\treplacementReady\tadoption\tscratchUs\tgmpUs\tspeedRatio\tmaxAllowedSpeedRatio\tworstPairRatio\tstableSampleCount\tsampleCount\telapsedMs\tdetail\tbuildConfig\tipo\tcompiler\tcompilerVersion\n";
   const char *rows =
     "scratch-vs-gmp\tscratch parse 1000 digits\tparse\t1000\treplacement-ready\ttrue\ttrue\ttrue\tallowed\t10\t20\t0.500000\t1.000000\t0.700000\t5\t5\t1\tdetail\tRelease\tfalse\tMSVC\t1929\n"
-    "policy-gate\tpolicy gate format preinv 1000 digits\tformat-policy-safety\t1000\tpolicy-ready\ttrue\ttrue\ttrue\tpromotion-ready\t50\t60\t0.800000\t0.980000\t0.950000\t5\t5\t1\tpolicy=preinv setupUs=42 setupSamples=5 setupPolicy=reported-not-scored WarmupSecondsMedian=0.000042\tRelease\tfalse\tMSVC\t1929\n"
+    "policy-gate\tpolicy gate format preinv 1000 digits\tformat-policy-safety\t1000\tpolicy-ready\ttrue\ttrue\ttrue\tpromotion-ready\t50\t60\t0.800000\t0.980000\t0.950000\t5\t5\t1\tpolicy=preinv SetupSeconds=0.123456 setupUs=42 setupSamples=5 setupPolicy=reported-not-scored WarmupSecondsMedian=0.000042\tRelease\tfalse\tMSVC\t1929\n"
     "policy-gate\tpolicy gate format product-gated 960 digits\tformat-policy-deep-safety\t960\tpolicy-ready\ttrue\ttrue\ttrue\tpromotion-ready\t45\t60\t0.750000\t0.980000\t0.880000\t5\t5\t1\tpolicy=deep-preinv gate=960 forcedCandidate=yes thresholdSafety=forced-neighbor deepConfirmation=required noAutoRoute=1\tRelease\tfalse\tMSVC\t1929\n"
     "policy-probe\tpolicy mul current-default 1000 digits\tmul-policy\t1000\tpolicy-ready\ttrue\ttrue\ttrue\tpromotion-ready\t21\t42\t0.500000\t1.000000\t0.800000\t5\t5\t1\tpolicy=current-default candidate=current-scratch-mul baseline=mpz_mul\tRelease\tfalse\tMSVC\t1929\n"
     "scratch-vs-gmp\tscratch format 896 digits\tformat\t896\tparity\ttrue\ttrue\tfalse\toracle-only\t190\t100\t1.900000\t1.000000\t1.950000\t0\t5\t1\tdetail\tRelease\tfalse\tMSVC\t1929\n"
@@ -249,13 +249,13 @@ static void test_benchmark_progress_digest(void) {
 
   char *classification = xray_benchmark_progress_classification_tsv(tsv);
   CHECK(classification != NULL);
-  CHECK(strstr(classification, "primaryLane\trouteCandidate\trouteCompleted\trouteOpen\tproductGated\thasSetupContext") != NULL);
-  CHECK(strstr(classification, "format-policy-safety policy=preinv\tcompleted\ttrue\ttrue\tfalse\tfalse\ttrue\tfalse\tfalse") != NULL);
-  CHECK(strstr(classification, "format-policy-deep-safety policy=deep-preinv\tproduct-gated\ttrue\tfalse\ttrue\ttrue\tfalse\tfalse\tfalse") != NULL);
+  CHECK(strstr(classification, "primaryLane\trouteCandidate\trouteCompleted\trouteOpen\tproductGated\thasSetupContext\tsetupSeconds") != NULL);
+  CHECK(strstr(classification, "format-policy-safety policy=preinv\tcompleted\ttrue\ttrue\tfalse\tfalse\ttrue\t0.123456\tfalse\tfalse") != NULL);
+  CHECK(strstr(classification, "format-policy-deep-safety policy=deep-preinv\tproduct-gated\ttrue\tfalse\ttrue\ttrue\tfalse\t0.000000\tfalse\tfalse") != NULL);
   CHECK(strstr(classification, "mul-policy policy=current-default baseline=mpz_mul candidate=current-scratch-mul\tbaseline\tfalse\tfalse\tfalse") != NULL);
-  CHECK(strstr(classification, "mul-frontier\tcontrol\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\ttrue\ttrue") != NULL);
-  CHECK(strstr(classification, "divmod-precomputed\twarmup-review\tfalse\tfalse\tfalse\tfalse\ttrue\ttrue\tfalse") != NULL);
-  CHECK(strstr(classification, "divmod-precomputed\tlower-bound\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\ttrue") != NULL);
+  CHECK(strstr(classification, "mul-frontier\tcontrol\tfalse\tfalse\tfalse\tfalse\tfalse\t0.000000\tfalse\tfalse\tfalse\tfalse\ttrue\ttrue") != NULL);
+  CHECK(strstr(classification, "divmod-precomputed\twarmup-review\tfalse\tfalse\tfalse\tfalse\ttrue\t0.450000\ttrue\tfalse") != NULL);
+  CHECK(strstr(classification, "divmod-precomputed\tlower-bound\tfalse\tfalse\tfalse\tfalse\tfalse\t0.000000\tfalse\ttrue") != NULL);
   xray_free(classification);
   free(tsv);
 }
@@ -4332,8 +4332,9 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_progress, "baselineExcluded=") != NULL);
   CHECK(strstr(benchmark_progress, "controlsExcluded=") != NULL);
   CHECK(strstr(benchmark_progress, "product-gated rows") != NULL);
-  CHECK(strstr(benchmark_progress_tsv, "primaryLane\trouteCandidate\trouteCompleted\trouteOpen\tproductGated\thasSetupContext") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "primaryLane\trouteCandidate\trouteCompleted\trouteOpen\tproductGated\thasSetupContext\tsetupSeconds") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "hasSetupContext") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "setupSeconds") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "divmod-precomputed") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "\ttrue\tfalse\ttrue\ttrue\ttrue") != NULL);
   CHECK(strstr(cpu_text, "CPU:") != NULL);

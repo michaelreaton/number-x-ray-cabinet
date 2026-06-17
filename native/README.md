@@ -302,6 +302,13 @@ The matching `benchmark_progress.tsv` artifact and `--bench-progress-tsv` CLI
 mode expose the same row classification with importable booleans such as
 `routeCandidate`, `routeCompleted`, `productGated`, `hasSetupContext`,
 `warmupReview`, `lowerBound`, `baseline`, `control`, and `noisyControl`.
+It also includes `setupSeconds`, a measured setup/warmup duration in seconds
+when tags such as `setupUs`, `setupMs`, `warmup_s`, `WarmupSecondsMedian`, or
+`HelperWarmupSeconds` are present. An explicit `SetupSeconds` or
+`setupSeconds` tag is trusted as-is; otherwise the exporter reports the largest
+measured setup/warmup tag it finds. A row can have `hasSetupContext=true` with
+`setupSeconds=0` when the row carries setup metadata but no positive measured
+setup cost of its own.
 Rows tagged with ordinary setup metadata such as
 `setupPolicy=reported-not-scored`, `setupUs=`, `warmup_s=`, or
 `WarmupSecondsMedian=` are listed in `setupContextRows`. They can still appear
