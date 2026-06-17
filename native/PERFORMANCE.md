@@ -29,6 +29,36 @@ parity plus a stable same-run paired win.
   benchmarks show exact parity, adjacent-size safety, and product-like build
   confirmation.
 
+## 2026-06-16: Formatter Window Promotion Rejected
+
+MFastFermat `main` is at `96117fd` and its newest tail-control DIF/DIT evidence
+keeps a strong 8M transform route default-off because duplicate-control noise
+is still high. The same rule applies here: one clean deep-safety artifact is not
+enough to promote a threshold formatter route.
+
+Number X-Ray tested the previously tempting
+`deep-preinv10e19-pairs-window768-896` formatter window as a production route
+candidate, then backed it out after the repeat run failed safety:
+
+- Previous default artifact `20260616-214150-c4b04caf`: production `format`
+  remained slow at 768/896 digits (`1.947x` and `2.087x` slower than MPIR).
+- First production-route test `20260616-220723-c4b04caf`: 768/896 improved to
+  ratios `0.810` and `0.801`, but 768 still had a worst pair of `1.444`.
+- Repeat production-route test `20260616-221514-c4b04caf`: 768/896 regressed to
+  `1.272x` and `1.404x` slower than MPIR, with worst pairs `1.921` and `3.543`.
+- The repeat deep-safety row for `deep-preinv10e19-pairs-window768-896` reported
+  `neighbor-regression`, `neighborStable=7/9`, `gateStable=6/9`, and worst pair
+  `1.796`, so the route is not promotion-safe.
+- Final rollback verification `20260616-222610-c4b04caf`: production `format`
+  is back on the old route at 768/896 digits (`1.868x` and `1.906x` slower
+  than MPIR), while the candidate remains visible as rejected probe evidence
+  (`format-policy-deep-safety` ratio `0.728`, worst pair `1.134`,
+  `worst-pair-regression`).
+
+Decision: do not route the pre-inverted 10^19 pair-writer into production yet.
+Keep the probe rows and add boundary roundtrip coverage at 767/768/896/897
+digits so future candidates can be tested at the exact window edges.
+
 ## 2026-06-16: Tail Control Verdicts
 
 MFastFermat `main` advanced to `d174c1d` and added tail duplicate-base
