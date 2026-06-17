@@ -935,6 +935,29 @@ char *xray_benchmark_frontier_text(const XrayBenchmarkReport *report) {
   }
 
   jb_append(&buffer,
+    "\nLARGE FRONTIER SCOUTS\n"
+    "Operation                  Digits   Status                   Adoption       ScratchUs   BackendUs   Ratio   Worst   Stable\n"
+    "------------------------   ------   ----------------------   ------------   ---------   --------   -----   -----   ------\n");
+  for (size_t index = 0; index < report->result_count; ++index) {
+    const XrayBenchmarkResult *row = &report->results[index];
+    if (strcmp(row->category, "frontier-scout") != 0) continue;
+    char label[80];
+    benchmark_frontier_label(row, label, sizeof(label));
+    jb_printf(&buffer,
+      "%-24s   %6zu   %-22s   %-12s   %9llu   %8llu   %5.2f   %5.2f   %3zu/%-3zu\n",
+      label,
+      row->digits,
+      row->status,
+      row->adoption,
+      row->scratch_us,
+      row->gmp_us,
+      row->speed_ratio,
+      row->worst_pair_ratio,
+      row->stable_sample_count,
+      row->sample_count);
+  }
+
+  jb_append(&buffer,
     "\nKERNEL PROBES\n"
     "Operation                                  Digits   Status              Adoption               Ratio   Worst   Stable\n"
     "----------------------------------------   ------   ----------------   --------------------   -----   -----   ------\n");

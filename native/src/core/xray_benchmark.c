@@ -1348,6 +1348,145 @@ static void append_perf_result(
   append_result(report, &result);
 }
 
+static size_t benchmark_estimated_bits_from_decimal_digits(size_t digits) {
+  return (digits * 3322U + 999U) / 1000U;
+}
+
+static int scratch_value_matches_mpz(const XrayScratchBigInt *value, const mpz_t expected) {
+  if (!value) return 0;
+  mpz_t actual;
+  mpz_init(actual);
+  mpz_import(actual, value->count, -1, sizeof(uint64_t), 0, 0, value->limbs);
+  int matches = mpz_cmp(actual, expected) == 0;
+  mpz_clear(actual);
+  return matches;
+}
+
+static void append_frontier_scout_result(
+  XrayBenchmarkReport *report,
+  const char *operation,
+  size_t digits,
+  unsigned int iterations,
+  unsigned int warmup_passes,
+  int parity,
+  unsigned long long scratch_us,
+  unsigned long long gmp_us,
+  double paired_ratio,
+  size_t stable_sample_count,
+  size_t sample_count,
+  double worst_pair_ratio) {
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "frontier scout %s %zu digits", operation, digits);
+  snprintf(result.category, sizeof(result.category), "frontier-scout");
+  snprintf(result.operation, sizeof(result.operation), "%s-frontier", operation);
+  result.digits = digits;
+  result.scratch_us = scratch_us ? scratch_us : 1;
+  result.gmp_us = gmp_us ? gmp_us : 1;
+  result.speed_ratio = paired_ratio > 0.0 ? paired_ratio : (double)result.scratch_us / (double)result.gmp_us;
+  result.max_allowed_speed_ratio = 1.0;
+  result.stable_sample_count = stable_sample_count;
+  result.sample_count = sample_count;
+  result.worst_pair_ratio = worst_pair_ratio;
+  result.parity_verified = parity;
+  result.replacement_ready = 0;
+  snprintf(result.adoption, sizeof(result.adoption), "%s", parity ? "observe-only" : "blocked-output-mismatch");
+  snprintf(result.status, sizeof(result.status), "%s", parity ? "bounded-frontier-scout" : "mismatch");
+  result.passed = parity;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  snprintf(result.detail, sizeof(result.detail),
+    "op=frontier-scout operation=%s digits=%zu estimatedBits=%zu operandFamilies=1 samples=%zu warmupPasses=%u iterations=%u stablePairs=%zu/%zu scratchUs=%llu gmpUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median candidate=current-scratch-%s baseline=mpz_mul oracle=mpz_mul featureGate=very-large-frontier-scout gmpClue=mfastfermat-frontier8m16m+steady-warmup noAutoRoute=1 adoption=%s",
+    operation,
+    digits,
+    benchmark_estimated_bits_from_decimal_digits(digits),
+    sample_count,
+    warmup_passes,
+    iterations,
+    stable_sample_count,
+    sample_count,
+    result.scratch_us,
+    result.gmp_us,
+    result.speed_ratio,
+    result.worst_pair_ratio,
+    operation,
+    result.adoption);
+  append_result(report, &result);
+}
+
+static void run_frontier_scout_case(XrayBenchmarkReport *report, const char *operation, size_t digits) {
+  const size_t sample_count = 3U;
+  const unsigned int iterations = digits >= 65536U ? 1U : 2U;
+  const unsigned int warmup_passes = 1U;
+  char *left_text = benchmark_decimal(digits, 61, 1);
+  char *right_text = strcmp(operation, "mul") == 0 ? benchmark_decimal(digits, 67, 1) : NULL;
+  XrayScratchBigInt left, right, out;
+  xray_bigint_init(&left);
+  xray_bigint_init(&right);
+  xray_bigint_init(&out);
+  mpz_t gleft, gright, gout;
+  mpz_inits(gleft, gright, gout, NULL);
+
+  int ok = left_text &&
+    xray_bigint_set_decimal(&left, left_text) &&
+    mpz_set_str(gleft, left_text, 10) == 0;
+  if (strcmp(operation, "mul") == 0) {
+    ok = ok &&
+      right_text &&
+      xray_bigint_set_decimal(&right, right_text) &&
+      mpz_set_str(gright, right_text, 10) == 0;
+  }
+
+  unsigned long long scratch_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  for (unsigned int pass = 0; ok && pass < warmup_passes; ++pass) {
+    if (strcmp(operation, "mul") == 0) {
+      ok = xray_bigint_mul(&out, &left, &right);
+      mpz_mul(gout, gleft, gright);
+    } else {
+      ok = xray_bigint_square(&out, &left);
+      mpz_mul(gout, gleft, gleft);
+    }
+  }
+
+  for (size_t sample = 0; ok && sample < sample_count; ++sample) {
+    unsigned long long scratch_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      if (strcmp(operation, "mul") == 0) ok = xray_bigint_mul(&out, &left, &right);
+      else ok = xray_bigint_square(&out, &left);
+    }
+    scratch_samples[sample] = xray_now_us() - scratch_started;
+
+    unsigned long long gmp_started = xray_now_us();
+    for (unsigned int index = 0; index < iterations; ++index) {
+      if (strcmp(operation, "mul") == 0) mpz_mul(gout, gleft, gright);
+      else mpz_mul(gout, gleft, gleft);
+    }
+    gmp_samples[sample] = xray_now_us() - gmp_started;
+  }
+
+  int parity = ok && scratch_value_matches_mpz(&out, gout);
+  append_frontier_scout_result(
+    report,
+    operation,
+    digits,
+    iterations,
+    warmup_passes,
+    parity,
+    median_samples(scratch_samples, sample_count),
+    median_samples(gmp_samples, sample_count),
+    median_paired_ratio(scratch_samples, gmp_samples, sample_count),
+    paired_ratio_wins(scratch_samples, gmp_samples, sample_count, 1.0),
+    sample_count,
+    max_paired_ratio(scratch_samples, gmp_samples, sample_count));
+
+  mpz_clears(gleft, gright, gout, NULL);
+  xray_bigint_clear(&left);
+  xray_bigint_clear(&right);
+  xray_bigint_clear(&out);
+  free(left_text);
+  free(right_text);
+}
+
 static size_t policy_required_stable_samples(size_t sample_count) {
   if (sample_count == 0) return 0;
   if (sample_count > XRAY_BENCH_SAMPLES) return sample_count - 1U;
@@ -6844,6 +6983,11 @@ static void run_scratch_bigint_gates(XrayBenchmarkReport *report) {
   run_scratch_mul_case(report, 16384);
   run_scratch_square_case(report, 16384);
   run_square_vs_mul_probe_case(report, 16384);
+  const size_t frontier_scout_digits[] = {32768, 65536};
+  for (size_t index = 0; index < sizeof(frontier_scout_digits) / sizeof(frontier_scout_digits[0]); ++index) {
+    run_frontier_scout_case(report, "mul", frontier_scout_digits[index]);
+    run_frontier_scout_case(report, "square", frontier_scout_digits[index]);
+  }
   const size_t divmod_dc_power_digits[] = {4096, 8192, 16384};
   XrayDivmodPreinvQhatSafetyPoint divmod_preinv_qhat_points[3];
   memset(divmod_preinv_qhat_points, 0, sizeof(divmod_preinv_qhat_points));
