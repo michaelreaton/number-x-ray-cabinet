@@ -29,6 +29,37 @@ parity plus a stable same-run paired win.
   benchmarks show exact parity, adjacent-size safety, and product-like build
   confirmation.
 
+## 2026-06-16: Frontier Duplicate Controls
+
+MFastFermat `main` advanced to `5fc94b9` and exposed
+`ntt16_wide61_difdit_32000` as a repeatable DIF/DIT benchmark knob, while the
+README still rejected promotion without longer duplicate-default controls. The
+actionable import for Number X-Ray is measurement discipline: large frontier
+scout rows now time the current scratch route twice in the same sample and
+record `duplicateControl=default`, `controlRatio`, `controlWorst`, and
+`controlStable` before any future variant can look like a clean win.
+
+Run:
+
+- Release: `native/build-codex-gtk-autodetect2/native-test-runs/20260616-212243-c4b04caf`
+- Tests: `ctest --test-dir native\build-codex-gtk-autodetect2 -C Release --output-on-failure`
+  passed 4/4 in 334.90s.
+
+Frontier scout rows remain exact and observe-only:
+
+- 32,768-digit multiply: ratio `1.934`, worst `2.391`, stable `0/3`,
+  duplicate-control ratio `1.231`, control worst `1.634`.
+- 32,768-digit square: ratio `1.696`, worst `1.871`, stable `0/3`,
+  duplicate-control ratio `0.562`, control worst `1.103`.
+- 65,536-digit multiply: ratio `1.612`, worst `2.075`, stable `0/3`,
+  duplicate-control ratio `1.316`, control worst `1.525`.
+- 65,536-digit square: ratio `2.049`, worst `2.944`, stable `0/3`,
+  duplicate-control ratio `0.688`, control worst `1.277`.
+
+Decision: keep these frontier paths as mapping evidence only. The control
+ratios show enough same-route noise at these sizes that no future large-number
+candidate should be promoted without duplicate-default and adjacent-size checks.
+
 ## 2026-06-16: Large Frontier Scout Rows
 
 MFastFermat `main` advanced to `697745b` with two lessons relevant to Number
