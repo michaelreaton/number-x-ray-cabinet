@@ -53,6 +53,16 @@ digest with `productGatedOpen`. Rows carrying `noAutoRoute=1`,
 product-gated/open and cannot contribute to `routeCompleted` until a
 product-like proof row removes those blockers.
 
+MFastFermat `6e734a4` added another measurement guardrail for long prefix
+scouts: timed-out helper rows are recorded as `timeout lower-bound`, the TSV
+separates `Runs` from `CompletedRuns`, and incomplete rows are excluded from
+medians and gates. Number X-Ray now mirrors that rule in `--bench-progress`.
+Rows with status/adoption/detail text such as `timeout`, `lower-bound`,
+`no-complete-run`, `incomplete`, or `CompletedRuns=0` go into the
+`lowerBoundRows` lane and do not count as route candidates, route-completed, or
+route-open evidence. This keeps partial large-number probes reviewable without
+letting a timeout masquerade as either failure-to-improve or promotion progress.
+
 ## 2026-06-17: Static Formatter Leaf Expansion
 
 MFastFermat follow-up evidence around `d942c12`, `34ba68b`, and `f479009`
