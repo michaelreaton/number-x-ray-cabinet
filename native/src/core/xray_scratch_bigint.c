@@ -29,6 +29,8 @@
 #define XRAY_BIGINT_DECIMAL_DC_MIN_WIDE_CHUNKS 216U
 #define XRAY_BIGINT_DECIMAL_DC_LEAF_CHUNKS 8U
 #define XRAY_BIGINT_PARSE_CHUNK_DIGITS 19U
+#define XRAY_BIGINT_PARSE_LARGE_MIN_DIGITS 2048U
+#define XRAY_BIGINT_PARSE_LARGE_CHUNK_DIGITS 15U
 #define XRAY_BIGINT_KARATSUBA_THRESHOLD 64U
 #define XRAY_BIGINT_UNROLL4_ROUTE_MIN_LIMBS 8U
 #define XRAY_BIGINT_UNROLL4_ROUTE_MAX_LIMBS 512U
@@ -176,6 +178,9 @@ char *xray_bigint_route_config_json(void) {
     ",\"decimalWideChunkBase\":\"10000000000000000000\""
     ",\"decimalWideChunkPreinverse\":\"15581492618384294730\""
     ",\"parseChunkDigits\":%u"
+    ",\"parseLargeMinDigits\":%u"
+    ",\"parseLargeChunkDigits\":%u"
+    ",\"parsePolicy\":\"19 digits below 2048 decimal digits; 15 digits at or above 2048 decimal digits\""
     ",\"mulUnroll4RouteMinLimbs\":%zu"
     ",\"mulUnroll4RouteMaxLimbs\":%zu"
     ",\"mulUnroll4RouteEnabled\":%s"
@@ -196,12 +201,14 @@ char *xray_bigint_route_config_json(void) {
       "{\"name\":\"decimal-horner\",\"minLimbs\":%u},"
       "{\"name\":\"decimal-pair-writer\",\"smallMaxLimbs\":%u,\"hornerMaxLimbs\":%u},"
       "{\"name\":\"decimal-dc-ladder\",\"minWideChunks\":%u,\"leafChunks\":%u},"
+      "{\"name\":\"decimal-parse-large\",\"minDigits\":%u,\"chunkDigits\":%u},"
       "{\"name\":\"mul-unroll4\",\"enabled\":%s,\"minLimbs\":%zu,\"maxLimbs\":%zu},"
       "{\"name\":\"sparse-square\",\"minLimbs\":%u,\"densityDivisor\":%u},"
       "{\"name\":\"sparse-mul\",\"minLimbs\":%u,\"densityDivisor\":%u,\"minProducts\":%u}"
     "]"
     ",\"diagnosticProbeFamilies\":["
       "\"decimal-threshold\","
+      "\"decimal-parse-chunk\","
       "\"decimal-divide-1e19\","
       "\"decimal-divide-1e19-preinv\","
       "\"decimal-dc-direct\","
@@ -213,7 +220,7 @@ char *xray_bigint_route_config_json(void) {
       "\"toom3\","
       "\"sparse-shape\""
     "]"
-    ",\"mpirGmpClue\":\"mpn_get_str separates basecase, precompute, and divide-and-conquer thresholds; Number X-Ray keeps matching formatter probes default-off until same-run route audits pass.\""
+    ",\"mpirGmpClue\":\"GMP separates decimal conversion into thresholded parse/format stages; Number X-Ray routes only same-run winners and keeps unproven formatter probes default-off.\""
     "}",
     config.word_bits,
     config.karatsuba_threshold_limbs,
@@ -224,6 +231,8 @@ char *xray_bigint_route_config_json(void) {
     XRAY_BIGINT_DECIMAL_DC_LEAF_CHUNKS,
     XRAY_BIGINT_DECIMAL_WIDE_CHUNK_DIGITS,
     XRAY_BIGINT_PARSE_CHUNK_DIGITS,
+    XRAY_BIGINT_PARSE_LARGE_MIN_DIGITS,
+    XRAY_BIGINT_PARSE_LARGE_CHUNK_DIGITS,
     config.mul_unroll4_route_min_limbs,
     config.mul_unroll4_route_max_limbs,
     config.mul_unroll4_route_enabled ? "true" : "false",
@@ -242,6 +251,8 @@ char *xray_bigint_route_config_json(void) {
     XRAY_BIGINT_DECIMAL_PAIR_WRITER_HORNER_MAX_LIMBS,
     XRAY_BIGINT_DECIMAL_DC_MIN_WIDE_CHUNKS,
     XRAY_BIGINT_DECIMAL_DC_LEAF_CHUNKS,
+    XRAY_BIGINT_PARSE_LARGE_MIN_DIGITS,
+    XRAY_BIGINT_PARSE_LARGE_CHUNK_DIGITS,
     config.mul_unroll4_route_enabled ? "true" : "false",
     config.mul_unroll4_route_min_limbs,
     config.mul_unroll4_route_max_limbs,
@@ -2121,8 +2132,21 @@ static int set_decimal_with_chunk_digits(XrayScratchBigInt *value, const char *d
   return 1;
 }
 
+static unsigned int parse_chunk_digits_for_decimal(const char *decimal) {
+  if (!decimal) return XRAY_BIGINT_PARSE_CHUNK_DIGITS;
+  if (strlen(decimal) < XRAY_BIGINT_PARSE_LARGE_MIN_DIGITS) return XRAY_BIGINT_PARSE_CHUNK_DIGITS;
+  size_t digit_count = 0;
+  for (const unsigned char *p = (const unsigned char *)decimal; *p; ++p) {
+    unsigned char ch = *p;
+    if (ch >= '0' && ch <= '9' && ++digit_count >= XRAY_BIGINT_PARSE_LARGE_MIN_DIGITS) {
+      return XRAY_BIGINT_PARSE_LARGE_CHUNK_DIGITS;
+    }
+  }
+  return XRAY_BIGINT_PARSE_CHUNK_DIGITS;
+}
+
 int xray_bigint_set_decimal(XrayScratchBigInt *value, const char *decimal) {
-  return set_decimal_with_chunk_digits(value, decimal, XRAY_BIGINT_PARSE_CHUNK_DIGITS);
+  return set_decimal_with_chunk_digits(value, decimal, parse_chunk_digits_for_decimal(decimal));
 }
 
 int xray_bigint_set_decimal_chunk_probe(XrayScratchBigInt *value, const char *decimal, unsigned int chunk_digits) {

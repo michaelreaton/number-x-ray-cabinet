@@ -61,8 +61,11 @@ int main(void) {
   ok = ok &&
     route_json &&
     strstr(route_json, "\"decimalWideChunkDigits\":19") &&
+    strstr(route_json, "\"parseLargeMinDigits\":2048") &&
+    strstr(route_json, "\"parseLargeChunkDigits\":15") &&
+    strstr(route_json, "\"decimal-parse-large\"") &&
     strstr(route_json, "\"sparseMulMinProducts\":") &&
-    strstr(route_json, "mpn_get_str");
+    strstr(route_json, "GMP separates decimal conversion");
 
   if (ok) {
     printf("NumberXRay::core import ok: %s\n", ffi_sum);

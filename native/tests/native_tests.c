@@ -54,6 +54,25 @@ static char *make_pattern_decimal(size_t digits, const char *pattern) {
   return text;
 }
 
+static char *make_messy_decimal(const char *digits) {
+  size_t digit_length = digits ? strlen(digits) : 0;
+  CHECK(digit_length > 0);
+  size_t capacity = digit_length + digit_length / 17U + digit_length / 29U + digit_length / 113U + 4U;
+  char *text = (char *)calloc(capacity + 1U, 1);
+  CHECK(text != NULL);
+  size_t out = 0;
+  text[out++] = ' ';
+  for (size_t index = 0; index < digit_length; ++index) {
+    text[out++] = digits[index];
+    size_t position = index + 1U;
+    if (position % 17U == 0) text[out++] = ',';
+    if (position % 29U == 0) text[out++] = '_';
+    if (position % 113U == 0) text[out++] = ' ';
+  }
+  CHECK(out <= capacity);
+  return text;
+}
+
 static void set_karatsuba_halves(XrayScratchBigInt *value, uint64_t low_top, uint64_t high_top, uint64_t salt) {
   const size_t half = 40;
   const size_t count = half * 2;
@@ -165,11 +184,16 @@ static void test_runtime_version_contract(void) {
   CHECK(strstr(route_json, "\"decimalHornerMinLimbs\":") != NULL);
   CHECK(strstr(route_json, "\"decimalWideChunkDigits\":19") != NULL);
   CHECK(strstr(route_json, "\"decimalDcMinWideChunks\":") != NULL);
+  CHECK(strstr(route_json, "\"parseChunkDigits\":19") != NULL);
+  CHECK(strstr(route_json, "\"parseLargeMinDigits\":2048") != NULL);
+  CHECK(strstr(route_json, "\"parseLargeChunkDigits\":15") != NULL);
   CHECK(strstr(route_json, "\"sparseSquareMinLimbs\":") != NULL);
   CHECK(strstr(route_json, "\"sparseMulMinProducts\":") != NULL);
   CHECK(strstr(route_json, "\"productionRoutes\"") != NULL);
+  CHECK(strstr(route_json, "\"decimal-parse-large\"") != NULL);
   CHECK(strstr(route_json, "\"diagnosticProbeFamilies\"") != NULL);
-  CHECK(strstr(route_json, "mpn_get_str") != NULL);
+  CHECK(strstr(route_json, "\"decimal-parse-chunk\"") != NULL);
+  CHECK(strstr(route_json, "GMP separates decimal conversion") != NULL);
   if (route.mul_unroll4_route_enabled) {
     CHECK(strstr(route_json, "\"mulUnroll4RouteEnabled\":true") != NULL);
   } else {
@@ -419,6 +443,13 @@ static void test_scratch_bigint_oracle(void) {
   }
   CHECK(!xray_bigint_set_decimal_chunk_probe(&chunk_probe, chunk_probe_input, 0U));
   CHECK(!xray_bigint_set_decimal_chunk_probe(&chunk_probe, chunk_probe_input, 20U));
+  char *large_parse_input = make_pattern_decimal(2048U, "98765432101234567890");
+  char *large_parse_messy = make_messy_decimal(large_parse_input);
+  CHECK(xray_bigint_set_decimal(&chunk_baseline, large_parse_messy));
+  CHECK(xray_bigint_set_decimal_chunk_probe(&chunk_probe, large_parse_messy, 15U));
+  CHECK(xray_bigint_compare(&chunk_probe, &chunk_baseline) == 0);
+  free(large_parse_input);
+  free(large_parse_messy);
   xray_bigint_clear(&chunk_probe);
   xray_bigint_clear(&chunk_baseline);
   CHECK(xray_bigint_add(&sum, &a, &b));
@@ -4396,12 +4427,14 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_json, "\"squareTinySelfMulPolicy\"") != NULL);
   CHECK(strstr(benchmark_json, "\"mulUnroll4RouteMaxLimbs\"") != NULL);
   CHECK(strstr(benchmark_json, "\"decimalWideChunkDigits\"") != NULL);
+  CHECK(strstr(benchmark_json, "\"parseLargeMinDigits\":2048") != NULL);
+  CHECK(strstr(benchmark_json, "\"parseLargeChunkDigits\":15") != NULL);
   CHECK(strstr(benchmark_json, "\"decimalDcMinWideChunks\"") != NULL);
   CHECK(strstr(benchmark_json, "\"decimalPairWriterPolicy\"") != NULL);
   CHECK(strstr(benchmark_json, "\"sparseMulMinProducts\"") != NULL);
   CHECK(strstr(benchmark_json, "\"productionRoutes\"") != NULL);
   CHECK(strstr(benchmark_json, "\"diagnosticProbeFamilies\"") != NULL);
-  CHECK(strstr(benchmark_json, "mpn_get_str") != NULL);
+  CHECK(strstr(benchmark_json, "\"decimal-parse-large\"") != NULL);
   CHECK(strstr(benchmark_json, "\"msvcUint128Helpers\"") != NULL);
   CHECK(strstr(benchmark_json, "\"scratchRows\"") != NULL);
   CHECK(strstr(benchmark_tsv, "scratch-vs-gmp") != NULL);
