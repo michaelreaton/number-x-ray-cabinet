@@ -63,6 +63,15 @@ Rows with status/adoption/detail text such as `timeout`, `lower-bound`,
 route-open evidence. This keeps partial large-number probes reviewable without
 letting a timeout masquerade as either failure-to-improve or promotion progress.
 
+MFastFermat's follow-up warmup-review branch adds the same separation for
+setup-heavy rows: ordinary `WarmupPolicy=not-counted` setup remains planning
+context, but `WarmupPolicy=review-warmup` is reported in its own lane and cannot
+count as a route candidate or ordinary open/noisy evidence. Number X-Ray mirrors
+that in `--bench-progress` for rows carrying `WarmupPolicy=review-warmup`,
+`warmupPolicy=review-warmup`, or `setupPolicy=review-warmup`. This matters for
+large-number precompute work because a fast timed kernel is not actionable if
+its required setup is close to timeout, budget, or practical usability limits.
+
 ## 2026-06-17: Static Formatter Leaf Expansion
 
 MFastFermat follow-up evidence around `d942c12`, `34ba68b`, and `f479009`
