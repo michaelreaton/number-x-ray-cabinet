@@ -29,6 +29,37 @@ parity plus a stable same-run paired win.
   benchmarks show exact parity, adjacent-size safety, and product-like build
   confirmation.
 
+## 2026-06-16: Tail Control Verdicts
+
+MFastFermat `main` advanced to `d174c1d` and added tail duplicate-base
+placement to its product-prefix comparator. The transferable lesson is that
+duplicate controls should bracket the candidate work and emit a verdict, not
+just a raw ratio. A noisy duplicate control can reject a scout, but it cannot
+promote a variant.
+
+Number X-Ray frontier scouts now label their duplicate scratch pass as
+`controlPlacement=tail` and emit `controlSafety=stable-control` or
+`controlSafety=noisy-control`. The visible row `status` mirrors that verdict
+while `adoption` remains `observe-only`, so an exact frontier row with a noisy
+tail control is visibly blocked from promotion.
+
+Run:
+
+- Release: `native/build-codex-gtk-autodetect2/native-test-runs/20260616-214150-c4b04caf`
+- Tests: `ctest --test-dir native\build-codex-gtk-autodetect2 -C Release --output-on-failure`
+  passed 4/4 in 325.90s.
+
+Frontier verdict rows:
+
+- 32,768-digit multiply: status `noisy-control`, ratio `1.662`, worst `2.003`,
+  control ratio `1.044`, control worst `1.107`.
+- 32,768-digit square: status `noisy-control`, ratio `1.322`, worst `1.606`,
+  control ratio `0.827`, control worst `1.237`.
+- 65,536-digit multiply: status `noisy-control`, ratio `1.869`, worst `2.068`,
+  control ratio `0.983`, control worst `1.031`.
+- 65,536-digit square: status `noisy-control`, ratio `2.137`, worst `2.273`,
+  control ratio `0.937`, control worst `1.113`.
+
 ## 2026-06-16: Frontier Duplicate Controls
 
 MFastFermat `main` advanced to `5fc94b9` and exposed
