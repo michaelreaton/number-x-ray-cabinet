@@ -29,6 +29,29 @@ parity plus a stable same-run paired win.
   benchmarks show exact parity, adjacent-size safety, and product-like build
   confirmation.
 
+## 2026-06-17: Large Decimal Formatter Route Rejection
+
+The focused formatter run
+`native/build-codex-parse-large/native-test-runs/20260617-160720-c4b04caf`
+separated unsafe mid-size formatter windows from the larger D&C tier. The
+route-filter digest found `format-dc-route direct16-vs-ladder8` beating the
+ladder baseline at 1000 digits (`0.879x`, worst pair `0.910x`, stable `5/5`),
+4096 digits (`0.839x`, worst pair `0.971x`, stable `5/5`), and 16384 digits
+(`0.968x`, worst pair `0.985x`, stable `4/5`), but the same candidate was
+not safe at 8192 digits (`0.981x`, worst pair `1.104x`, stable `2/5`).
+The explicit `format-dc-route-safety` row rejected the policy with
+`neighbor-regression`, `safeSizes=0/3`, `maxWorstPairRatio=1.338`, and
+`noAutoRoute=1`. The same run kept `format-dc-preinv-qhat` and the tempting
+768-1000 digit divide-`1e19` preinverse windows product-gated or rejected by
+neighbor/worst-pair safety.
+
+Decision: `xray_bigint_get_decimal()` keeps the existing large threshold of
+`216` wide decimal chunks and remains on the ladder formatter at leaf `8`.
+Direct-output, workspace, and preinv-qhat D&C stay as diagnostic comparators
+until the explicit safety rows pass. This avoids promoting a root-size-gated or
+single-pocket threshold that looks good in one row and loses in the product
+shape.
+
 ## 2026-06-17: Importable Bigint Route Map
 
 Local MPIR/GMP source review found that GMP's `mpn_get_str` separates decimal
