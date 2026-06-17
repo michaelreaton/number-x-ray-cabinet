@@ -794,6 +794,58 @@ static const char *progress_bool_text(int value) {
   return value ? "true" : "false";
 }
 
+char *xray_benchmark_filter_tsv_digits(const char *tsv, size_t min_digits, size_t max_digits) {
+  CompareBuffer buffer = {0};
+  if (!tsv) return cb_take(&buffer);
+  if (!min_digits && !max_digits) return compare_strdup(tsv);
+
+  char *text = compare_strdup(tsv);
+  if (!text) return NULL;
+
+  char *cursor = text;
+  char *header = next_line(&cursor);
+  if (!header) {
+    free(text);
+    return cb_take(&buffer);
+  }
+
+  char *header_copy = compare_strdup(header);
+  if (!header_copy) {
+    free(text);
+    return NULL;
+  }
+  char *header_fields[64] = {0};
+  size_t header_count = split_tsv_line(header_copy, header_fields, sizeof(header_fields) / sizeof(header_fields[0]));
+  int col_digits = column_index(header_fields, header_count, "digits");
+  free(header_copy);
+  if (col_digits < 0) {
+    free(text);
+    return compare_strdup(tsv);
+  }
+
+  cb_append(&buffer, header);
+  cb_append(&buffer, "\n");
+  for (char *line = next_line(&cursor); line; line = next_line(&cursor)) {
+    if (!line[0]) continue;
+    char *line_copy = compare_strdup(line);
+    if (!line_copy) {
+      free(text);
+      free(buffer.data);
+      return NULL;
+    }
+    char *fields[64] = {0};
+    size_t field_count = split_tsv_line(line_copy, fields, sizeof(fields) / sizeof(fields[0]));
+    size_t digits = parse_size_field(field_at(fields, field_count, col_digits));
+    free(line_copy);
+    if ((min_digits && digits < min_digits) || (max_digits && digits > max_digits)) continue;
+    cb_append(&buffer, line);
+    cb_append(&buffer, "\n");
+  }
+
+  free(text);
+  return cb_take(&buffer);
+}
+
 char *xray_benchmark_progress_classification_tsv(const char *tsv) {
   CompareSet set;
   CompareBuffer buffer = {0};

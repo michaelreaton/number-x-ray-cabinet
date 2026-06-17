@@ -281,6 +281,38 @@ static void test_benchmark_progress_digest(void) {
   CHECK(strstr(classification, "product-prefix\trun-failed\tfalse\tfalse\tfalse\tfalse\tfalse\t0.000000\tfalse\tfalse\ttrue\t1\t0") != NULL);
   CHECK(strstr(classification, "0.000000\tfalse\tfalse\ttrue\t1\t0\tfalse\tfalse\tfalse\tfalse\tfalse\trun failed\tobserve-only\t0.000000") != NULL);
   xray_free(classification);
+
+  char *focused = xray_benchmark_filter_tsv_digits(tsv, 768, 1000);
+  CHECK(focused != NULL);
+  CHECK(strstr(focused, "category\tname\toperation") != NULL);
+  CHECK(strstr(focused, "scratch parse 1000 digits") != NULL);
+  CHECK(strstr(focused, "policy gate format product-gated 960 digits") != NULL);
+  CHECK(strstr(focused, "scratch format 896 digits") != NULL);
+  CHECK(strstr(focused, "kernel divmod warmup review 32768 digits") == NULL);
+  CHECK(strstr(focused, "kernel divmod timeout 16384 digits") == NULL);
+  CHECK(strstr(focused, "frontier scout mul 65536 digits") == NULL);
+  CHECK(strstr(focused, "kernel product failed 32768 digits") == NULL);
+
+  char *focused_digest = xray_benchmark_progress_tsv_text(focused);
+  CHECK(focused_digest != NULL);
+  CHECK(strstr(focused_digest, "Rows: total=6") != NULL);
+  CHECK(strstr(focused_digest, "routeCandidates=5") != NULL);
+  CHECK(strstr(focused_digest, "productGatedOpen=1") != NULL);
+  CHECK(strstr(focused_digest, "baselineExcluded=1") != NULL);
+  CHECK(strstr(focused_digest, "controlsExcluded=0") != NULL);
+  CHECK(strstr(focused_digest, "lowerBoundRows=0") != NULL);
+  CHECK(strstr(focused_digest, "runFailedRows=0") != NULL);
+  CHECK(strstr(focused_digest, "divmod-precomputed") == NULL);
+  xray_free(focused_digest);
+
+  char *focused_classification = xray_benchmark_progress_classification_tsv(focused);
+  CHECK(focused_classification != NULL);
+  CHECK(strstr(focused_classification, "format-policy-deep-safety policy=deep-preinv\tproduct-gated") != NULL);
+  CHECK(strstr(focused_classification, "scratch format 896 digits") != NULL);
+  CHECK(strstr(focused_classification, "65536") == NULL);
+  CHECK(strstr(focused_classification, "32768") == NULL);
+  xray_free(focused_classification);
+  xray_free(focused);
   free(tsv);
 }
 

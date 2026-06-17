@@ -412,6 +412,7 @@ native\build\Release\xray_cli.exe --help
 native\build\Release\xray_cli.exe --bench 10403
 native\build\Release\xray_cli.exe --bench-frontier 10403
 native\build\Release\xray_cli.exe --bench-progress native\build\native-test-runs\<run>\benchmark.tsv
+native\build\Release\xray_cli.exe --bench-min-digits 768 --bench-max-digits 1000 --bench-progress native\build\native-test-runs\<run>\benchmark.tsv
 native\build\Release\xray_cli.exe --bench-progress-tsv native\build\native-test-runs\<run>\benchmark.tsv
 native\build\Release\xray_cli.exe --bench-compare native\build-release\native-test-runs\<run>\benchmark.tsv native\build-ltcg\native-test-runs\<run>\benchmark.tsv
 native\build\Release\xray_cli.exe --rsa260
@@ -424,8 +425,11 @@ a one-artifact digest of what is completed, still open, noisy, or excluded as
 control evidence. Use `--bench-progress-tsv` when another tool needs the same
 progress classification as a TSV table instead of prose. Use `--bench-compare`
 to review two benchmark TSV artifacts, such as Release versus `/GL`, and
-surface rows that are ready in both builds, ready in only one build, or
-rejected by worst-pair safety:
+surface rows that are ready in both builds, ready in only one build, or rejected
+by worst-pair safety. Add `--bench-min-digits N` and/or `--bench-max-digits N`
+to `--bench-progress`, `--bench-progress-tsv`, or `--bench-compare` when you
+want a focused size-window review without editing or truncating the full
+benchmark artifact:
 
 - `factorReport`
 - `cyclotomicReport`
