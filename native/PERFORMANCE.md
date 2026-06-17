@@ -79,6 +79,30 @@ control metadata. This still does not promote a Number X-Ray arithmetic route;
 it keeps the sparse-transform clue accurate for future large-number
 square/multiply work.
 
+## 2026-06-17: MFastFermat 16M Preflight Discipline
+
+MFastFermat `b025856` added repeated dense-residue preflight medians for the
+16M frontier so a huge steady-warmup transform route can be ranked before a
+full product/GMP run. The useful local lesson is measurement shape, not the
+transform itself: do cheap, repeated, exact-parity confirmation first, and keep
+warmup/planning evidence out of route-completed totals.
+
+Number X-Ray now adds a `format-dc-route-safety` gate for the tempting
+direct-output D&C formatter route. It compares `direct16` against the current
+`ladder8` route at 4096, 8192, and 16384 digits with 9 paired samples, requires
+8 stable wins per size, records the worst same-run pair, and emits
+`noAutoRoute=1`, `thresholdSafety=forced-neighbor`, and
+`deepConfirmation=required`. Even a clean row remains `observe-only` until a
+repeat/product-shaped build proves that changing production formatting is not
+harmful.
+
+First local result (`20260617-010626-c4b04caf`): the shallow route rows were
+tempting at 1000 and 4096 digits (`0.899x` and `0.913x`, both `5/5` stable),
+but 8192 and 16384 digits had worst-pair misses (`1.036` and `1.004`). The new
+9-sample safety gate reported median `0.924x`, worst pair `1.008`, safe sizes
+`2/3`, and status `neighbor-regression`, so the production formatter stays on
+the current ladder route.
+
 ## 2026-06-16: Formatter Window Promotion Rejected
 
 MFastFermat `main` is at `96117fd` and its newest tail-control DIF/DIT evidence

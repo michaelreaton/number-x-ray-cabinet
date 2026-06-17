@@ -4430,6 +4430,17 @@ typedef struct XrayFormatPolicyMeasurement {
   size_t stable_sample_count;
 } XrayFormatPolicyMeasurement;
 
+typedef struct XrayFormatPairMeasurement {
+  size_t digits;
+  int parity;
+  unsigned long long candidate_us;
+  unsigned long long baseline_us;
+  double paired_ratio;
+  double worst_pair_ratio;
+  size_t stable_sample_count;
+  size_t sample_count;
+} XrayFormatPairMeasurement;
+
 static XrayFormatPolicyMeasurement measure_forced_format_policy_candidate(
   size_t digits,
   unsigned int seed,
@@ -4901,6 +4912,179 @@ static void run_format_variant_pair_probe_case(
   mpz_clear(gmp);
   xray_bigint_clear(&scratch);
   free(text);
+}
+
+static XrayFormatPairMeasurement measure_format_variant_pair(
+  size_t digits,
+  unsigned int seed,
+  size_t sample_count,
+  XrayFormatProbeFn candidate_probe,
+  XrayFormatProbeFn baseline_probe) {
+  XrayFormatPairMeasurement measurement;
+  memset(&measurement, 0, sizeof(measurement));
+  measurement.digits = digits;
+  if (sample_count == 0 || sample_count > XRAY_BENCH_MAX_SAMPLES) sample_count = XRAY_BENCH_SAMPLES;
+  measurement.sample_count = sample_count;
+  char *text = benchmark_decimal(digits, seed, 1);
+  if (!text || !candidate_probe || !baseline_probe) {
+    free(text);
+    return measurement;
+  }
+
+  unsigned int iterations = perf_iterations("format", digits);
+  unsigned int batch_iterations = iterations >= 64U ? 8U : (iterations >= 16U ? 4U : 1U);
+  XrayScratchBigInt scratch;
+  xray_bigint_init(&scratch);
+  mpz_t gmp;
+  mpz_init(gmp);
+  int ok = xray_bigint_set_decimal(&scratch, text) && mpz_set_str(gmp, text, 10) == 0;
+  unsigned long long candidate_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long baseline_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  int parity = 1;
+
+  for (size_t sample = 0; ok && sample < sample_count; ++sample) {
+    unsigned int completed = 0;
+    int candidate_first = (sample % 2U) == 0U;
+    while (ok && completed < iterations) {
+      unsigned int remaining = iterations - completed;
+      unsigned int batch = remaining < batch_iterations ? remaining : batch_iterations;
+      if (candidate_first) {
+        ok = run_format_probe_batch(&scratch, candidate_probe, batch, &candidate_samples[sample]);
+        if (ok) ok = run_format_probe_batch(&scratch, baseline_probe, batch, &baseline_samples[sample]);
+      } else {
+        ok = run_format_probe_batch(&scratch, baseline_probe, batch, &baseline_samples[sample]);
+        if (ok) ok = run_format_probe_batch(&scratch, candidate_probe, batch, &candidate_samples[sample]);
+      }
+      candidate_first = !candidate_first;
+      completed += batch;
+    }
+
+    char *candidate_text = candidate_probe(&scratch);
+    char *baseline_text = baseline_probe(&scratch);
+    char *gmp_text = mpz_get_str(NULL, 10, gmp);
+    parity = parity && ok && candidate_text && baseline_text && gmp_text &&
+      strcmp(candidate_text, baseline_text) == 0 &&
+      strcmp(candidate_text, gmp_text) == 0;
+    free(candidate_text);
+    free(baseline_text);
+    free(gmp_text);
+  }
+
+  measurement.parity = parity && ok;
+  measurement.candidate_us = median_samples(candidate_samples, sample_count);
+  measurement.baseline_us = median_samples(baseline_samples, sample_count);
+  measurement.paired_ratio = median_paired_ratio(candidate_samples, baseline_samples, sample_count);
+  measurement.worst_pair_ratio = max_paired_ratio(candidate_samples, baseline_samples, sample_count);
+  measurement.stable_sample_count = paired_ratio_wins(candidate_samples, baseline_samples, sample_count, 1.0);
+
+  mpz_clear(gmp);
+  xray_bigint_clear(&scratch);
+  free(text);
+  return measurement;
+}
+
+static void append_format_route_safety_result(
+  XrayBenchmarkReport *report,
+  const char *policy,
+  const char *candidate,
+  const char *baseline,
+  const XrayFormatPairMeasurement *points,
+  size_t point_count) {
+  if (!points || point_count == 0) return;
+
+  int parity = 1;
+  double max_ratio = 0.0;
+  double max_worst_pair_ratio = 0.0;
+  size_t safe_size_count = 0;
+  size_t measured_size_count = 0;
+  size_t max_digits = 0;
+  size_t min_digits = SIZE_MAX;
+  unsigned long long candidate_us = 0;
+  unsigned long long baseline_us = 0;
+  const size_t required_stable = policy_required_stable_samples(XRAY_BENCH_DEEP_SAMPLES);
+  char sizes[96] = {0};
+
+  for (size_t index = 0; index < point_count; ++index) {
+    const XrayFormatPairMeasurement *point = &points[index];
+    if (point->digits == 0 || point->sample_count == 0) continue;
+    measured_size_count++;
+    parity = parity && point->parity;
+    if (point->digits > max_digits) max_digits = point->digits;
+    if (point->digits < min_digits) min_digits = point->digits;
+    if (point->candidate_us > candidate_us) candidate_us = point->candidate_us;
+    if (point->baseline_us > baseline_us) baseline_us = point->baseline_us;
+    if (point->paired_ratio > max_ratio) max_ratio = point->paired_ratio;
+    if (point->worst_pair_ratio > max_worst_pair_ratio) max_worst_pair_ratio = point->worst_pair_ratio;
+    if (point->parity &&
+        point->paired_ratio <= 1.0 &&
+        point->worst_pair_ratio <= 1.0 &&
+        point->stable_sample_count >= required_stable) {
+      safe_size_count++;
+    }
+    size_t used = strlen(sizes);
+    if (used < sizeof(sizes)) {
+      snprintf(sizes + used, sizeof(sizes) - used, "%s%zu", sizes[0] ? "," : "", point->digits);
+    }
+  }
+  if (measured_size_count == 0) return;
+
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "policy gate format D&C route %s", policy);
+  snprintf(result.category, sizeof(result.category), "policy-gate");
+  snprintf(result.operation, sizeof(result.operation), "format-dc-route-safety");
+  result.digits = max_digits;
+  result.scratch_us = candidate_us ? candidate_us : 1;
+  result.gmp_us = baseline_us ? baseline_us : 1;
+  result.speed_ratio = max_ratio > 0.0 ? max_ratio : 1.0;
+  result.max_allowed_speed_ratio = 1.0;
+  result.stable_sample_count = safe_size_count;
+  result.sample_count = measured_size_count;
+  result.worst_pair_ratio = max_worst_pair_ratio > 0.0 ? max_worst_pair_ratio : 1.0;
+  result.parity_verified = parity;
+  result.replacement_ready = 0;
+  snprintf(result.adoption, sizeof(result.adoption), "%s", parity ? "observe-only" : "blocked-output-mismatch");
+  snprintf(result.status, sizeof(result.status), "%s",
+    !parity ? "mismatch" :
+    (safe_size_count == measured_size_count ? "safety-window-clean" : "neighbor-regression"));
+  result.passed = parity;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  snprintf(result.detail, sizeof(result.detail),
+    "op=format-dc-route-safety adoption=%s noAutoRoute=1 forcedCandidate=yes thresholdSafety=forced-neighbor deepConfirmation=required policy=%s sizes=%s minDigits=%zu safeSizes=%zu/%zu samples=%u requiredStablePairs=%zu/%u maxWorstPairRatio=%.3f ratioMethod=paired-median candidate=%s baseline=%s oracle=mpz_get_str featureGate=decimal-format-dc-route-deep gmpClue=mfast16m-preflight-b025856 warmupPolicy=not-counted",
+    result.adoption,
+    policy,
+    sizes,
+    min_digits,
+    safe_size_count,
+    measured_size_count,
+    XRAY_BENCH_DEEP_SAMPLES,
+    required_stable,
+    XRAY_BENCH_DEEP_SAMPLES,
+    result.worst_pair_ratio,
+    candidate,
+    baseline);
+  append_result(report, &result);
+}
+
+static void run_format_route_safety_case(XrayBenchmarkReport *report) {
+  static const size_t route_digits[] = {4096, 8192, 16384};
+  XrayFormatPairMeasurement points[sizeof(route_digits) / sizeof(route_digits[0])];
+  memset(points, 0, sizeof(points));
+  for (size_t index = 0; index < sizeof(route_digits) / sizeof(route_digits[0]); ++index) {
+    points[index] = measure_format_variant_pair(
+      route_digits[index],
+      (unsigned int)(151U + index),
+      XRAY_BENCH_DEEP_SAMPLES,
+      format_dc_direct_leaf16_probe,
+      format_dc_ladder_leaf8_probe);
+  }
+  append_format_route_safety_result(
+    report,
+    "direct16-vs-ladder8",
+    "decimal-dc-direct-writer-leaf16",
+    "decimal-dc-pow2-ladder-leaf8",
+    points,
+    sizeof(points) / sizeof(points[0]));
 }
 
 typedef int (*XraySquarePolicyProbeFn)(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t threshold);
@@ -7242,6 +7426,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
       19U,
       format_divide_1e19_preinv_pair_writer_probe);
   }
+  run_format_route_safety_case(report);
   const size_t format_dc_leaf_chunks[] = {8, 16, 32, 64};
   XrayFormatProbeFn format_dc_probes[] = {
     format_dc_leaf8_probe,
