@@ -191,12 +191,15 @@ static void test_runtime_version_contract(void) {
   CHECK(strstr(route_json, "\"parseLargeChunkDigits\":15") != NULL);
   CHECK(strstr(route_json, "\"sparseSquareMinLimbs\":") != NULL);
   CHECK(strstr(route_json, "\"sparseMulMinProducts\":") != NULL);
+  CHECK(strstr(route_json, "\"sparseMulTinyProductsMinLimbs\":32") != NULL);
+  CHECK(strstr(route_json, "\"sparseMulTinyProductsMax\":16") != NULL);
   CHECK(strstr(route_json, "\"productionRoutes\"") != NULL);
   CHECK(strstr(route_json, "\"decimal-preinv1e19-pair-window\"") != NULL);
   CHECK(strstr(route_json, "\"decimal-dc-ladder\"") != NULL);
   CHECK(strstr(route_json, "D&C ladder at >=4096 digits") != NULL);
   CHECK(strstr(route_json, "\"decimal-dc-preinv-qhat\"") != NULL);
   CHECK(strstr(route_json, "\"decimal-parse-large\"") != NULL);
+  CHECK(strstr(route_json, "\"tinyProductsMax\":16") != NULL);
   CHECK(strstr(route_json, "\"diagnosticProbeFamilies\"") != NULL);
   CHECK(strstr(route_json, "\"decimal-parse-chunk\"") != NULL);
   CHECK(strstr(route_json, "GMP separates decimal conversion") != NULL);
@@ -1236,6 +1239,8 @@ static void test_scratch_bigint_sparse_zero_limb_oracle(void) {
   mpz_mul(expected, fermat_like, shifted_like);
   CHECK(xray_bigint_mul(&out, &a, &b));
   check_scratch_matches_mpz(&out, expected);
+  CHECK(xray_bigint_mul_sparse_probe(&out, &a, &b));
+  check_scratch_matches_mpz(&out, expected);
   CHECK(xray_bigint_mul(&b, &a, &b));
   check_scratch_matches_mpz(&b, expected);
 
@@ -1244,6 +1249,11 @@ static void test_scratch_bigint_sparse_zero_limb_oracle(void) {
   mpz_mul(expected, three_term_like, second_three_term_like);
   CHECK(xray_bigint_mul(&out, &a, &b));
   check_scratch_matches_mpz(&out, expected);
+  CHECK(xray_bigint_mul_sparse_probe(&out, &a, &b));
+  check_scratch_matches_mpz(&out, expected);
+  CHECK(xray_bigint_mul_sparse_probe(&a, &a, &b));
+  check_scratch_matches_mpz(&a, expected);
+  CHECK(xray_bigint_set_decimal(&a, three_term_text));
   CHECK(xray_bigint_mul(&a, &a, &b));
   check_scratch_matches_mpz(&a, expected);
 
@@ -1269,6 +1279,8 @@ static void test_scratch_bigint_sparse_zero_limb_oracle(void) {
   mpz_set_from_scratch_limbs(gb, &b);
   mpz_mul(expected, ga, gb);
   CHECK(xray_bigint_mul(&out, &a, &b));
+  check_scratch_matches_mpz(&out, expected);
+  CHECK(xray_bigint_mul_sparse_probe(&out, &a, &b));
   check_scratch_matches_mpz(&out, expected);
   CHECK(xray_bigint_mul(&b, &a, &b));
   check_scratch_matches_mpz(&b, expected);
@@ -4756,6 +4768,9 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "sparse-zero-mul") != NULL);
   CHECK(strstr(benchmark_tsv, "sparse-zero-square bits=8192") != NULL);
   CHECK(strstr(benchmark_tsv, "sparse-zero-mul bits=16384") != NULL);
+  CHECK(strstr(benchmark_tsv, "sparse-forced-mul") != NULL);
+  CHECK(strstr(benchmark_tsv, "sparse-forced-mul bits=16384") != NULL);
+  CHECK(strstr(benchmark_tsv, "baseline=current-scratch-mul") != NULL);
   CHECK(strstr(benchmark_tsv, "sparse-pair-product") != NULL);
   CHECK(strstr(benchmark_tsv, "sparse-pair-mul bits=16384") != NULL);
   CHECK(strstr(benchmark_tsv, "mfastFeedback=zero-scalar-row-addmul") != NULL);
@@ -4881,6 +4896,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "square-leaf-order") != NULL);
   CHECK(strstr(benchmark_frontier, "sparse-zero-square") != NULL);
   CHECK(strstr(benchmark_frontier, "sparse-zero-mul") != NULL);
+  CHECK(strstr(benchmark_frontier, "sparse-forced-mul") != NULL);
   CHECK(strstr(benchmark_frontier, "4933") != NULL);
   CHECK(strstr(benchmark_frontier, "sparse-pair-product") != NULL);
   CHECK(strstr(benchmark_frontier, "base=current-scratch-square") != NULL);

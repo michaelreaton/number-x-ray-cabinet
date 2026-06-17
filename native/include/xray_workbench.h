@@ -572,6 +572,17 @@ XRAY_API char *xray_bigint_get_decimal_wide_probe(const XrayScratchBigInt *value
 XRAY_API int xray_bigint_mul_with_threshold(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t threshold);
 
 /**
+ * Multiply through the sparse pair-product probe route.
+ *
+ * This diagnostic route forces the sparse non-zero-index product builder even
+ * when production routing would prefer zero-row skipping or dense schoolbook
+ * work. It is intended for sparse shape tournaments such as Fermat-style
+ * `2^n +/- c` operands. out may alias either input. Returns 1 on success and
+ * 0 on allocation failure.
+ */
+XRAY_API int xray_bigint_mul_sparse_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right);
+
+/**
  * Multiply through the classic sum-middle Karatsuba probe route.
  *
  * The production Karatsuba route uses a difference-form middle product. This
