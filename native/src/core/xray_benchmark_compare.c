@@ -509,13 +509,60 @@ static int compare_row_has_setup_context(const CompareRow *row) {
   return compare_contains(row->detail, "setupPolicy=reported-not-scored") ||
     compare_contains(row->detail, "WarmupPolicy=not-counted") ||
     compare_contains(row->detail, "warmupPolicy=not-counted") ||
+    compare_contains(row->detail, "setupSeconds=") ||
+    compare_contains(row->detail, "SetupSeconds=") ||
     compare_contains(row->detail, "setupUs=") ||
+    compare_contains(row->detail, "setupMs=") ||
     compare_contains(row->detail, "setupSamples=") ||
     compare_contains(row->detail, "setupIterations=") ||
     compare_contains(row->detail, "warmup_s=") ||
     compare_contains(row->detail, "WarmupSecondsMedian=") ||
     compare_contains(row->detail, "EstimatedWarmupSeconds=") ||
     compare_contains(row->detail, "HelperWarmupSeconds=");
+}
+
+static int compare_row_detail_seconds(
+  const CompareRow *row,
+  const char *key,
+  double scale,
+  double *seconds
+) {
+  if (!row || !key || !seconds) return 0;
+  char value[96];
+  if (!detail_value(row->detail, key, value, sizeof(value))) return 0;
+  char *end = NULL;
+  double parsed = strtod(value, &end);
+  if (end == value || parsed < 0.0) return 0;
+  *seconds = parsed * scale;
+  return 1;
+}
+
+static double compare_row_setup_seconds(const CompareRow *row) {
+  double seconds = 0.0;
+  if (!row) return seconds;
+  if (compare_row_detail_seconds(row, "setupSeconds", 1.0, &seconds) ||
+      compare_row_detail_seconds(row, "SetupSeconds", 1.0, &seconds)) {
+    return seconds;
+  }
+  const struct {
+    const char *key;
+    double scale;
+  } measured_keys[] = {
+    {"setupUs", 0.000001},
+    {"setupMs", 0.001},
+    {"warmup_s", 1.0},
+    {"WarmupSecondsMedian", 1.0},
+    {"HelperWarmupSeconds", 1.0}
+  };
+  double best = 0.0;
+  for (size_t index = 0; index < sizeof(measured_keys) / sizeof(measured_keys[0]); ++index) {
+    double candidate = 0.0;
+    if (compare_row_detail_seconds(row, measured_keys[index].key, measured_keys[index].scale, &candidate) &&
+        candidate > best) {
+      best = candidate;
+    }
+  }
+  return best;
 }
 
 static int compare_row_is_noisy_control(const CompareRow *row) {
@@ -698,11 +745,11 @@ char *xray_benchmark_progress_classification_tsv(const char *tsv) {
   int ok = parse_compare_set(tsv, &set, "benchmark");
 
   cb_append(&buffer,
-    "category\tname\toperation\tdigits\tdisplay\tprimaryLane\trouteCandidate\trouteCompleted\trouteOpen\tproductGated\thasSetupContext\twarmupReview\tlowerBound\tsafetyRejected\tbaseline\tcontrol\tnoisyControl\tpromotionReady\tstatus\tadoption\tspeedRatio\tworstPairRatio\tstableSampleCount\tsampleCount\tdetail\tbuildConfig\tipo\tcompiler\tcompilerVersion\n");
+    "category\tname\toperation\tdigits\tdisplay\tprimaryLane\trouteCandidate\trouteCompleted\trouteOpen\tproductGated\thasSetupContext\tsetupSeconds\twarmupReview\tlowerBound\tsafetyRejected\tbaseline\tcontrol\tnoisyControl\tpromotionReady\tstatus\tadoption\tspeedRatio\tworstPairRatio\tstableSampleCount\tsampleCount\tdetail\tbuildConfig\tipo\tcompiler\tcompilerVersion\n");
   if (!ok) {
     cb_append(&buffer, "error\t");
     append_progress_tsv_field(&buffer, set.error);
-    cb_append(&buffer, "\t\t0\terror\tinvalid\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\tparse-error\t\t0.000000\t0.000000\t0\t0\t");
+    cb_append(&buffer, "\t\t0\terror\tinvalid\tfalse\tfalse\tfalse\tfalse\tfalse\t0.000000\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\tfalse\tparse-error\t\t0.000000\t0.000000\t0\t0\t");
     append_progress_tsv_field(&buffer, set.error);
     cb_append(&buffer, "\t\t\t\t\n");
     return cb_take(&buffer);
@@ -722,12 +769,15 @@ char *xray_benchmark_progress_classification_tsv(const char *tsv) {
     cb_append(&buffer, "\t");
     append_progress_tsv_field(&buffer, progress.primary_lane);
     cb_printf(&buffer,
-      "\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t",
+      "\t%s\t%s\t%s\t%s\t%s",
       progress_bool_text(progress.route_candidate),
       progress_bool_text(progress.route_completed),
       progress_bool_text(progress.route_open),
       progress_bool_text(progress.product_gated),
-      progress_bool_text(progress.setup_context),
+      progress_bool_text(progress.setup_context));
+    cb_printf(&buffer,
+      "\t%.6f\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t",
+      compare_row_setup_seconds(row),
       progress_bool_text(progress.warmup_review),
       progress_bool_text(progress.lower_bound),
       progress_bool_text(progress.safety_rejected),
