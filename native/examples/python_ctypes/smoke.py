@@ -37,9 +37,12 @@ def main(argv: List[str]) -> int:
     route_summary = library.bigint_route_summary() or {}
     ok = ok and route_summary.get("wordBits") == 64
     ok = ok and route_summary.get("decimalWideChunkDigits") == 19
+    ok = ok and route_summary.get("parseLargeMinDigits") == 2048
+    ok = ok and route_summary.get("parseLargeChunkDigits") == 15
     ok = ok and route_summary.get("decimalDcMinWideChunks", 0) > 0
     ok = ok and route_summary.get("sparseMulMinProducts", 0) > 0
-    ok = ok and "mpn_get_str" in str(route_summary.get("mpirGmpClue", ""))
+    ok = ok and any(route.get("name") == "decimal-parse-large" for route in route_summary.get("productionRoutes", []))
+    ok = ok and "GMP separates decimal conversion" in str(route_summary.get("mpirGmpClue", ""))
     ok = ok and library.add_decimal("10,000_000 000,000_000 000", "1") == "10000000000000000001"
     ok = ok and library.sub_decimal("1000", "1") == "999"
     ok = ok and library.mul_decimal("12345", "6789") == "83810205"

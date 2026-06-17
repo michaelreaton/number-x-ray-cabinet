@@ -49,6 +49,31 @@ formatting, parser, or solver route changes in this step. The value is that
 external tools and future PRs can tie benchmark artifacts to the exact route
 map and MPIR/GMP clue trail before testing another formatter threshold.
 
+## 2026-06-17: Large Decimal Parse Chunk Route
+
+The parse-chunk tournament in
+`native-test-runs/20260617-140143-c4b04caf/benchmark.tsv` found that 15-digit
+decimal ingestion is a stable winner only once inputs are large enough. It won
+5/5 paired samples at 2048 digits (`0.665x` paired median, `0.744x` worst
+pair), 4096 digits (`0.443x`, `0.482x` worst pair), 8192 digits (`0.378x`,
+`0.442x` worst pair), and 16384 digits (`0.345x`, `0.350x` worst pair). The
+same route was not promoted below 2048 digits because 1000-digit and smaller
+rows were noisy or baseline-faster.
+
+Decision: `xray_bigint_set_decimal()` now keeps the 19-digit chunk path below
+2048 decimal digits and routes 2048+ digit inputs through 15-digit chunks.
+The threshold counts decimal digits, not raw pasted string length, so spaces,
+commas, and underscores do not accidentally promote a small value. The explicit
+`xray_bigint_set_decimal_chunk_probe()` API remains available for future
+tournaments.
+
+Post-route verification in
+`native/build-codex-parse-large/native-test-runs/20260617-143017-c4b04caf`
+moved production parse from oracle-only to replacement-ready at the large
+covered sizes: 4096 digits improved from `1.32x` slower than MPIR to `0.64x`
+of MPIR time, and 8192 digits improved from `1.87x` slower to `0.73x` of MPIR
+time. Scratch replacement-ready rows moved from 37 to 39.
+
 ## 2026-06-17: Formatter Tournament Detail Rows
 
 MFastFermat `5fce429` made its CUDA tournament easier to audit by exporting
