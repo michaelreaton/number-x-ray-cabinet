@@ -176,6 +176,23 @@ measurement discipline in the division precompute rows. `divmod-precomputed`,
 `cacheRole=divisor-context`. The timed ratio still measures only candidate
 division work, while setup cost remains visible in JSON/TSV for reviewers.
 
+MFastFermat `20e96f5` and `5cd9c65` refine the DIF/DIT threshold picture. The
+1M product-prefix matrix (`product_matrix_difdit_thresholds_u1024k_r3_pr2_min75_20260617.tsv`)
+showed all tested thresholds ahead of GMP by median Product/GMP
+(`difdit8192=1.326x`, `difdit12000=1.442x`, `difdit16000=1.480x`), but the
+duplicate-base control was noisy (`0.924x` median, `0.911x` worst), so the
+range gate remained `noisy-control`. The 16M cached preflight run
+(`frontier_phase_preflight_cache_16m_difdit98304_r3_20260617.tsv`) hash-matched
+all rows and kept warmup as `not-counted` setup context. Its evaluation
+ranking was default `2.876s`, twiddle24 `0.442s`, twiddle32 `0.432s`,
+difdit24 `0.335s`, difdit32 `0.381s`, and difdit98304 `0.404s`. Number X-Ray
+therefore keeps emitting `noAutoRoute=1` and now records compact frontier tags
+`mfast1mGate=noisy`, `mfast1mBest=difdit16000PG1.480`,
+`mfast16mBest=difdit24k`, `mfast16mD24=0.335`, and
+`mfast16mD98304=0.404`. The local lesson is precise: 98,304 remains useful for
+8M pocket isolation, but the 16M target lane should confirm the 24k DIF/DIT
+handoff first unless product/GMP evidence reverses it.
+
 ## 2026-06-16: Formatter Window Promotion Rejected
 
 MFastFermat `main` is at `96117fd` and its newest tail-control DIF/DIT evidence
