@@ -261,16 +261,10 @@ static void append_build_json(JsonBuffer *buffer, const char *key) {
 }
 
 static void append_bigint_route_config_json(JsonBuffer *buffer) {
-  XrayBigIntRouteConfig route = xray_bigint_route_config();
-  jb_printf(buffer,
-    "\"scratchRouteConfig\":{\"wordBits\":%u,\"karatsubaThresholdLimbs\":%zu,\"squareTinySelfMulPolicy\":\"<=8 limbs\",\"decimalHornerMinLimbs\":%zu,\"decimalPairWriterPolicy\":\"small<=8 limbs or horner 48..54 limbs\",\"decimalDcPolicy\":\"base-1e19 D&C ladder at >=4096 digits, leaf=8 chunks\",\"mulUnroll4RouteMinLimbs\":%zu,\"mulUnroll4RouteMaxLimbs\":%zu,\"mulUnroll4RouteEnabled\":%s,\"msvcUint128Helpers\":%s}",
-    route.word_bits,
-    route.karatsuba_threshold_limbs,
-    route.decimal_horner_min_limbs,
-    route.mul_unroll4_route_min_limbs,
-    route.mul_unroll4_route_max_limbs,
-    route.mul_unroll4_route_enabled ? "true" : "false",
-    route.msvc_uint128_helpers ? "true" : "false");
+  char *route_json = xray_bigint_route_config_json();
+  jb_append(buffer, "\"scratchRouteConfig\":");
+  jb_append(buffer, route_json ? route_json : "{}");
+  xray_free(route_json);
 }
 
 static void append_benchmark_lane_json(JsonBuffer *buffer, const XrayBenchmarkLaneSummary *lanes) {

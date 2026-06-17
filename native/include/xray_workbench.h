@@ -130,6 +130,19 @@ XRAY_API const char *xray_bignum_backend_library(void);
 XRAY_API XrayBigIntRouteConfig xray_bigint_route_config(void);
 
 /**
+ * Return a complete scratch bigint route summary as JSON.
+ *
+ * The returned object includes the stable `XrayBigIntRouteConfig` fields plus
+ * decimal-conversion, sparse-arithmetic, parser, and diagnostic probe
+ * thresholds that intentionally do not fit in the ABI-stable value struct.
+ * This lets external tools record the exact Number X-Ray route map without
+ * depending on private macros or changing struct size whenever a new probe is
+ * added. The caller owns the returned string and must release it with
+ * xray_free().
+ */
+XRAY_API char *xray_bigint_route_config_json(void);
+
+/**
  * Fill build and compiler metadata for the loaded Number X-Ray library.
  *
  * This is compile-time/build-system metadata, not CPU feature detection. Use it
@@ -153,9 +166,10 @@ XRAY_API char *xray_build_info_summary(const XrayBuildInfo *info);
  * xray_preview_decimal(), xray_*_report_json(), and
  * xray_benchmark_compare_tsv_text(), xray_benchmark_progress_tsv_text(),
  * xray_benchmark_progress_classification_tsv(),
- * xray_benchmark_filter_tsv_digits(), xray_cpu_features_summary(), or
- * xray_build_info_summary(). Passing NULL is allowed. Use this instead of plain
- * free() across shared-library or foreign-language boundaries.
+ * xray_benchmark_filter_tsv_digits(), xray_bigint_route_config_json(),
+ * xray_cpu_features_summary(), or xray_build_info_summary(). Passing NULL is
+ * allowed. Use this instead of plain free() across shared-library or
+ * foreign-language boundaries.
  */
 XRAY_API void xray_free(void *ptr);
 

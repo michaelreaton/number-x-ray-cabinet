@@ -145,6 +145,8 @@ class NumberXRayLibrary:
         self._lib.xray_bignum_backend_library.restype = ctypes.c_char_p
         self._lib.xray_bigint_route_config.argtypes = []
         self._lib.xray_bigint_route_config.restype = XrayBigIntRouteConfig
+        self._lib.xray_bigint_route_config_json.argtypes = []
+        self._lib.xray_bigint_route_config_json.restype = ctypes.c_void_p
         self._lib.xray_free.argtypes = [ctypes.c_void_p]
         self._lib.xray_free.restype = None
 
@@ -214,6 +216,17 @@ class NumberXRayLibrary:
             "msvcUint128Helpers": bool(route.msvc_uint128_helpers),
         }
 
+    def bigint_route_summary_json(self) -> Optional[str]:
+        """Return the full scratch bigint route map as a JSON string."""
+
+        return self._owned_string(self._lib.xray_bigint_route_config_json)
+
+    def bigint_route_summary(self) -> Optional[Dict[str, Any]]:
+        """Return the full scratch bigint route map as a Python dictionary."""
+
+        text = self.bigint_route_summary_json()
+        return json.loads(text) if text is not None else None
+
     def add_decimal(self, left: str, right: str) -> Optional[str]:
         return self._owned_string(self._lib.xray_bigint_add_decimal, left, right)
 
@@ -269,9 +282,11 @@ if __name__ == "__main__":
     backend = library.backend_info()
     print(f"Backend: {backend['name']} {backend['version']} ({backend['library']})")
     route = library.bigint_route_config()
+    route_summary = library.bigint_route_summary() or route
     print(
         "Bigint route: "
         f"word={route['wordBits']}b "
-        f"karatsuba>={route['karatsubaThresholdLimbs']} limbs"
+        f"karatsuba>={route['karatsubaThresholdLimbs']} limbs "
+        f"dcWideChunks>={route_summary.get('decimalDcMinWideChunks', 'unknown')}"
     )
     print(f"10,403 + 1 = {library.add_decimal('10,403', '1')}")

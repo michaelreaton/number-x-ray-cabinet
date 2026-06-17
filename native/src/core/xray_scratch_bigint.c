@@ -157,6 +157,106 @@ XrayBigIntRouteConfig xray_bigint_route_config(void) {
   return config;
 }
 
+char *xray_bigint_route_config_json(void) {
+  const size_t capacity = 4096U;
+  char *json = (char *)calloc(capacity, 1);
+  if (!json) return NULL;
+  XrayBigIntRouteConfig config = xray_bigint_route_config();
+  int written = snprintf(
+    json,
+    capacity,
+    "{\"wordBits\":%u"
+    ",\"karatsubaThresholdLimbs\":%zu"
+    ",\"decimalHornerMinLimbs\":%zu"
+    ",\"decimalPairWriterSmallMaxLimbs\":%u"
+    ",\"decimalPairWriterHornerMaxLimbs\":%u"
+    ",\"decimalDcMinWideChunks\":%u"
+    ",\"decimalDcLeafChunks\":%u"
+    ",\"decimalWideChunkDigits\":%u"
+    ",\"decimalWideChunkBase\":\"10000000000000000000\""
+    ",\"decimalWideChunkPreinverse\":\"15581492618384294730\""
+    ",\"parseChunkDigits\":%u"
+    ",\"mulUnroll4RouteMinLimbs\":%zu"
+    ",\"mulUnroll4RouteMaxLimbs\":%zu"
+    ",\"mulUnroll4RouteEnabled\":%s"
+    ",\"msvcUint128Helpers\":%s"
+    ",\"squareSelfMulMaxLimbs\":%u"
+    ",\"squareTinySelfMulPolicy\":\"<=8 limbs\""
+    ",\"decimalPairWriterPolicy\":\"small<=8 limbs or horner 48..54 limbs\""
+    ",\"decimalDcPolicy\":\"base-1e19 D&C ladder at >=4096 digits, leaf=8 chunks\""
+    ",\"sparseSquareMinLimbs\":%u"
+    ",\"sparseSquareDensityDivisor\":%u"
+    ",\"sparseMulMinLimbs\":%u"
+    ",\"sparseMulDensityDivisor\":%u"
+    ",\"sparseMulMinProducts\":%u"
+    ",\"fermat65537\":%u"
+    ",\"productionRoutes\":["
+      "{\"name\":\"karatsuba-mul\",\"thresholdLimbs\":%u},"
+      "{\"name\":\"karatsuba-square\",\"thresholdLimbs\":%u},"
+      "{\"name\":\"decimal-horner\",\"minLimbs\":%u},"
+      "{\"name\":\"decimal-pair-writer\",\"smallMaxLimbs\":%u,\"hornerMaxLimbs\":%u},"
+      "{\"name\":\"decimal-dc-ladder\",\"minWideChunks\":%u,\"leafChunks\":%u},"
+      "{\"name\":\"mul-unroll4\",\"enabled\":%s,\"minLimbs\":%zu,\"maxLimbs\":%zu},"
+      "{\"name\":\"sparse-square\",\"minLimbs\":%u,\"densityDivisor\":%u},"
+      "{\"name\":\"sparse-mul\",\"minLimbs\":%u,\"densityDivisor\":%u,\"minProducts\":%u}"
+    "]"
+    ",\"diagnosticProbeFamilies\":["
+      "\"decimal-threshold\","
+      "\"decimal-divide-1e19\","
+      "\"decimal-divide-1e19-preinv\","
+      "\"decimal-dc-direct\","
+      "\"decimal-dc-static\","
+      "\"decimal-dc-workspace\","
+      "\"decimal-dc-preinv-qhat\","
+      "\"mul-threshold\","
+      "\"karatsuba-middle\","
+      "\"toom3\","
+      "\"sparse-shape\""
+    "]"
+    ",\"mpirGmpClue\":\"mpn_get_str separates basecase, precompute, and divide-and-conquer thresholds; Number X-Ray keeps matching formatter probes default-off until same-run route audits pass.\""
+    "}",
+    config.word_bits,
+    config.karatsuba_threshold_limbs,
+    config.decimal_horner_min_limbs,
+    XRAY_BIGINT_DECIMAL_PAIR_WRITER_SMALL_MAX_LIMBS,
+    XRAY_BIGINT_DECIMAL_PAIR_WRITER_HORNER_MAX_LIMBS,
+    XRAY_BIGINT_DECIMAL_DC_MIN_WIDE_CHUNKS,
+    XRAY_BIGINT_DECIMAL_DC_LEAF_CHUNKS,
+    XRAY_BIGINT_DECIMAL_WIDE_CHUNK_DIGITS,
+    XRAY_BIGINT_PARSE_CHUNK_DIGITS,
+    config.mul_unroll4_route_min_limbs,
+    config.mul_unroll4_route_max_limbs,
+    config.mul_unroll4_route_enabled ? "true" : "false",
+    config.msvc_uint128_helpers ? "true" : "false",
+    XRAY_BIGINT_SQUARE_SELF_MUL_MAX_LIMBS,
+    XRAY_BIGINT_SPARSE_SQUARE_MIN_LIMBS,
+    XRAY_BIGINT_SPARSE_SQUARE_DENSITY_DIVISOR,
+    XRAY_BIGINT_SPARSE_MUL_MIN_LIMBS,
+    XRAY_BIGINT_SPARSE_MUL_DENSITY_DIVISOR,
+    XRAY_BIGINT_SPARSE_MUL_MIN_PRODUCTS,
+    XRAY_BIGINT_FERMAT_65537,
+    XRAY_BIGINT_KARATSUBA_THRESHOLD,
+    XRAY_BIGINT_KARATSUBA_THRESHOLD,
+    XRAY_BIGINT_DECIMAL_HORNER_MIN_LIMBS,
+    XRAY_BIGINT_DECIMAL_PAIR_WRITER_SMALL_MAX_LIMBS,
+    XRAY_BIGINT_DECIMAL_PAIR_WRITER_HORNER_MAX_LIMBS,
+    XRAY_BIGINT_DECIMAL_DC_MIN_WIDE_CHUNKS,
+    XRAY_BIGINT_DECIMAL_DC_LEAF_CHUNKS,
+    config.mul_unroll4_route_enabled ? "true" : "false",
+    config.mul_unroll4_route_min_limbs,
+    config.mul_unroll4_route_max_limbs,
+    XRAY_BIGINT_SPARSE_SQUARE_MIN_LIMBS,
+    XRAY_BIGINT_SPARSE_SQUARE_DENSITY_DIVISOR,
+    XRAY_BIGINT_SPARSE_MUL_MIN_LIMBS,
+    XRAY_BIGINT_SPARSE_MUL_DENSITY_DIVISOR,
+    XRAY_BIGINT_SPARSE_MUL_MIN_PRODUCTS);
+  if (written < 0 || (size_t)written >= capacity) {
+    free(json);
+    return NULL;
+  }
+  return json;
+}
+
 void xray_bigint_init(XrayScratchBigInt *value) {
   if (!value) return;
   value->limbs = NULL;
