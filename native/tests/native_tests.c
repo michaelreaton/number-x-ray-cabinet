@@ -1027,6 +1027,53 @@ static void test_scratch_bigint_square_oracle(void) {
   free(large_text);
 }
 
+static void test_scratch_bigint_sparse_zero_limb_oracle(void) {
+  mpz_t fermat_like, shifted_like, expected;
+  mpz_inits(fermat_like, shifted_like, expected, NULL);
+  mpz_ui_pow_ui(fermat_like, 2U, 4096U);
+  mpz_add_ui(fermat_like, fermat_like, 1U);
+  mpz_ui_pow_ui(shifted_like, 2U, 2048U);
+  mpz_add_ui(shifted_like, shifted_like, 1U);
+
+  char *fermat_text = mpz_get_str(NULL, 10, fermat_like);
+  char *shifted_text = mpz_get_str(NULL, 10, shifted_like);
+  CHECK(fermat_text != NULL);
+  CHECK(shifted_text != NULL);
+
+  XrayScratchBigInt a, b, out;
+  xray_bigint_init(&a);
+  xray_bigint_init(&b);
+  xray_bigint_init(&out);
+
+  CHECK(xray_bigint_set_decimal(&a, fermat_text));
+  CHECK(xray_bigint_set_decimal(&b, shifted_text));
+  CHECK(a.count > 32);
+  CHECK(b.count > 16);
+
+  mpz_mul(expected, fermat_like, fermat_like);
+  CHECK(xray_bigint_square(&out, &a));
+  check_scratch_matches_mpz(&out, expected);
+  CHECK(xray_bigint_square_fused_leaf_probe(&out, &a, 64));
+  check_scratch_matches_mpz(&out, expected);
+  CHECK(xray_bigint_set_decimal(&a, fermat_text));
+  CHECK(xray_bigint_square(&a, &a));
+  check_scratch_matches_mpz(&a, expected);
+
+  CHECK(xray_bigint_set_decimal(&a, fermat_text));
+  mpz_mul(expected, fermat_like, shifted_like);
+  CHECK(xray_bigint_mul(&out, &a, &b));
+  check_scratch_matches_mpz(&out, expected);
+  CHECK(xray_bigint_mul(&b, &a, &b));
+  check_scratch_matches_mpz(&b, expected);
+
+  xray_bigint_clear(&a);
+  xray_bigint_clear(&b);
+  xray_bigint_clear(&out);
+  free(fermat_text);
+  free(shifted_text);
+  mpz_clears(fermat_like, shifted_like, expected, NULL);
+}
+
 static void test_scratch_bigint_karatsuba_middle_signs(void) {
   const uint64_t cases[][4] = {
     {3, 9, 5, 11},
@@ -4191,6 +4238,9 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "square-vs-mul") != NULL);
   CHECK(strstr(benchmark_tsv, "square-karatsuba-vs-mul") != NULL);
   CHECK(strstr(benchmark_tsv, "square-karatsuba-vs-gmp") != NULL);
+  CHECK(strstr(benchmark_tsv, "sparse-zero-square") != NULL);
+  CHECK(strstr(benchmark_tsv, "sparse-zero-mul") != NULL);
+  CHECK(strstr(benchmark_tsv, "mfastFeedback=zero-scalar-row-addmul") != NULL);
 #if defined(_MSC_VER) && defined(_M_X64)
   CHECK(strstr(benchmark_tsv, "mul-toom3-unroll4-vs-scratch") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-toom3-unroll4-vs-gmp") != NULL);
@@ -4302,6 +4352,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "square-policy current-default") != NULL);
   CHECK(strstr(benchmark_frontier, "square-policy karatsuba-thr96") != NULL);
   CHECK(strstr(benchmark_frontier, "square-leaf-order") != NULL);
+  CHECK(strstr(benchmark_frontier, "sparse-zero-square") != NULL);
+  CHECK(strstr(benchmark_frontier, "sparse-zero-mul") != NULL);
   CHECK(strstr(benchmark_frontier, "base=current-scratch-square") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-policy current-default") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-policy threshold96-ge8192") != NULL);
@@ -4368,6 +4420,7 @@ int main(void) {
   test_scratch_bigint_oracle_sweep();
   test_scratch_bigint_large_mul_oracle();
   test_scratch_bigint_square_oracle();
+  test_scratch_bigint_sparse_zero_limb_oracle();
   test_scratch_bigint_karatsuba_middle_signs();
   test_scratch_bigint_mul_thresholds();
   test_scratch_bigint_karatsuba_sum_probe_oracle();

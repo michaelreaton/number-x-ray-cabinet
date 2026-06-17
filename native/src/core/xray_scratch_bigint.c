@@ -33,6 +33,8 @@
 #define XRAY_BIGINT_UNROLL4_ROUTE_MIN_LIMBS 8U
 #define XRAY_BIGINT_UNROLL4_ROUTE_MAX_LIMBS 512U
 #define XRAY_BIGINT_SQUARE_SELF_MUL_MAX_LIMBS 8U
+#define XRAY_BIGINT_SPARSE_SQUARE_MIN_LIMBS 16U
+#define XRAY_BIGINT_SPARSE_SQUARE_DENSITY_DIVISOR 4U
 #define XRAY_BIGINT_FERMAT_65537 65537U
 
 static const uint64_t parse_decimal_powers[] = {
@@ -251,6 +253,7 @@ static uint64_t mul_add_word(uint64_t existing, uint64_t left, uint64_t right, u
 
 #if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
 static uint64_t mul_add_word_unroll4_row(uint64_t *target, const uint64_t *right, uint64_t left, size_t count) {
+  if (left == 0 || count == 0) return 0;
   unsigned __int64 carry = 0;
   size_t index = 0;
 #define XRAY_MULADD_UNROLL4_STEP(offset) do { \
@@ -2479,6 +2482,7 @@ static void add_two_limb_at(XrayScratchBigInt *out, size_t position, uint64_t lo
 }
 
 static void square_add_diagonal_word(XrayScratchBigInt *out, size_t position, uint64_t word) {
+  if (word == 0) return;
 #if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
   unsigned __int64 high = 0;
   unsigned __int64 low = _umul128(word, word, &high);
@@ -2489,7 +2493,19 @@ static void square_add_diagonal_word(XrayScratchBigInt *out, size_t position, ui
 #endif
 }
 
+static void square_add_doubled_product_at(XrayScratchBigInt *out, size_t position, uint64_t left, uint64_t right) {
+  if (left == 0 || right == 0) return;
+  uint64_t low = 0;
+  uint64_t high = mul_add_small_word(left, right, 0, &low);
+  uint64_t doubled_low = low << 1U;
+  uint64_t doubled_high = (high << 1U) + (low >> 63U);
+  uint64_t extra = high >> 63U;
+  add_two_limb_at(out, position, doubled_low, doubled_high);
+  if (extra) add_two_limb_at(out, position + 2U, extra, 0);
+}
+
 static void square_add_doubled_cross_row(XrayScratchBigInt *out, const uint64_t *limbs, size_t count, size_t row) {
+  if (limbs[row] == 0) return;
 #if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
   uint64_t carry_low = 0;
   uint64_t carry_high = 0;
@@ -2528,9 +2544,57 @@ static void square_add_doubled_cross_row(XrayScratchBigInt *out, const uint64_t 
 #endif
 }
 
+static size_t count_nonzero_limbs(const XrayScratchBigInt *value) {
+  size_t count = 0;
+  if (!value) return 0;
+  for (size_t index = 0; index < value->count; ++index) {
+    if (value->limbs[index] != 0) count++;
+  }
+  return count;
+}
+
+static int should_use_sparse_square(const XrayScratchBigInt *value, size_t nonzero_count) {
+  if (!value || value->count < XRAY_BIGINT_SPARSE_SQUARE_MIN_LIMBS) return 0;
+  return nonzero_count > 0 && nonzero_count <= value->count / XRAY_BIGINT_SPARSE_SQUARE_DENSITY_DIVISOR;
+}
+
+static int square_schoolbook_sparse(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t nonzero_count) {
+  if (!out || !value || nonzero_count == 0) return 0;
+  size_t needed = value->count * 2U;
+  if (!reserve_limbs(out, needed + 2U)) return 0;
+  memset(out->limbs, 0, sizeof(uint64_t) * (needed + 2U));
+  out->count = needed + 2U;
+
+  size_t *indices = (size_t *)malloc(sizeof(size_t) * nonzero_count);
+  if (!indices) return 0;
+  size_t used = 0;
+  for (size_t index = 0; index < value->count; ++index) {
+    if (value->limbs[index] != 0) indices[used++] = index;
+  }
+
+  for (size_t i = 0; i < used; ++i) {
+    size_t row = indices[i];
+    uint64_t row_word = value->limbs[row];
+    square_add_diagonal_word(out, row * 2U, row_word);
+    for (size_t j = i + 1U; j < used; ++j) {
+      size_t column = indices[j];
+      square_add_doubled_product_at(out, row + column, row_word, value->limbs[column]);
+    }
+  }
+
+  free(indices);
+  normalize(out);
+  return 1;
+}
+
 static int square_schoolbook(XrayScratchBigInt *out, const XrayScratchBigInt *value) {
   if (!out || !value) return 0;
   if (value->count == 0) return set_u32(out, 0);
+  size_t nonzero_count = count_nonzero_limbs(value);
+  if (should_use_sparse_square(value, nonzero_count) &&
+      square_schoolbook_sparse(out, value, nonzero_count)) {
+    return 1;
+  }
   size_t needed = value->count * 2U;
   if (!reserve_limbs(out, needed + 2U)) return 0;
   memset(out->limbs, 0, sizeof(uint64_t) * (needed + 2U));
@@ -2549,6 +2613,11 @@ static int square_schoolbook(XrayScratchBigInt *out, const XrayScratchBigInt *va
 static int square_schoolbook_fused_leaf_order(XrayScratchBigInt *out, const XrayScratchBigInt *value) {
   if (!out || !value) return 0;
   if (value->count == 0) return set_u32(out, 0);
+  size_t nonzero_count = count_nonzero_limbs(value);
+  if (should_use_sparse_square(value, nonzero_count) &&
+      square_schoolbook_sparse(out, value, nonzero_count)) {
+    return 1;
+  }
   size_t needed = value->count * 2U;
   if (!reserve_limbs(out, needed + 2U)) return 0;
   memset(out->limbs, 0, sizeof(uint64_t) * (needed + 2U));
@@ -2643,7 +2712,16 @@ static int mul_schoolbook_mode(XrayScratchBigInt *out, const XrayScratchBigInt *
   if (left->count == 0 || right->count == 0) return set_u32(out, 0);
   const XrayScratchBigInt *outer = left;
   const XrayScratchBigInt *inner = right;
-  if (outer->count > inner->count) {
+  size_t left_nonzero = count_nonzero_limbs(left);
+  size_t right_nonzero = count_nonzero_limbs(right);
+  size_t left_outer_cost = left_nonzero > SIZE_MAX / right->count ? SIZE_MAX : left_nonzero * right->count;
+  size_t right_outer_cost = right_nonzero > SIZE_MAX / left->count ? SIZE_MAX : right_nonzero * left->count;
+  if (left_outer_cost <= SIZE_MAX - left->count) left_outer_cost += left->count;
+  else left_outer_cost = SIZE_MAX;
+  if (right_outer_cost <= SIZE_MAX - right->count) right_outer_cost += right->count;
+  else right_outer_cost = SIZE_MAX;
+  if (right_outer_cost < left_outer_cost ||
+      (right_outer_cost == left_outer_cost && outer->count > inner->count)) {
     outer = right;
     inner = left;
   }
@@ -2652,15 +2730,20 @@ static int mul_schoolbook_mode(XrayScratchBigInt *out, const XrayScratchBigInt *
   out->count = needed;
 
   uint64_t carry = 0;
-  for (size_t j = 0; j < inner->count; ++j) {
-    carry = mul_add_small_word(inner->limbs[j], outer->limbs[0], carry, &out->limbs[j]);
-  }
-  out->limbs[inner->count] = carry;
-  if (needed > inner->count + 1) {
-    memset(out->limbs + inner->count + 1, 0, sizeof(uint64_t) * (needed - inner->count - 1));
+  if (outer->limbs[0] == 0) {
+    memset(out->limbs, 0, sizeof(uint64_t) * needed);
+  } else {
+    for (size_t j = 0; j < inner->count; ++j) {
+      carry = mul_add_small_word(inner->limbs[j], outer->limbs[0], carry, &out->limbs[j]);
+    }
+    out->limbs[inner->count] = carry;
+    if (needed > inner->count + 1) {
+      memset(out->limbs + inner->count + 1, 0, sizeof(uint64_t) * (needed - inner->count - 1));
+    }
   }
 
   for (size_t i = 1; i < outer->count; ++i) {
+    if (outer->limbs[i] == 0) continue;
     carry = 0;
 #if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
     if (use_unroll4) {
