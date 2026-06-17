@@ -1863,6 +1863,10 @@ static void test_benchmarks(void) {
   int saw_format_route_tournament1000_probe = 0;
   int saw_format_route_tournament4096_probe = 0;
   int saw_format_route_tournament8192_probe = 0;
+  int saw_format_route_tournament_detail = 0;
+  int saw_format_route_tournament_detail_current = 0;
+  int saw_format_route_tournament_detail_preinv = 0;
+  size_t format_route_tournament_detail_rows = 0;
   int saw_policy_probe = 0;
   int saw_policy_gate = 0;
   int saw_format_policy_current = 0;
@@ -2855,6 +2859,45 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "sameInput=yes") != NULL);
         CHECK(strstr(report->results[index].detail, "sameRunTournament=yes") != NULL);
         CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+      } else if (strcmp(report->results[index].operation, "format-route-tournament-detail") == 0) {
+        saw_format_route_tournament_detail = 1;
+        format_route_tournament_detail_rows++;
+        if (strstr(report->results[index].detail, "route=current-default") != NULL) {
+          saw_format_route_tournament_detail_current = 1;
+          CHECK(strcmp(report->results[index].status, "tournament-baseline") == 0);
+          CHECK(report->results[index].speed_ratio == 1.0);
+          CHECK(report->results[index].worst_pair_ratio == 1.0);
+        }
+        if (strstr(report->results[index].detail, "route=divide1e19-preinv") != NULL) {
+          saw_format_route_tournament_detail_preinv = 1;
+        }
+        CHECK(report->results[index].parity_verified);
+        CHECK(!report->results[index].replacement_ready);
+        CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+        CHECK(strstr(report->results[index].detail, "op=format-route-tournament-detail") != NULL);
+        CHECK(strstr(report->results[index].detail, "policy=tournament") != NULL);
+        CHECK(strstr(report->results[index].detail, "tournamentDetail=1") != NULL);
+        CHECK(strstr(report->results[index].detail, "controlSafety=tournament-detail") != NULL);
+        CHECK(strstr(report->results[index].detail, "routeIndex=") != NULL);
+        CHECK(strstr(report->results[index].detail, "isWinner=") != NULL);
+        CHECK(strstr(report->results[index].detail, "winner=") != NULL);
+        CHECK(strstr(report->results[index].detail, "current=current-default") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=current-scratch-format") != NULL);
+        CHECK(strstr(report->results[index].detail, "oracle=mpz_get_str") != NULL);
+        CHECK(strstr(report->results[index].detail, "routeCurrentRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "routeGmpRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "currentGmpRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
+        CHECK(strstr(report->results[index].detail, "tournamentMethod=same-run") != NULL);
+        CHECK(strstr(report->results[index].detail, "hashSafe=5/5") != NULL);
+        CHECK(strstr(report->results[index].detail, "hashGate=matched") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=decimal-format-route-policy-tournament") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpClue=mfast-cuda-tournament-detail") != NULL);
+        CHECK(strstr(report->results[index].detail, "thresholdSafety=tournament-observe") != NULL);
+        CHECK(strstr(report->results[index].detail, "sameInput=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "sameRunTournament=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
       } else if (strcmp(report->results[index].operation, "format-policy") == 0) {
         CHECK(strstr(report->results[index].detail, "op=format-policy") != NULL);
         CHECK(strstr(report->results[index].detail, "baseline=mpz_get_str") != NULL);
@@ -3773,6 +3816,10 @@ static void test_benchmarks(void) {
   CHECK(saw_format_route_tournament1000_probe);
   CHECK(saw_format_route_tournament4096_probe);
   CHECK(saw_format_route_tournament8192_probe);
+  CHECK(saw_format_route_tournament_detail);
+  CHECK(saw_format_route_tournament_detail_current);
+  CHECK(saw_format_route_tournament_detail_preinv);
+  CHECK(format_route_tournament_detail_rows >= 30);
   CHECK(saw_policy_probe);
   CHECK(saw_format_policy_current);
   CHECK(saw_format_policy_direct4096);
@@ -4026,9 +4073,14 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "root-size-threshold-tournament") != NULL);
   CHECK(strstr(json, "candidateThresholds=32,48,64,80,96,128,160") != NULL);
   CHECK(strstr(json, "format-route-tournament") != NULL);
+  CHECK(strstr(json, "format-route-tournament-detail") != NULL);
   CHECK(strstr(json, "decimal-format-route-policy-tournament") != NULL);
+  CHECK(strstr(json, "controlSafety=tournament-detail") != NULL);
+  CHECK(strstr(json, "routeCurrentRatio=") != NULL);
+  CHECK(strstr(json, "routeGmpRatio=") != NULL);
   CHECK(strstr(json, "sameRunTournament=yes") != NULL);
   CHECK(strstr(json, "mfast-factor64pre-precompute") != NULL);
+  CHECK(strstr(json, "mfast-cuda-tournament-detail") != NULL);
   CHECK(strstr(json, "mul-karatsuba-middle") != NULL);
   CHECK(strstr(json, "karatsuba-sum-middle") != NULL);
   CHECK(strstr(json, "karatsuba-difference-middle") != NULL);
@@ -4160,6 +4212,11 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "decimal-format-window-promotion-audit") != NULL);
   CHECK(strstr(tsv, "audit-preinv10e19-pairs-window768-1000") != NULL);
   CHECK(strstr(tsv, "candCurrentMax=") != NULL);
+  CHECK(strstr(tsv, "format-route-tournament-detail") != NULL);
+  CHECK(strstr(tsv, "controlSafety=tournament-detail") != NULL);
+  CHECK(strstr(tsv, "routeCurrentRatio=") != NULL);
+  CHECK(strstr(tsv, "routeGmpRatio=") != NULL);
+  CHECK(strstr(tsv, "mfast-cuda-tournament-detail") != NULL);
   CHECK(strstr(tsv, "gmpClue=") != NULL);
   CHECK(strstr(tsv, "mul-toom3") != NULL);
   CHECK(strstr(tsv, "mod-u32-precompute") != NULL);
@@ -4361,9 +4418,14 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "root-size-threshold-tournament") != NULL);
   CHECK(strstr(benchmark_tsv, "candidateThresholds=32,48,64,80,96,128,160") != NULL);
   CHECK(strstr(benchmark_tsv, "format-route-tournament") != NULL);
+  CHECK(strstr(benchmark_tsv, "format-route-tournament-detail") != NULL);
   CHECK(strstr(benchmark_tsv, "decimal-format-route-policy-tournament") != NULL);
+  CHECK(strstr(benchmark_tsv, "controlSafety=tournament-detail") != NULL);
+  CHECK(strstr(benchmark_tsv, "routeCurrentRatio=") != NULL);
+  CHECK(strstr(benchmark_tsv, "routeGmpRatio=") != NULL);
   CHECK(strstr(benchmark_tsv, "sameRunTournament=yes") != NULL);
   CHECK(strstr(benchmark_tsv, "mfast-factor64pre-precompute") != NULL);
+  CHECK(strstr(benchmark_tsv, "mfast-cuda-tournament-detail") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-karatsuba-middle") != NULL);
   CHECK(strstr(benchmark_tsv, "karatsuba-sum-middle") != NULL);
   CHECK(strstr(benchmark_tsv, "karatsuba-difference-middle") != NULL);
@@ -4575,6 +4637,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "format-policy preinv10e19-window768-1000") != NULL);
   CHECK(strstr(benchmark_frontier, "format-policy preinv10e19-pairs-window768-1000") != NULL);
   CHECK(strstr(benchmark_frontier, "format-route-tournament tournament") != NULL);
+  CHECK(strstr(benchmark_frontier, "format-route-tournament-detail") != NULL);
   CHECK(strstr(benchmark_frontier, "format-policy-safety direct-ge4096-leaf8") != NULL);
   CHECK(strstr(benchmark_frontier, "format-policy-safety direct-ge8192-leaf16") != NULL);
   CHECK(strstr(benchmark_frontier, "format-policy-safety static-ge4096-l16") != NULL);
@@ -4641,6 +4704,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_progress_tsv, "setupSeconds") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "runFailed") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "divmod-precomputed") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "format-route-tournament-detail") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "controlSafety=tournament-detail") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "\ttrue\tfalse\ttrue\ttrue\ttrue") != NULL);
   CHECK(strstr(cpu_text, "CPU:") != NULL);
   CHECK(strstr(cpu_text, "flags=") != NULL);
