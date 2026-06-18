@@ -3125,21 +3125,27 @@ static int mul_schoolbook_mode(XrayScratchBigInt *out, const XrayScratchBigInt *
   if (left->count == 0 || right->count == 0) return set_u32(out, 0);
   const XrayScratchBigInt *outer = left;
   const XrayScratchBigInt *inner = right;
-  size_t left_nonzero = count_nonzero_limbs(left);
-  size_t right_nonzero = count_nonzero_limbs(right);
-  size_t left_outer_cost = left_nonzero > SIZE_MAX / right->count ? SIZE_MAX : left_nonzero * right->count;
-  size_t right_outer_cost = right_nonzero > SIZE_MAX / left->count ? SIZE_MAX : right_nonzero * left->count;
-  size_t best_scan_cost = left_outer_cost < right_outer_cost ? left_outer_cost : right_outer_cost;
-  if (left_outer_cost <= SIZE_MAX - left->count) left_outer_cost += left->count;
-  else left_outer_cost = SIZE_MAX;
-  if (right_outer_cost <= SIZE_MAX - right->count) right_outer_cost += right->count;
-  else right_outer_cost = SIZE_MAX;
-  if (should_use_sparse_mul(left, right, left_nonzero, right_nonzero, best_scan_cost) &&
-      mul_schoolbook_sparse(out, left, right, left_nonzero, right_nonzero)) {
-    return 1;
-  }
-  if (right_outer_cost < left_outer_cost ||
-      (right_outer_cost == left_outer_cost && outer->count > inner->count)) {
+  size_t max_count = left->count > right->count ? left->count : right->count;
+  if (max_count >= XRAY_BIGINT_UNROLL4_ROUTE_MIN_LIMBS) {
+    size_t left_nonzero = count_nonzero_limbs(left);
+    size_t right_nonzero = count_nonzero_limbs(right);
+    size_t left_outer_cost = left_nonzero > SIZE_MAX / right->count ? SIZE_MAX : left_nonzero * right->count;
+    size_t right_outer_cost = right_nonzero > SIZE_MAX / left->count ? SIZE_MAX : right_nonzero * left->count;
+    size_t best_scan_cost = left_outer_cost < right_outer_cost ? left_outer_cost : right_outer_cost;
+    if (left_outer_cost <= SIZE_MAX - left->count) left_outer_cost += left->count;
+    else left_outer_cost = SIZE_MAX;
+    if (right_outer_cost <= SIZE_MAX - right->count) right_outer_cost += right->count;
+    else right_outer_cost = SIZE_MAX;
+    if (should_use_sparse_mul(left, right, left_nonzero, right_nonzero, best_scan_cost) &&
+        mul_schoolbook_sparse(out, left, right, left_nonzero, right_nonzero)) {
+      return 1;
+    }
+    if (right_outer_cost < left_outer_cost ||
+        (right_outer_cost == left_outer_cost && outer->count > inner->count)) {
+      outer = right;
+      inner = left;
+    }
+  } else if (right->count < left->count) {
     outer = right;
     inner = left;
   }

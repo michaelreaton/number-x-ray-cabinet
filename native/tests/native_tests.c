@@ -761,6 +761,26 @@ static void test_scratch_bigint_oracle(void) {
   CHECK(xray_bigint_mul(&b, &a, &b));
   check_scratch_matches_mpz(&b, gproduct);
 
+  mpz_ui_pow_ui(ga, 2U, 384U);
+  mpz_add_ui(ga, ga, 17U);
+  mpz_set_ui(gb, 65537U);
+  mpz_mul(gproduct, ga, gb);
+  char *small_unbalanced_left = mpz_get_str(NULL, 10, ga);
+  char *small_unbalanced_right = mpz_get_str(NULL, 10, gb);
+  CHECK(xray_bigint_set_decimal(&a, small_unbalanced_left));
+  CHECK(xray_bigint_set_decimal(&b, small_unbalanced_right));
+  CHECK(a.count < 8U);
+  CHECK(b.count == 1U);
+  CHECK(xray_bigint_mul(&product, &a, &b));
+  check_scratch_matches_mpz(&product, gproduct);
+  CHECK(xray_bigint_mul(&a, &a, &b));
+  check_scratch_matches_mpz(&a, gproduct);
+  CHECK(xray_bigint_set_decimal(&a, small_unbalanced_left));
+  CHECK(xray_bigint_mul(&b, &a, &b));
+  check_scratch_matches_mpz(&b, gproduct);
+  free(small_unbalanced_left);
+  free(small_unbalanced_right);
+
   CHECK(xray_bigint_set_decimal(&a, "18446744073709551615"));
   CHECK(xray_bigint_set_decimal(&b, "1"));
   CHECK(xray_bigint_mod_u32(&a, 65537U) == 0);
