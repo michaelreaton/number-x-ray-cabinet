@@ -2704,6 +2704,13 @@ int xray_bigint_add(XrayScratchBigInt *out, const XrayScratchBigInt *left, const
   for (; index < shorter->count; ++index) {
     carry = add_with_carry_u64(left->limbs[index], right->limbs[index], carry, &out->limbs[index]);
   }
+  if (!carry && index < longer->count) {
+    if (out->limbs != longer->limbs) {
+      memcpy(out->limbs + index, longer->limbs + index, sizeof(uint64_t) * (longer->count - index));
+    }
+    out->count = longer->count;
+    return 1;
+  }
   for (; index < longer->count; ++index) {
     carry = add_with_carry_u64(longer->limbs[index], 0, carry, &out->limbs[index]);
   }
