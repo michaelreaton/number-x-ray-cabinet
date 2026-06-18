@@ -48,6 +48,25 @@ static uint64_t xray_benchmark_text_hash64(const char *text) {
   return hash;
 }
 
+static unsigned int benchmark_clz_u64(uint64_t value) {
+  if (value == 0) return 64U;
+  unsigned int leading = 0;
+  uint64_t bit = UINT64_C(1) << 63U;
+  while ((value & bit) == 0) {
+    leading++;
+    bit >>= 1U;
+  }
+  return leading;
+}
+
+static size_t benchmark_estimated_decimal_digits_from_bits(const XrayScratchBigInt *value) {
+  if (!value || value->count == 0) return 1U;
+  unsigned int top_bits = XRAY_BENCH_WORD_BITS - benchmark_clz_u64(value->limbs[value->count - 1U]);
+  size_t bits = (value->count - 1U) * XRAY_BENCH_WORD_BITS + top_bits;
+  if (bits > (SIZE_MAX - 4096U) / 1233U) return SIZE_MAX;
+  return (bits * 1233U) / 4096U + 1U;
+}
+
 typedef struct XrayMulOperandFamily {
   unsigned int left_seed;
   unsigned int right_seed;
@@ -4509,6 +4528,7 @@ typedef struct XrayFormatPairMeasurement {
 
 typedef struct XrayFormatRouteAuditPoint {
   size_t digits;
+  size_t estimated_digits;
   int parity;
   int hash_gate;
   size_t hash_match_count;
@@ -5303,6 +5323,7 @@ static XrayFormatRouteAuditPoint measure_format_route_audit_point(
   mpz_t gmp;
   mpz_init(gmp);
   int ok = xray_bigint_set_decimal(&scratch, text) && mpz_set_str(gmp, text, 10) == 0;
+  point.estimated_digits = ok ? benchmark_estimated_decimal_digits_from_bits(&scratch) : 0U;
 
   unsigned long long candidate_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
   unsigned long long current_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
@@ -5441,6 +5462,7 @@ static XrayFormatRouteAuditPoint measure_format_route_audit_point_interleaved(
   mpz_t gmp;
   mpz_init(gmp);
   int ok = xray_bigint_set_decimal(&scratch, text) && mpz_set_str(gmp, text, 10) == 0;
+  point.estimated_digits = ok ? benchmark_estimated_decimal_digits_from_bits(&scratch) : 0U;
 
   unsigned long long candidate_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
   unsigned long long current_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
@@ -5547,6 +5569,7 @@ static void append_format_route_audit_result(
   double max_candidate_gmp_ratio = 0.0;
   double max_current_gmp_ratio = 0.0;
   double max_worst_pair_ratio = 0.0;
+  char estimated_digits[128] = {0};
 
   for (size_t index = 0; index < point_count; ++index) {
     const XrayFormatRouteAuditPoint *point = &points[index];
@@ -5560,6 +5583,10 @@ static void append_format_route_audit_result(
     if (point->current_gmp_ratio > max_current_gmp_ratio) max_current_gmp_ratio = point->current_gmp_ratio;
     if (point->candidate_current_worst > max_worst_pair_ratio) max_worst_pair_ratio = point->candidate_current_worst;
     if (point->candidate_gmp_worst > max_worst_pair_ratio) max_worst_pair_ratio = point->candidate_gmp_worst;
+    size_t used = strlen(estimated_digits);
+    if (used < sizeof(estimated_digits)) {
+      snprintf(estimated_digits + used, sizeof(estimated_digits) - used, "%s%zu", estimated_digits[0] ? "," : "", point->estimated_digits);
+    }
 
     int point_current_safe = point->candidate_current_ratio > 0.0 &&
       point->candidate_current_ratio <= 0.98 &&
@@ -5594,7 +5621,9 @@ static void append_format_route_audit_result(
   result.sample_count = point_count;
   result.worst_pair_ratio = max_worst_pair_ratio;
   result.parity_verified = parity && hash_gate;
-  result.replacement_ready = result.parity_verified && safe_size_count == point_count;
+  int exact_estimate_pilot = policy && strstr(policy, "exact-estimate") != NULL;
+  int safety_ready = result.parity_verified && safe_size_count == point_count;
+  result.replacement_ready = safety_ready && !exact_estimate_pilot;
   snprintf(result.adoption, sizeof(result.adoption), "%s",
     !parity ? "blocked-output-mismatch" : (result.replacement_ready ? "promotion-ready" : "observe-only"));
   snprintf(result.status, sizeof(result.status), "%s",
@@ -5604,16 +5633,18 @@ static void append_format_route_audit_result(
     (!backend_ratio_safe ? "backend-regression" :
     (!worst_pair_safe ? "worst-pair-regression" :
     (!stable_safe ? "needs-stability" :
-    (result.replacement_ready ? "policy-ready" : "needs-stability")))))));
+    (exact_estimate_pilot && safety_ready ? "shape-pilot-clean" :
+    (result.replacement_ready ? "policy-ready" : "needs-stability"))))))));
   result.passed = parity && hash_gate;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   const char *timing_mode = strstr(policy, "interleaved") ?
     "interleaved-rotating-batch" :
     "grouped-blocks";
   snprintf(result.detail, sizeof(result.detail),
-    "op=format-policy-route-audit policy=%s sizes=%s sizeCount=%zu samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s forcedCandidate=yes thresholdSafety=forced-neighbor deepConfirmation=done noAutoRoute=1 candidate=%s baseline=current-scratch-format oracle=mpz_get_str candCurrentMax=%.3f candGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=%s sameInput=yes sameRunTournament=yes featureGate=decimal-format-window-promotion-audit gmpClue=mfast-factor64pre-precompute adoption=%s",
+    "op=format-policy-route-audit policy=%s sizes=%s estimatedDigits=%s sizeCount=%zu samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s forcedCandidate=yes thresholdSafety=forced-neighbor exactEstimatePilot=%s deepConfirmation=done noAutoRoute=1 candidate=%s baseline=current-scratch-format oracle=mpz_get_str candCurrentMax=%.3f candGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=%s sameInput=yes sameRunTournament=yes featureGate=decimal-format-window-promotion-audit gmpClue=mfast-factor64pre-precompute adoption=%s",
     policy,
     sizes ? sizes : "unknown",
+    estimated_digits[0] ? estimated_digits : "unknown",
     point_count,
     sample_count,
     required_stable,
@@ -5624,6 +5655,7 @@ static void append_format_route_audit_result(
     point_count * sample_count,
     hash_gate ? "matched" : "blocked",
     parity ? "matched" : "blocked",
+    exact_estimate_pilot ? "yes" : "no",
     candidate,
     max_candidate_current_ratio,
     max_candidate_gmp_ratio,
@@ -9650,6 +9682,54 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     format_policy_divide_1e19_preinv,
     format_window_768_896_audit_sizes,
     sizeof(format_window_768_896_audit_sizes) / sizeof(format_window_768_896_audit_sizes[0]));
+
+  const size_t format_exact_estimate_769_audit_sizes[] = {768};
+  run_format_route_interleaved_audit_case(
+    report,
+    313U,
+    "audit-interleaved-exact-estimate-preinv10e19-actual768-est769",
+    "decimal-divide-1e19-preinv",
+    768,
+    768,
+    0,
+    format_policy_divide_1e19_preinv,
+    format_exact_estimate_769_audit_sizes,
+    sizeof(format_exact_estimate_769_audit_sizes) / sizeof(format_exact_estimate_769_audit_sizes[0]));
+  run_format_route_interleaved_audit_case(
+    report,
+    317U,
+    "audit-interleaved-exact-estimate-preinv10e19-pairs-actual768-est769",
+    "decimal-divide-1e19-preinv-pair-writer",
+    768,
+    768,
+    0,
+    format_policy_divide_1e19_preinv_pairs,
+    format_exact_estimate_769_audit_sizes,
+    sizeof(format_exact_estimate_769_audit_sizes) / sizeof(format_exact_estimate_769_audit_sizes[0]));
+
+  const size_t format_exact_estimate_897_audit_sizes[] = {896};
+  run_format_route_interleaved_audit_case(
+    report,
+    331U,
+    "audit-interleaved-exact-estimate-preinv10e19-actual896-est897",
+    "decimal-divide-1e19-preinv",
+    896,
+    896,
+    0,
+    format_policy_divide_1e19_preinv,
+    format_exact_estimate_897_audit_sizes,
+    sizeof(format_exact_estimate_897_audit_sizes) / sizeof(format_exact_estimate_897_audit_sizes[0]));
+  run_format_route_interleaved_audit_case(
+    report,
+    337U,
+    "audit-interleaved-exact-estimate-preinv10e19-pairs-actual896-est897",
+    "decimal-divide-1e19-preinv-pair-writer",
+    896,
+    896,
+    0,
+    format_policy_divide_1e19_preinv_pairs,
+    format_exact_estimate_897_audit_sizes,
+    sizeof(format_exact_estimate_897_audit_sizes) / sizeof(format_exact_estimate_897_audit_sizes[0]));
 
   const size_t format_window_audit_sizes[] = {768, 896, 960, 1000, 1001};
   run_format_route_audit_case(

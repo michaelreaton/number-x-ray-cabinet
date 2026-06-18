@@ -2022,6 +2022,10 @@ static void test_benchmarks(void) {
   int saw_format_policy_route_audit_preinv10e19_window768_896 = 0;
   int saw_format_policy_route_audit_preinv10e19_pairs_window768_896 = 0;
   int saw_format_policy_route_audit_interleaved_preinv10e19_window768_896 = 0;
+  int saw_format_policy_route_audit_exact_preinv10e19_768 = 0;
+  int saw_format_policy_route_audit_exact_preinv10e19_pairs_768 = 0;
+  int saw_format_policy_route_audit_exact_preinv10e19_896 = 0;
+  int saw_format_policy_route_audit_exact_preinv10e19_pairs_896 = 0;
   int saw_divmod_preinv_qhat_safety_gate = 0;
   int saw_mul_policy_safety_threshold96_gate = 0;
   int saw_mul_policy_safety_toom_leaf48_gate = 0;
@@ -3697,9 +3701,18 @@ static void test_benchmarks(void) {
         int narrow_768_896 = strstr(report->results[index].detail, "policy=audit-preinv10e19-window768-896") != NULL ||
           strstr(report->results[index].detail, "policy=audit-interleaved-preinv10e19-window768-896") != NULL ||
           strstr(report->results[index].detail, "policy=audit-preinv10e19-pairs-window768-896") != NULL;
-        CHECK(report->results[index].sample_count == (narrow_768_896 ? 2U : 5U));
-        CHECK(strstr(report->results[index].detail, narrow_768_896 ? "sizes=768,896" : "sizes=768,896,960,1000,1001") != NULL);
-        CHECK(strstr(report->results[index].detail, narrow_768_896 ? "sizeCount=2" : "sizeCount=5") != NULL);
+        int exact_estimate = strstr(report->results[index].detail, "policy=audit-interleaved-exact-estimate-") != NULL;
+        CHECK(report->results[index].sample_count == (exact_estimate ? 1U : (narrow_768_896 ? 2U : 5U)));
+        CHECK(strstr(report->results[index].detail, exact_estimate ? "sizeCount=1" : (narrow_768_896 ? "sizeCount=2" : "sizeCount=5")) != NULL);
+        if (exact_estimate) {
+          CHECK(strstr(report->results[index].detail, "sizes=768") != NULL ||
+            strstr(report->results[index].detail, "sizes=896") != NULL);
+          CHECK(strstr(report->results[index].detail, "exactEstimatePilot=yes") != NULL);
+        } else {
+          CHECK(strstr(report->results[index].detail, narrow_768_896 ? "sizes=768,896" : "sizes=768,896,960,1000,1001") != NULL);
+          CHECK(strstr(report->results[index].detail, "exactEstimatePilot=no") != NULL);
+        }
+        CHECK(strstr(report->results[index].detail, "estimatedDigits=") != NULL);
         CHECK(strstr(report->results[index].detail, "samples=9") != NULL);
         CHECK(strstr(report->results[index].detail, "requiredStablePairs=8/9") != NULL);
         CHECK(strstr(report->results[index].detail, "safeSizes=") != NULL);
@@ -3737,6 +3750,30 @@ static void test_benchmarks(void) {
           CHECK(strstr(report->results[index].detail, "timingMode=interleaved-rotating-batch") != NULL);
         } else if (strstr(report->results[index].detail, "policy=audit-preinv10e19-pairs-window768-896") != NULL) {
           saw_format_policy_route_audit_preinv10e19_pairs_window768_896 = 1;
+          CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv-pair-writer") != NULL);
+        } else if (strstr(report->results[index].detail, "policy=audit-interleaved-exact-estimate-preinv10e19-actual768-est769") != NULL) {
+          saw_format_policy_route_audit_exact_preinv10e19_768 = 1;
+          CHECK(strstr(report->results[index].detail, "sizes=768") != NULL);
+          CHECK(strstr(report->results[index].detail, "estimatedDigits=769") != NULL);
+          CHECK(strstr(report->results[index].detail, "timingMode=interleaved-rotating-batch") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv") != NULL);
+        } else if (strstr(report->results[index].detail, "policy=audit-interleaved-exact-estimate-preinv10e19-pairs-actual768-est769") != NULL) {
+          saw_format_policy_route_audit_exact_preinv10e19_pairs_768 = 1;
+          CHECK(strstr(report->results[index].detail, "sizes=768") != NULL);
+          CHECK(strstr(report->results[index].detail, "estimatedDigits=769") != NULL);
+          CHECK(strstr(report->results[index].detail, "timingMode=interleaved-rotating-batch") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv-pair-writer") != NULL);
+        } else if (strstr(report->results[index].detail, "policy=audit-interleaved-exact-estimate-preinv10e19-actual896-est897") != NULL) {
+          saw_format_policy_route_audit_exact_preinv10e19_896 = 1;
+          CHECK(strstr(report->results[index].detail, "sizes=896") != NULL);
+          CHECK(strstr(report->results[index].detail, "estimatedDigits=897") != NULL);
+          CHECK(strstr(report->results[index].detail, "timingMode=interleaved-rotating-batch") != NULL);
+          CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv") != NULL);
+        } else if (strstr(report->results[index].detail, "policy=audit-interleaved-exact-estimate-preinv10e19-pairs-actual896-est897") != NULL) {
+          saw_format_policy_route_audit_exact_preinv10e19_pairs_896 = 1;
+          CHECK(strstr(report->results[index].detail, "sizes=896") != NULL);
+          CHECK(strstr(report->results[index].detail, "estimatedDigits=897") != NULL);
+          CHECK(strstr(report->results[index].detail, "timingMode=interleaved-rotating-batch") != NULL);
           CHECK(strstr(report->results[index].detail, "candidate=decimal-divide-1e19-preinv-pair-writer") != NULL);
         } else {
           CHECK(0);
@@ -4075,6 +4112,10 @@ static void test_benchmarks(void) {
   CHECK(saw_format_policy_route_audit_preinv10e19_window768_896);
   CHECK(saw_format_policy_route_audit_preinv10e19_pairs_window768_896);
   CHECK(saw_format_policy_route_audit_interleaved_preinv10e19_window768_896);
+  CHECK(saw_format_policy_route_audit_exact_preinv10e19_768);
+  CHECK(saw_format_policy_route_audit_exact_preinv10e19_pairs_768);
+  CHECK(saw_format_policy_route_audit_exact_preinv10e19_896);
+  CHECK(saw_format_policy_route_audit_exact_preinv10e19_pairs_896);
   CHECK(saw_divmod_preinv_qhat_safety_gate);
   CHECK(saw_mul_policy_safety_threshold96_gate);
   CHECK(saw_mul_policy_safety_toom_leaf48_gate);
@@ -4259,6 +4300,12 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "audit-interleaved-preinv10e19-window768-896") != NULL);
   CHECK(strstr(json, "audit-preinv10e19-window768-896") != NULL);
   CHECK(strstr(json, "audit-preinv10e19-pairs-window768-896") != NULL);
+  CHECK(strstr(json, "audit-interleaved-exact-estimate-preinv10e19-actual768-est769") != NULL);
+  CHECK(strstr(json, "audit-interleaved-exact-estimate-preinv10e19-pairs-actual768-est769") != NULL);
+  CHECK(strstr(json, "audit-interleaved-exact-estimate-preinv10e19-actual896-est897") != NULL);
+  CHECK(strstr(json, "audit-interleaved-exact-estimate-preinv10e19-pairs-actual896-est897") != NULL);
+  CHECK(strstr(json, "exactEstimatePilot=yes") != NULL);
+  CHECK(strstr(json, "estimatedDigits=") != NULL);
   CHECK(strstr(json, "audit-preinv10e19-pairs-window768-1001") != NULL);
   CHECK(strstr(json, "candCurrentMax=") != NULL);
   CHECK(strstr(json, "\"avx\"") != NULL);
@@ -4433,6 +4480,12 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "audit-interleaved-preinv10e19-window768-896") != NULL);
   CHECK(strstr(tsv, "audit-preinv10e19-window768-896") != NULL);
   CHECK(strstr(tsv, "audit-preinv10e19-pairs-window768-896") != NULL);
+  CHECK(strstr(tsv, "audit-interleaved-exact-estimate-preinv10e19-actual768-est769") != NULL);
+  CHECK(strstr(tsv, "audit-interleaved-exact-estimate-preinv10e19-pairs-actual768-est769") != NULL);
+  CHECK(strstr(tsv, "audit-interleaved-exact-estimate-preinv10e19-actual896-est897") != NULL);
+  CHECK(strstr(tsv, "audit-interleaved-exact-estimate-preinv10e19-pairs-actual896-est897") != NULL);
+  CHECK(strstr(tsv, "exactEstimatePilot=yes") != NULL);
+  CHECK(strstr(tsv, "estimatedDigits=") != NULL);
   CHECK(strstr(tsv, "audit-preinv10e19-pairs-window768-1001") != NULL);
   CHECK(strstr(tsv, "candCurrentMax=") != NULL);
   CHECK(strstr(tsv, "format-route-tournament-detail") != NULL);
@@ -4643,6 +4696,12 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "audit-interleaved-preinv10e19-window768-896") != NULL);
   CHECK(strstr(benchmark_tsv, "audit-preinv10e19-window768-896") != NULL);
   CHECK(strstr(benchmark_tsv, "audit-preinv10e19-pairs-window768-896") != NULL);
+  CHECK(strstr(benchmark_tsv, "audit-interleaved-exact-estimate-preinv10e19-actual768-est769") != NULL);
+  CHECK(strstr(benchmark_tsv, "audit-interleaved-exact-estimate-preinv10e19-pairs-actual768-est769") != NULL);
+  CHECK(strstr(benchmark_tsv, "audit-interleaved-exact-estimate-preinv10e19-actual896-est897") != NULL);
+  CHECK(strstr(benchmark_tsv, "audit-interleaved-exact-estimate-preinv10e19-pairs-actual896-est897") != NULL);
+  CHECK(strstr(benchmark_tsv, "exactEstimatePilot=yes") != NULL);
+  CHECK(strstr(benchmark_tsv, "estimatedDigits=") != NULL);
   CHECK(strstr(benchmark_tsv, "audit-preinv10e19-pairs-window768-1001") != NULL);
   CHECK(strstr(benchmark_tsv, "candCurrentMax=") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-toom3") != NULL);
