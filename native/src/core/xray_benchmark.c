@@ -5395,6 +5395,134 @@ static XrayFormatRouteAuditPoint measure_format_route_audit_point(
   return point;
 }
 
+static int run_format_audit_batch_step(
+  int lane,
+  const XrayScratchBigInt *scratch,
+  const mpz_t gmp,
+  size_t digits,
+  size_t min_digits,
+  size_t max_digits,
+  size_t leaf_chunks,
+  XrayFormatPolicyProbeFn probe,
+  unsigned int batch,
+  unsigned long long *candidate_us,
+  unsigned long long *current_us,
+  unsigned long long *gmp_us) {
+  if (lane == 0) {
+    return run_format_policy_probe_batch(scratch, digits, min_digits, max_digits, leaf_chunks, probe, batch, candidate_us);
+  }
+  if (lane == 1) {
+    return run_format_probe_batch(scratch, xray_bigint_get_decimal, batch, current_us);
+  }
+  return run_format_gmp_batch(gmp, batch, gmp_us);
+}
+
+static XrayFormatRouteAuditPoint measure_format_route_audit_point_interleaved(
+  size_t digits,
+  unsigned int seed,
+  size_t min_digits,
+  size_t max_digits,
+  size_t leaf_chunks,
+  size_t sample_count,
+  XrayFormatPolicyProbeFn probe) {
+  XrayFormatRouteAuditPoint point;
+  memset(&point, 0, sizeof(point));
+  point.digits = digits;
+  if (sample_count == 0 || sample_count > XRAY_BENCH_MAX_SAMPLES) sample_count = XRAY_BENCH_SAMPLES;
+  point.sample_count = sample_count;
+  if (!probe) return point;
+
+  char *text = benchmark_decimal(digits, seed, 1);
+  if (!text) return point;
+  unsigned int iterations = perf_iterations("format", digits);
+  unsigned int batch_iterations = iterations >= 64U ? 8U : (iterations >= 16U ? 4U : 1U);
+  XrayScratchBigInt scratch;
+  xray_bigint_init(&scratch);
+  mpz_t gmp;
+  mpz_init(gmp);
+  int ok = xray_bigint_set_decimal(&scratch, text) && mpz_set_str(gmp, text, 10) == 0;
+
+  unsigned long long candidate_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long current_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  int parity = 1;
+  int hash_gate = 1;
+  size_t hash_match_count = 0;
+  uint64_t result_hash = 0ULL;
+
+  for (size_t sample = 0; ok && sample < sample_count; ++sample) {
+    unsigned int completed = 0;
+    unsigned int phase = (unsigned int)(sample % 3U);
+    while (ok && completed < iterations) {
+      unsigned int remaining = iterations - completed;
+      unsigned int batch = remaining < batch_iterations ? remaining : batch_iterations;
+      for (unsigned int lane = 0; ok && lane < 3U; ++lane) {
+        ok = run_format_audit_batch_step(
+          (int)((phase + lane) % 3U),
+          &scratch,
+          gmp,
+          digits,
+          min_digits,
+          max_digits,
+          leaf_chunks,
+          probe,
+          batch,
+          &candidate_samples[sample],
+          &current_samples[sample],
+          &gmp_samples[sample]);
+      }
+      phase = (phase + 1U) % 3U;
+      completed += batch;
+    }
+
+    char *candidate_text = probe(&scratch, digits, min_digits, max_digits, leaf_chunks);
+    char *current_text = xray_bigint_get_decimal(&scratch);
+    char *gmp_text = mpz_get_str(NULL, 10, gmp);
+    uint64_t candidate_hash = xray_benchmark_text_hash64(candidate_text);
+    uint64_t current_hash = xray_benchmark_text_hash64(current_text);
+    uint64_t gmp_hash = xray_benchmark_text_hash64(gmp_text);
+    int sample_match = candidate_text && current_text && gmp_text &&
+      strcmp(candidate_text, current_text) == 0 &&
+      strcmp(candidate_text, gmp_text) == 0;
+    int sample_hash_match = sample_match && candidate_hash != 0ULL &&
+      candidate_hash == current_hash &&
+      candidate_hash == gmp_hash;
+    parity = parity && sample_match;
+    if (sample_hash_match) {
+      hash_match_count++;
+      if (result_hash == 0ULL) {
+        result_hash = candidate_hash;
+      } else if (result_hash != candidate_hash) {
+        hash_gate = 0;
+      }
+    } else {
+      hash_gate = 0;
+    }
+    free(candidate_text);
+    free(current_text);
+    free(gmp_text);
+  }
+
+  point.parity = parity && ok;
+  point.hash_gate = hash_gate && hash_match_count == sample_count && result_hash != 0ULL;
+  point.hash_match_count = hash_match_count;
+  point.candidate_us = median_samples(candidate_samples, sample_count);
+  point.current_us = median_samples(current_samples, sample_count);
+  point.gmp_us = median_samples(gmp_samples, sample_count);
+  point.candidate_current_ratio = median_paired_ratio(candidate_samples, current_samples, sample_count);
+  point.candidate_gmp_ratio = median_paired_ratio(candidate_samples, gmp_samples, sample_count);
+  point.current_gmp_ratio = median_paired_ratio(current_samples, gmp_samples, sample_count);
+  point.candidate_current_worst = max_paired_ratio(candidate_samples, current_samples, sample_count);
+  point.candidate_gmp_worst = max_paired_ratio(candidate_samples, gmp_samples, sample_count);
+  point.candidate_current_stable = paired_ratio_wins(candidate_samples, current_samples, sample_count, 0.98);
+  point.candidate_gmp_stable = paired_ratio_wins(candidate_samples, gmp_samples, sample_count, 1.0);
+
+  mpz_clear(gmp);
+  xray_bigint_clear(&scratch);
+  free(text);
+  return point;
+}
+
 static void append_format_route_audit_result(
   XrayBenchmarkReport *report,
   const char *policy,
@@ -5479,8 +5607,11 @@ static void append_format_route_audit_result(
     (result.replacement_ready ? "policy-ready" : "needs-stability")))))));
   result.passed = parity && hash_gate;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  const char *timing_mode = strstr(policy, "interleaved") ?
+    "interleaved-rotating-batch" :
+    "grouped-blocks";
   snprintf(result.detail, sizeof(result.detail),
-    "op=format-policy-route-audit policy=%s sizes=%s sizeCount=%zu samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s forcedCandidate=yes thresholdSafety=forced-neighbor deepConfirmation=done noAutoRoute=1 candidate=%s baseline=current-scratch-format oracle=mpz_get_str candCurrentMax=%.3f candGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median sameInput=yes sameRunTournament=yes featureGate=decimal-format-window-promotion-audit gmpClue=mfast-factor64pre-precompute adoption=%s",
+    "op=format-policy-route-audit policy=%s sizes=%s sizeCount=%zu samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s forcedCandidate=yes thresholdSafety=forced-neighbor deepConfirmation=done noAutoRoute=1 candidate=%s baseline=current-scratch-format oracle=mpz_get_str candCurrentMax=%.3f candGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=%s sameInput=yes sameRunTournament=yes featureGate=decimal-format-window-promotion-audit gmpClue=mfast-factor64pre-precompute adoption=%s",
     policy,
     sizes ? sizes : "unknown",
     point_count,
@@ -5498,8 +5629,48 @@ static void append_format_route_audit_result(
     max_candidate_gmp_ratio,
     max_current_gmp_ratio,
     result.worst_pair_ratio,
+    timing_mode,
     result.adoption);
   append_result(report, &result);
+}
+
+static void run_format_route_interleaved_audit_case(
+  XrayBenchmarkReport *report,
+  unsigned int seed,
+  const char *policy,
+  const char *candidate,
+  size_t min_digits,
+  size_t max_digits,
+  size_t leaf_chunks,
+  XrayFormatPolicyProbeFn probe,
+  const size_t *sizes,
+  size_t size_count) {
+  if (!report || !policy || !candidate || !probe || !sizes || size_count == 0 || size_count > XRAY_FORMAT_ROUTE_TOURNAMENT_MAX) return;
+  XrayFormatRouteAuditPoint points[XRAY_FORMAT_ROUTE_TOURNAMENT_MAX];
+  memset(points, 0, sizeof(points));
+  char size_list[96] = {0};
+  for (size_t index = 0; index < size_count; ++index) {
+    size_t used = strlen(size_list);
+    if (used < sizeof(size_list)) {
+      snprintf(size_list + used, sizeof(size_list) - used, "%s%zu", size_list[0] ? "," : "", sizes[index]);
+    }
+    points[index] = measure_format_route_audit_point_interleaved(
+      sizes[index],
+      seed + (unsigned int)(index * 17U),
+      min_digits,
+      max_digits,
+      leaf_chunks,
+      XRAY_BENCH_DEEP_SAMPLES,
+      probe);
+  }
+  append_format_route_audit_result(
+    report,
+    policy,
+    candidate,
+    size_list,
+    points,
+    size_count,
+    XRAY_BENCH_DEEP_SAMPLES);
 }
 
 static void run_format_route_audit_case(
@@ -9466,6 +9637,17 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     896,
     0,
     format_policy_divide_1e19_preinv_pairs,
+    format_window_768_896_audit_sizes,
+    sizeof(format_window_768_896_audit_sizes) / sizeof(format_window_768_896_audit_sizes[0]));
+  run_format_route_interleaved_audit_case(
+    report,
+    301U,
+    "audit-interleaved-preinv10e19-window768-896",
+    "decimal-divide-1e19-preinv",
+    768,
+    896,
+    0,
+    format_policy_divide_1e19_preinv,
     format_window_768_896_audit_sizes,
     sizeof(format_window_768_896_audit_sizes) / sizeof(format_window_768_896_audit_sizes[0]));
 
