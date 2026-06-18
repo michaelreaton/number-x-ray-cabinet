@@ -186,6 +186,7 @@ static void test_runtime_version_contract(void) {
   CHECK(strstr(route_json, "\"decimalPreinvPairMinEstimatedDigits\":1001") != NULL);
   CHECK(strstr(route_json, "\"decimalPreinvPairMaxEstimatedDigits\":1001") != NULL);
   CHECK(strstr(route_json, "\"decimalDcMinWideChunks\":") != NULL);
+  CHECK(strstr(route_json, "\"decimalDcStaticSplitChunks\":[108,216]") != NULL);
   CHECK(strstr(route_json, "\"parseChunkDigits\":19") != NULL);
   CHECK(strstr(route_json, "\"parseLargeMinDigits\":2048") != NULL);
   CHECK(strstr(route_json, "\"parseLargeChunkDigits\":15") != NULL);
@@ -196,6 +197,7 @@ static void test_runtime_version_contract(void) {
   CHECK(strstr(route_json, "\"productionRoutes\"") != NULL);
   CHECK(strstr(route_json, "\"decimal-preinv1e19-pair-window\"") != NULL);
   CHECK(strstr(route_json, "\"decimal-dc-ladder\"") != NULL);
+  CHECK(strstr(route_json, "\"staticSplitChunks\":[108,216]") != NULL);
   CHECK(strstr(route_json, "D&C ladder at >=4096 digits") != NULL);
   CHECK(strstr(route_json, "\"decimal-dc-preinv-qhat\"") != NULL);
   CHECK(strstr(route_json, "\"decimal-parse-large\"") != NULL);
@@ -4804,6 +4806,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "square-self-mul<=8 limbs") != NULL);
   CHECK(strstr(benchmark_frontier, "format-pair-writer=small<=8 or horner 48..54 limbs") != NULL);
   CHECK(strstr(benchmark_frontier, "format-preinv1e19-pairs=est1001 digits") != NULL);
+  CHECK(strstr(benchmark_frontier, "static-splits=108,216") != NULL);
   CHECK(strstr(benchmark_frontier, "format-dc-ladder>=4096 digits leaf=8") != NULL);
   CHECK(strstr(benchmark_frontier, "FRONTIER SUMMARY") != NULL);
   CHECK(strstr(benchmark_frontier, "MEASURABLE STATUS") != NULL);
