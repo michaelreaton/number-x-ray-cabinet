@@ -2850,3 +2850,39 @@ the next search: repeated sparse scans are not the current dense multiply
 bottleneck; future work should focus on Karatsuba allocation/copy overhead,
 no-copy split views, or a larger algorithm handoff with same-run route audits
 before changing production behavior.
+
+## 2026-06-18: Karatsuba Split-View Copy-Tax Audit
+
+Run:
+
+- Release:
+  `native/build-codex-exact-estimate/native-test-runs/20260618-030505-c4b04caf`
+
+This run adds a default-off diagnostic probe, `mul-karatsuba-view-vs-copy`, to
+measure whether Karatsuba's recursive low/high halves should be read-only views
+instead of owned scratch copies. The comparison is deliberately narrow: same
+input fingerprints, same leaf threshold, same sparse-scan behavior, same MSVC
+x64 unroll4 leaf schedule, and paired medians against the current copied-slice
+route. The probe is exported only for benchmarking and labeled `noAutoRoute=1`.
+
+Key rows:
+
+- `mul-karatsuba-view-vs-copy 4096`: ratio `0.940`, worst `1.131`,
+  stable `4/5`, `observe-only`
+- `mul-karatsuba-view-vs-copy 8192`: ratio `0.996`, worst `1.088`,
+  stable `2/5`, `observe-only`
+- `mul-karatsuba-view-vs-copy 16384`: ratio `0.956`, worst `1.000`,
+  stable `3/5`, `observe-only`
+- same-run scratch `mul 4096`: ratio `1.005`, worst `1.343`,
+  stable `2/5`, `oracle-only`
+- same-run scratch `mul 8192`: ratio `0.976`, worst `1.132`,
+  stable `3/5`, `oracle-only`
+- same-run scratch `mul 16384`: ratio `1.327`, worst `1.473`,
+  stable `0/5`, `oracle-only`
+
+Decision: keep split views as an audited probe, not a production route yet.
+The route is exact and median-positive at 4096 and 16384 digits, but the 8192
+row is flat and the worst-pair/stability evidence still argues for caution.
+This does prove that slice-copy overhead is a real candidate at some sizes; the
+next improvement should combine split views with a workspace/no-realloc plan or
+run a deeper route audit before changing the default multiply policy.

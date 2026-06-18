@@ -638,6 +638,18 @@ XRAY_API int xray_bigint_mul_unroll4_probe(XrayScratchBigInt *out, const XrayScr
 XRAY_API int xray_bigint_mul_dense_leaf_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold);
 
 /**
+ * Multiply through a Karatsuba split-view diagnostic route.
+ *
+ * The arithmetic and threshold policy match the explicit-threshold Karatsuba
+ * multiply path, but recursive low/high halves are read-only views into their
+ * parent operands instead of copied scratch buffers. The default production
+ * multiply path still uses owned slices; this probe exists to measure copy tax
+ * before any route policy change. out may alias either input. Returns 1 on
+ * success and 0 on allocation failure.
+ */
+XRAY_API int xray_bigint_mul_karatsuba_view_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold);
+
+/**
  * Compare two scratch bigints.
  *
  * Returns -1 when left < right, 0 when equal, and 1 when left > right.
