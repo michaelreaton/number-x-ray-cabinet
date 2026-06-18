@@ -2712,11 +2712,8 @@ int xray_bigint_add(XrayScratchBigInt *out, const XrayScratchBigInt *left, const
   return 1;
 }
 
-int xray_bigint_sub(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
+static int sub_known_greater_or_equal(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
   if (!out || !left || !right) return 0;
-  int ordering = xray_bigint_compare(left, right);
-  if (ordering < 0) return 0;
-  if (ordering == 0) return set_u32(out, 0);
   if (right->count == 0) return xray_bigint_copy(out, left);
   if (!reserve_limbs(out, left->count ? left->count : 1)) return 0;
   unsigned char borrow = 0;
@@ -2738,6 +2735,20 @@ int xray_bigint_sub(XrayScratchBigInt *out, const XrayScratchBigInt *left, const
   out->count = left->count;
   normalize(out);
   return borrow == 0;
+}
+
+int xray_bigint_sub(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
+  if (!out || !left || !right) return 0;
+  size_t left_count = left->count;
+  size_t right_count = right->count;
+  if (right_count == 0) return xray_bigint_copy(out, left);
+  if (left_count < right_count) return 0;
+  if (left_count == right_count) {
+    int ordering = xray_bigint_compare(left, right);
+    if (ordering < 0) return 0;
+    if (ordering == 0) return set_u32(out, 0);
+  }
+  return sub_known_greater_or_equal(out, left, right);
 }
 
 static void add_two_limb_at(XrayScratchBigInt *out, size_t position, uint64_t low, uint64_t high) {
@@ -3247,7 +3258,9 @@ static int abs_diff_bigint(
   int *ordering) {
   int compare = xray_bigint_compare(left, right);
   if (ordering) *ordering = compare;
-  return compare >= 0 ? xray_bigint_sub(out, left, right) : xray_bigint_sub(out, right, left);
+  return compare >= 0 ?
+    sub_known_greater_or_equal(out, left, right) :
+    sub_known_greater_or_equal(out, right, left);
 }
 
 static void clear_many_bigints(
