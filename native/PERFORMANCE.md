@@ -29,6 +29,40 @@ parity plus a stable same-run paired win.
   benchmarks show exact parity, adjacent-size safety, and product-like build
   confirmation.
 
+## 2026-06-18: Rejected Preinv-Qhat Formatter Route
+
+The `format-dc-preinv-qhat` direct formatter was tested as a possible
+production route for `xray_bigint_get_decimal()` at estimated 4096+ decimal
+digits, with leaf `8` below the larger band and leaf `16` above it. This was a
+deliberate root-size-gated threshold test, motivated by earlier same-run probe
+rows and by the MFastFermat lesson that external or primitive-looking wins must
+be re-proven inside the real product route before promotion.
+
+Artifacts:
+
+- Baseline before the route attempt:
+  `native/build-codex-exact-estimate/native-test-runs/20260618-001813-c4b04caf`
+- Route attempt with updated manifest labels:
+  `native/build-codex-exact-estimate/native-test-runs/20260618-005029-c4b04caf`
+
+Observed `format` rows versus MPIR:
+
+- 4096 digits improved on median from ratio `1.790` to `1.407` (`21.4%`
+  lower), but worst-pair safety regressed from `1.975` to `2.168`.
+- 8192 digits improved on median from ratio `1.686` to `1.600` (`5.1%`
+  lower), but worst-pair safety regressed from `1.860` to `2.187`.
+- 768 and 896 digits remained unrelated scratch gaps and stayed oracle-only.
+- The run's route digest moved from `routeCompleted=145`, `routeOpen=669`,
+  `safetyRejected=27` to `routeCompleted=133`, `routeOpen=681`,
+  `safetyRejected=31`.
+
+Decision: rejected and not routed. The median improvement at 4096/8192 digits is
+not enough because the worst-pair and threshold-safety evidence got worse, and
+the MPIR-facing `format-policy-safety preinv-ge*` rows still report
+neighbor-regression. Keep preinv-qhat as a diagnostic probe only. The current
+production formatter remains the base-`1e19` D&C ladder at 4096+ digits, plus
+the separate exact-estimate 1001 digit preinverse pair-writer window.
+
 ## 2026-06-17: Focused Square Route Audit
 
 MFastFermat's CUDA-only benchmark mode is a useful measurement clue: isolate the
