@@ -3400,6 +3400,85 @@ static void append_mul_unroll4_vs_scratch_probe_result(
   append_result(report, &result);
 }
 
+static const char *dense_leaf_schedule_label(void) {
+#if XRAY_HAS_MSVC_BMI2_ADX_INTRINSICS
+  return "_umul128+_addcarry_u64-unroll4-full";
+#else
+  return "scalar-schoolbook";
+#endif
+}
+
+static const char *dense_leaf_scanned_baseline_label(void) {
+#if XRAY_HAS_MSVC_BMI2_ADX_INTRINSICS
+  return "unroll4-threshold-mul-with-sparse-scan";
+#else
+  return "scalar-threshold-mul-with-sparse-scan";
+#endif
+}
+
+static int mul_leaf_scanned_baseline_probe(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *left,
+  const XrayScratchBigInt *right,
+  size_t leaf_threshold) {
+#if XRAY_HAS_MSVC_BMI2_ADX_INTRINSICS
+  return xray_bigint_mul_unroll4_probe(out, left, right, leaf_threshold);
+#else
+  return xray_bigint_mul_with_threshold(out, left, right, leaf_threshold);
+#endif
+}
+
+static void append_mul_dense_leaf_vs_scan_probe_result(
+  XrayBenchmarkReport *report,
+  size_t digits,
+  size_t leaf_threshold,
+  size_t operand_families,
+  int parity,
+  unsigned long long candidate_us,
+  unsigned long long baseline_us,
+  double paired_ratio,
+  size_t stable_sample_count,
+  size_t sample_count,
+  double worst_pair_ratio) {
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "kernel dense no-scan leaf %zu limbs %zu digits", leaf_threshold, digits);
+  snprintf(result.category, sizeof(result.category), "kernel-probe");
+  snprintf(result.operation, sizeof(result.operation), "mul-dense-leaf-vs-scan");
+  result.digits = digits;
+  result.scratch_us = candidate_us ? candidate_us : 1;
+  result.gmp_us = baseline_us ? baseline_us : 1;
+  result.speed_ratio = paired_ratio > 0.0 ? paired_ratio : (double)result.scratch_us / (double)result.gmp_us;
+  result.max_allowed_speed_ratio = 0.98;
+  result.stable_sample_count = stable_sample_count;
+  result.sample_count = sample_count;
+  result.worst_pair_ratio = worst_pair_ratio;
+  result.parity_verified = parity;
+  result.replacement_ready = 0;
+  snprintf(result.adoption, sizeof(result.adoption), "%s", parity ? "observe-only" : "blocked-output-mismatch");
+  snprintf(result.status, sizeof(result.status), "%s",
+    !parity ? "mismatch" : (result.speed_ratio < 1.0 ? "candidate-faster-diagnostic" : "baseline-faster"));
+  result.passed = parity;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  snprintf(result.detail, sizeof(result.detail),
+    "op=mul-dense-leaf-vs-scan digits=%zu leafThreshold=%zu operandFamilies=%zu samples=%zu stablePairs=%zu/%zu denseLeafUs=%llu scannedLeafUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median max=%.2f candidate=dense-leaf-no-sparse-scan baseline=%s leafSchedule=%s featureGate=dense-leaf-sparse-scan-audit gmpClue=mpn-leaf-threshold-separates-dense-paths mfastFeedback=cache-shape-decisions noAutoRoute=1 adoption=%s",
+    digits,
+    leaf_threshold,
+    operand_families,
+    sample_count,
+    stable_sample_count,
+    sample_count,
+    result.scratch_us,
+    result.gmp_us,
+    result.speed_ratio,
+    result.worst_pair_ratio,
+    result.max_allowed_speed_ratio,
+    dense_leaf_scanned_baseline_label(),
+    dense_leaf_schedule_label(),
+    result.adoption);
+  append_result(report, &result);
+}
+
 static void append_mul_unroll4_vs_gmp_probe_result(
   XrayBenchmarkReport *report,
   const char *operation_name,
@@ -7941,6 +8020,96 @@ static void run_mul_unroll4_vs_scratch_probe_case(XrayBenchmarkReport *report, s
 }
 #endif
 
+static void run_mul_dense_leaf_vs_scan_probe_case(XrayBenchmarkReport *report, size_t digits, size_t leaf_threshold) {
+  char *left_text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  char *right_text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  XrayScratchBigInt a[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt b[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt candidate_out[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt baseline_out[XRAY_MUL_OPERAND_FAMILIES];
+
+  unsigned int iterations = perf_iterations("mul", digits);
+  int ok = 1;
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    xray_bigint_init(&a[family]);
+    xray_bigint_init(&b[family]);
+    xray_bigint_init(&candidate_out[family]);
+    xray_bigint_init(&baseline_out[family]);
+    left_text[family] = benchmark_decimal(digits, mul_operand_families[family].left_seed, mul_operand_families[family].left_high_lead);
+    right_text[family] = benchmark_decimal(digits, mul_operand_families[family].right_seed, mul_operand_families[family].right_high_lead);
+    ok = ok &&
+      left_text[family] &&
+      right_text[family] &&
+      xray_bigint_set_decimal(&a[family], left_text[family]) &&
+      xray_bigint_set_decimal(&b[family], right_text[family]);
+  }
+
+  unsigned long long candidate_samples[XRAY_BENCH_SAMPLES] = {0};
+  unsigned long long baseline_samples[XRAY_BENCH_SAMPLES] = {0};
+  int parity = 1;
+  for (unsigned int sample = 0; sample < XRAY_BENCH_SAMPLES; ++sample) {
+    if ((sample % 2U) == 0U) {
+      unsigned long long candidate_started = xray_now_us();
+      for (unsigned int index = 0; ok && index < iterations; ++index) {
+        for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+          ok = xray_bigint_mul_dense_leaf_probe(&candidate_out[family], &a[family], &b[family], leaf_threshold);
+        }
+      }
+      candidate_samples[sample] = xray_now_us() - candidate_started;
+
+      unsigned long long baseline_started = xray_now_us();
+      for (unsigned int index = 0; ok && index < iterations; ++index) {
+        for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+          ok = mul_leaf_scanned_baseline_probe(&baseline_out[family], &a[family], &b[family], leaf_threshold);
+        }
+      }
+      baseline_samples[sample] = xray_now_us() - baseline_started;
+    } else {
+      unsigned long long baseline_started = xray_now_us();
+      for (unsigned int index = 0; ok && index < iterations; ++index) {
+        for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+          ok = mul_leaf_scanned_baseline_probe(&baseline_out[family], &a[family], &b[family], leaf_threshold);
+        }
+      }
+      baseline_samples[sample] = xray_now_us() - baseline_started;
+
+      unsigned long long candidate_started = xray_now_us();
+      for (unsigned int index = 0; ok && index < iterations; ++index) {
+        for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+          ok = xray_bigint_mul_dense_leaf_probe(&candidate_out[family], &a[family], &b[family], leaf_threshold);
+        }
+      }
+      candidate_samples[sample] = xray_now_us() - candidate_started;
+    }
+
+    for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+      parity = parity && ok && xray_bigint_compare(&candidate_out[family], &baseline_out[family]) == 0;
+    }
+  }
+
+  append_mul_dense_leaf_vs_scan_probe_result(
+    report,
+    digits,
+    leaf_threshold,
+    XRAY_MUL_OPERAND_FAMILIES,
+    parity,
+    median_samples(candidate_samples, XRAY_BENCH_SAMPLES),
+    median_samples(baseline_samples, XRAY_BENCH_SAMPLES),
+    median_paired_ratio(candidate_samples, baseline_samples, XRAY_BENCH_SAMPLES),
+    paired_ratio_wins(candidate_samples, baseline_samples, XRAY_BENCH_SAMPLES, 0.98),
+    XRAY_BENCH_SAMPLES,
+    max_paired_ratio(candidate_samples, baseline_samples, XRAY_BENCH_SAMPLES));
+
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    xray_bigint_clear(&a[family]);
+    xray_bigint_clear(&b[family]);
+    xray_bigint_clear(&candidate_out[family]);
+    xray_bigint_clear(&baseline_out[family]);
+    free(left_text[family]);
+    free(right_text[family]);
+  }
+}
+
 #if XRAY_HAS_MSVC_BMI2_ADX_INTRINSICS
 static void run_mul_unroll4_vs_gmp_probe_case_samples(
   XrayBenchmarkReport *report,
@@ -10673,6 +10842,11 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
       run_mul_toom3_probe_case(report, toom_digits[digit_index], toom_leaf_thresholds[threshold_index]);
       run_mul_toom3_vs_scratch_probe_case(report, toom_digits[digit_index], toom_leaf_thresholds[threshold_index]);
     }
+  }
+
+  const size_t dense_leaf_digits[] = {4096, 8192, 16384};
+  for (size_t digit_index = 0; digit_index < sizeof(dense_leaf_digits) / sizeof(dense_leaf_digits[0]); ++digit_index) {
+    run_mul_dense_leaf_vs_scan_probe_case(report, dense_leaf_digits[digit_index], 64);
   }
 
 #if XRAY_HAS_MSVC_BMI2_ADX_INTRINSICS
