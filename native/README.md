@@ -9,6 +9,11 @@ The native workbench is a cross-platform C + GTK proof instrument that sits besi
 
 Large challenge fixtures are intentionally not claimed solved. The native app may profile and attempt bounded methods, but it must keep a challenge number unresolved unless exact factors are found and the factor product equals the input.
 
+For the next high-end CPU benchmark pass, see
+[`FASTER_MACHINE_HANDOFF.md`](FASTER_MACHINE_HANDOFF.md). It records the latest
+merged bigint evidence, exact validation commands, and promotion rules for
+route changes.
+
 ## Build
 
 Windows with vcpkg MPIR:
