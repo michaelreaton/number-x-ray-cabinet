@@ -2812,3 +2812,41 @@ tournament result is now explicitly labeled for duplicate-control safety so a
 noisy current-threshold control cannot be mistaken for a route win. The next
 large multiply work should look at deeper multiplication primitives or a cleaner
 threshold measurement design, not a global threshold48 handoff.
+
+## 2026-06-18: Dense Leaf Sparse-Scan Audit
+
+Run:
+
+- Release:
+  `native/build-codex-exact-estimate/native-test-runs/20260618-023638-c4b04caf`
+
+MFastFermat feedback kept pointing at shape-decision caching: do not repeatedly
+rediscover sparse/dense shape inside hot loops unless the measurement proves it
+helps. Number X-Ray's generic multiply leaves scan both operands for non-zero
+limbs before deciding whether to use sparse schoolbook work, even for dense
+random benchmark operands. This run adds a default-off diagnostic probe,
+`mul-dense-leaf-vs-scan`, that keeps the same Karatsuba recursion and unroll4
+leaf schedule but disables the sparse scan inside schoolbook leaves. It compares
+against the matching scanned leaf route, not against GMP, and is labeled
+`noAutoRoute=1`.
+
+Key rows:
+
+- `mul-dense-leaf-vs-scan 4096`: ratio `0.919`, worst `1.271`,
+  stable `3/5`, `observe-only`
+- `mul-dense-leaf-vs-scan 8192`: ratio `0.990`, worst `1.136`,
+  stable `2/5`, `observe-only`
+- `mul-dense-leaf-vs-scan 16384`: ratio `1.110`, worst `1.123`,
+  stable `1/5`, `observe-only`
+- same-run scratch `mul 8192`: ratio `1.051`, worst `1.296`,
+  stable `2/5`, `oracle-only`
+- same-run scratch `mul 16384`: ratio `1.360`, worst `1.544`,
+  stable `0/5`, `oracle-only`
+
+Decision: do not promote dense-leaf no-scan routing. Skipping sparse scans is
+correct and shows a 4096-digit pocket in this run, but the pocket is noisy,
+8192 digits is effectively flat, and 16384 digits regresses. The result narrows
+the next search: repeated sparse scans are not the current dense multiply
+bottleneck; future work should focus on Karatsuba allocation/copy overhead,
+no-copy split views, or a larger algorithm handoff with same-run route audits
+before changing production behavior.

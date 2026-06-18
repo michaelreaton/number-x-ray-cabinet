@@ -626,6 +626,18 @@ XRAY_API int xray_bigint_mul_toom3_unroll4_recursive_probe(XrayScratchBigInt *ou
 XRAY_API int xray_bigint_mul_unroll4_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold);
 
 /**
+ * Multiply through a dense-leaf diagnostic route that skips sparse scans.
+ *
+ * The Karatsuba recursion and leaf threshold match the explicit-threshold
+ * probe, but schoolbook leaves do not count non-zero limbs or choose the sparse
+ * product builder. MSVC x64 builds still use the measured unroll4 addmul leaf
+ * schedule; other builds use the scalar schoolbook leaf. This is intended to
+ * quantify dense-input sparse-scan overhead before any route policy changes.
+ * out may alias either input. Returns 1 on success and 0 on allocation failure.
+ */
+XRAY_API int xray_bigint_mul_dense_leaf_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold);
+
+/**
  * Compare two scratch bigints.
  *
  * Returns -1 when left < right, 0 when equal, and 1 when left > right.

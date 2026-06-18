@@ -1401,6 +1401,46 @@ static void test_scratch_bigint_mul_thresholds(void) {
   free(right_text);
 }
 
+static void test_scratch_bigint_dense_leaf_probe_oracle(void) {
+  const size_t thresholds[] = {32, 64, 96, 128};
+  char *left_text = make_pattern_decimal(2600, "93751086420975318642");
+  char *right_text = make_pattern_decimal(2600, "46297531864208642135");
+  XrayScratchBigInt a, b, product, baseline, alias;
+  xray_bigint_init(&a);
+  xray_bigint_init(&b);
+  xray_bigint_init(&product);
+  xray_bigint_init(&baseline);
+  xray_bigint_init(&alias);
+  mpz_t ga, gb, gproduct;
+  mpz_inits(ga, gb, gproduct, NULL);
+
+  CHECK(xray_bigint_set_decimal(&a, left_text));
+  CHECK(xray_bigint_set_decimal(&b, right_text));
+  CHECK(mpz_set_str(ga, left_text, 10) == 0);
+  CHECK(mpz_set_str(gb, right_text, 10) == 0);
+  mpz_mul(gproduct, ga, gb);
+
+  for (size_t index = 0; index < sizeof(thresholds) / sizeof(thresholds[0]); ++index) {
+    CHECK(xray_bigint_mul_dense_leaf_probe(&product, &a, &b, thresholds[index]));
+    check_scratch_matches_mpz(&product, gproduct);
+    CHECK(xray_bigint_mul_with_threshold(&baseline, &a, &b, thresholds[index]));
+    CHECK(xray_bigint_compare(&product, &baseline) == 0);
+
+    CHECK(xray_bigint_copy(&alias, &a));
+    CHECK(xray_bigint_mul_dense_leaf_probe(&alias, &alias, &b, thresholds[index]));
+    check_scratch_matches_mpz(&alias, gproduct);
+  }
+
+  xray_bigint_clear(&a);
+  xray_bigint_clear(&b);
+  xray_bigint_clear(&product);
+  xray_bigint_clear(&baseline);
+  xray_bigint_clear(&alias);
+  mpz_clears(ga, gb, gproduct, NULL);
+  free(left_text);
+  free(right_text);
+}
+
 static void test_scratch_bigint_karatsuba_sum_probe_oracle(void) {
   const size_t thresholds[] = {32, 64, 96, 128};
   char *left_text = make_pattern_decimal(2400, "86420975318642097531");
@@ -2180,6 +2220,10 @@ static void test_benchmarks(void) {
   int saw_divmod_preinv_qhat4096_probe = 0;
   int saw_divmod_preinv_qhat8192_probe = 0;
   int saw_divmod_preinv_qhat16384_probe = 0;
+  int saw_mul_dense_leaf_vs_scan_probe = 0;
+  int saw_mul_dense_leaf_vs_scan4096_probe = 0;
+  int saw_mul_dense_leaf_vs_scan8192_probe = 0;
+  int saw_mul_dense_leaf_vs_scan16384_probe = 0;
   int saw_mul_unroll4_vs_scratch_probe = 0;
   int saw_mul_unroll4_vs_gmp_probe = 0;
   int saw_mul_unroll4_deep_vs_gmp_probe = 0;
@@ -2915,6 +2959,24 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "candidate=_umul128+_addcarry_u64-unroll4-full") != NULL);
         CHECK(strstr(report->results[index].detail, "baseline=scalar-threshold-mul") != NULL);
         CHECK(strstr(report->results[index].detail, "featureGate=msvc-x64-full-mul-schedule") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+      }
+      if (strcmp(report->results[index].operation, "mul-dense-leaf-vs-scan") == 0) {
+        saw_mul_dense_leaf_vs_scan_probe = 1;
+        if (report->results[index].digits == 4096) saw_mul_dense_leaf_vs_scan4096_probe = 1;
+        else if (report->results[index].digits == 8192) saw_mul_dense_leaf_vs_scan8192_probe = 1;
+        else if (report->results[index].digits == 16384) saw_mul_dense_leaf_vs_scan16384_probe = 1;
+        else CHECK(0);
+        CHECK(report->results[index].parity_verified);
+        CHECK(!report->results[index].replacement_ready);
+        CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+        CHECK(strstr(report->results[index].detail, "leafThreshold=64") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=dense-leaf-no-sparse-scan") != NULL);
+        CHECK(strstr(report->results[index].detail, "threshold-mul-with-sparse-scan") != NULL);
+        CHECK(strstr(report->results[index].detail, "leafSchedule=") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=dense-leaf-sparse-scan-audit") != NULL);
+        CHECK(strstr(report->results[index].detail, "mfastFeedback=cache-shape-decisions") != NULL);
+        CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
         CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
       }
       if (strcmp(report->results[index].operation, "mul-unroll4-vs-gmp") == 0) {
@@ -4371,6 +4433,10 @@ static void test_benchmarks(void) {
   CHECK(saw_square_leaf_order16384_probe);
   CHECK(saw_toom3_probe);
   CHECK(saw_toom3_vs_scratch_probe);
+  CHECK(saw_mul_dense_leaf_vs_scan_probe);
+  CHECK(saw_mul_dense_leaf_vs_scan4096_probe);
+  CHECK(saw_mul_dense_leaf_vs_scan8192_probe);
+  CHECK(saw_mul_dense_leaf_vs_scan16384_probe);
   CHECK(saw_qhat_preinv_probe);
   CHECK(saw_qhat_u32_limb_probe);
   CHECK(saw_u32_precompute_probe);
@@ -5075,6 +5141,11 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "mfastLesson=production-shape-gates") != NULL);
   CHECK(strstr(benchmark_tsv, "noAutoRoute=0") != NULL);
   CHECK(strstr(benchmark_tsv, "mfastFeedback=zero-scalar-row-addmul") != NULL);
+  CHECK(strstr(benchmark_tsv, "mul-dense-leaf-vs-scan") != NULL);
+  CHECK(strstr(benchmark_tsv, "dense-leaf-no-sparse-scan") != NULL);
+  CHECK(strstr(benchmark_tsv, "dense-leaf-sparse-scan-audit") != NULL);
+  CHECK(strstr(benchmark_tsv, "mfastFeedback=cache-shape-decisions") != NULL);
+  CHECK(strstr(benchmark_tsv, "noAutoRoute=1") != NULL);
 #if defined(_MSC_VER) && defined(_M_X64)
   CHECK(strstr(benchmark_tsv, "mul-toom3-unroll4-vs-scratch") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-toom3-unroll4-vs-gmp") != NULL);
@@ -5113,6 +5184,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "Worst") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-threshold thr=") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-threshold-tournament thr=") != NULL);
+  CHECK(strstr(benchmark_frontier, "mul-dense-leaf-vs-scan") != NULL);
   CHECK(strstr(benchmark_frontier, "mod-u32-precompute") != NULL);
   CHECK(strstr(benchmark_frontier, "gcd-u32-precompute") != NULL);
   CHECK(strstr(benchmark_frontier, "powmod-u32-precompute") != NULL);
@@ -5281,6 +5353,7 @@ int main(void) {
   test_scratch_bigint_sparse_zero_limb_oracle();
   test_scratch_bigint_karatsuba_middle_signs();
   test_scratch_bigint_mul_thresholds();
+  test_scratch_bigint_dense_leaf_probe_oracle();
   test_scratch_bigint_karatsuba_sum_probe_oracle();
   test_scratch_bigint_toom3_probe_oracle();
   test_scratch_bigint_toom3_recursive_probe_oracle();
