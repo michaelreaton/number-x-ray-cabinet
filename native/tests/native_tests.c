@@ -4875,13 +4875,19 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "square-karatsuba-vs-gmp") != NULL);
   CHECK(strstr(benchmark_tsv, "sparse-zero-square") != NULL);
   CHECK(strstr(benchmark_tsv, "sparse-zero-mul") != NULL);
+  CHECK(strstr(benchmark_tsv, "sparse-production-square") != NULL);
+  CHECK(strstr(benchmark_tsv, "sparse-production-mul") != NULL);
   CHECK(strstr(benchmark_tsv, "sparse-zero-square bits=8192") != NULL);
   CHECK(strstr(benchmark_tsv, "sparse-zero-mul bits=16384") != NULL);
   CHECK(strstr(benchmark_tsv, "sparse-forced-mul") != NULL);
   CHECK(strstr(benchmark_tsv, "sparse-forced-mul bits=16384") != NULL);
   CHECK(strstr(benchmark_tsv, "baseline=current-scratch-mul") != NULL);
   CHECK(strstr(benchmark_tsv, "sparse-pair-product") != NULL);
+  CHECK(strstr(benchmark_tsv, "sparse-production-pair-mul") != NULL);
   CHECK(strstr(benchmark_tsv, "sparse-pair-mul bits=16384") != NULL);
+  CHECK(strstr(benchmark_tsv, "sparse-bigint-production-route") != NULL);
+  CHECK(strstr(benchmark_tsv, "mfastLesson=production-shape-gates") != NULL);
+  CHECK(strstr(benchmark_tsv, "noAutoRoute=0") != NULL);
   CHECK(strstr(benchmark_tsv, "mfastFeedback=zero-scalar-row-addmul") != NULL);
 #if defined(_MSC_VER) && defined(_M_X64)
   CHECK(strstr(benchmark_tsv, "mul-toom3-unroll4-vs-scratch") != NULL);

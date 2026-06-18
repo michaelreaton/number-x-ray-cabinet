@@ -7870,6 +7870,62 @@ static void append_sparse_zero_limb_probe_result(
   append_result(report, &result);
 }
 
+static void append_sparse_production_result(
+  XrayBenchmarkReport *report,
+  const char *operation,
+  size_t bits,
+  size_t digits,
+  const char *shape,
+  const char *candidate,
+  const char *baseline,
+  int parity,
+  unsigned long long scratch_us,
+  unsigned long long gmp_us,
+  double paired_ratio,
+  size_t stable_sample_count,
+  size_t sample_count,
+  double worst_pair_ratio) {
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "scratch %s %zu-bit", operation, bits);
+  snprintf(result.category, sizeof(result.category), "scratch-vs-gmp");
+  snprintf(result.operation, sizeof(result.operation), "%s", operation);
+  result.digits = digits;
+  result.scratch_us = scratch_us ? scratch_us : 1;
+  result.gmp_us = gmp_us ? gmp_us : 1;
+  result.speed_ratio = paired_ratio > 0.0 ? paired_ratio : (double)result.scratch_us / (double)result.gmp_us;
+  result.max_allowed_speed_ratio = 1.0;
+  result.stable_sample_count = stable_sample_count;
+  result.sample_count = sample_count;
+  result.worst_pair_ratio = worst_pair_ratio;
+  result.parity_verified = parity;
+  const char *adoption = xray_scratch_adoption_for_result(&result);
+  result.replacement_ready = strcmp(adoption, "allowed") == 0;
+  snprintf(result.adoption, sizeof(result.adoption), "%s", adoption);
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  result.passed = parity;
+  snprintf(result.status, sizeof(result.status), "%s",
+    !parity ? "failed" : (result.replacement_ready ? "replacement-ready" : "parity"));
+  snprintf(result.detail, sizeof(result.detail),
+    "operation=%s bits=%zu digits=%zu operandFamilies=1 samples=%zu stablePairs=%zu/%zu scratchUs=%llu gmpUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median maxAllowedRatio=%.1f candidate=%s baseline=%s featureGate=sparse-bigint-production-route gmpClue=skip-zero-limb-work mfastFeedback=zero-scalar-row-addmul mfastLesson=production-shape-gates sparseShape=%s noAutoRoute=0 adoption=%s",
+    operation,
+    bits,
+    digits,
+    sample_count,
+    stable_sample_count,
+    sample_count,
+    result.scratch_us,
+    result.gmp_us,
+    result.speed_ratio,
+    result.worst_pair_ratio,
+    result.max_allowed_speed_ratio,
+    candidate,
+    baseline,
+    shape,
+    result.adoption);
+  append_result(report, &result);
+}
+
 static void run_sparse_zero_limb_probe_case(XrayBenchmarkReport *report, const char *operation, size_t bits) {
   const size_t sample_count = XRAY_BENCH_SAMPLES;
   const unsigned int iterations = bits <= 4096U ? 8U : 4U;
@@ -7924,6 +7980,21 @@ static void run_sparse_zero_limb_probe_case(XrayBenchmarkReport *report, const c
     median_samples(gmp_samples, sample_count),
     median_paired_ratio(scratch_samples, gmp_samples, sample_count),
     paired_ratio_wins(scratch_samples, gmp_samples, sample_count, 0.98),
+    sample_count,
+    max_paired_ratio(scratch_samples, gmp_samples, sample_count));
+  append_sparse_production_result(
+    report,
+    strcmp(operation, "mul") == 0 ? "sparse-production-mul" : "sparse-production-square",
+    bits,
+    left_text ? strlen(left_text) : 0,
+    "2^n+1",
+    strcmp(operation, "mul") == 0 ? "current-scratch-sparse-mul-route" : "current-scratch-sparse-square-route",
+    strcmp(operation, "mul") == 0 ? "mpz_mul-sparse-product" : "mpz_mul-sparse-square",
+    parity,
+    median_samples(scratch_samples, sample_count),
+    median_samples(gmp_samples, sample_count),
+    median_paired_ratio(scratch_samples, gmp_samples, sample_count),
+    paired_ratio_wins(scratch_samples, gmp_samples, sample_count, 1.0),
     sample_count,
     max_paired_ratio(scratch_samples, gmp_samples, sample_count));
 
@@ -8192,6 +8263,21 @@ static void run_sparse_pair_product_probe_case(XrayBenchmarkReport *report, size
     median_samples(gmp_samples, sample_count),
     median_paired_ratio(scratch_samples, gmp_samples, sample_count),
     paired_ratio_wins(scratch_samples, gmp_samples, sample_count, 0.98),
+    sample_count,
+    max_paired_ratio(scratch_samples, gmp_samples, sample_count));
+  append_sparse_production_result(
+    report,
+    "sparse-production-pair-mul",
+    bits,
+    left_text ? strlen(left_text) : 0,
+    "8-live-limbs",
+    "current-scratch-sparse-pair-product-route",
+    "mpz_mul-sparse-product",
+    parity,
+    median_samples(scratch_samples, sample_count),
+    median_samples(gmp_samples, sample_count),
+    median_paired_ratio(scratch_samples, gmp_samples, sample_count),
+    paired_ratio_wins(scratch_samples, gmp_samples, sample_count, 1.0),
     sample_count,
     max_paired_ratio(scratch_samples, gmp_samples, sample_count));
 
