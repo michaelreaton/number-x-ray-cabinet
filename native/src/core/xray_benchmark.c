@@ -1347,7 +1347,7 @@ static unsigned int perf_iterations(const char *operation, size_t digits) {
     if (digits > 4096) return 16;
     return 32;
   }
-  if (strcmp(operation, "add") == 0 || strcmp(operation, "sub") == 0) {
+  if (strcmp(operation, "add") == 0 || strcmp(operation, "add-tail") == 0 || strcmp(operation, "sub") == 0) {
     if (digits <= 40) return 20000;
     if (digits <= 150) return 8000;
     return 6400;
@@ -3695,6 +3695,70 @@ static void run_scratch_binary_case(XrayBenchmarkReport *report, const char *ope
   xray_bigint_clear(&scratch_out);
   free(left_text);
   free(right_text);
+}
+
+static void run_scratch_add_tail_case(XrayBenchmarkReport *report, size_t digits) {
+  size_t bits = benchmark_estimated_bits_from_decimal_digits(digits);
+  XrayScratchBigInt a, b, scratch_out;
+  xray_bigint_init(&a);
+  xray_bigint_init(&b);
+  xray_bigint_init(&scratch_out);
+  mpz_t ga, gb, gout;
+  mpz_inits(ga, gb, gout, NULL);
+  mpz_ui_pow_ui(ga, 2U, (unsigned long)bits);
+  mpz_add_ui(ga, ga, 987654321U);
+  mpz_set_ui(gb, 123456789U);
+  char *left_text = mpz_get_str(NULL, 10, ga);
+  char *right_text = mpz_get_str(NULL, 10, gb);
+  int ok = left_text &&
+    right_text &&
+    xray_bigint_set_decimal(&a, left_text) &&
+    xray_bigint_set_decimal(&b, right_text) &&
+    a.count > b.count + 16U;
+
+  unsigned int iterations = perf_iterations("add-tail", digits);
+  unsigned long long scratch_samples[XRAY_BENCH_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_SAMPLES] = {0};
+  int parity = 1;
+  for (unsigned int sample = 0; sample < XRAY_BENCH_SAMPLES; ++sample) {
+    unsigned long long scratch_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      ok = xray_bigint_add(&scratch_out, &a, &b);
+    }
+    scratch_samples[sample] = xray_now_us() - scratch_started;
+
+    unsigned long long gmp_started = xray_now_us();
+    for (unsigned int index = 0; ok && index < iterations; ++index) {
+      mpz_add(gout, ga, gb);
+    }
+    gmp_samples[sample] = xray_now_us() - gmp_started;
+
+    char *scratch_text = xray_bigint_get_decimal(&scratch_out);
+    char *gmp_text = mpz_get_str(NULL, 10, gout);
+    parity = parity && ok && scratch_text && gmp_text && strcmp(scratch_text, gmp_text) == 0;
+    free(scratch_text);
+    free(gmp_text);
+  }
+
+  append_perf_result(
+    report,
+    "add-tail",
+    digits,
+    1,
+    parity,
+    median_samples(scratch_samples, XRAY_BENCH_SAMPLES),
+    median_samples(gmp_samples, XRAY_BENCH_SAMPLES),
+    median_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES),
+    paired_ratio_wins(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES, 1.0),
+    XRAY_BENCH_SAMPLES,
+    max_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES));
+
+  free(left_text);
+  free(right_text);
+  mpz_clears(ga, gb, gout, NULL);
+  xray_bigint_clear(&a);
+  xray_bigint_clear(&b);
+  xray_bigint_clear(&scratch_out);
 }
 
 static void run_mul_threshold_probe_case(XrayBenchmarkReport *report, size_t digits, size_t threshold) {
@@ -8749,6 +8813,7 @@ static void run_scratch_bigint_gates(XrayBenchmarkReport *report) {
     run_scratch_parse_case(report, sizes[index]);
     run_scratch_format_case(report, sizes[index]);
     run_scratch_binary_case(report, "add", sizes[index]);
+    if (sizes[index] >= 1000) run_scratch_add_tail_case(report, sizes[index]);
     run_scratch_binary_case(report, "sub", sizes[index]);
     run_scratch_modular_case(report, "mod-u32", sizes[index]);
     run_scratch_modular_case(report, "gcd-u32", sizes[index]);
