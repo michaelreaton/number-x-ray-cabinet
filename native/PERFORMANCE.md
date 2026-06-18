@@ -2772,3 +2772,43 @@ beat current scratch in kernel rows, but the policy-to-GMP gate shows every
 tested size still backend-faster in both normal and `/GL` builds. The next large
 formatting work should attack the underlying bigint division or use a more
 GMP-like conversion algorithm, not just static power precompute.
+
+## 2026-06-18: Rejected Threshold48 Multiply Route Audit
+
+Run:
+
+- Release:
+  `native/build-codex-exact-estimate/native-test-runs/20260618-014753-c4b04caf`
+
+The threshold tournament had a tempting but contradictory large-multiply signal,
+so this run added a forced, same-run route audit for `threshold48` across 8192
+and 16384 decimal digits. The audit compares the candidate route against the
+current production route and `mpz_mul` on the same generated inputs, using
+interleaved rotating batches, two operand families, parity/hash checks, and a
+forced-neighbor policy gate.
+
+Key rows:
+
+- `mul 8192`: ratio `0.941`, worst `1.413`, stable `3/5`, `oracle-only`
+- `mul 16384`: ratio `1.611`, worst `1.853`, stable `0/5`, `oracle-only`
+- `mul-route-audit current-default-16384`: ratio `1.388`, worst `1.510`,
+  hash/parity `18/18`, safe sizes `0/1`, `observe-only`
+- `mul-route-audit current-default-4096-16384`: ratio `1.405`, worst `1.681`,
+  hash/parity `54/54`, safe sizes `0/3`, `observe-only`
+- `mul-threshold-route-audit threshold48-8192-16384`: status
+  `current-regression`, candidate/current max `1.299`, candidate/GMP max
+  `1.568`, current/GMP max `1.511`, worst pair `1.662`, hash/parity `36/36`,
+  safe sizes `0/2`, `observe-only`
+- `mul-threshold-tournament 8192`: best threshold equals the current threshold
+  `64`, ratio `0.899`, worst `1.227`, stable `3/5`,
+  `duplicateControl=best-is-current`, `controlSafety=noisy-control`
+- `mul-threshold-tournament 16384`: best threshold `32`, ratio `0.910`,
+  worst `1.080`, stable `3/5`, `duplicateControl=candidate-vs-current`,
+  `controlSafety=not-control`
+
+Decision: reject `threshold48` as a production route. It is exact, but it does
+not beat the current route under the same-run forced-neighbor audit. The
+tournament result is now explicitly labeled for duplicate-control safety so a
+noisy current-threshold control cannot be mistaken for a route win. The next
+large multiply work should look at deeper multiplication primitives or a cleaner
+threshold measurement design, not a global threshold48 handoff.
