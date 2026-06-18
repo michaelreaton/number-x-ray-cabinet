@@ -764,7 +764,7 @@ char *xray_benchmark_frontier_text(const XrayBenchmarkReport *report) {
     xray_bignum_backend_library());
   XrayBigIntRouteConfig route = xray_bigint_route_config();
   jb_printf(&buffer,
-    "Bigint route: word=%ub | karatsuba>=%zu limbs | square-self-mul<=8 limbs | format-horner>=%zu limbs | format-pair-writer=small<=8 or horner 48..54 limbs | format-preinv1e19-pairs=est1001 digits | format-dc-ladder>=4096 digits leaf=8 | mul-unroll4=%s %zu..%zu limbs | msvc128=%s\n",
+    "Bigint route: word=%ub | karatsuba>=%zu limbs | square-self-mul<=8 limbs | format-horner>=%zu limbs | format-pair-writer=small<=8 or horner 48..54 limbs | format-preinv1e19-pairs=est1001 digits | format-dc-ladder>=4096 digits leaf=8 static-splits=108,216 | mul-unroll4=%s %zu..%zu limbs | msvc128=%s\n",
     route.word_bits,
     route.karatsuba_threshold_limbs,
     route.decimal_horner_min_limbs,
