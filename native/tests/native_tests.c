@@ -745,6 +745,10 @@ static void test_scratch_bigint_oracle(void) {
   check_scratch_matches_mpz(&difference, gdifference);
   CHECK(xray_bigint_sub(&a, &a, &b));
   check_scratch_matches_mpz(&a, gdifference);
+  CHECK(xray_bigint_set_decimal(&a, large_tail_left));
+  CHECK(xray_bigint_set_decimal(&b, large_tail_right));
+  CHECK(xray_bigint_sub(&b, &a, &b));
+  check_scratch_matches_mpz(&b, gdifference);
   free(large_tail_left);
   free(large_tail_right);
 
