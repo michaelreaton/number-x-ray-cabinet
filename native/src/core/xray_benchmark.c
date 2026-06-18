@@ -6334,6 +6334,259 @@ static void run_square_route_audit_case(
     XRAY_BENCH_DEEP_SAMPLES);
 }
 
+typedef struct {
+  size_t digits;
+  unsigned long long candidate_us;
+  unsigned long long gmp_us;
+  double candidate_gmp_ratio;
+  double candidate_gmp_worst;
+  size_t candidate_gmp_stable;
+  size_t hash_match_count;
+  size_t sample_count;
+  int parity;
+} XrayMulRouteAuditPoint;
+
+static XrayMulRouteAuditPoint measure_mul_route_audit_point(size_t digits, unsigned int seed, size_t sample_count) {
+  XrayMulRouteAuditPoint point;
+  memset(&point, 0, sizeof(point));
+  point.digits = digits;
+  point.sample_count = sample_count;
+  if (sample_count == 0 || sample_count > XRAY_BENCH_MAX_SAMPLES) return point;
+
+  char *left_text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  char *right_text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  XrayScratchBigInt left[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt right[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt out[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gleft[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gright[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gout[XRAY_MUL_OPERAND_FAMILIES];
+
+  unsigned int iterations = perf_iterations("mul", digits);
+  unsigned int batch_iterations = iterations >= 64U ? 8U : (iterations >= 16U ? 4U : 1U);
+  int ok = 1;
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    xray_bigint_init(&left[family]);
+    xray_bigint_init(&right[family]);
+    xray_bigint_init(&out[family]);
+    mpz_inits(gleft[family], gright[family], gout[family], NULL);
+    left_text[family] = benchmark_decimal(
+      digits,
+      seed + mul_operand_families[family].left_seed + (unsigned int)(family * 11U),
+      mul_operand_families[family].left_high_lead);
+    right_text[family] = benchmark_decimal(
+      digits,
+      seed + mul_operand_families[family].right_seed + (unsigned int)(family * 17U),
+      mul_operand_families[family].right_high_lead);
+    ok = ok &&
+      left_text[family] &&
+      right_text[family] &&
+      xray_bigint_set_decimal(&left[family], left_text[family]) &&
+      xray_bigint_set_decimal(&right[family], right_text[family]) &&
+      mpz_set_str(gleft[family], left_text[family], 10) == 0 &&
+      mpz_set_str(gright[family], right_text[family], 10) == 0;
+  }
+
+  unsigned long long candidate_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  int parity = 1;
+  for (size_t sample = 0; ok && sample < sample_count; ++sample) {
+    unsigned int completed = 0;
+    int candidate_first = (sample % 2U) == 0U;
+    while (ok && completed < iterations) {
+      unsigned int remaining = iterations - completed;
+      unsigned int batch = remaining < batch_iterations ? remaining : batch_iterations;
+      if (candidate_first) {
+        unsigned long long candidate_started = xray_now_us();
+        for (unsigned int index = 0; ok && index < batch; ++index) {
+          for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+            ok = xray_bigint_mul(&out[family], &left[family], &right[family]);
+          }
+        }
+        candidate_samples[sample] += xray_now_us() - candidate_started;
+
+        unsigned long long gmp_started = xray_now_us();
+        for (unsigned int index = 0; index < batch; ++index) {
+          for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+            mpz_mul(gout[family], gleft[family], gright[family]);
+          }
+        }
+        gmp_samples[sample] += xray_now_us() - gmp_started;
+      } else {
+        unsigned long long gmp_started = xray_now_us();
+        for (unsigned int index = 0; index < batch; ++index) {
+          for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+            mpz_mul(gout[family], gleft[family], gright[family]);
+          }
+        }
+        gmp_samples[sample] += xray_now_us() - gmp_started;
+
+        unsigned long long candidate_started = xray_now_us();
+        for (unsigned int index = 0; ok && index < batch; ++index) {
+          for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+            ok = xray_bigint_mul(&out[family], &left[family], &right[family]);
+          }
+        }
+        candidate_samples[sample] += xray_now_us() - candidate_started;
+      }
+      candidate_first = !candidate_first;
+      completed += batch;
+    }
+
+    for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+      char *candidate_text = xray_bigint_get_decimal(&out[family]);
+      char *gmp_text = mpz_get_str(NULL, 10, gout[family]);
+      uint64_t candidate_hash = xray_benchmark_text_hash64(candidate_text);
+      uint64_t gmp_hash = xray_benchmark_text_hash64(gmp_text);
+      int sample_match = ok &&
+        candidate_text &&
+        gmp_text &&
+        strcmp(candidate_text, gmp_text) == 0;
+      if (sample_match && candidate_hash != 0ULL && candidate_hash == gmp_hash) point.hash_match_count++;
+      parity = parity && sample_match;
+      free(candidate_text);
+      free(gmp_text);
+    }
+  }
+
+  point.candidate_us = median_samples(candidate_samples, sample_count);
+  point.gmp_us = median_samples(gmp_samples, sample_count);
+  point.candidate_gmp_ratio = median_paired_ratio(candidate_samples, gmp_samples, sample_count);
+  point.candidate_gmp_worst = max_paired_ratio(candidate_samples, gmp_samples, sample_count);
+  point.candidate_gmp_stable = paired_ratio_wins(candidate_samples, gmp_samples, sample_count, 1.0);
+  point.parity = parity && ok;
+
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    mpz_clears(gleft[family], gright[family], gout[family], NULL);
+    xray_bigint_clear(&left[family]);
+    xray_bigint_clear(&right[family]);
+    xray_bigint_clear(&out[family]);
+    free(left_text[family]);
+    free(right_text[family]);
+  }
+  return point;
+}
+
+static void append_mul_route_audit_result(
+  XrayBenchmarkReport *report,
+  const char *policy,
+  const char *sizes,
+  const XrayMulRouteAuditPoint *points,
+  size_t point_count,
+  size_t sample_count) {
+  if (!report || !policy || !points || point_count == 0) return;
+  size_t required_stable = policy_required_stable_samples(sample_count);
+  size_t safe_size_count = 0;
+  size_t hash_match_count = 0;
+  int parity = 1;
+  int hash_gate = 1;
+  int ratio_safe = 1;
+  int stable_safe = 1;
+  int worst_pair_safe = 1;
+  unsigned long long candidate_us = 0;
+  unsigned long long gmp_us = 0;
+  double max_candidate_gmp_ratio = 0.0;
+  double max_worst_pair_ratio = 0.0;
+  size_t expected_hash_count = point_count * sample_count * XRAY_MUL_OPERAND_FAMILIES;
+
+  for (size_t index = 0; index < point_count; ++index) {
+    const XrayMulRouteAuditPoint *point = &points[index];
+    size_t point_expected_hash_count = sample_count * XRAY_MUL_OPERAND_FAMILIES;
+    parity = parity && point->parity;
+    hash_match_count += point->hash_match_count;
+    hash_gate = hash_gate && point->hash_match_count == point_expected_hash_count;
+    if (point->candidate_us > candidate_us) candidate_us = point->candidate_us;
+    if (point->gmp_us > gmp_us) gmp_us = point->gmp_us;
+    if (point->candidate_gmp_ratio > max_candidate_gmp_ratio) max_candidate_gmp_ratio = point->candidate_gmp_ratio;
+    if (point->candidate_gmp_worst > max_worst_pair_ratio) max_worst_pair_ratio = point->candidate_gmp_worst;
+    int point_safe = point->parity &&
+      point->hash_match_count == point_expected_hash_count &&
+      point->candidate_gmp_ratio > 0.0 &&
+      point->candidate_gmp_ratio <= 1.0 &&
+      point->candidate_gmp_stable >= required_stable &&
+      xray_no_worst_pair_regression(point->candidate_gmp_worst);
+    ratio_safe = ratio_safe && point->candidate_gmp_ratio > 0.0 && point->candidate_gmp_ratio <= 1.0;
+    stable_safe = stable_safe && point->candidate_gmp_stable >= required_stable;
+    worst_pair_safe = worst_pair_safe && xray_no_worst_pair_regression(point->candidate_gmp_worst);
+    if (point_safe) safe_size_count++;
+  }
+
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "policy audit mul %s", policy);
+  snprintf(result.category, sizeof(result.category), "policy-gate");
+  snprintf(result.operation, sizeof(result.operation), "mul-route-audit");
+  result.digits = points[point_count - 1U].digits;
+  result.scratch_us = candidate_us ? candidate_us : 1;
+  result.gmp_us = gmp_us ? gmp_us : 1;
+  result.speed_ratio = max_candidate_gmp_ratio > 0.0 ? max_candidate_gmp_ratio : (double)result.scratch_us / (double)result.gmp_us;
+  result.max_allowed_speed_ratio = 1.0;
+  result.stable_sample_count = safe_size_count;
+  result.sample_count = point_count;
+  result.worst_pair_ratio = max_worst_pair_ratio;
+  result.parity_verified = parity && hash_gate;
+  result.replacement_ready = result.parity_verified && safe_size_count == point_count;
+  snprintf(result.adoption, sizeof(result.adoption), "%s",
+    !parity ? "blocked-output-mismatch" : (result.replacement_ready ? "promotion-ready" : "observe-only"));
+  snprintf(result.status, sizeof(result.status), "%s",
+    !parity ? "mismatch" :
+    (!hash_gate ? "hash-mismatch" :
+    (!ratio_safe ? "backend-faster" :
+    (!worst_pair_safe ? "worst-pair-regression" :
+    (!stable_safe ? "needs-stability" :
+    (result.replacement_ready ? "policy-ready" : "needs-stability"))))));
+  result.passed = parity && hash_gate;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  snprintf(result.detail, sizeof(result.detail),
+    "op=mul-route-audit policy=%s sizes=%s sizeCount=%zu operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s forcedCandidate=yes candidate=current-scratch-mul activeCandidate=current-scratch-mul baseline=mpz_mul oracle=mpz_mul candidateAvailable=yes candGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=interleaved-alternating-batches thresholdSafety=forced-neighbor sameInput=yes sameRunAudit=yes sourceLabel=current-production-route featureGate=mul-route-audit gmpClue=mpn_mul-product-baseline noAutoRoute=1 adoption=%s",
+    policy,
+    sizes ? sizes : "unknown",
+    point_count,
+    (unsigned int)XRAY_MUL_OPERAND_FAMILIES,
+    sample_count,
+    required_stable,
+    sample_count,
+    safe_size_count,
+    point_count,
+    hash_match_count,
+    expected_hash_count,
+    hash_gate ? "matched" : "blocked",
+    parity ? "matched" : "blocked",
+    max_candidate_gmp_ratio,
+    max_worst_pair_ratio,
+    result.adoption);
+  append_result(report, &result);
+}
+
+static void run_mul_route_audit_case(
+  XrayBenchmarkReport *report,
+  unsigned int seed,
+  const char *policy,
+  const size_t *sizes,
+  size_t size_count) {
+  if (!report || !policy || !sizes || size_count == 0 || size_count > XRAY_FORMAT_ROUTE_TOURNAMENT_MAX) return;
+  XrayMulRouteAuditPoint points[XRAY_FORMAT_ROUTE_TOURNAMENT_MAX];
+  memset(points, 0, sizeof(points));
+  char size_list[96] = {0};
+  for (size_t index = 0; index < size_count; ++index) {
+    size_t used = strlen(size_list);
+    if (used < sizeof(size_list)) {
+      snprintf(size_list + used, sizeof(size_list) - used, "%s%zu", size_list[0] ? "," : "", sizes[index]);
+    }
+    points[index] = measure_mul_route_audit_point(
+      sizes[index],
+      seed + (unsigned int)(index * 23U),
+      XRAY_BENCH_DEEP_SAMPLES);
+  }
+  append_mul_route_audit_result(
+    report,
+    policy,
+    size_list,
+    points,
+    size_count,
+    XRAY_BENCH_DEEP_SAMPLES);
+}
+
 static void run_square_policy_probe_case(
   XrayBenchmarkReport *report,
   size_t digits,
@@ -8979,6 +9232,20 @@ static void run_scratch_bigint_gates(XrayBenchmarkReport *report) {
     "current-default-1000-16384",
     square_large_audit_sizes,
     sizeof(square_large_audit_sizes) / sizeof(square_large_audit_sizes[0]));
+  const size_t mul_focused_audit_sizes[] = {16384};
+  run_mul_route_audit_case(
+    report,
+    349U,
+    "current-default-16384",
+    mul_focused_audit_sizes,
+    sizeof(mul_focused_audit_sizes) / sizeof(mul_focused_audit_sizes[0]));
+  const size_t mul_large_audit_sizes[] = {4096, 8192, 16384};
+  run_mul_route_audit_case(
+    report,
+    353U,
+    "current-default-4096-16384",
+    mul_large_audit_sizes,
+    sizeof(mul_large_audit_sizes) / sizeof(mul_large_audit_sizes[0]));
   const size_t square_probe_thresholds[] = {16, 24, 32, 48, 64, 80, 96, 112, 128, 160};
   for (size_t size_index = 0; size_index < sizeof(square_probe_sizes) / sizeof(square_probe_sizes[0]); ++size_index) {
     for (size_t threshold_index = 0; threshold_index < sizeof(square_probe_thresholds) / sizeof(square_probe_thresholds[0]); ++threshold_index) {

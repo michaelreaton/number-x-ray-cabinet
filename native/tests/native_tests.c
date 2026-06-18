@@ -2078,6 +2078,9 @@ static void test_benchmarks(void) {
   int saw_square_route_audit = 0;
   int saw_square_route_audit_focused = 0;
   int saw_square_route_audit_large = 0;
+  int saw_mul_route_audit = 0;
+  int saw_mul_route_audit_focused = 0;
+  int saw_mul_route_audit_large = 0;
   int saw_square_policy1000_probe = 0;
   int saw_square_policy4096_probe = 0;
   int saw_square_policy8192_probe = 0;
@@ -3379,6 +3382,49 @@ static void test_benchmarks(void) {
         } else {
           CHECK(0);
         }
+      } else if (strcmp(report->results[index].operation, "mul-route-audit") == 0) {
+        saw_mul_route_audit = 1;
+        CHECK(strstr(report->results[index].detail, "op=mul-route-audit") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=current-scratch-mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "activeCandidate=current-scratch-mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=mpz_mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "oracle=mpz_mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidateAvailable=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+        CHECK(strstr(report->results[index].detail, "samples=9") != NULL);
+        CHECK(strstr(report->results[index].detail, "requiredStablePairs=8/9") != NULL);
+        CHECK(strstr(report->results[index].detail, "safeSizes=") != NULL);
+        CHECK(strstr(report->results[index].detail, "hashSafe=") != NULL);
+        CHECK(strstr(report->results[index].detail, "hashGate=matched") != NULL);
+        CHECK(strstr(report->results[index].detail, "parity=matched") != NULL);
+        CHECK(strstr(report->results[index].detail, "candGmpMax=") != NULL);
+        CHECK(strstr(report->results[index].detail, "maxWorstPairRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
+        CHECK(strstr(report->results[index].detail, "timingMode=interleaved-alternating-batches") != NULL);
+        CHECK(strstr(report->results[index].detail, "thresholdSafety=forced-neighbor") != NULL);
+        CHECK(strstr(report->results[index].detail, "sameInput=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "sameRunAudit=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "sourceLabel=current-production-route") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=mul-route-audit") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpClue=mpn_mul-product-baseline") != NULL);
+        CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+        if (strstr(report->results[index].detail, "policy=current-default-4096-16384") != NULL) {
+          saw_mul_route_audit_large = 1;
+          CHECK(report->results[index].sample_count == 3);
+          CHECK(report->results[index].digits == 16384);
+          CHECK(strstr(report->results[index].detail, "sizes=4096,8192,16384") != NULL);
+          CHECK(strstr(report->results[index].detail, "sizeCount=3") != NULL);
+          CHECK(strstr(report->results[index].detail, "hashSafe=54/54") != NULL);
+        } else if (strstr(report->results[index].detail, "policy=current-default-16384") != NULL) {
+          saw_mul_route_audit_focused = 1;
+          CHECK(report->results[index].sample_count == 1);
+          CHECK(report->results[index].digits == 16384);
+          CHECK(strstr(report->results[index].detail, "sizes=16384") != NULL);
+          CHECK(strstr(report->results[index].detail, "sizeCount=1") != NULL);
+          CHECK(strstr(report->results[index].detail, "hashSafe=18/18") != NULL);
+        } else {
+          CHECK(0);
+        }
       } else if (strcmp(report->results[index].operation, "mul-policy") == 0) {
         saw_mul_policy_probe = 1;
         CHECK(strstr(report->results[index].detail, "op=mul-policy") != NULL);
@@ -3852,6 +3898,47 @@ static void test_benchmarks(void) {
         } else {
           CHECK(0);
         }
+      } else if (strcmp(report->results[index].operation, "mul-route-audit") == 0) {
+        saw_mul_route_audit = 1;
+        CHECK(strstr(report->results[index].detail, "op=mul-route-audit") != NULL);
+        CHECK(strstr(report->results[index].detail, "samples=9") != NULL);
+        CHECK(strstr(report->results[index].detail, "requiredStablePairs=8/9") != NULL);
+        CHECK(strstr(report->results[index].detail, "safeSizes=") != NULL);
+        CHECK(strstr(report->results[index].detail, "hashSafe=") != NULL);
+        CHECK(strstr(report->results[index].detail, "hashGate=matched") != NULL);
+        CHECK(strstr(report->results[index].detail, "parity=matched") != NULL);
+        CHECK(strstr(report->results[index].detail, "forcedCandidate=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "thresholdSafety=forced-neighbor") != NULL);
+        CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=current-scratch-mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "activeCandidate=current-scratch-mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=mpz_mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "oracle=mpz_mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+        CHECK(strstr(report->results[index].detail, "candGmpMax=") != NULL);
+        CHECK(strstr(report->results[index].detail, "maxWorstPairRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
+        CHECK(strstr(report->results[index].detail, "timingMode=interleaved-alternating-batches") != NULL);
+        CHECK(strstr(report->results[index].detail, "sameInput=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "sameRunAudit=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "sourceLabel=current-production-route") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=mul-route-audit") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpClue=mpn_mul-product-baseline") != NULL);
+        if (strstr(report->results[index].detail, "policy=current-default-4096-16384") != NULL) {
+          saw_mul_route_audit_large = 1;
+          CHECK(report->results[index].sample_count == 3);
+          CHECK(strstr(report->results[index].detail, "sizes=4096,8192,16384") != NULL);
+          CHECK(strstr(report->results[index].detail, "sizeCount=3") != NULL);
+          CHECK(strstr(report->results[index].detail, "hashSafe=54/54") != NULL);
+        } else if (strstr(report->results[index].detail, "policy=current-default-16384") != NULL) {
+          saw_mul_route_audit_focused = 1;
+          CHECK(report->results[index].sample_count == 1);
+          CHECK(strstr(report->results[index].detail, "sizes=16384") != NULL);
+          CHECK(strstr(report->results[index].detail, "sizeCount=1") != NULL);
+          CHECK(strstr(report->results[index].detail, "hashSafe=18/18") != NULL);
+        } else {
+          CHECK(0);
+        }
       } else if (strcmp(report->results[index].operation, "format-dc-route-safety") == 0) {
         saw_format_dc_route_safety_gate = 1;
         CHECK(report->results[index].sample_count == 3);
@@ -4168,6 +4255,9 @@ static void test_benchmarks(void) {
   CHECK(saw_square_route_audit);
   CHECK(saw_square_route_audit_focused);
   CHECK(saw_square_route_audit_large);
+  CHECK(saw_mul_route_audit);
+  CHECK(saw_mul_route_audit_focused);
+  CHECK(saw_mul_route_audit_large);
   CHECK(saw_square_policy1000_probe);
   CHECK(saw_square_policy4096_probe);
   CHECK(saw_square_policy8192_probe);
@@ -4451,6 +4541,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "square-route-audit") != NULL);
   CHECK(strstr(json, "current-default-1000") != NULL);
   CHECK(strstr(json, "current-default-1000-16384") != NULL);
+  CHECK(strstr(json, "mul-route-audit") != NULL);
+  CHECK(strstr(json, "current-default-16384") != NULL);
+  CHECK(strstr(json, "current-default-4096-16384") != NULL);
+  CHECK(strstr(json, "sourceLabel=current-production-route") != NULL);
   CHECK(strstr(json, "interleaved-alternating-batches") != NULL);
   CHECK(strstr(json, "karatsuba-thr96") != NULL);
   CHECK(strstr(json, "mul-policy") != NULL);
@@ -4599,6 +4693,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "square-route-audit") != NULL);
   CHECK(strstr(tsv, "current-default-1000") != NULL);
   CHECK(strstr(tsv, "current-default-1000-16384") != NULL);
+  CHECK(strstr(tsv, "mul-route-audit") != NULL);
+  CHECK(strstr(tsv, "current-default-16384") != NULL);
+  CHECK(strstr(tsv, "current-default-4096-16384") != NULL);
+  CHECK(strstr(tsv, "sourceLabel=current-production-route") != NULL);
   CHECK(strstr(tsv, "interleaved-alternating-batches") != NULL);
   CHECK(strstr(tsv, "karatsuba-thr96") != NULL);
   CHECK(strstr(tsv, "mul-policy") != NULL);
@@ -4840,6 +4938,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "square-route-audit") != NULL);
   CHECK(strstr(benchmark_tsv, "current-default-1000") != NULL);
   CHECK(strstr(benchmark_tsv, "current-default-1000-16384") != NULL);
+  CHECK(strstr(benchmark_tsv, "mul-route-audit") != NULL);
+  CHECK(strstr(benchmark_tsv, "current-default-16384") != NULL);
+  CHECK(strstr(benchmark_tsv, "current-default-4096-16384") != NULL);
+  CHECK(strstr(benchmark_tsv, "sourceLabel=current-production-route") != NULL);
   CHECK(strstr(benchmark_tsv, "interleaved-alternating-batches") != NULL);
   CHECK(strstr(benchmark_tsv, "karatsuba-thr96") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-policy") != NULL);
@@ -5010,6 +5112,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "square-policy karatsuba-thr96") != NULL);
   CHECK(strstr(benchmark_frontier, "square-route-audit current-default-1000") != NULL);
   CHECK(strstr(benchmark_frontier, "square-route-audit current-default-1000-16384") != NULL);
+  CHECK(strstr(benchmark_frontier, "mul-route-audit current-default-16384") != NULL);
+  CHECK(strstr(benchmark_frontier, "mul-route-audit current-default-4096-16384") != NULL);
   CHECK(strstr(benchmark_frontier, "square-leaf-order") != NULL);
   CHECK(strstr(benchmark_frontier, "sparse-zero-square") != NULL);
   CHECK(strstr(benchmark_frontier, "sparse-zero-mul") != NULL);
