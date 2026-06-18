@@ -63,6 +63,39 @@ neighbor-regression. Keep preinv-qhat as a diagnostic probe only. The current
 production formatter remains the base-`1e19` D&C ladder at 4096+ digits, plus
 the separate exact-estimate 1001 digit preinverse pair-writer window.
 
+## 2026-06-18: Current Multiply Route Audit
+
+MFastFermat's current MMFF/CUDA reporting keeps source-supported rows separate
+from completed rows and refuses to score raw external rates as comparable
+kernel evidence. Number X-Ray applies the same caution to dense multiply before
+promoting any Toom-3, transform, or threshold candidate. This pass adds
+`mul-route-audit` rows that time the current production multiply route against
+`mpz_mul` on the same generated operands, using two operand families, deep
+interleaved samples, exact decimal parity, and hash counts.
+
+Artifact:
+
+- `native/build-codex-exact-estimate/native-test-runs/20260618-011909-c4b04caf`
+
+Observed rows:
+
+- Ordinary 4096 digit scratch multiply: ratio `0.836`, worst pair `0.975`,
+  stable `5/5`, `replacement-ready`.
+- Ordinary 8192 digit scratch multiply: ratio `1.247`, worst pair `1.466`,
+  stable `1/5`, `oracle-only`.
+- Ordinary 16384 digit scratch multiply: ratio `1.386`, worst pair `1.876`,
+  stable `1/5`, `oracle-only`.
+- `mul-route-audit current-default-16384`: exact hash/parity `18/18`, ratio
+  `1.309`, worst pair `1.582`, `safeSizes=0/1`, `observe-only`.
+- `mul-route-audit current-default-4096-16384`: exact hash/parity `54/54`,
+  max ratio `1.331`, max worst pair `1.536`, `safeSizes=1/3`,
+  `observe-only`.
+
+Decision: reporting and baseline evidence only. Current dense multiply has a
+real 4096 digit win, but the large route is still backend-faster at 8192 and
+16384 digits. Future Toom/FFT/NTT candidates must beat this same-run audit, not
+just a standalone probe row, before any production route changes.
+
 ## 2026-06-17: Focused Square Route Audit
 
 MFastFermat's CUDA-only benchmark mode is a useful measurement clue: isolate the
