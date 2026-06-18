@@ -4719,6 +4719,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_json, "\"scratchRows\"") != NULL);
   CHECK(strstr(benchmark_tsv, "scratch-vs-gmp") != NULL);
   CHECK(strstr(benchmark_tsv, "add-tail") != NULL);
+  CHECK(strstr(benchmark_tsv, "sub-tail") != NULL);
   CHECK(strstr(benchmark_tsv, "buildConfig\tipo\tcompiler\tcompilerVersion") != NULL);
   CHECK(strstr(benchmark_tsv, "kernel-probe") != NULL);
   CHECK(strstr(benchmark_tsv, "policy-probe") != NULL);

@@ -1347,7 +1347,10 @@ static unsigned int perf_iterations(const char *operation, size_t digits) {
     if (digits > 4096) return 16;
     return 32;
   }
-  if (strcmp(operation, "add") == 0 || strcmp(operation, "add-tail") == 0 || strcmp(operation, "sub") == 0) {
+  if (strcmp(operation, "add") == 0 ||
+      strcmp(operation, "add-tail") == 0 ||
+      strcmp(operation, "sub") == 0 ||
+      strcmp(operation, "sub-tail") == 0) {
     if (digits <= 40) return 20000;
     if (digits <= 150) return 8000;
     return 6400;
@@ -3697,7 +3700,10 @@ static void run_scratch_binary_case(XrayBenchmarkReport *report, const char *ope
   free(right_text);
 }
 
-static void run_scratch_add_tail_case(XrayBenchmarkReport *report, size_t digits) {
+static void run_scratch_binary_tail_case(XrayBenchmarkReport *report, const char *operation, size_t digits) {
+  int is_add = strcmp(operation, "add-tail") == 0;
+  int is_sub = strcmp(operation, "sub-tail") == 0;
+  if (!is_add && !is_sub) return;
   size_t bits = benchmark_estimated_bits_from_decimal_digits(digits);
   XrayScratchBigInt a, b, scratch_out;
   xray_bigint_init(&a);
@@ -3723,13 +3729,16 @@ static void run_scratch_add_tail_case(XrayBenchmarkReport *report, size_t digits
   for (unsigned int sample = 0; sample < XRAY_BENCH_SAMPLES; ++sample) {
     unsigned long long scratch_started = xray_now_us();
     for (unsigned int index = 0; ok && index < iterations; ++index) {
-      ok = xray_bigint_add(&scratch_out, &a, &b);
+      ok = is_add ?
+        xray_bigint_add(&scratch_out, &a, &b) :
+        xray_bigint_sub(&scratch_out, &a, &b);
     }
     scratch_samples[sample] = xray_now_us() - scratch_started;
 
     unsigned long long gmp_started = xray_now_us();
     for (unsigned int index = 0; ok && index < iterations; ++index) {
-      mpz_add(gout, ga, gb);
+      if (is_add) mpz_add(gout, ga, gb);
+      else mpz_sub(gout, ga, gb);
     }
     gmp_samples[sample] = xray_now_us() - gmp_started;
 
@@ -3742,7 +3751,7 @@ static void run_scratch_add_tail_case(XrayBenchmarkReport *report, size_t digits
 
   append_perf_result(
     report,
-    "add-tail",
+    operation,
     digits,
     1,
     parity,
@@ -8813,7 +8822,10 @@ static void run_scratch_bigint_gates(XrayBenchmarkReport *report) {
     run_scratch_parse_case(report, sizes[index]);
     run_scratch_format_case(report, sizes[index]);
     run_scratch_binary_case(report, "add", sizes[index]);
-    if (sizes[index] >= 1000) run_scratch_add_tail_case(report, sizes[index]);
+    if (sizes[index] >= 1000) {
+      run_scratch_binary_tail_case(report, "add-tail", sizes[index]);
+      run_scratch_binary_tail_case(report, "sub-tail", sizes[index]);
+    }
     run_scratch_binary_case(report, "sub", sizes[index]);
     run_scratch_modular_case(report, "mod-u32", sizes[index]);
     run_scratch_modular_case(report, "gcd-u32", sizes[index]);
