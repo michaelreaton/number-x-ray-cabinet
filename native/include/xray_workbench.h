@@ -618,6 +618,17 @@ XRAY_API int xray_bigint_mul_toom3_unroll4_probe(XrayScratchBigInt *out, const X
 XRAY_API int xray_bigint_mul_toom3_unroll4_recursive_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold, size_t depth_limit);
 
 /**
+ * Multiply through the recursive Toom-3/unroll4 probe route with read-only
+ * split views for the operand thirds.
+ *
+ * This diagnostic probe keeps production multiply unchanged and measures the
+ * Toom split-copy tax separately from evaluation/interpolation work.
+ * depth_limit bounds recursion for benchmark safety. Returns 1 on success and
+ * 0 on allocation failure or unsupported operand shape.
+ */
+XRAY_API int xray_bigint_mul_toom3_unroll4_recursive_view_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold, size_t depth_limit);
+
+/**
  * Multiply with the unroll4 basecase probe route.
  *
  * This is a benchmark/research probe. Returns 1 on success and 0 on allocation
@@ -648,6 +659,18 @@ XRAY_API int xray_bigint_mul_dense_leaf_probe(XrayScratchBigInt *out, const Xray
  * success and 0 on allocation failure.
  */
 XRAY_API int xray_bigint_mul_karatsuba_view_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold);
+
+/**
+ * Multiply through a Karatsuba split-view route with reusable recursion
+ * temporaries.
+ *
+ * This diagnostic probe keeps production multiply unchanged. It uses read-only
+ * low/high operand views and a pre-sized per-depth workspace for recursive
+ * products and middle-term temporaries, so benchmarks can measure allocator and
+ * copy pressure separately from arithmetic correctness. out may alias either
+ * input. Returns 1 on success and 0 on allocation failure.
+ */
+XRAY_API int xray_bigint_mul_karatsuba_workspace_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold);
 
 /**
  * Compare two scratch bigints.
