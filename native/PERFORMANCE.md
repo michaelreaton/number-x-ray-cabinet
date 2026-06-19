@@ -3310,3 +3310,44 @@ random spots fail the leaf64 baseline gate, the stable-pair gate never reaches
 `8/9`, and GMP remains ahead. The next multiply slice should move below the
 handoff threshold knobs into Toom interpolation/evaluation cost or another
 structural arithmetic improvement.
+
+## 2026-06-19: Full Workspace Div2 Scout
+
+Run:
+
+- Release:
+  `native-test-runs/20260619-112537-c4b04caf`
+
+This run adds `mul-large-toom-div2-scout`, an observe-only active-window scout
+that keeps leaf64/depth2 full recursive Toom workspace but replaces the two
+exact division-by-two interpolation steps with checked bit shifts. The measured
+window remains `11717`, `16384`, `24103`, `32768`, `52163`, and `65536`,
+preserving deterministic in-between spots between the power-of-two anchors.
+
+Observed aggregate:
+
+- Exact parity/hash against leaf64, current, and GMP: `hashSafe=108/108`,
+  `hashGate=matched`, `parity=matched`.
+- The div2 candidate beats current production multiply on median:
+  `candCurrentMax=0.726`.
+- It does not beat leaf64 across the full active window:
+  `candBaseMax=1.008`, `safeSizes=0/6`, `stableSampleCount=0/6`.
+- GMP and worst-pair gates still fail: `candGmpMax=1.282`,
+  `maxWorstPairRatio=1.408`.
+
+Per-size point rows:
+
+| Digits | Div2 / Leaf64 | Div2 / Current | Div2 / GMP | Worst Pair | Leaf Stable | Current Stable | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `11717` | `0.961` | `0.726` | `0.968` | `1.105` | `7/9` | `9/9` | `7/9` | leaf64-regression |
+| `16384` | `0.966` | `0.721` | `0.944` | `1.098` | `5/9` | `9/9` | `7/9` | leaf64-regression |
+| `24103` | `0.971` | `0.665` | `1.052` | `1.216` | `6/9` | `9/9` | `2/9` | leaf64-regression |
+| `32768` | `1.008` | `0.698` | `1.119` | `1.230` | `3/9` | `9/9` | `1/9` | leaf64-regression |
+| `52163` | `1.008` | `0.638` | `1.149` | `1.324` | `4/9` | `9/9` | `1/9` | leaf64-regression |
+| `65536` | `0.963` | `0.645` | `1.282` | `1.408` | `5/9` | `9/9` | `0/9` | leaf64-regression |
+
+Decision: keep div2 observe-only. Checked shift division is a useful
+lower-level Toom clue and improves the GMP comparison versus leaf48, but the
+strict gate still rejects it: worst pairs exceed policy limits throughout, the
+random spots expose baseline misses, and no production route changes are
+allowed from this evidence.
