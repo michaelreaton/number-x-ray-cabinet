@@ -3442,3 +3442,51 @@ on larger rows, and stable-pair counts miss the `8/9` bar at `32768` and
 `52163`. The next multiply slice should either attack the GMP-facing backend
 gap or broaden interpolation/evaluation structure before any forced route
 audit.
+
+## 2026-06-19: Full Workspace Combo Leaf48 Scout
+
+Run:
+
+- Release:
+  `native-test-runs/20260619-135039-c4b04caf`
+
+This run adds `mul-large-toom-cmb-leaf48-scout`, an observe-only active-window
+scout that keeps the combined division-by-two plus division-by-three
+interpolation shortcut but lowers the recursive Toom handoff from leaf64 to
+leaf48. The baseline is the same combined interpolation shortcut at leaf64, so
+the row isolates whether the lower handoff helps after the interpolation
+change. The measured window remains `11717`, `16384`, `24103`, `32768`,
+`52163`, and `65536`, preserving deterministic in-between spots between the
+power-of-two anchors.
+
+Observed aggregate:
+
+- Exact parity/hash against combo leaf64, current, and GMP:
+  `hashSafe=108/108`, `hashGate=matched`, `parity=matched`.
+- Combo leaf48 still beats current production multiply on median:
+  `candCurrentMax=0.719`.
+- Combo leaf48 does not beat combo leaf64 across the full active window:
+  `candBaseMax=1.017`, `safeSizes=0/6`, `stableSampleCount=0/6`.
+- GMP remains ahead on larger rows: `candGmpMax=1.257`.
+- Worst-pair ratio remains observe-only: `maxWorstPairRatio=1.334`.
+
+Per-size point rows:
+
+| Digits | Combo Leaf48 / Combo Leaf64 | Combo Leaf48 / Current | Combo Leaf48 / GMP | Worst Pair | Combo64 Stable | Current Stable | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `11717` | `1.017` | `0.719` | `0.934` | `1.043` | `1/9` | `9/9` | `9/9` | combo-leaf64-regression |
+| `16384` | `0.977` | `0.681` | `0.908` | `1.000` | `6/9` | `9/9` | `9/9` | combo-leaf64-regression |
+| `24103` | `0.986` | `0.627` | `0.998` | `1.091` | `4/9` | `9/9` | `5/9` | combo-leaf64-regression |
+| `32768` | `0.970` | `0.645` | `1.022` | `1.138` | `6/9` | `9/9` | `3/9` | combo-leaf64-regression |
+| `52163` | `1.008` | `0.603` | `1.164` | `1.218` | `1/9` | `9/9` | `0/9` | combo-leaf64-regression |
+| `65536` | `0.964` | `0.647` | `1.257` | `1.334` | `7/9` | `9/9` | `0/9` | combo-leaf64-regression |
+
+Decision: keep combo leaf48 observe-only and do not route it. Lowering the leaf
+handoff after the combined interpolation shortcut is exact and preserves a
+large current-production win, but it fails the combo leaf64 baseline gate at
+every measured size once stability and worst-pair safety are included. The
+random spots are useful here: `11717` and `52163` regress against combo leaf64,
+while `24103` is only a marginal median improvement and still misses stability,
+GMP, and worst-pair gates. The next multiply slice should keep the combined
+leaf64 scout as the stronger baseline and move toward backend/GMP gap work or a
+broader Toom structure rather than another handoff-only tweak.

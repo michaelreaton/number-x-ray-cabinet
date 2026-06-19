@@ -358,6 +358,34 @@ faster throughout. It is still not promotion-ready because only `16384` clears
 the full safe-size bar, GMP remains ahead on the larger rows, and stable-pair
 counts miss `8/9` at `32768` and `52163`.
 
+## Full-Workspace Combo Leaf48 Scout
+
+Follow-up run:
+
+- Validation: `native/build-codex-large-mul-campaign/Release/xray_native_tests.exe`
+  printed `native xray tests passed`
+- Artifact:
+  `native-test-runs/20260619-135039-c4b04caf/benchmark.tsv`
+
+This run adds `mul-large-toom-cmb-leaf48-scout` plus per-size
+`mul-large-toom-cmb-leaf48-point` rows. The candidate keeps the combined
+division-by-two plus division-by-three interpolation shortcut, lowers the leaf
+handoff to 48, and compares against the same combined shortcut at leaf64. The
+active window remains `11717`, `16384`, `24103`, `32768`, `52163`, and
+`65536`, so the deterministic random spots stay in the gate.
+
+| Row | Sizes | Combo64 Max | Current Max | GMP Max | Worst Pair | Safe Sizes | Hash | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `mul-large-toom-cmb-leaf48-scout` | `11717..65536` | `1.017` | `0.719` | `1.257` | `1.334` | `0/6` | `108/108` | observe only |
+
+Lowering the handoff after the combined interpolation shortcut is exact and
+still faster than current production multiply, but it does not improve the
+combo leaf64 baseline. The random spots remain decision-changing:
+`11717` regresses to `1.017`, `24103` is only `0.986`, and `52163` regresses
+to `1.008`. Do not route combo leaf48; keep combo leaf64 as the stronger
+active-window scout and move next toward backend/GMP gap work or broader Toom
+structure.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor
