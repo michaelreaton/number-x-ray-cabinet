@@ -3094,3 +3094,45 @@ the strict promotion bar because stable-pair counts are weak and every row has a
 worst-pair ratio above `1.0`. The next multiply step should use the faster CPU
 campaign to decide whether this broader workspace strategy deserves a forced
 route audit; it is not a production default.
+
+## 2026-06-19: Full Workspace Route Audit
+
+Run:
+
+- Release:
+  `native-test-runs/20260619-080250-c4b04caf`
+
+This run adds `mul-large-cpu-toom-full-audit`, an observe-only row that compares
+the full recursive workspace probe directly against current production multiply
+using the same samples and operands as the large multiply CPU campaign. The row
+does not change production routing and records `noAutoRoute=1` plus
+`replacementReady=false` until a later promotion PR has exact parity, same-run
+route audit proof, worst-pair safety, and stable-pair gates.
+
+Audit rows versus current production multiply:
+
+- `mul-large-cpu-toom-full-audit 4096`: ratio `1.003`, worst `1.100`,
+  stable `2/5`, `observe-only`
+- `mul-large-cpu-toom-full-audit 5639`: ratio `0.954`, worst `1.065`,
+  stable `3/5`, `observe-only`
+- `mul-large-cpu-toom-full-audit 8192`: ratio `0.947`, worst `1.020`,
+  stable `4/5`, `observe-only`
+- `mul-large-cpu-toom-full-audit 11717`: ratio `0.791`, worst `0.851`,
+  stable `5/5`, `observe-only`
+- `mul-large-cpu-toom-full-audit 16384`: ratio `0.815`, worst `0.860`,
+  stable `5/5`, `observe-only`
+- `mul-large-cpu-toom-full-audit 24103`: ratio `0.831`, worst `0.868`,
+  stable `5/5`, `observe-only`
+- `mul-large-cpu-toom-full-audit 32768`: ratio `0.902`, worst `0.919`,
+  stable `5/5`, `observe-only`
+- `mul-large-cpu-toom-full-audit 52163`: ratio `0.750`, worst `0.770`,
+  stable `5/5`, `observe-only`
+- `mul-large-cpu-toom-full-audit 65536`: ratio `0.769`, worst `0.870`,
+  stable `5/5`, `observe-only`
+
+Decision: no promotion. The route audit is strong from `11717` through `65536`
+digits, but the required `4096` through `8192` start of the policy window still
+fails: `4096` is a median loss, while `5639` and `8192` remain above the
+worst-pair safety bar. The next route work should either narrow a thresholded
+handoff above `8192` or improve the small end of the Toom/full-workspace path
+before any default multiply change.

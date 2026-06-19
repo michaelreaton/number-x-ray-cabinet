@@ -1885,6 +1885,7 @@ typedef struct RunEventCapture {
   int saw_benchmark_row_large_mul_toom_view_branch;
   int saw_benchmark_row_large_mul_toom_workspace_branch;
   int saw_benchmark_row_large_mul_toom_full_workspace;
+  int saw_benchmark_row_large_mul_toom_full_audit;
   int saw_assemble_complete;
   char sequence[1024];
 } RunEventCapture;
@@ -1909,6 +1910,7 @@ static void capture_run_event(const char *stage, const char *status, const char 
     if (detail && strstr(detail, "operation=mul-large-cpu-toom-view-branch")) capture->saw_benchmark_row_large_mul_toom_view_branch = 1;
     if (detail && strstr(detail, "operation=mul-large-cpu-toom-ws-branch")) capture->saw_benchmark_row_large_mul_toom_workspace_branch = 1;
     if (detail && strstr(detail, "operation=mul-large-cpu-toom-full-ws")) capture->saw_benchmark_row_large_mul_toom_full_workspace = 1;
+    if (detail && strstr(detail, "operation=mul-large-cpu-toom-full-audit")) capture->saw_benchmark_row_large_mul_toom_full_audit = 1;
   }
   if (strcmp(stage, "assemble") == 0 && strcmp(status, "complete") == 0) capture->saw_assemble_complete = 1;
   size_t used = strlen(capture->sequence);
@@ -2075,6 +2077,7 @@ static void test_benchmarks(void) {
   CHECK(events.saw_benchmark_row_large_mul_toom_view_branch);
   CHECK(events.saw_benchmark_row_large_mul_toom_workspace_branch);
   CHECK(events.saw_benchmark_row_large_mul_toom_full_workspace);
+  CHECK(events.saw_benchmark_row_large_mul_toom_full_audit);
 #endif
   size_t scratch_rows = 0;
   size_t kernel_rows = 0;
@@ -2430,6 +2433,16 @@ static void test_benchmarks(void) {
   int saw_mul_large_cpu_toom_full_workspace32768_probe = 0;
   int saw_mul_large_cpu_toom_full_workspace52163_probe = 0;
   int saw_mul_large_cpu_toom_full_workspace65536_probe = 0;
+  int saw_mul_large_cpu_toom_full_audit_probe = 0;
+  int saw_mul_large_cpu_toom_full_audit4096_probe = 0;
+  int saw_mul_large_cpu_toom_full_audit5639_probe = 0;
+  int saw_mul_large_cpu_toom_full_audit8192_probe = 0;
+  int saw_mul_large_cpu_toom_full_audit11717_probe = 0;
+  int saw_mul_large_cpu_toom_full_audit16384_probe = 0;
+  int saw_mul_large_cpu_toom_full_audit24103_probe = 0;
+  int saw_mul_large_cpu_toom_full_audit32768_probe = 0;
+  int saw_mul_large_cpu_toom_full_audit52163_probe = 0;
+  int saw_mul_large_cpu_toom_full_audit65536_probe = 0;
 #endif
   int saw_mul_unroll4_vs_scratch_probe = 0;
   int saw_mul_unroll4_vs_gmp_probe = 0;
@@ -3392,6 +3405,46 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "fullWsCopyRatio=") != NULL);
         CHECK(strstr(report->results[index].detail, "fullWsKaratsubaWsRatio=") != NULL);
         CHECK(strstr(report->results[index].detail, "fullWsGmpRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+        CHECK(strstr(report->results[index].detail, "replacementReady=false") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+        if (report->results[index].digits == 4096 ||
+            report->results[index].digits == 8192 ||
+            report->results[index].digits == 16384 ||
+            report->results[index].digits == 32768 ||
+            report->results[index].digits == 65536) {
+          CHECK(strstr(report->results[index].detail, "sizeRole=power2-anchor") != NULL);
+        } else {
+          CHECK(strstr(report->results[index].detail, "sizeRole=deterministic-random-spot") != NULL);
+        }
+      }
+      if (strcmp(report->results[index].operation, "mul-large-cpu-toom-full-audit") == 0) {
+        saw_mul_large_cpu_toom_full_audit_probe = 1;
+        if (report->results[index].digits == 4096) saw_mul_large_cpu_toom_full_audit4096_probe = 1;
+        else if (report->results[index].digits == 5639) saw_mul_large_cpu_toom_full_audit5639_probe = 1;
+        else if (report->results[index].digits == 8192) saw_mul_large_cpu_toom_full_audit8192_probe = 1;
+        else if (report->results[index].digits == 11717) saw_mul_large_cpu_toom_full_audit11717_probe = 1;
+        else if (report->results[index].digits == 16384) saw_mul_large_cpu_toom_full_audit16384_probe = 1;
+        else if (report->results[index].digits == 24103) saw_mul_large_cpu_toom_full_audit24103_probe = 1;
+        else if (report->results[index].digits == 32768) saw_mul_large_cpu_toom_full_audit32768_probe = 1;
+        else if (report->results[index].digits == 52163) saw_mul_large_cpu_toom_full_audit52163_probe = 1;
+        else if (report->results[index].digits == 65536) saw_mul_large_cpu_toom_full_audit65536_probe = 1;
+        else CHECK(0);
+        CHECK(report->results[index].parity_verified);
+        CHECK(!report->results[index].replacement_ready);
+        CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+        CHECK(strstr(report->results[index].detail, "leafThreshold=64") != NULL);
+        CHECK(strstr(report->results[index].detail, "depthLimit=2") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=recursive-toom3+unroll4-full-workspace") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=current-scratch-mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "comparison=full-ws+current+mpz_mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "oracle=mpz_mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=large-multiply-cpu-toom-full-audit") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpClue=toom33-recursive-current-route-audit") != NULL);
+        CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
+        CHECK(strstr(report->results[index].detail, "fullAuditCurrentRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "fullAuditGmpRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpStablePairs=") != NULL);
         CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
         CHECK(strstr(report->results[index].detail, "replacementReady=false") != NULL);
         CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
@@ -4919,6 +4972,16 @@ static void test_benchmarks(void) {
   CHECK(saw_mul_large_cpu_toom_full_workspace32768_probe);
   CHECK(saw_mul_large_cpu_toom_full_workspace52163_probe);
   CHECK(saw_mul_large_cpu_toom_full_workspace65536_probe);
+  CHECK(saw_mul_large_cpu_toom_full_audit_probe);
+  CHECK(saw_mul_large_cpu_toom_full_audit4096_probe);
+  CHECK(saw_mul_large_cpu_toom_full_audit5639_probe);
+  CHECK(saw_mul_large_cpu_toom_full_audit8192_probe);
+  CHECK(saw_mul_large_cpu_toom_full_audit11717_probe);
+  CHECK(saw_mul_large_cpu_toom_full_audit16384_probe);
+  CHECK(saw_mul_large_cpu_toom_full_audit24103_probe);
+  CHECK(saw_mul_large_cpu_toom_full_audit32768_probe);
+  CHECK(saw_mul_large_cpu_toom_full_audit52163_probe);
+  CHECK(saw_mul_large_cpu_toom_full_audit65536_probe);
 #endif
   CHECK(saw_qhat_preinv_probe);
   CHECK(saw_qhat_u32_limb_probe);
@@ -5452,6 +5515,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_json, "mul-large-cpu-toom-view-branch") != NULL);
   CHECK(strstr(benchmark_json, "mul-large-cpu-toom-ws-branch") != NULL);
   CHECK(strstr(benchmark_json, "mul-large-cpu-toom-full-ws") != NULL);
+  CHECK(strstr(benchmark_json, "mul-large-cpu-toom-full-audit") != NULL);
 #endif
   CHECK(strstr(benchmark_json, "\"msvcUint128Helpers\"") != NULL);
   CHECK(strstr(benchmark_json, "\"scratchRows\"") != NULL);
@@ -5666,6 +5730,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "large-multiply-cpu-toom-full-ws") != NULL);
   CHECK(strstr(benchmark_tsv, "fullWsToomWsRatio=") != NULL);
   CHECK(strstr(benchmark_tsv, "toom33-recursive-karatsuba-temp-reuse") != NULL);
+  CHECK(strstr(benchmark_tsv, "mul-large-cpu-toom-full-audit") != NULL);
+  CHECK(strstr(benchmark_tsv, "large-multiply-cpu-toom-full-audit") != NULL);
+  CHECK(strstr(benchmark_tsv, "fullAuditCurrentRatio=") != NULL);
+  CHECK(strstr(benchmark_tsv, "toom33-recursive-current-route-audit") != NULL);
 #endif
   CHECK(strstr(benchmark_tsv, "sizeRole=deterministic-random-spot") != NULL);
   CHECK(strstr(benchmark_tsv, "digits=5639") != NULL);
@@ -5719,6 +5787,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "mul-large-cpu-toom-view-branch") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-large-cpu-toom-ws-branch") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-large-cpu-toom-full-ws") != NULL);
+  CHECK(strstr(benchmark_frontier, "mul-large-cpu-toom-full-audit") != NULL);
 #endif
   CHECK(strstr(benchmark_frontier, "mod-u32-precompute") != NULL);
   CHECK(strstr(benchmark_frontier, "gcd-u32-precompute") != NULL);
@@ -5850,6 +5919,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_progress, "recursive-toom3+unroll4-workspace") != NULL);
   CHECK(strstr(benchmark_progress, "mul-large-cpu-toom-full-ws") != NULL);
   CHECK(strstr(benchmark_progress, "recursive-toom3+unroll4-full-workspace") != NULL);
+  CHECK(strstr(benchmark_progress, "mul-large-cpu-toom-full-audit") != NULL);
 #endif
   CHECK(strstr(benchmark_progress, "Setup/warmup context rows observed") != NULL);
   CHECK(strstr(benchmark_progress, "Warmup-review rows observed") != NULL);
@@ -5882,6 +5952,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_progress_tsv, "recursive-toom3+unroll4-workspace") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "mul-large-cpu-toom-full-ws") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "recursive-toom3+unroll4-full-workspace") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "mul-large-cpu-toom-full-audit") != NULL);
 #endif
   CHECK(strstr(benchmark_progress_tsv, "format-route-tournament-detail") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "controlSafety=tournament-detail") != NULL);

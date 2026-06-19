@@ -150,6 +150,36 @@ in-between sizes, but still fails the promotion bar on worst-pair safety and
 stable-pair counts. Treat it as the next faster-machine route-audit candidate,
 not as a default route.
 
+The stacked full workspace route audit run:
+
+- Validation: `native/build-codex-large-mul-campaign/Release/xray_native_tests.exe`
+  printed `native xray tests passed`
+- Artifact:
+  `native-test-runs/20260619-080250-c4b04caf/benchmark.tsv`
+
+This run adds `mul-large-cpu-toom-full-audit`, which compares the full
+workspace probe directly against current production multiply in the same large
+multiply CPU campaign. It remains `noAutoRoute=1` and
+`replacementReady=false`.
+
+| Row | Digits | Ratio | Worst Pair | Stable Pairs | Decision |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `mul-large-cpu-toom-full-audit` | 4096 | `1.003` | `1.100` | `2/5` | observe only |
+| `mul-large-cpu-toom-full-audit` | 5639 | `0.954` | `1.065` | `3/5` | observe only |
+| `mul-large-cpu-toom-full-audit` | 8192 | `0.947` | `1.020` | `4/5` | observe only |
+| `mul-large-cpu-toom-full-audit` | 11717 | `0.791` | `0.851` | `5/5` | observe only |
+| `mul-large-cpu-toom-full-audit` | 16384 | `0.815` | `0.860` | `5/5` | observe only |
+| `mul-large-cpu-toom-full-audit` | 24103 | `0.831` | `0.868` | `5/5` | observe only |
+| `mul-large-cpu-toom-full-audit` | 32768 | `0.902` | `0.919` | `5/5` | observe only |
+| `mul-large-cpu-toom-full-audit` | 52163 | `0.750` | `0.770` | `5/5` | observe only |
+| `mul-large-cpu-toom-full-audit` | 65536 | `0.769` | `0.870` | `5/5` | observe only |
+
+The audit clears current-route median, worst-pair, and stable-pair gates from
+`11717` through `65536`, including the deterministic random spots, but the full
+`4096` through `65536` window is still blocked by `4096`, `5639`, and `8192`.
+Use faster-machine reruns to decide whether the low-end misses are hardware
+noise or whether promotion needs a thresholded handoff above `8192`.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor
