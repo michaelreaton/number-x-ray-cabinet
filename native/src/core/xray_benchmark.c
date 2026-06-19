@@ -7305,6 +7305,7 @@ typedef struct {
 
 static void mul_full_workspace_depth_scout_labels(
   XrayMulFullWorkspaceDepthScoutLabels *labels,
+  const char *policy,
   size_t candidate_leaf_threshold,
   size_t baseline_leaf_threshold,
   size_t candidate_depth_limit,
@@ -7319,6 +7320,20 @@ static void mul_full_workspace_depth_scout_labels(
       baseline_depth_limit == 2 &&
       candidate_interp_flags == combo_interp_flags &&
       baseline_interp_flags == combo_interp_flags) {
+    if (policy && strstr(policy, "full-window") != NULL) {
+      snprintf(labels->aggregate_operation, sizeof(labels->aggregate_operation), "mul-large-toom-cmb-l48d3-full");
+      snprintf(labels->point_operation, sizeof(labels->point_operation), "mul-large-toom-cmb-l48d3-fpt");
+      snprintf(labels->point_detail_op, sizeof(labels->point_detail_op), "mul-cmb-l48d3-full-point");
+      snprintf(labels->parent, sizeof(labels->parent), "cmb-l48d3-full");
+      snprintf(labels->candidate, sizeof(labels->candidate), "full-ws-combo-l48d3");
+      snprintf(labels->baseline, sizeof(labels->baseline), "full-ws-combo-l64d2");
+      snprintf(labels->feature_gate, sizeof(labels->feature_gate), "large-multiply-cpu-toom-combo-l48d3-full");
+      snprintf(labels->gmp_clue, sizeof(labels->gmp_clue), "toom33-combo-leaf48-depth3-full-window");
+      snprintf(labels->baseline_status, sizeof(labels->baseline_status), "combo-l64d2-regression");
+      snprintf(labels->clean_status, sizeof(labels->clean_status), "combo-l48d3-full-clean");
+      snprintf(labels->threshold_safety, sizeof(labels->threshold_safety), "full-window");
+      return;
+    }
     snprintf(labels->aggregate_operation, sizeof(labels->aggregate_operation), "mul-large-toom-cmb-l48d3-scout");
     snprintf(labels->point_operation, sizeof(labels->point_operation), "mul-large-toom-cmb-l48d3-point");
     snprintf(labels->point_detail_op, sizeof(labels->point_detail_op), "mul-cmb-l48d3-point");
@@ -8469,6 +8484,7 @@ static void append_mul_full_workspace_depth_scout_result(
   XrayMulFullWorkspaceDepthScoutLabels labels;
   mul_full_workspace_depth_scout_labels(
     &labels,
+    policy,
     candidate_leaf_threshold,
     baseline_leaf_threshold,
     candidate_depth_limit,
@@ -8622,6 +8638,7 @@ static void append_mul_full_workspace_depth_scout_point_result(
   XrayMulFullWorkspaceDepthScoutLabels labels;
   mul_full_workspace_depth_scout_labels(
     &labels,
+    policy,
     candidate_leaf_threshold,
     baseline_leaf_threshold,
     candidate_depth_limit,
@@ -14338,6 +14355,19 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     4096,
     64,
     2,
+    XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3,
+    mul_full_workspace_full_window_digits,
+    sizeof(mul_full_workspace_full_window_digits) / sizeof(mul_full_workspace_full_window_digits[0]));
+  run_mul_full_workspace_depth_scout_case(
+    report,
+    1319U,
+    "full-workspace-combo-l48d3-full-window-ge4096",
+    4096,
+    48,
+    64,
+    3,
+    2,
+    XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3,
     XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3,
     mul_full_workspace_full_window_digits,
     sizeof(mul_full_workspace_full_window_digits) / sizeof(mul_full_workspace_full_window_digits[0]));
