@@ -1113,7 +1113,7 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
   ComparePair run_failed[8] = {0};
   ComparePair warmup_review[8] = {0};
   ComparePair setup_context[8] = {0};
-  ComparePair large_mul_campaign[64] = {0};
+  ComparePair large_mul_campaign[80] = {0};
   size_t completed_count = 0;
   size_t open_count = 0;
   size_t baseline_count = 0;
@@ -1151,7 +1151,9 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
         compare_streq(row->operation, "mul-large-cpu-toom-full-ws") ||
         compare_streq(row->operation, "mul-large-cpu-toom-full-audit") ||
         compare_streq(row->operation, "mul-large-toom-full-deep-point") ||
-        compare_streq(row->operation, "mul-large-toom-full-deep-audit")) {
+        compare_streq(row->operation, "mul-large-toom-full-deep-audit") ||
+        compare_streq(row->operation, "mul-large-toom-depth-point") ||
+        compare_streq(row->operation, "mul-large-toom-depth-scout")) {
       large_mul_campaign_total++;
       insert_progress_row(
         large_mul_campaign,

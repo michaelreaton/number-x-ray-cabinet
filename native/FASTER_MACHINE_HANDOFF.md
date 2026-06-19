@@ -211,6 +211,27 @@ Per-size point rows explain the aggregate rejection:
 | `52163` | `0.693` | `1.216` | `1.267` | `9/9` | `0/9` |
 | `65536` | `0.689` | `1.321` | `1.389` | `9/9` | `0/9` |
 
+The follow-up depth-3 scout run:
+
+- Validation: `native/build-codex-large-mul-campaign/Release/xray_native_tests.exe`
+  printed `native xray tests passed`
+- Artifact:
+  `native-test-runs/20260619-100600-c4b04caf/benchmark.tsv`
+
+This run adds `mul-large-toom-depth-scout` plus per-size
+`mul-large-toom-depth-point` rows. It compares depth-3 full workspace against
+the depth-2 full-workspace baseline, current production multiply, and `mpz_mul`
+on the same active window and keeps `noAutoRoute=1`, `replacementReady=false`.
+
+| Row | Sizes | Depth2 Max | Current Max | GMP Max | Worst Pair | Safe Sizes | Hash | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `mul-large-toom-depth-scout` | `11717..65536` | `1.045` | `0.786` | `1.342` | `1.443` | `0/6` | `108/108` | observe only |
+
+Depth 3 is exact and still faster than current production multiply, but it is
+not a stable improvement over depth 2 and remains GMP/worst-pair unsafe. Do not
+continue by merely increasing Toom recursion depth; tune leaf/handoff shape or
+the lower-level Toom arithmetic next.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor

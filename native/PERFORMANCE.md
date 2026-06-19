@@ -3179,3 +3179,47 @@ but the 9-sample active-window audit rejects it once GMP timing, worst-pair
 safety, and stable-pair gates are required together. Keep the full-workspace
 route diagnostic-only and continue with deeper multiplication structure work or
 a broader recursive workspace strategy before another promotion attempt.
+
+## 2026-06-19: Full Workspace Depth-3 Scout
+
+Run:
+
+- Release:
+  `native-test-runs/20260619-100600-c4b04caf`
+
+This run adds `mul-large-toom-depth-scout`, an observe-only active-window scout
+that compares depth-3 full recursive Toom workspace against the existing depth-2
+full-workspace probe, current production multiply, and `mpz_mul` on the same
+operands in rotating batches. It uses the same active `11717`, `16384`, `24103`,
+`32768`, `52163`, and `65536` digit window, keeps `noAutoRoute=1`, and emits
+matching `mul-large-toom-depth-point` rows for TSV, JSON, frontier/progress, and
+GUI benchmark-table visibility.
+
+Observed aggregate:
+
+- Exact parity/hash against depth 2, current, and GMP: `hashSafe=108/108`,
+  `hashGate=matched`, `parity=matched`.
+- Depth-3 still beats current production multiply on median:
+  `candCurrentMax=0.786`.
+- Depth-3 does not beat the depth-2 full-workspace baseline:
+  `candBaseMax=1.045`, `safeSizes=0/6`, `stableSampleCount=0/6`.
+- GMP and worst-pair gates still fail: `candGmpMax=1.342`,
+  `maxWorstPairRatio=1.443`.
+
+Per-size point rows:
+
+| Digits | Depth-3 / Depth-2 | Depth-3 / Current | Depth-3 / GMP | Worst Pair | Depth Stable | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `11717` | `1.010` | `0.784` | `1.034` | `1.105` | `1/9` | `1/9` | depth2-regression |
+| `16384` | `1.045` | `0.786` | `1.046` | `1.161` | `2/9` | `2/9` | depth2-regression |
+| `24103` | `0.977` | `0.689` | `1.068` | `1.105` | `5/9` | `0/9` | depth2-regression |
+| `32768` | `0.996` | `0.711` | `1.191` | `1.234` | `1/9` | `0/9` | depth2-regression |
+| `52163` | `1.025` | `0.669` | `1.262` | `1.358` | `1/9` | `0/9` | depth2-regression |
+| `65536` | `0.994` | `0.673` | `1.342` | `1.443` | `1/9` | `0/9` | depth2-regression |
+
+Decision: do not pursue depth 3 as the next promotion candidate. The scout is
+exact and reinforces that the full-workspace family is faster than current
+production multiply in the active window, but extra Toom depth is not a stable
+improvement over the depth-2 workspace baseline and remains worse than GMP.
+The next multiply PR should tune leaf/handoff shape or improve the lower-level
+Toom arithmetic rather than simply increasing recursion depth.
