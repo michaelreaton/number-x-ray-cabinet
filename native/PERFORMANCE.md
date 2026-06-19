@@ -3395,3 +3395,50 @@ random spots, but it still misses the `<=0.98` leaf64 threshold at `32768`,
 `52163`, and `65536`, never reaches the `8/9` stable-pair bar, and trails GMP
 on larger rows. The next multiply slice should test a combined interpolation
 shortcut or a broader interpolation/evaluation rewrite before any route audit.
+
+## 2026-06-19: Full Workspace Div2+Div3 Scout
+
+Run:
+
+- Release:
+  `native-test-runs/20260619-122328-c4b04caf`
+
+This run adds `mul-large-toom-div2-div3-scout`, an observe-only active-window
+scout that combines the checked division-by-two interpolation shifts with the
+odd-limb exact division-by-three shortcut inside the leaf64/depth2 full
+recursive Toom workspace probe. The measured window remains `11717`, `16384`,
+`24103`, `32768`, `52163`, and `65536`, preserving deterministic in-between
+spots between the power-of-two anchors.
+
+Observed aggregate:
+
+- Exact parity/hash against leaf64, current, and GMP: `hashSafe=108/108`,
+  `hashGate=matched`, `parity=matched`.
+- The combined candidate beats current production multiply on median:
+  `candCurrentMax=0.719`.
+- It also beats the leaf64 full-workspace baseline on median across the full
+  active window: `candBaseMax=0.958`.
+- It still does not clear the strict promotion gate:
+  `safeSizes=1/6`, `stableSampleCount=1/6`.
+- GMP remains ahead on larger rows: `candGmpMax=1.292`.
+- Worst-pair ratio remains observe-only: `maxWorstPairRatio=1.416`.
+
+Per-size point rows:
+
+| Digits | Combo / Leaf64 | Combo / Current | Combo / GMP | Worst Pair | Leaf Stable | Current Stable | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `11717` | `0.930` | `0.653` | `0.930` | `1.026` | `9/9` | `9/9` | `8/9` | backend-regression |
+| `16384` | `0.925` | `0.719` | `0.948` | `0.990` | `8/9` | `9/9` | `9/9` | div2-div3-scout-clean |
+| `24103` | `0.913` | `0.657` | `0.998` | `1.042` | `9/9` | `9/9` | `5/9` | backend-regression |
+| `32768` | `0.933` | `0.651` | `1.109` | `1.143` | `7/9` | `9/9` | `0/9` | leaf64-regression |
+| `52163` | `0.958` | `0.644` | `1.141` | `1.163` | `7/9` | `9/9` | `0/9` | leaf64-regression |
+| `65536` | `0.951` | `0.668` | `1.292` | `1.416` | `9/9` | `9/9` | `0/9` | backend-regression |
+
+Decision: keep the combined shortcut observe-only. It is the first
+active-window Toom interpolation scout to beat leaf64 on median at every
+measured size, including the deterministic random spots, but promotion still
+requires more proof: only `16384` clears all safe-size gates, GMP remains ahead
+on larger rows, and stable-pair counts miss the `8/9` bar at `32768` and
+`52163`. The next multiply slice should either attack the GMP-facing backend
+gap or broaden interpolation/evaluation structure before any forced route
+audit.
