@@ -2989,3 +2989,55 @@ the faster CPU and only proceed to a forced route audit if the same-run route
 gates pass there. Otherwise, the next implementation step should reduce
 Toom/Karatsuba temporary allocation or broaden the recursive workspace strategy
 before changing production multiply routing.
+
+## 2026-06-19: Recursive Toom Workspace Probe
+
+Run:
+
+- Release:
+  `native-test-runs/20260619-001030-c4b04caf`
+
+This run adds `xray_bigint_mul_toom3_unroll4_recursive_workspace_probe()`, a
+default-off diagnostic route for MSVC x64 builds. It keeps production multiply
+unchanged, uses read-only Toom operand-third views, and reuses per-depth Toom
+evaluation, interpolation, exact-division, and product temporaries. The same
+large multiply CPU campaign now emits `mul-large-cpu-toom-ws-branch` rows, which
+compare the Toom workspace probe against current production multiply,
+Karatsuba workspace, copied recursive Toom, split-view recursive Toom, and
+`mpz_mul` on identical operands.
+
+The run used `native/build-codex-large-mul-campaign` with Visual Studio 16 2019
+x64 Release flags `/O2 /Ob2 /DNDEBUG`, IPO `/GL=false`, MSVC
+`1929 full=192930159`, and CPU flags `AVX2 BMI1 BMI2 ADX`. The full native test
+binary printed `native xray tests passed` (`925/925`). TSV, JSON, frontier text,
+progress text, progress TSV, and the native GUI-visible benchmark-row event
+stream include the new row.
+
+Toom workspace rows:
+
+- `mul-large-cpu-toom-ws-branch 4096`: ratio `0.855`, worst `1.120`,
+  stable `1/5`, `observe-only`
+- `mul-large-cpu-toom-ws-branch 5639`: ratio `0.957`, worst `1.127`,
+  stable `0/5`, `observe-only`
+- `mul-large-cpu-toom-ws-branch 8192`: ratio `0.924`, worst `1.171`,
+  stable `2/5`, `observe-only`
+- `mul-large-cpu-toom-ws-branch 11717`: ratio `0.838`, worst `1.134`,
+  stable `0/5`, `observe-only`
+- `mul-large-cpu-toom-ws-branch 16384`: ratio `0.940`, worst `1.265`,
+  stable `2/5`, `observe-only`
+- `mul-large-cpu-toom-ws-branch 24103`: ratio `1.015`, worst `1.644`,
+  stable `0/5`, `observe-only`
+- `mul-large-cpu-toom-ws-branch 32768`: ratio `1.047`, worst `1.380`,
+  stable `0/5`, `observe-only`
+- `mul-large-cpu-toom-ws-branch 52163`: ratio `0.914`, worst `1.371`,
+  stable `0/5`, `observe-only`
+- `mul-large-cpu-toom-ws-branch 65536`: ratio `0.901`, worst `2.585`,
+  stable `1/5`, `observe-only`
+
+Decision: keep the Toom workspace route diagnostic-only. It is exact and wins
+the median against split-view Toom at seven of nine campaign sizes, including
+the deterministic random spots `5639`, `11717`, and `52163`, but it still misses
+the strict promotion bar because stable-pair counts remain weak and every row
+has a worst-pair ratio above `1.0`. The next multiply step should either
+increase same-run samples on the faster CPU for this row or reduce the remaining
+basecase/Karatsuba copy tax before any production route audit.

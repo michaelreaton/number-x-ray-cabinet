@@ -1146,7 +1146,8 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
     if (!compare_row_has_progress_signal(row)) continue;
     if (compare_streq(row->operation, "mul-large-cpu-campaign") ||
         compare_streq(row->operation, "mul-large-cpu-toom-branch") ||
-        compare_streq(row->operation, "mul-large-cpu-toom-view-branch")) {
+        compare_streq(row->operation, "mul-large-cpu-toom-view-branch") ||
+        compare_streq(row->operation, "mul-large-cpu-toom-ws-branch")) {
       large_mul_campaign_total++;
       insert_progress_row(
         large_mul_campaign,
