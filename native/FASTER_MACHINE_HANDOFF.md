@@ -185,7 +185,7 @@ The stacked active-window deep audit run:
 - Validation: `native/build-codex-large-mul-campaign/Release/xray_native_tests.exe`
   printed `native xray tests passed`
 - Artifact:
-  `native-test-runs/20260619-083842-c4b04caf/benchmark.tsv`
+  `native-test-runs/20260619-092659-c4b04caf/benchmark.tsv`
 
 This run adds `mul-large-toom-full-deep-audit`, an aggregate 9-sample route
 audit for only the high-size handoff window: `11717`, `16384`, `24103`,
@@ -194,11 +194,22 @@ audit for only the high-size handoff window: `11717`, `16384`, `24103`,
 
 | Row | Sizes | Current Max | GMP Max | Worst Pair | Safe Sizes | Hash | Decision |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| `mul-large-toom-full-deep-audit` | `11717..65536` | `0.790` | `1.344` | `1.512` | `0/6` | `108/108` | observe only |
+| `mul-large-toom-full-deep-audit` | `11717..65536` | `0.792` | `1.321` | `1.389` | `0/6` | `108/108` | observe only |
 
 The deeper active-window audit is exact and still faster than current
 production multiply on median, but it fails the GMP-facing and worst-pair gates.
 Do not promote a thresholded high-size handoff from the current evidence.
+
+Per-size point rows explain the aggregate rejection:
+
+| Digits | Current Ratio | GMP Ratio | Worst Pair | Current Stable | GMP Stable |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| `11717` | `0.764` | `1.004` | `1.048` | `9/9` | `4/9` |
+| `16384` | `0.762` | `1.021` | `1.121` | `9/9` | `2/9` |
+| `24103` | `0.792` | `1.225` | `1.334` | `9/9` | `0/9` |
+| `32768` | `0.743` | `1.157` | `1.293` | `9/9` | `0/9` |
+| `52163` | `0.693` | `1.216` | `1.267` | `9/9` | `0/9` |
+| `65536` | `0.689` | `1.321` | `1.389` | `9/9` | `0/9` |
 
 ## Rebuild And Validate
 
