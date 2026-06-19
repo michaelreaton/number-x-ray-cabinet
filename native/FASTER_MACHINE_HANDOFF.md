@@ -306,6 +306,33 @@ the active window, but it is not a promotion candidate. It loses to leaf64 at
 safety fails at every measured size. Keep it as a lower-level Toom clue and
 continue with interpolation/evaluation structure rather than routing it.
 
+## Full-Workspace Div3 Scout
+
+Follow-up run:
+
+- Validation: `native/build-codex-large-mul-campaign/Release/xray_native_tests.exe`
+  printed `native xray tests passed`
+- Artifact:
+  `native-test-runs/20260619-115618-c4b04caf/benchmark.tsv`
+
+This run adds `mul-large-toom-div3-scout` plus per-size
+`mul-large-toom-div3-point` rows. The candidate keeps leaf64/depth2 full
+workspace Toom but replaces the exact division-by-three interpolation step with
+an odd-limb exact division shortcut. The active window is unchanged:
+`11717`, `16384`, `24103`, `32768`, `52163`, and `65536`, preserving the
+deterministic random spots between the power-of-two anchors.
+
+| Row | Sizes | Leaf64 Max | Current Max | GMP Max | Worst Pair | Safe Sizes | Hash | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `mul-large-toom-div3-scout` | `11717..65536` | `0.999` | `0.720` | `1.324` | `1.364` | `0/6` | `108/108` | observe only |
+
+The div3 shortcut is exact and beats current production multiply throughout
+the active window. It is closer to the leaf64 full-workspace baseline than
+div2 on median (`candBaseMax=0.999`), including the random spots, but it still
+does not clear the strict promotion bar: several sizes miss the `<=0.98`
+leaf64 threshold, no size reaches `8/9` stable pairs, and the GMP comparison
+still trails on the larger rows. Keep it observe-only.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor
@@ -362,11 +389,12 @@ Do not promote a bigint route unless all are true:
 
 ## Current Next Best Step
 
-The strongest current clue is now lower-level Toom interpolation/evaluation
-cost: checked `/2` shifts improved the active full-workspace family but did not
-clear the leaf64, stable-pair, or worst-pair gates. Keep future scouts on the
-mixed window with deterministic in-between sizes, not only power-of-two anchors.
-If a candidate passes exact parity, worst-pair safety, and stable-pair gates
-across the full window, run a forced route audit against current production
-multiply. If the larger rows remain unstable, keep these probes opt-in and move
-to a broader interpolation/evaluation rewrite or a different handoff design.
+The strongest current clue remains lower-level Toom interpolation/evaluation
+cost: checked `/2` and exact `/3` shortcuts improved the active full-workspace
+family but did not clear the leaf64, stable-pair, or GMP gates. Keep future
+scouts on the mixed window with deterministic in-between sizes, not only
+power-of-two anchors. If a candidate passes exact parity, worst-pair safety,
+and stable-pair gates across the full window, run a forced route audit against
+current production multiply. If the larger rows remain unstable, keep these
+probes opt-in and move to a broader interpolation/evaluation rewrite, a
+combined interpolation shortcut, or a different handoff design.

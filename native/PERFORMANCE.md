@@ -3351,3 +3351,47 @@ lower-level Toom clue and improves the GMP comparison versus leaf48, but the
 strict gate still rejects it: worst pairs exceed policy limits throughout, the
 random spots expose baseline misses, and no production route changes are
 allowed from this evidence.
+
+## 2026-06-19: Full Workspace Div3 Scout
+
+Run:
+
+- Release:
+  `native-test-runs/20260619-115618-c4b04caf`
+
+This run adds `mul-large-toom-div3-scout`, an observe-only active-window scout
+that keeps leaf64/depth2 full recursive Toom workspace but replaces the exact
+division-by-three interpolation step with an odd-limb exact division shortcut.
+The measured window remains `11717`, `16384`, `24103`, `32768`, `52163`, and
+`65536`, preserving deterministic in-between spots between the power-of-two
+anchors.
+
+Observed aggregate:
+
+- Exact parity/hash against leaf64, current, and GMP: `hashSafe=108/108`,
+  `hashGate=matched`, `parity=matched`.
+- The div3 candidate beats current production multiply on median:
+  `candCurrentMax=0.720`.
+- It nearly beats leaf64 on median but does not clear the strict gate:
+  `candBaseMax=0.999`, `safeSizes=0/6`, `stableSampleCount=0/6`.
+- GMP remains ahead on larger rows: `candGmpMax=1.324`.
+- Worst-pair ratio is lower than div2 but still recorded as observe-only:
+  `maxWorstPairRatio=1.364`.
+
+Per-size point rows:
+
+| Digits | Div3 / Leaf64 | Div3 / Current | Div3 / GMP | Worst Pair | Leaf Stable | Current Stable | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `11717` | `0.929` | `0.694` | `0.971` | `1.066` | `7/9` | `9/9` | `7/9` | leaf64-regression |
+| `16384` | `0.971` | `0.720` | `0.978` | `1.173` | `5/9` | `9/9` | `6/9` | leaf64-regression |
+| `24103` | `0.972` | `0.609` | `1.034` | `1.091` | `5/9` | `9/9` | `2/9` | leaf64-regression |
+| `32768` | `0.999` | `0.692` | `1.151` | `1.230` | `2/9` | `9/9` | `0/9` | leaf64-regression |
+| `52163` | `0.981` | `0.603` | `1.193` | `1.264` | `4/9` | `9/9` | `0/9` | leaf64-regression |
+| `65536` | `0.984` | `0.680` | `1.324` | `1.364` | `3/9` | `9/9` | `0/9` | leaf64-regression |
+
+Decision: keep div3 observe-only. It is exact and improves the leaf64 baseline
+comparison versus div2 on every active-window size, including deterministic
+random spots, but it still misses the `<=0.98` leaf64 threshold at `32768`,
+`52163`, and `65536`, never reaches the `8/9` stable-pair bar, and trails GMP
+on larger rows. The next multiply slice should test a combined interpolation
+shortcut or a broader interpolation/evaluation rewrite before any route audit.
