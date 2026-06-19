@@ -31,6 +31,72 @@ Lower ratio is better for candidate-vs-baseline rows. These rows are exact by
 parity checks, but they are not production-ready because stability is mixed and
 the 8192-digit split-view row is flat.
 
+Latest local diagnostic workspace campaign:
+
+- Build folder: `native/build-codex-large-mul-campaign`
+- Build: Visual Studio 16 2019 x64 Release, `CMAKE_C_FLAGS_RELEASE=/O2 /Ob2 /DNDEBUG`, IPO `/GL=false`
+- CPU: Intel(R) Core(TM) i7-6820HQ CPU @ 2.70GHz, flags `SSE2 SSE4.2 POPCNT AES FMA AVX AVX2 BMI1 BMI2 ADX`
+- Validation: `native/build-codex-large-mul-campaign/Release/xray_native_tests.exe`
+  printed `native xray tests passed`
+- Artifact:
+  `native-test-runs/20260618-233248-c4b04caf/benchmark.tsv`
+
+This run adds `mul-large-cpu-campaign`, a diagnostic `kernel-probe` row that
+compares current production multiply, split-view Karatsuba, split-view plus
+workspace reuse, and `mpz_mul` on the same operand fingerprints. It covers the
+power-of-two anchors plus deterministic in-between spots:
+`4096`, `5639`, `8192`, `11717`, `16384`, `24103`, `32768`, `52163`, `65536`.
+All rows are `noAutoRoute=1`, `replacementReady=false`, and `observe-only`.
+On MSVC x64, the same run also emits `mul-large-cpu-toom-branch` rows for a
+recursive Toom-3 plus unroll4 leaf branch (`leafThreshold=64`, `depthLimit=2`)
+and `mul-large-cpu-toom-view-branch` rows that isolate Toom split-copy tax by
+timing read-only operand-third split views against the copied Toom branch.
+
+| Row | Digits | Ratio | Worst Pair | Stable Pairs | Decision |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `mul-large-cpu-campaign` | 4096 | `0.810` | `1.092` | `4/5` | observe only |
+| `mul-large-cpu-campaign` | 5639 | `0.849` | `1.370` | `4/5` | observe only |
+| `mul-large-cpu-campaign` | 8192 | `0.940` | `1.104` | `4/5` | observe only |
+| `mul-large-cpu-campaign` | 11717 | `0.834` | `1.059` | `1/5` | observe only |
+| `mul-large-cpu-campaign` | 16384 | `0.837` | `1.455` | `1/5` | observe only |
+| `mul-large-cpu-campaign` | 24103 | `0.767` | `1.349` | `0/5` | observe only |
+| `mul-large-cpu-campaign` | 32768 | `0.842` | `1.684` | `1/5` | observe only |
+| `mul-large-cpu-campaign` | 52163 | `0.801` | `1.651` | `0/5` | observe only |
+| `mul-large-cpu-campaign` | 65536 | `0.828` | `2.464` | `0/5` | observe only |
+
+Toom branch rows from the same run:
+
+| Row | Digits | Ratio | Worst Pair | Stable Pairs | Decision |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `mul-large-cpu-toom-branch` | 4096 | `1.067` | `2.606` | `0/5` | observe only |
+| `mul-large-cpu-toom-branch` | 5639 | `1.165` | `1.891` | `1/5` | observe only |
+| `mul-large-cpu-toom-branch` | 8192 | `0.861` | `1.165` | `1/5` | observe only |
+| `mul-large-cpu-toom-branch` | 11717 | `0.969` | `1.415` | `0/5` | observe only |
+| `mul-large-cpu-toom-branch` | 16384 | `0.834` | `1.268` | `2/5` | observe only |
+| `mul-large-cpu-toom-branch` | 24103 | `0.833` | `1.584` | `0/5` | observe only |
+| `mul-large-cpu-toom-branch` | 32768 | `0.815` | `1.481` | `1/5` | observe only |
+| `mul-large-cpu-toom-branch` | 52163 | `0.740` | `1.545` | `0/5` | observe only |
+| `mul-large-cpu-toom-branch` | 65536 | `0.663` | `2.157` | `0/5` | observe only |
+
+Toom split-view rows from the same run:
+
+| Row | Digits | Ratio | Worst Pair | Stable Pairs | Decision |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `mul-large-cpu-toom-view-branch` | 4096 | `0.978` | `1.303` | `0/5` | observe only |
+| `mul-large-cpu-toom-view-branch` | 5639 | `0.805` | `1.451` | `2/5` | observe only |
+| `mul-large-cpu-toom-view-branch` | 8192 | `1.193` | `1.513` | `0/5` | observe only |
+| `mul-large-cpu-toom-view-branch` | 11717 | `0.999` | `1.498` | `0/5` | observe only |
+| `mul-large-cpu-toom-view-branch` | 16384 | `0.945` | `1.356` | `1/5` | observe only |
+| `mul-large-cpu-toom-view-branch` | 24103 | `0.956` | `1.328` | `1/5` | observe only |
+| `mul-large-cpu-toom-view-branch` | 32768 | `0.990` | `1.610` | `1/5` | observe only |
+| `mul-large-cpu-toom-view-branch` | 52163 | `0.990` | `1.800` | `0/5` | observe only |
+| `mul-large-cpu-toom-view-branch` | 65536 | `0.977` | `2.108` | `0/5` | observe only |
+
+The workspace, copied Toom, and split-view Toom probes are exact and sometimes
+median-positive, including several in-between sizes, but none clears the
+promotion bar. Treat them as opt-in probes and faster-machine targets, not
+production routes.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor
@@ -87,7 +153,11 @@ Do not promote a bigint route unless all are true:
 
 ## Current Next Best Step
 
-The strongest current clue is Karatsuba copy tax, not sparse scan removal by
-itself. On the faster machine, start by combining split views with a no-realloc
-workspace plan for recursive temporaries, then run a deeper route audit at
-4096, 8192, 16384, and at least one larger size.
+The strongest current clue remains copy/allocation tax, now narrowed by
+Karatsuba workspace rows and a Toom split-view copy-tax row. On the faster
+machine, rerun the full large CPU campaign, including the in-between sizes,
+before any route audit. If a candidate passes exact parity, worst-pair safety,
+and stable-pair gates across the full window, run a forced route audit against
+current production multiply. If the larger rows remain unstable, keep these
+probes opt-in and move to a broader recursive workspace strategy or a deeper
+Toom handoff design.

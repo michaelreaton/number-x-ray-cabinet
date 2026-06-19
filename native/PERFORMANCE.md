@@ -2886,3 +2886,106 @@ row is flat and the worst-pair/stability evidence still argues for caution.
 This does prove that slice-copy overhead is a real candidate at some sizes; the
 next improvement should combine split views with a workspace/no-realloc plan or
 run a deeper route audit before changing the default multiply policy.
+
+## 2026-06-18: Large Multiply CPU Campaign Workspace And Toom View Probe
+
+Run:
+
+- Release:
+  `native-test-runs/20260618-233248-c4b04caf`
+
+This run adds a default-off diagnostic probe,
+`xray_bigint_mul_karatsuba_workspace_probe()`, and a same-run
+`mul-large-cpu-campaign` benchmark family. The probe keeps production multiply
+unchanged, uses read-only split views for Karatsuba halves, and reuses
+pre-sized recursive temporaries per workspace depth. Each campaign row compares
+current production multiply, split-view Karatsuba, split-view plus workspace
+reuse, and `mpz_mul` on identical operand fingerprints. The benchmark window now
+includes power-of-two anchors plus deterministic random-looking in-between
+spots: `4096`, `5639`, `8192`, `11717`, `16384`, `24103`, `32768`, `52163`,
+and `65536` decimal digits. On MSVC x64, the same campaign also emits
+`mul-large-cpu-toom-branch`, which times the existing recursive Toom-3 plus
+unroll4 leaf diagnostic branch (`leafThreshold=64`, `depthLimit=2`) against
+current production multiply, the workspace candidate, and `mpz_mul`, plus
+`mul-large-cpu-toom-view-branch`, which times read-only Toom operand-third split
+views against the copied Toom branch in the same run.
+
+The run was built from fresh folder `native/build-codex-large-mul-campaign` with
+Visual Studio 16 2019 x64 Release flags `/O2 /Ob2 /DNDEBUG`, IPO `/GL=false`,
+MSVC `1929 full=192930159`, and CPU flags `AVX2 BMI1 BMI2 ADX`. The full
+native test binary printed `native xray tests passed` (`916/916`). The generated
+TSV, JSON, frontier text, progress text, progress TSV, and native GUI-visible
+benchmark summary all include the new campaign rows.
+
+Key rows:
+
+- `mul-large-cpu-campaign 4096`: ratio `0.810`, worst `1.092`,
+  stable `4/5`, `observe-only`
+- `mul-large-cpu-campaign 5639`: ratio `0.849`, worst `1.370`,
+  stable `4/5`, `observe-only`
+- `mul-large-cpu-campaign 8192`: ratio `0.940`, worst `1.104`,
+  stable `4/5`, `observe-only`
+- `mul-large-cpu-campaign 11717`: ratio `0.834`, worst `1.059`,
+  stable `1/5`, `observe-only`
+- `mul-large-cpu-campaign 16384`: ratio `0.837`, worst `1.455`,
+  stable `1/5`, `observe-only`
+- `mul-large-cpu-campaign 24103`: ratio `0.767`, worst `1.349`,
+  stable `0/5`, `observe-only`
+- `mul-large-cpu-campaign 32768`: ratio `0.842`, worst `1.684`,
+  stable `1/5`, `observe-only`
+- `mul-large-cpu-campaign 52163`: ratio `0.801`, worst `1.651`,
+  stable `0/5`, `observe-only`
+- `mul-large-cpu-campaign 65536`: ratio `0.828`, worst `2.464`,
+  stable `0/5`, `observe-only`
+
+Toom branch rows:
+
+- `mul-large-cpu-toom-branch 4096`: ratio `1.067`, worst `2.606`,
+  stable `0/5`, `observe-only`
+- `mul-large-cpu-toom-branch 5639`: ratio `1.165`, worst `1.891`,
+  stable `1/5`, `observe-only`
+- `mul-large-cpu-toom-branch 8192`: ratio `0.861`, worst `1.165`,
+  stable `1/5`, `observe-only`
+- `mul-large-cpu-toom-branch 11717`: ratio `0.969`, worst `1.415`,
+  stable `0/5`, `observe-only`
+- `mul-large-cpu-toom-branch 16384`: ratio `0.834`, worst `1.268`,
+  stable `2/5`, `observe-only`
+- `mul-large-cpu-toom-branch 24103`: ratio `0.833`, worst `1.584`,
+  stable `0/5`, `observe-only`
+- `mul-large-cpu-toom-branch 32768`: ratio `0.815`, worst `1.481`,
+  stable `1/5`, `observe-only`
+- `mul-large-cpu-toom-branch 52163`: ratio `0.740`, worst `1.545`,
+  stable `0/5`, `observe-only`
+- `mul-large-cpu-toom-branch 65536`: ratio `0.663`, worst `2.157`,
+  stable `0/5`, `observe-only`
+
+Toom split-view branch rows:
+
+- `mul-large-cpu-toom-view-branch 4096`: ratio `0.978`, worst `1.303`,
+  stable `0/5`, `observe-only`
+- `mul-large-cpu-toom-view-branch 5639`: ratio `0.805`, worst `1.451`,
+  stable `2/5`, `observe-only`
+- `mul-large-cpu-toom-view-branch 8192`: ratio `1.193`, worst `1.513`,
+  stable `0/5`, `observe-only`
+- `mul-large-cpu-toom-view-branch 11717`: ratio `0.999`, worst `1.498`,
+  stable `0/5`, `observe-only`
+- `mul-large-cpu-toom-view-branch 16384`: ratio `0.945`, worst `1.356`,
+  stable `1/5`, `observe-only`
+- `mul-large-cpu-toom-view-branch 24103`: ratio `0.956`, worst `1.328`,
+  stable `1/5`, `observe-only`
+- `mul-large-cpu-toom-view-branch 32768`: ratio `0.990`, worst `1.610`,
+  stable `1/5`, `observe-only`
+- `mul-large-cpu-toom-view-branch 52163`: ratio `0.990`, worst `1.800`,
+  stable `0/5`, `observe-only`
+- `mul-large-cpu-toom-view-branch 65536`: ratio `0.977`, worst `2.108`,
+  stable `0/5`, `observe-only`
+
+Decision: keep the workspace split-view multiply, copied recursive Toom branch,
+and split-view recursive Toom branch as diagnostic probes. They are exact and
+median-positive in pockets, including several in-between sizes, but all fail the
+promotion bar because worst-pair ratios exceed safety and larger rows have weak
+or zero stable-pair counts. The next multiply PR should rerun this campaign on
+the faster CPU and only proceed to a forced route audit if the same-run route
+gates pass there. Otherwise, the next implementation step should reduce
+Toom/Karatsuba temporary allocation or broaden the recursive workspace strategy
+before changing production multiply routing.
