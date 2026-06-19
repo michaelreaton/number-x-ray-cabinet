@@ -3136,3 +3136,34 @@ fails: `4096` is a median loss, while `5639` and `8192` remain above the
 worst-pair safety bar. The next route work should either narrow a thresholded
 handoff above `8192` or improve the small end of the Toom/full-workspace path
 before any default multiply change.
+
+## 2026-06-19: Full Workspace Active-Window Deep Audit
+
+Run:
+
+- Release:
+  `native-test-runs/20260619-083842-c4b04caf`
+
+This run adds `mul-large-toom-full-deep-audit`, an aggregate policy-gate row
+for the active high-size handoff window: `11717`, `16384`, `24103`, `32768`,
+`52163`, and `65536` decimal digits. It forces the full recursive Toom-3 plus
+unroll4 workspace candidate, times current production multiply and `mpz_mul` on
+the same operands in rotating batches, and uses 9 paired samples per size. The
+row remains `noAutoRoute=1`, `replacementReady=false`, and `observe-only`.
+
+Observed aggregate:
+
+- Exact parity/hash against current and GMP: `hashSafe=108/108`,
+  `hashGate=matched`, `parity=matched`.
+- Current-route median gate stayed favorable: `candCurrentMax=0.790`.
+- GMP-facing and safety gates failed: `candGmpMax=1.344`,
+  `maxWorstPairRatio=1.512`, `safeSizes=0/6`, `stableSampleCount=0/6`.
+- Progress artifacts classify the row as `backend-regression` /
+  `safety-rejected`, even though the median versus current is faster.
+
+Decision: no thresholded handoff promotion from the current high-size evidence.
+The 5-sample route audit showed a promising current-route pocket above `8192`,
+but the 9-sample active-window audit rejects it once GMP timing, worst-pair
+safety, and stable-pair gates are required together. Keep the full-workspace
+route diagnostic-only and continue with deeper multiplication structure work or
+a broader recursive workspace strategy before another promotion attempt.

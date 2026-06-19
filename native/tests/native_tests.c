@@ -2443,6 +2443,7 @@ static void test_benchmarks(void) {
   int saw_mul_large_cpu_toom_full_audit32768_probe = 0;
   int saw_mul_large_cpu_toom_full_audit52163_probe = 0;
   int saw_mul_large_cpu_toom_full_audit65536_probe = 0;
+  int saw_mul_large_cpu_toom_full_deep_audit_probe = 0;
 #endif
   int saw_mul_unroll4_vs_scratch_probe = 0;
   int saw_mul_unroll4_vs_gmp_probe = 0;
@@ -4109,7 +4110,8 @@ static void test_benchmarks(void) {
       CHECK(report->results[index].max_allowed_speed_ratio == 1.0);
       CHECK(report->results[index].stable_sample_count <= report->results[index].sample_count);
       CHECK(report->results[index].worst_pair_ratio > 0.0);
-      CHECK(strstr(report->results[index].detail, "thresholdSafety=forced-neighbor") != NULL);
+      CHECK(strstr(report->results[index].detail, "thresholdSafety=forced-neighbor") != NULL ||
+        strstr(report->results[index].detail, "thresholdSafety=active-window") != NULL);
       CHECK(strstr(report->results[index].detail, "forcedCandidate=yes") != NULL);
       CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
       CHECK(strstr(report->results[index].detail, "adoption=") != NULL);
@@ -4552,6 +4554,45 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "featureGate=mul-threshold-route-audit") != NULL);
         CHECK(strstr(report->results[index].detail, "gmpClue=mpn_mul-threshold-table") != NULL);
         CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+#if defined(_MSC_VER) && defined(_M_X64)
+      } else if (strcmp(report->results[index].operation, "mul-large-toom-full-deep-audit") == 0) {
+        saw_mul_large_cpu_toom_full_deep_audit_probe = 1;
+        CHECK(report->results[index].sample_count == 6);
+        CHECK(report->results[index].digits == 65536);
+        CHECK(!report->results[index].replacement_ready);
+        CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+        CHECK(strstr(report->results[index].detail, "op=mul-large-toom-full-deep-audit") != NULL);
+        CHECK(strstr(report->results[index].detail, "policy=full-workspace-ge11717") != NULL);
+        CHECK(strstr(report->results[index].detail, "sizes=11717,16384,24103,32768,52163,65536") != NULL);
+        CHECK(strstr(report->results[index].detail, "sizeCount=6") != NULL);
+        CHECK(strstr(report->results[index].detail, "minDigits=11717") != NULL);
+        CHECK(strstr(report->results[index].detail, "leafThreshold=64") != NULL);
+        CHECK(strstr(report->results[index].detail, "depthLimit=2") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+        CHECK(strstr(report->results[index].detail, "samples=9") != NULL);
+        CHECK(strstr(report->results[index].detail, "requiredStablePairs=8/9") != NULL);
+        CHECK(strstr(report->results[index].detail, "safeSizes=") != NULL);
+        CHECK(strstr(report->results[index].detail, "hashSafe=108/108") != NULL);
+        CHECK(strstr(report->results[index].detail, "hashGate=matched") != NULL);
+        CHECK(strstr(report->results[index].detail, "parity=matched") != NULL);
+        CHECK(strstr(report->results[index].detail, "forcedCandidate=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "thresholdSafety=active-window") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=recursive-toom3+unroll4-full-workspace") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=current-scratch-mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "oracle=mpz_mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "candCurrentMax=") != NULL);
+        CHECK(strstr(report->results[index].detail, "candGmpMax=") != NULL);
+        CHECK(strstr(report->results[index].detail, "currentGmpMax=") != NULL);
+        CHECK(strstr(report->results[index].detail, "maxWorstPairRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
+        CHECK(strstr(report->results[index].detail, "timingMode=rotating-batch") != NULL);
+        CHECK(strstr(report->results[index].detail, "sameInput=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "sameRunAudit=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=large-multiply-cpu-toom-full-deep-audit") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpClue=toom33-recursive-current-route-audit") != NULL);
+        CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+        CHECK(strstr(report->results[index].detail, "replacementReady=false") != NULL);
+#endif
       } else if (strcmp(report->results[index].operation, "format-dc-route-safety") == 0) {
         saw_format_dc_route_safety_gate = 1;
         CHECK(report->results[index].sample_count == 3);
@@ -4872,6 +4913,9 @@ static void test_benchmarks(void) {
   CHECK(saw_mul_route_audit_focused);
   CHECK(saw_mul_route_audit_large);
   CHECK(saw_mul_threshold_route_audit);
+#if defined(_MSC_VER) && defined(_M_X64)
+  CHECK(saw_mul_large_cpu_toom_full_deep_audit_probe);
+#endif
   CHECK(saw_square_policy1000_probe);
   CHECK(saw_square_policy4096_probe);
   CHECK(saw_square_policy8192_probe);
@@ -5266,6 +5310,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "square-karatsuba-vs-gmp") != NULL);
   CHECK(strstr(json, "mul-toom3-vs-scratch") != NULL);
 #if defined(_MSC_VER) && defined(_M_X64)
+  CHECK(strstr(json, "mul-large-toom-full-deep-audit") != NULL);
+  CHECK(strstr(json, "large-multiply-cpu-toom-full-deep-audit") != NULL);
+  CHECK(strstr(json, "full-workspace-ge11717") != NULL);
+  CHECK(strstr(json, "thresholdSafety=active-window") != NULL);
   CHECK(strstr(json, "mul-toom3-unroll4-vs-scratch") != NULL);
   CHECK(strstr(json, "mul-toom3-unroll4-vs-gmp") != NULL);
   CHECK(strstr(json, "mul-toom3-unroll4-deep-vs-gmp") != NULL);
@@ -5431,6 +5479,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "karatsuba-sum-middle") != NULL);
   CHECK(strstr(tsv, "karatsuba-difference-middle") != NULL);
 #if defined(_MSC_VER) && defined(_M_X64)
+  CHECK(strstr(tsv, "mul-large-toom-full-deep-audit") != NULL);
+  CHECK(strstr(tsv, "large-multiply-cpu-toom-full-deep-audit") != NULL);
+  CHECK(strstr(tsv, "full-workspace-ge11717") != NULL);
+  CHECK(strstr(tsv, "thresholdSafety=active-window") != NULL);
   CHECK(strstr(tsv, "mul-toom3-unroll4-vs-scratch") != NULL);
   CHECK(strstr(tsv, "mul-toom3-unroll4-vs-gmp") != NULL);
   CHECK(strstr(tsv, "mul-toom3-unroll4-deep-vs-gmp") != NULL);
@@ -5516,6 +5568,9 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_json, "mul-large-cpu-toom-ws-branch") != NULL);
   CHECK(strstr(benchmark_json, "mul-large-cpu-toom-full-ws") != NULL);
   CHECK(strstr(benchmark_json, "mul-large-cpu-toom-full-audit") != NULL);
+  CHECK(strstr(benchmark_json, "mul-large-toom-full-deep-audit") != NULL);
+  CHECK(strstr(benchmark_json, "large-multiply-cpu-toom-full-deep-audit") != NULL);
+  CHECK(strstr(benchmark_json, "full-workspace-ge11717") != NULL);
 #endif
   CHECK(strstr(benchmark_json, "\"msvcUint128Helpers\"") != NULL);
   CHECK(strstr(benchmark_json, "\"scratchRows\"") != NULL);
@@ -5734,6 +5789,11 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "large-multiply-cpu-toom-full-audit") != NULL);
   CHECK(strstr(benchmark_tsv, "fullAuditCurrentRatio=") != NULL);
   CHECK(strstr(benchmark_tsv, "toom33-recursive-current-route-audit") != NULL);
+  CHECK(strstr(benchmark_tsv, "mul-large-toom-full-deep-audit") != NULL);
+  CHECK(strstr(benchmark_tsv, "large-multiply-cpu-toom-full-deep-audit") != NULL);
+  CHECK(strstr(benchmark_tsv, "full-workspace-ge11717") != NULL);
+  CHECK(strstr(benchmark_tsv, "thresholdSafety=active-window") != NULL);
+  CHECK(strstr(benchmark_tsv, "hashSafe=108/108") != NULL);
 #endif
   CHECK(strstr(benchmark_tsv, "sizeRole=deterministic-random-spot") != NULL);
   CHECK(strstr(benchmark_tsv, "digits=5639") != NULL);
@@ -5788,6 +5848,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "mul-large-cpu-toom-ws-branch") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-large-cpu-toom-full-ws") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-large-cpu-toom-full-audit") != NULL);
+  CHECK(strstr(benchmark_frontier, "mul-large-toom-full-deep-audit") != NULL);
 #endif
   CHECK(strstr(benchmark_frontier, "mod-u32-precompute") != NULL);
   CHECK(strstr(benchmark_frontier, "gcd-u32-precompute") != NULL);
@@ -5920,6 +5981,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_progress, "mul-large-cpu-toom-full-ws") != NULL);
   CHECK(strstr(benchmark_progress, "recursive-toom3+unroll4-full-workspace") != NULL);
   CHECK(strstr(benchmark_progress, "mul-large-cpu-toom-full-audit") != NULL);
+  CHECK(strstr(benchmark_progress, "mul-large-toom-full-deep-audit") != NULL);
+  CHECK(strstr(benchmark_progress, "full-workspace-ge11717") != NULL);
 #endif
   CHECK(strstr(benchmark_progress, "Setup/warmup context rows observed") != NULL);
   CHECK(strstr(benchmark_progress, "Warmup-review rows observed") != NULL);
@@ -5953,6 +6016,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_progress_tsv, "mul-large-cpu-toom-full-ws") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "recursive-toom3+unroll4-full-workspace") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "mul-large-cpu-toom-full-audit") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "mul-large-toom-full-deep-audit") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "large-multiply-cpu-toom-full-deep-audit") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "full-workspace-ge11717") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "active-window") != NULL);
 #endif
   CHECK(strstr(benchmark_progress_tsv, "format-route-tournament-detail") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "controlSafety=tournament-detail") != NULL);

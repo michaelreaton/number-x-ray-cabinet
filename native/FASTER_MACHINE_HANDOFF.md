@@ -180,6 +180,26 @@ The audit clears current-route median, worst-pair, and stable-pair gates from
 Use faster-machine reruns to decide whether the low-end misses are hardware
 noise or whether promotion needs a thresholded handoff above `8192`.
 
+The stacked active-window deep audit run:
+
+- Validation: `native/build-codex-large-mul-campaign/Release/xray_native_tests.exe`
+  printed `native xray tests passed`
+- Artifact:
+  `native-test-runs/20260619-083842-c4b04caf/benchmark.tsv`
+
+This run adds `mul-large-toom-full-deep-audit`, an aggregate 9-sample route
+audit for only the high-size handoff window: `11717`, `16384`, `24103`,
+`32768`, `52163`, and `65536`. It remains `noAutoRoute=1` and
+`replacementReady=false`.
+
+| Row | Sizes | Current Max | GMP Max | Worst Pair | Safe Sizes | Hash | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
+| `mul-large-toom-full-deep-audit` | `11717..65536` | `0.790` | `1.344` | `1.512` | `0/6` | `108/108` | observe only |
+
+The deeper active-window audit is exact and still faster than current
+production multiply on median, but it fails the GMP-facing and worst-pair gates.
+Do not promote a thresholded high-size handoff from the current evidence.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor
