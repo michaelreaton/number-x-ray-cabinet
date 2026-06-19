@@ -1481,6 +1481,52 @@ static void test_scratch_bigint_karatsuba_view_probe_oracle(void) {
   free(right_text);
 }
 
+static void test_scratch_bigint_karatsuba_workspace_probe_oracle(void) {
+  const size_t thresholds[] = {32, 64, 96, 128};
+  char *left_text = make_pattern_decimal(3600, "97531086429753108642");
+  char *right_text = make_pattern_decimal(3600, "42086429753108642975");
+  XrayScratchBigInt a, b, product, baseline, alias_left, alias_right;
+  xray_bigint_init(&a);
+  xray_bigint_init(&b);
+  xray_bigint_init(&product);
+  xray_bigint_init(&baseline);
+  xray_bigint_init(&alias_left);
+  xray_bigint_init(&alias_right);
+  mpz_t ga, gb, gproduct;
+  mpz_inits(ga, gb, gproduct, NULL);
+
+  CHECK(xray_bigint_set_decimal(&a, left_text));
+  CHECK(xray_bigint_set_decimal(&b, right_text));
+  CHECK(mpz_set_str(ga, left_text, 10) == 0);
+  CHECK(mpz_set_str(gb, right_text, 10) == 0);
+  mpz_mul(gproduct, ga, gb);
+
+  for (size_t index = 0; index < sizeof(thresholds) / sizeof(thresholds[0]); ++index) {
+    CHECK(xray_bigint_mul_karatsuba_workspace_probe(&product, &a, &b, thresholds[index]));
+    check_scratch_matches_mpz(&product, gproduct);
+    CHECK(xray_bigint_mul_with_threshold(&baseline, &a, &b, thresholds[index]));
+    CHECK(xray_bigint_compare(&product, &baseline) == 0);
+
+    CHECK(xray_bigint_copy(&alias_left, &a));
+    CHECK(xray_bigint_mul_karatsuba_workspace_probe(&alias_left, &alias_left, &b, thresholds[index]));
+    check_scratch_matches_mpz(&alias_left, gproduct);
+
+    CHECK(xray_bigint_copy(&alias_right, &b));
+    CHECK(xray_bigint_mul_karatsuba_workspace_probe(&alias_right, &a, &alias_right, thresholds[index]));
+    check_scratch_matches_mpz(&alias_right, gproduct);
+  }
+
+  xray_bigint_clear(&a);
+  xray_bigint_clear(&b);
+  xray_bigint_clear(&product);
+  xray_bigint_clear(&baseline);
+  xray_bigint_clear(&alias_left);
+  xray_bigint_clear(&alias_right);
+  mpz_clears(ga, gb, gproduct, NULL);
+  free(left_text);
+  free(right_text);
+}
+
 static void test_scratch_bigint_karatsuba_sum_probe_oracle(void) {
   const size_t thresholds[] = {32, 64, 96, 128};
   char *left_text = make_pattern_decimal(2400, "86420975318642097531");
@@ -1569,10 +1615,11 @@ static void test_scratch_bigint_toom3_recursive_probe_oracle(void) {
 #if defined(_MSC_VER) && defined(_M_X64)
   char *left_text = make_pattern_decimal(12000, "98673142086421357905");
   char *right_text = make_pattern_decimal(12000, "31415926535897932384");
-  XrayScratchBigInt a, b, product, alias;
+  XrayScratchBigInt a, b, product, view_product, alias;
   xray_bigint_init(&a);
   xray_bigint_init(&b);
   xray_bigint_init(&product);
+  xray_bigint_init(&view_product);
   xray_bigint_init(&alias);
   mpz_t ga, gb, gproduct;
   mpz_inits(ga, gb, gproduct, NULL);
@@ -1588,13 +1635,26 @@ static void test_scratch_bigint_toom3_recursive_probe_oracle(void) {
   CHECK(xray_bigint_mul_toom3_unroll4_recursive_probe(&product, &a, &b, 64, 2));
   check_scratch_matches_mpz(&product, gproduct);
 
+  CHECK(xray_bigint_mul_toom3_unroll4_recursive_view_probe(&view_product, &a, &b, 64, 2));
+  check_scratch_matches_mpz(&view_product, gproduct);
+  CHECK(xray_bigint_compare(&view_product, &product) == 0);
+
   CHECK(xray_bigint_copy(&alias, &a));
   CHECK(xray_bigint_mul_toom3_unroll4_recursive_probe(&alias, &alias, &b, 64, 2));
+  check_scratch_matches_mpz(&alias, gproduct);
+
+  CHECK(xray_bigint_copy(&alias, &a));
+  CHECK(xray_bigint_mul_toom3_unroll4_recursive_view_probe(&alias, &alias, &b, 64, 2));
+  check_scratch_matches_mpz(&alias, gproduct);
+
+  CHECK(xray_bigint_copy(&alias, &b));
+  CHECK(xray_bigint_mul_toom3_unroll4_recursive_view_probe(&alias, &a, &alias, 64, 2));
   check_scratch_matches_mpz(&alias, gproduct);
 
   xray_bigint_clear(&a);
   xray_bigint_clear(&b);
   xray_bigint_clear(&product);
+  xray_bigint_clear(&view_product);
   xray_bigint_clear(&alias);
   mpz_clears(ga, gb, gproduct, NULL);
   free(left_text);
@@ -1603,6 +1663,7 @@ static void test_scratch_bigint_toom3_recursive_probe_oracle(void) {
   XrayScratchBigInt value;
   xray_bigint_init(&value);
   CHECK(!xray_bigint_mul_toom3_unroll4_recursive_probe(&value, &value, &value, 64, 2));
+  CHECK(!xray_bigint_mul_toom3_unroll4_recursive_view_probe(&value, &value, &value, 64, 2));
   xray_bigint_clear(&value);
 #endif
 }
@@ -1786,6 +1847,9 @@ typedef struct RunEventCapture {
   int saw_benchmark_row_kernel;
   int saw_benchmark_row_factor;
   int saw_benchmark_row_cyclotomic;
+  int saw_benchmark_row_large_mul_campaign;
+  int saw_benchmark_row_large_mul_toom_branch;
+  int saw_benchmark_row_large_mul_toom_view_branch;
   int saw_assemble_complete;
   char sequence[1024];
 } RunEventCapture;
@@ -1805,6 +1869,9 @@ static void capture_run_event(const char *stage, const char *status, const char 
     if (detail && strstr(detail, "category=kernel-probe")) capture->saw_benchmark_row_kernel = 1;
     if (detail && strstr(detail, "category=factor-benchmark")) capture->saw_benchmark_row_factor = 1;
     if (detail && strstr(detail, "category=cyclotomic-benchmark")) capture->saw_benchmark_row_cyclotomic = 1;
+    if (detail && strstr(detail, "operation=mul-large-cpu-campaign")) capture->saw_benchmark_row_large_mul_campaign = 1;
+    if (detail && strstr(detail, "operation=mul-large-cpu-toom-branch")) capture->saw_benchmark_row_large_mul_toom_branch = 1;
+    if (detail && strstr(detail, "operation=mul-large-cpu-toom-view-branch")) capture->saw_benchmark_row_large_mul_toom_view_branch = 1;
   }
   if (strcmp(stage, "assemble") == 0 && strcmp(status, "complete") == 0) capture->saw_assemble_complete = 1;
   size_t used = strlen(capture->sequence);
@@ -1965,6 +2032,11 @@ static void test_benchmarks(void) {
   CHECK(events.saw_benchmark_row_cyclotomic);
   CHECK(events.saw_benchmark_row_scratch);
   CHECK(events.saw_benchmark_row_kernel);
+  CHECK(events.saw_benchmark_row_large_mul_campaign);
+#if defined(_MSC_VER) && defined(_M_X64)
+  CHECK(events.saw_benchmark_row_large_mul_toom_branch);
+  CHECK(events.saw_benchmark_row_large_mul_toom_view_branch);
+#endif
   size_t scratch_rows = 0;
   size_t kernel_rows = 0;
   size_t replacement_ready_rows = 0;
@@ -2268,6 +2340,38 @@ static void test_benchmarks(void) {
   int saw_mul_karatsuba_view_vs_copy4096_probe = 0;
   int saw_mul_karatsuba_view_vs_copy8192_probe = 0;
   int saw_mul_karatsuba_view_vs_copy16384_probe = 0;
+  int saw_mul_large_cpu_campaign_probe = 0;
+  int saw_mul_large_cpu_campaign4096_probe = 0;
+  int saw_mul_large_cpu_campaign5639_probe = 0;
+  int saw_mul_large_cpu_campaign8192_probe = 0;
+  int saw_mul_large_cpu_campaign11717_probe = 0;
+  int saw_mul_large_cpu_campaign16384_probe = 0;
+  int saw_mul_large_cpu_campaign24103_probe = 0;
+  int saw_mul_large_cpu_campaign32768_probe = 0;
+  int saw_mul_large_cpu_campaign52163_probe = 0;
+  int saw_mul_large_cpu_campaign65536_probe = 0;
+#if defined(_MSC_VER) && defined(_M_X64)
+  int saw_mul_large_cpu_toom_branch_probe = 0;
+  int saw_mul_large_cpu_toom_branch4096_probe = 0;
+  int saw_mul_large_cpu_toom_branch5639_probe = 0;
+  int saw_mul_large_cpu_toom_branch8192_probe = 0;
+  int saw_mul_large_cpu_toom_branch11717_probe = 0;
+  int saw_mul_large_cpu_toom_branch16384_probe = 0;
+  int saw_mul_large_cpu_toom_branch24103_probe = 0;
+  int saw_mul_large_cpu_toom_branch32768_probe = 0;
+  int saw_mul_large_cpu_toom_branch52163_probe = 0;
+  int saw_mul_large_cpu_toom_branch65536_probe = 0;
+  int saw_mul_large_cpu_toom_view_branch_probe = 0;
+  int saw_mul_large_cpu_toom_view_branch4096_probe = 0;
+  int saw_mul_large_cpu_toom_view_branch5639_probe = 0;
+  int saw_mul_large_cpu_toom_view_branch8192_probe = 0;
+  int saw_mul_large_cpu_toom_view_branch11717_probe = 0;
+  int saw_mul_large_cpu_toom_view_branch16384_probe = 0;
+  int saw_mul_large_cpu_toom_view_branch24103_probe = 0;
+  int saw_mul_large_cpu_toom_view_branch32768_probe = 0;
+  int saw_mul_large_cpu_toom_view_branch52163_probe = 0;
+  int saw_mul_large_cpu_toom_view_branch65536_probe = 0;
+#endif
   int saw_mul_unroll4_vs_scratch_probe = 0;
   int saw_mul_unroll4_vs_gmp_probe = 0;
   int saw_mul_unroll4_deep_vs_gmp_probe = 0;
@@ -3042,6 +3146,122 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
         CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
       }
+      if (strcmp(report->results[index].operation, "mul-large-cpu-campaign") == 0) {
+        saw_mul_large_cpu_campaign_probe = 1;
+        if (report->results[index].digits == 4096) saw_mul_large_cpu_campaign4096_probe = 1;
+        else if (report->results[index].digits == 5639) saw_mul_large_cpu_campaign5639_probe = 1;
+        else if (report->results[index].digits == 8192) saw_mul_large_cpu_campaign8192_probe = 1;
+        else if (report->results[index].digits == 11717) saw_mul_large_cpu_campaign11717_probe = 1;
+        else if (report->results[index].digits == 16384) saw_mul_large_cpu_campaign16384_probe = 1;
+        else if (report->results[index].digits == 24103) saw_mul_large_cpu_campaign24103_probe = 1;
+        else if (report->results[index].digits == 32768) saw_mul_large_cpu_campaign32768_probe = 1;
+        else if (report->results[index].digits == 52163) saw_mul_large_cpu_campaign52163_probe = 1;
+        else if (report->results[index].digits == 65536) saw_mul_large_cpu_campaign65536_probe = 1;
+        else CHECK(0);
+        CHECK(report->results[index].parity_verified);
+        CHECK(!report->results[index].replacement_ready);
+        CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+        CHECK(strstr(report->results[index].detail, "leafThreshold=64") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=karatsuba-split-view-workspace") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=current-scratch-mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "comparison=current-default+split-view+workspace+mpz_mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "oracle=mpz_mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=large-multiply-cpu-campaign") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpClue=mpn-slice-view-recursion+scratch-reuse") != NULL);
+        CHECK(strstr(report->results[index].detail, "sourceLabel=workspace-split-view") != NULL);
+        CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+        CHECK(strstr(report->results[index].detail, "replacementReady=false") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+        if (report->results[index].digits == 4096 ||
+            report->results[index].digits == 8192 ||
+            report->results[index].digits == 16384 ||
+            report->results[index].digits == 32768 ||
+            report->results[index].digits == 65536) {
+          CHECK(strstr(report->results[index].detail, "sizeRole=power2-anchor") != NULL);
+        } else {
+          CHECK(strstr(report->results[index].detail, "sizeRole=deterministic-random-spot") != NULL);
+        }
+      }
+#if defined(_MSC_VER) && defined(_M_X64)
+      if (strcmp(report->results[index].operation, "mul-large-cpu-toom-branch") == 0) {
+        saw_mul_large_cpu_toom_branch_probe = 1;
+        if (report->results[index].digits == 4096) saw_mul_large_cpu_toom_branch4096_probe = 1;
+        else if (report->results[index].digits == 5639) saw_mul_large_cpu_toom_branch5639_probe = 1;
+        else if (report->results[index].digits == 8192) saw_mul_large_cpu_toom_branch8192_probe = 1;
+        else if (report->results[index].digits == 11717) saw_mul_large_cpu_toom_branch11717_probe = 1;
+        else if (report->results[index].digits == 16384) saw_mul_large_cpu_toom_branch16384_probe = 1;
+        else if (report->results[index].digits == 24103) saw_mul_large_cpu_toom_branch24103_probe = 1;
+        else if (report->results[index].digits == 32768) saw_mul_large_cpu_toom_branch32768_probe = 1;
+        else if (report->results[index].digits == 52163) saw_mul_large_cpu_toom_branch52163_probe = 1;
+        else if (report->results[index].digits == 65536) saw_mul_large_cpu_toom_branch65536_probe = 1;
+        else CHECK(0);
+        CHECK(report->results[index].parity_verified);
+        CHECK(!report->results[index].replacement_ready);
+        CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+        CHECK(strstr(report->results[index].detail, "leafThreshold=64") != NULL);
+        CHECK(strstr(report->results[index].detail, "depthLimit=2") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=recursive-toom3+unroll4") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=current-scratch-mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "comparison=current-default+workspace+recursive-toom3+mpz_mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "oracle=mpz_mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=large-multiply-cpu-toom-branch") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpClue=toom33-recursive") != NULL);
+        CHECK(strstr(report->results[index].detail, "toomWorkspaceRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "toomGmpRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+        CHECK(strstr(report->results[index].detail, "replacementReady=false") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+        if (report->results[index].digits == 4096 ||
+            report->results[index].digits == 8192 ||
+            report->results[index].digits == 16384 ||
+            report->results[index].digits == 32768 ||
+            report->results[index].digits == 65536) {
+          CHECK(strstr(report->results[index].detail, "sizeRole=power2-anchor") != NULL);
+        } else {
+          CHECK(strstr(report->results[index].detail, "sizeRole=deterministic-random-spot") != NULL);
+        }
+      }
+      if (strcmp(report->results[index].operation, "mul-large-cpu-toom-view-branch") == 0) {
+        saw_mul_large_cpu_toom_view_branch_probe = 1;
+        if (report->results[index].digits == 4096) saw_mul_large_cpu_toom_view_branch4096_probe = 1;
+        else if (report->results[index].digits == 5639) saw_mul_large_cpu_toom_view_branch5639_probe = 1;
+        else if (report->results[index].digits == 8192) saw_mul_large_cpu_toom_view_branch8192_probe = 1;
+        else if (report->results[index].digits == 11717) saw_mul_large_cpu_toom_view_branch11717_probe = 1;
+        else if (report->results[index].digits == 16384) saw_mul_large_cpu_toom_view_branch16384_probe = 1;
+        else if (report->results[index].digits == 24103) saw_mul_large_cpu_toom_view_branch24103_probe = 1;
+        else if (report->results[index].digits == 32768) saw_mul_large_cpu_toom_view_branch32768_probe = 1;
+        else if (report->results[index].digits == 52163) saw_mul_large_cpu_toom_view_branch52163_probe = 1;
+        else if (report->results[index].digits == 65536) saw_mul_large_cpu_toom_view_branch65536_probe = 1;
+        else CHECK(0);
+        CHECK(report->results[index].parity_verified);
+        CHECK(!report->results[index].replacement_ready);
+        CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+        CHECK(strstr(report->results[index].detail, "leafThreshold=64") != NULL);
+        CHECK(strstr(report->results[index].detail, "depthLimit=2") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=recursive-toom3+unroll4-split-view") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=recursive-toom3+unroll4-copy-slices") != NULL);
+        CHECK(strstr(report->results[index].detail, "comparison=toom-copy+current+workspace+mpz_mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "oracle=mpz_mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=large-multiply-cpu-toom-view-branch") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpClue=toom33-split-view-copy-tax") != NULL);
+        CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
+        CHECK(strstr(report->results[index].detail, "viewCurrentRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "viewWorkspaceRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "viewGmpRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+        CHECK(strstr(report->results[index].detail, "replacementReady=false") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+        if (report->results[index].digits == 4096 ||
+            report->results[index].digits == 8192 ||
+            report->results[index].digits == 16384 ||
+            report->results[index].digits == 32768 ||
+            report->results[index].digits == 65536) {
+          CHECK(strstr(report->results[index].detail, "sizeRole=power2-anchor") != NULL);
+        } else {
+          CHECK(strstr(report->results[index].detail, "sizeRole=deterministic-random-spot") != NULL);
+        }
+      }
+#endif
       if (strcmp(report->results[index].operation, "mul-unroll4-vs-gmp") == 0) {
         saw_mul_unroll4_vs_gmp_probe = 1;
         CHECK(strstr(report->results[index].detail, "leafThreshold=") != NULL);
@@ -4504,6 +4724,38 @@ static void test_benchmarks(void) {
   CHECK(saw_mul_karatsuba_view_vs_copy4096_probe);
   CHECK(saw_mul_karatsuba_view_vs_copy8192_probe);
   CHECK(saw_mul_karatsuba_view_vs_copy16384_probe);
+  CHECK(saw_mul_large_cpu_campaign_probe);
+  CHECK(saw_mul_large_cpu_campaign4096_probe);
+  CHECK(saw_mul_large_cpu_campaign5639_probe);
+  CHECK(saw_mul_large_cpu_campaign8192_probe);
+  CHECK(saw_mul_large_cpu_campaign11717_probe);
+  CHECK(saw_mul_large_cpu_campaign16384_probe);
+  CHECK(saw_mul_large_cpu_campaign24103_probe);
+  CHECK(saw_mul_large_cpu_campaign32768_probe);
+  CHECK(saw_mul_large_cpu_campaign52163_probe);
+  CHECK(saw_mul_large_cpu_campaign65536_probe);
+#if defined(_MSC_VER) && defined(_M_X64)
+  CHECK(saw_mul_large_cpu_toom_branch_probe);
+  CHECK(saw_mul_large_cpu_toom_branch4096_probe);
+  CHECK(saw_mul_large_cpu_toom_branch5639_probe);
+  CHECK(saw_mul_large_cpu_toom_branch8192_probe);
+  CHECK(saw_mul_large_cpu_toom_branch11717_probe);
+  CHECK(saw_mul_large_cpu_toom_branch16384_probe);
+  CHECK(saw_mul_large_cpu_toom_branch24103_probe);
+  CHECK(saw_mul_large_cpu_toom_branch32768_probe);
+  CHECK(saw_mul_large_cpu_toom_branch52163_probe);
+  CHECK(saw_mul_large_cpu_toom_branch65536_probe);
+  CHECK(saw_mul_large_cpu_toom_view_branch_probe);
+  CHECK(saw_mul_large_cpu_toom_view_branch4096_probe);
+  CHECK(saw_mul_large_cpu_toom_view_branch5639_probe);
+  CHECK(saw_mul_large_cpu_toom_view_branch8192_probe);
+  CHECK(saw_mul_large_cpu_toom_view_branch11717_probe);
+  CHECK(saw_mul_large_cpu_toom_view_branch16384_probe);
+  CHECK(saw_mul_large_cpu_toom_view_branch24103_probe);
+  CHECK(saw_mul_large_cpu_toom_view_branch32768_probe);
+  CHECK(saw_mul_large_cpu_toom_view_branch52163_probe);
+  CHECK(saw_mul_large_cpu_toom_view_branch65536_probe);
+#endif
   CHECK(saw_qhat_preinv_probe);
   CHECK(saw_qhat_u32_limb_probe);
   CHECK(saw_u32_precompute_probe);
@@ -5026,6 +5278,13 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_json, "\"productionRoutes\"") != NULL);
   CHECK(strstr(benchmark_json, "\"diagnosticProbeFamilies\"") != NULL);
   CHECK(strstr(benchmark_json, "\"decimal-parse-large\"") != NULL);
+  CHECK(strstr(benchmark_json, "\"karatsuba-workspace\"") != NULL);
+  CHECK(strstr(benchmark_json, "\"toom3-split-view\"") != NULL);
+  CHECK(strstr(benchmark_json, "mul-large-cpu-campaign") != NULL);
+#if defined(_MSC_VER) && defined(_M_X64)
+  CHECK(strstr(benchmark_json, "mul-large-cpu-toom-branch") != NULL);
+  CHECK(strstr(benchmark_json, "mul-large-cpu-toom-view-branch") != NULL);
+#endif
   CHECK(strstr(benchmark_json, "\"msvcUint128Helpers\"") != NULL);
   CHECK(strstr(benchmark_json, "\"scratchRows\"") != NULL);
   CHECK(strstr(benchmark_tsv, "scratch-vs-gmp") != NULL);
@@ -5217,6 +5476,24 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "karatsuba-split-view-audit") != NULL);
   CHECK(strstr(benchmark_tsv, "gmpClue=mpn-slice-view-recursion") != NULL);
   CHECK(strstr(benchmark_tsv, "mfastFeedback=shape-decision-cache+copy-tax") != NULL);
+  CHECK(strstr(benchmark_tsv, "mul-large-cpu-campaign") != NULL);
+  CHECK(strstr(benchmark_tsv, "karatsuba-split-view-workspace") != NULL);
+  CHECK(strstr(benchmark_tsv, "large-multiply-cpu-campaign") != NULL);
+#if defined(_MSC_VER) && defined(_M_X64)
+  CHECK(strstr(benchmark_tsv, "mul-large-cpu-toom-branch") != NULL);
+  CHECK(strstr(benchmark_tsv, "recursive-toom3+unroll4") != NULL);
+  CHECK(strstr(benchmark_tsv, "large-multiply-cpu-toom-branch") != NULL);
+  CHECK(strstr(benchmark_tsv, "toomWorkspaceRatio=") != NULL);
+  CHECK(strstr(benchmark_tsv, "mul-large-cpu-toom-view-branch") != NULL);
+  CHECK(strstr(benchmark_tsv, "recursive-toom3+unroll4-split-view") != NULL);
+  CHECK(strstr(benchmark_tsv, "large-multiply-cpu-toom-view-branch") != NULL);
+  CHECK(strstr(benchmark_tsv, "viewWorkspaceRatio=") != NULL);
+#endif
+  CHECK(strstr(benchmark_tsv, "sizeRole=deterministic-random-spot") != NULL);
+  CHECK(strstr(benchmark_tsv, "digits=5639") != NULL);
+  CHECK(strstr(benchmark_tsv, "digits=11717") != NULL);
+  CHECK(strstr(benchmark_tsv, "digits=24103") != NULL);
+  CHECK(strstr(benchmark_tsv, "digits=52163") != NULL);
   CHECK(strstr(benchmark_tsv, "noAutoRoute=1") != NULL);
 #if defined(_MSC_VER) && defined(_M_X64)
   CHECK(strstr(benchmark_tsv, "mul-toom3-unroll4-vs-scratch") != NULL);
@@ -5258,6 +5535,11 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "mul-threshold-tournament thr=") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-dense-leaf-vs-scan") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-karatsuba-view-vs-copy") != NULL);
+  CHECK(strstr(benchmark_frontier, "mul-large-cpu-campaign") != NULL);
+#if defined(_MSC_VER) && defined(_M_X64)
+  CHECK(strstr(benchmark_frontier, "mul-large-cpu-toom-branch") != NULL);
+  CHECK(strstr(benchmark_frontier, "mul-large-cpu-toom-view-branch") != NULL);
+#endif
   CHECK(strstr(benchmark_frontier, "mod-u32-precompute") != NULL);
   CHECK(strstr(benchmark_frontier, "gcd-u32-precompute") != NULL);
   CHECK(strstr(benchmark_frontier, "powmod-u32-precompute") != NULL);
@@ -5376,6 +5658,19 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_progress, "Fast-looking promotion blockers") != NULL);
   CHECK(strstr(benchmark_progress, "Open/noisy route rows observed") != NULL);
   CHECK(strstr(benchmark_progress, "Product-gated route rows observed") != NULL);
+  CHECK(strstr(benchmark_progress, "Large multiply CPU campaign rows observed") != NULL);
+  CHECK(strstr(benchmark_progress, "mul-large-cpu-campaign") != NULL);
+  CHECK(strstr(benchmark_progress, "karatsuba-split-view-workspace") != NULL);
+#if defined(_MSC_VER) && defined(_M_X64)
+  CHECK(strstr(benchmark_progress, "mul-large-cpu-toom-branch") != NULL);
+  CHECK(strstr(benchmark_progress, "recursive-toom3+unroll4") != NULL);
+  CHECK(strstr(benchmark_progress, "mul-large-cpu-toom-view-branch") != NULL);
+  CHECK(strstr(benchmark_progress, "recursive-toom3+unroll4-split-view") != NULL);
+#endif
+  CHECK(strstr(benchmark_progress, "5639 digits") != NULL);
+  CHECK(strstr(benchmark_progress, "11717 digits") != NULL);
+  CHECK(strstr(benchmark_progress, "24103 digits") != NULL);
+  CHECK(strstr(benchmark_progress, "52163 digits") != NULL);
   CHECK(strstr(benchmark_progress, "Setup/warmup context rows observed") != NULL);
   CHECK(strstr(benchmark_progress, "Warmup-review rows observed") != NULL);
   CHECK(strstr(benchmark_progress, "Safety-rejected rows observed") != NULL);
@@ -5396,6 +5691,14 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_progress_tsv, "\tlarge\tdecimal-format\t") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "\tfrontier\tfrontier-scout\t") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "divmod-precomputed") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "mul-large-cpu-campaign") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "karatsuba-split-view-workspace") != NULL);
+#if defined(_MSC_VER) && defined(_M_X64)
+  CHECK(strstr(benchmark_progress_tsv, "mul-large-cpu-toom-branch") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "recursive-toom3+unroll4") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "mul-large-cpu-toom-view-branch") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "recursive-toom3+unroll4-split-view") != NULL);
+#endif
   CHECK(strstr(benchmark_progress_tsv, "format-route-tournament-detail") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "controlSafety=tournament-detail") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "\ttrue\tfalse\ttrue\ttrue\ttrue") != NULL);
@@ -5428,6 +5731,7 @@ int main(void) {
   test_scratch_bigint_mul_thresholds();
   test_scratch_bigint_dense_leaf_probe_oracle();
   test_scratch_bigint_karatsuba_view_probe_oracle();
+  test_scratch_bigint_karatsuba_workspace_probe_oracle();
   test_scratch_bigint_karatsuba_sum_probe_oracle();
   test_scratch_bigint_toom3_probe_oracle();
   test_scratch_bigint_toom3_recursive_probe_oracle();

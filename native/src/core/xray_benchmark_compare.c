@@ -1113,6 +1113,7 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
   ComparePair run_failed[8] = {0};
   ComparePair warmup_review[8] = {0};
   ComparePair setup_context[8] = {0};
+  ComparePair large_mul_campaign[32] = {0};
   size_t completed_count = 0;
   size_t open_count = 0;
   size_t baseline_count = 0;
@@ -1124,6 +1125,7 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
   size_t run_failed_count = 0;
   size_t warmup_review_count = 0;
   size_t setup_context_count = 0;
+  size_t large_mul_campaign_count = 0;
   size_t route_candidates_total = 0;
   size_t completed_total = 0;
   size_t open_total = 0;
@@ -1137,10 +1139,23 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
   size_t run_failed_total = 0;
   size_t warmup_review_total = 0;
   size_t setup_context_total = 0;
+  size_t large_mul_campaign_total = 0;
 
   for (size_t index = 0; index < set.count; ++index) {
     const CompareRow *row = &set.rows[index];
     if (!compare_row_has_progress_signal(row)) continue;
+    if (compare_streq(row->operation, "mul-large-cpu-campaign") ||
+        compare_streq(row->operation, "mul-large-cpu-toom-branch") ||
+        compare_streq(row->operation, "mul-large-cpu-toom-view-branch")) {
+      large_mul_campaign_total++;
+      insert_progress_row(
+        large_mul_campaign,
+        &large_mul_campaign_count,
+        sizeof(large_mul_campaign) / sizeof(large_mul_campaign[0]),
+        row,
+        (double)row->digits,
+        0);
+    }
     int run_failed_row = compare_row_is_run_failed(row);
     int lower_bound_row = !run_failed_row && compare_row_is_lower_bound(row);
     int warmup_review_row = compare_row_is_warmup_review(row);
@@ -1317,6 +1332,15 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
   if (!product_gated_count) cb_append(&buffer, "  none\n");
   for (size_t index = 0; index < product_gated_count; ++index) append_progress_line(&buffer, product_gated[index].left, "product-gated");
   if (product_gated_total > product_gated_count) cb_printf(&buffer, "  ... %zu more product-gated rows\n", product_gated_total - product_gated_count);
+
+  cb_append(&buffer, "\nLarge multiply CPU campaign rows observed (power-of-two anchors, in-between spots, and Toom branch rows):\n");
+  if (!large_mul_campaign_count) cb_append(&buffer, "  none\n");
+  for (size_t index = 0; index < large_mul_campaign_count; ++index) {
+    append_progress_line(&buffer, large_mul_campaign[index].left, "campaign");
+  }
+  if (large_mul_campaign_total > large_mul_campaign_count) {
+    cb_printf(&buffer, "  ... %zu more large multiply campaign rows\n", large_mul_campaign_total - large_mul_campaign_count);
+  }
 
   cb_append(&buffer, "\nSetup/warmup context rows observed (reported, not scored):\n");
   if (!setup_context_count) cb_append(&buffer, "  none\n");
