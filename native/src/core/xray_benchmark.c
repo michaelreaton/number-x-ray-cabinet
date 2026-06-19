@@ -7332,6 +7332,25 @@ static void mul_full_workspace_depth_scout_labels(
     snprintf(labels->threshold_safety, sizeof(labels->threshold_safety), "upper-window");
     return;
   }
+  if (candidate_leaf_threshold == 48 &&
+      baseline_leaf_threshold == 48 &&
+      candidate_depth_limit == 4 &&
+      baseline_depth_limit == 3 &&
+      candidate_interp_flags == combo_interp_flags &&
+      baseline_interp_flags == combo_interp_flags) {
+    snprintf(labels->aggregate_operation, sizeof(labels->aggregate_operation), "mul-large-toom-cmb-l48d4-scout");
+    snprintf(labels->point_operation, sizeof(labels->point_operation), "mul-large-toom-cmb-l48d4-point");
+    snprintf(labels->point_detail_op, sizeof(labels->point_detail_op), "mul-cmb-l48d4-point");
+    snprintf(labels->parent, sizeof(labels->parent), "cmb-l48d4-scout");
+    snprintf(labels->candidate, sizeof(labels->candidate), "full-ws-combo-l48d4");
+    snprintf(labels->baseline, sizeof(labels->baseline), "full-ws-combo-l48d3");
+    snprintf(labels->feature_gate, sizeof(labels->feature_gate), "large-multiply-cpu-toom-combo-l48d4-scout");
+    snprintf(labels->gmp_clue, sizeof(labels->gmp_clue), "toom33-combo-depth4-upper");
+    snprintf(labels->baseline_status, sizeof(labels->baseline_status), "combo-l48d3-regression");
+    snprintf(labels->clean_status, sizeof(labels->clean_status), "combo-l48d4-clean");
+    snprintf(labels->threshold_safety, sizeof(labels->threshold_safety), "upper-window");
+    return;
+  }
   if (candidate_leaf_threshold == 64 &&
       baseline_leaf_threshold == 64 &&
       candidate_depth_limit == 3 &&
@@ -14331,6 +14350,19 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     64,
     3,
     2,
+    XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3,
+    XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3,
+    mul_full_workspace_upper_gate_digits,
+    sizeof(mul_full_workspace_upper_gate_digits) / sizeof(mul_full_workspace_upper_gate_digits[0]));
+  run_mul_full_workspace_depth_scout_case(
+    report,
+    1361U,
+    "full-workspace-combo-l48d4-upper-ge24103",
+    24103,
+    48,
+    48,
+    4,
+    3,
     XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3,
     XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3,
     mul_full_workspace_upper_gate_digits,
