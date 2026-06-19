@@ -641,6 +641,18 @@ XRAY_API int xray_bigint_mul_toom3_unroll4_recursive_view_probe(XrayScratchBigIn
 XRAY_API int xray_bigint_mul_toom3_unroll4_recursive_workspace_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold, size_t depth_limit);
 
 /**
+ * Multiply through the recursive Toom-3/unroll4 probe route with read-only
+ * operand third views, reusable per-depth Toom temporaries, and reusable
+ * Karatsuba temporaries for the handoff path.
+ *
+ * This diagnostic probe keeps production multiply unchanged and measures a
+ * broader recursive workspace strategy before any route-policy change.
+ * depth_limit bounds recursion for benchmark safety. Returns 1 on success and
+ * 0 on allocation failure or unsupported operand shape.
+ */
+XRAY_API int xray_bigint_mul_toom3_unroll4_recursive_full_workspace_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold, size_t depth_limit);
+
+/**
  * Multiply with the unroll4 basecase probe route.
  *
  * This is a benchmark/research probe. Returns 1 on success and 0 on allocation

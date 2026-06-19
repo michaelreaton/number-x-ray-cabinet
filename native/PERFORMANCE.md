@@ -3041,3 +3041,56 @@ the strict promotion bar because stable-pair counts remain weak and every row
 has a worst-pair ratio above `1.0`. The next multiply step should either
 increase same-run samples on the faster CPU for this row or reduce the remaining
 basecase/Karatsuba copy tax before any production route audit.
+
+## 2026-06-19: Recursive Toom Full Workspace Probe
+
+Run:
+
+- Release:
+  `native-test-runs/20260619-004040-c4b04caf`
+
+This run adds
+`xray_bigint_mul_toom3_unroll4_recursive_full_workspace_probe()`, a default-off
+diagnostic route for MSVC x64 builds. It keeps production multiply unchanged,
+reuses per-depth Toom temporaries like the prior workspace probe, and also
+reuses Karatsuba temporaries on the recursive handoff path. The same large
+multiply CPU campaign now emits `mul-large-cpu-toom-full-ws` rows, which compare
+the broader workspace strategy against current production multiply, Karatsuba
+workspace, copied recursive Toom, split-view recursive Toom, Toom workspace, and
+`mpz_mul` on identical operands.
+
+The run used `native/build-codex-large-mul-campaign` with Visual Studio 16 2019
+x64 Release flags `/O2 /Ob2 /DNDEBUG`, IPO `/GL=false`, MSVC
+`1929 full=192930159`, and CPU flags `AVX2 BMI1 BMI2 ADX`. The full native test
+binary printed `native xray tests passed`. TSV, JSON, frontier text, progress
+text, progress TSV, and the native GUI-visible benchmark-row event stream include
+the new row.
+
+Full workspace rows:
+
+- `mul-large-cpu-toom-full-ws 4096`: ratio `0.913`, worst `1.495`,
+  stable `1/5`, `observe-only`
+- `mul-large-cpu-toom-full-ws 5639`: ratio `0.911`, worst `1.500`,
+  stable `2/5`, `observe-only`
+- `mul-large-cpu-toom-full-ws 8192`: ratio `0.954`, worst `1.379`,
+  stable `3/5`, `observe-only`
+- `mul-large-cpu-toom-full-ws 11717`: ratio `0.975`, worst `1.240`,
+  stable `1/5`, `observe-only`
+- `mul-large-cpu-toom-full-ws 16384`: ratio `0.947`, worst `1.169`,
+  stable `2/5`, `observe-only`
+- `mul-large-cpu-toom-full-ws 24103`: ratio `0.945`, worst `1.459`,
+  stable `0/5`, `observe-only`
+- `mul-large-cpu-toom-full-ws 32768`: ratio `0.960`, worst `1.496`,
+  stable `1/5`, `observe-only`
+- `mul-large-cpu-toom-full-ws 52163`: ratio `0.937`, worst `1.369`,
+  stable `0/5`, `observe-only`
+- `mul-large-cpu-toom-full-ws 65536`: ratio `1.052`, worst `1.769`,
+  stable `0/5`, `observe-only`
+
+Decision: keep the full recursive workspace route diagnostic-only. It is exact
+and median-positive against the prior Toom workspace baseline at eight of nine
+campaign sizes, including every deterministic random spot, but it still misses
+the strict promotion bar because stable-pair counts are weak and every row has a
+worst-pair ratio above `1.0`. The next multiply step should use the faster CPU
+campaign to decide whether this broader workspace strategy deserves a forced
+route audit; it is not a production default.
