@@ -232,6 +232,31 @@ not a stable improvement over depth 2 and remains GMP/worst-pair unsafe. Do not
 continue by merely increasing Toom recursion depth; tune leaf/handoff shape or
 the lower-level Toom arithmetic next.
 
+## Leaf96 Full-Workspace Scout
+
+Follow-up run:
+
+- Validation: `native/build-codex-large-mul-campaign/Release/xray_native_tests.exe`
+  printed `native xray tests passed`
+- Artifact:
+  `native-test-runs/20260619-103207-c4b04caf/benchmark.tsv`
+
+This run adds `mul-large-toom-leaf-scout` plus per-size
+`mul-large-toom-leaf-point` rows. It compares leaf96 depth-2 full workspace
+against the leaf64 depth-2 full-workspace baseline, current production multiply,
+and `mpz_mul` on the active window, including deterministic random spots
+between the powers of two. It remains `noAutoRoute=1`,
+`replacementReady=false`.
+
+| Row | Sizes | Leaf64 Max | Current Max | GMP Max | Worst Pair | Safe Sizes | Hash | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `mul-large-toom-leaf-scout` | `11717..65536` | `1.137` | `0.827` | `1.515` | `1.578` | `0/6` | `108/108` | observe only |
+
+Leaf96 is exact and still faster than current production multiply across the
+active window, but it loses to leaf64 at every measured size and remains
+GMP/worst-pair unsafe. Do not promote leaf96; continue with lower-level Toom
+arithmetic or a different handoff shape.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor

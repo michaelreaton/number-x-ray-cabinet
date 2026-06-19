@@ -3223,3 +3223,48 @@ production multiply in the active window, but extra Toom depth is not a stable
 improvement over the depth-2 workspace baseline and remains worse than GMP.
 The next multiply PR should tune leaf/handoff shape or improve the lower-level
 Toom arithmetic rather than simply increasing recursion depth.
+
+## 2026-06-19: Full Workspace Leaf96 Scout
+
+Run:
+
+- Release:
+  `native-test-runs/20260619-103207-c4b04caf`
+
+This run adds `mul-large-toom-leaf-scout`, an observe-only active-window scout
+that compares leaf96 depth-2 full recursive Toom workspace against the leaf64
+depth-2 full-workspace baseline, current production multiply, and `mpz_mul`.
+The measured window is `11717`, `16384`, `24103`, `32768`, `52163`, and
+`65536`, preserving the deterministic in-between spots `11717`, `24103`, and
+`52163` between power-of-two anchors. Matching `mul-large-toom-leaf-point` rows
+keep every size visible in TSV, JSON, frontier/progress text, and the GUI
+benchmark table.
+
+Observed aggregate:
+
+- Exact parity/hash against leaf64, current, and GMP: `hashSafe=108/108`,
+  `hashGate=matched`, `parity=matched`.
+- Leaf96 still beats current production multiply on median:
+  `candCurrentMax=0.827`.
+- Leaf96 does not beat the leaf64 full-workspace baseline:
+  `candBaseMax=1.137`, `safeSizes=0/6`, `stableSampleCount=0/6`.
+- GMP and worst-pair gates still fail: `candGmpMax=1.515`,
+  `maxWorstPairRatio=1.578`.
+
+Per-size point rows:
+
+| Digits | Leaf96 / Leaf64 | Leaf96 / Current | Leaf96 / GMP | Worst Pair | Leaf Stable | Current Stable | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `11717` | `1.003` | `0.779` | `1.012` | `1.141` | `3/9` | `9/9` | `2/9` | leaf64-regression |
+| `16384` | `1.074` | `0.824` | `1.106` | `1.149` | `0/9` | `9/9` | `1/9` | leaf64-regression |
+| `24103` | `1.051` | `0.762` | `1.147` | `1.305` | `1/9` | `9/9` | `0/9` | leaf64-regression |
+| `32768` | `1.120` | `0.827` | `1.314` | `1.344` | `0/9` | `9/9` | `0/9` | leaf64-regression |
+| `52163` | `1.113` | `0.749` | `1.301` | `1.379` | `0/9` | `9/9` | `0/9` | leaf64-regression |
+| `65536` | `1.137` | `0.779` | `1.515` | `1.578` | `0/9` | `9/9` | `0/9` | leaf64-regression |
+
+Decision: keep leaf96 as a diagnostic rejection, not a promotion candidate. It
+is exact and current-route-faster across the active window, including the
+deterministic random spots, but leaf64 remains the stronger full-workspace
+handoff and GMP remains ahead. The next multiply PR should inspect lower-level
+Toom arithmetic or a different handoff shape rather than raising the recursive
+leaf threshold to 96.
