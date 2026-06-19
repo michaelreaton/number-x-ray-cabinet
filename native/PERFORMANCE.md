@@ -3753,3 +3753,47 @@ real but not sufficient for promotion because the row fails l64d2, GMP/MPIR,
 worst-pair, and stability gates. The next multiply slice should not be another
 simple leaf/depth tweak; it needs a different high-end structure or a narrowly
 proved handoff policy.
+
+## 2026-06-19: Combo L64D2 To L48D3 Handoff Audit
+
+Run:
+
+- Release:
+  `native-test-runs/20260619-190919-c4b04caf`
+
+This run adds `mul-large-toom-cmb-hand`, a benchmark-only full-window handoff
+audit. The candidate uses `full-ws-combo-l64d2` below `32768` decimal digits
+and switches to `full-ws-combo-l48d3` at `32768` and above. It keeps
+`4096`, `5639`, `8192`, `11717`, `16384`, `24103`, `32768`, `52163`, and
+`65536` in the same evidence window.
+
+Observed aggregate:
+
+- Exact parity/hash across all nine sizes:
+  `hashSafe=162/162`, `hashGate=matched`, `parity=matched`.
+- It beats current production multiply at every measured size:
+  `candCurrentMax=0.887`.
+- It still does not close the GMP/MPIR gap:
+  `candGmpMax=1.208`, `safeSizes=3/9`.
+- Worst-pair safety remains blocked:
+  `maxWorstPairRatio=1.357`.
+
+Per-size point rows:
+
+| Digits | Active Candidate | Candidate / Current | Candidate / GMP | Current / GMP | Worst Pair | Status |
+| ---: | --- | ---: | ---: | ---: | ---: | --- |
+| `4096` | `full-ws-combo-l64d2` | `0.887` | `0.813` | `0.947` | `0.935` | combo-handoff-clean |
+| `5639` | `full-ws-combo-l64d2` | `0.884` | `0.799` | `0.915` | `0.966` | combo-handoff-clean |
+| `8192` | `full-ws-combo-l64d2` | `0.810` | `0.900` | `1.104` | `1.357` | current-regression |
+| `11717` | `full-ws-combo-l64d2` | `0.674` | `0.952` | `1.326` | `0.986` | combo-handoff-clean |
+| `16384` | `full-ws-combo-l64d2` | `0.787` | `0.984` | `1.319` | `1.088` | backend-regression |
+| `24103` | `full-ws-combo-l64d2` | `0.645` | `0.981` | `1.530` | `1.066` | backend-regression |
+| `32768` | `full-ws-combo-l48d3` | `0.657` | `1.059` | `1.624` | `1.114` | backend-regression |
+| `52163` | `full-ws-combo-l48d3` | `0.578` | `1.112` | `1.871` | `1.174` | backend-regression |
+| `65536` | `full-ws-combo-l48d3` | `0.612` | `1.208` | `1.934` | `1.243` | backend-regression |
+
+Decision: keep the handoff observe-only. It is exact and clearly improves the
+current-production side of the full-window story, but it remains blocked by
+GMP/MPIR, worst-pair, and stability gates. The next CPU multiply work should
+attack the high-end arithmetic gap directly instead of only moving the l48d3
+handoff threshold.
