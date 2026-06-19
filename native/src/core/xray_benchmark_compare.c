@@ -1113,7 +1113,7 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
   ComparePair run_failed[8] = {0};
   ComparePair warmup_review[8] = {0};
   ComparePair setup_context[8] = {0};
-  ComparePair large_mul_campaign[80] = {0};
+  ComparePair large_mul_campaign[96] = {0};
   size_t completed_count = 0;
   size_t open_count = 0;
   size_t baseline_count = 0;
@@ -1157,7 +1157,9 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
         compare_streq(row->operation, "mul-large-toom-leaf-point") ||
         compare_streq(row->operation, "mul-large-toom-leaf-scout") ||
         compare_streq(row->operation, "mul-large-toom-leaf48-point") ||
-        compare_streq(row->operation, "mul-large-toom-leaf48-scout")) {
+        compare_streq(row->operation, "mul-large-toom-leaf48-scout") ||
+        compare_streq(row->operation, "mul-large-toom-div2-point") ||
+        compare_streq(row->operation, "mul-large-toom-div2-scout")) {
       large_mul_campaign_total++;
       insert_progress_row(
         large_mul_campaign,
