@@ -3490,3 +3490,49 @@ while `24103` is only a marginal median improvement and still misses stability,
 GMP, and worst-pair gates. The next multiply slice should keep the combined
 leaf64 scout as the stronger baseline and move toward backend/GMP gap work or a
 broader Toom structure rather than another handoff-only tweak.
+
+## 2026-06-19: Full Workspace Combo Depth3 Scout
+
+Run:
+
+- Release:
+  `native-test-runs/20260619-142015-c4b04caf`
+
+This run adds `mul-large-toom-cmb-depth3-scout`, an observe-only active-window
+scout that keeps the combined division-by-two plus division-by-three
+interpolation shortcut and raises the recursive Toom depth limit from 2 to 3
+at leaf64. The baseline is the same combined interpolation shortcut at depth2,
+so the row isolates whether broader recursive structure helps after the
+interpolation work. The measured window remains `11717`, `16384`, `24103`,
+`32768`, `52163`, and `65536`, preserving deterministic in-between spots
+between the power-of-two anchors.
+
+Observed aggregate:
+
+- Exact parity/hash against combo depth2, current, and GMP:
+  `hashSafe=108/108`, `hashGate=matched`, `parity=matched`.
+- Combo depth3 still beats current production multiply on median:
+  `candCurrentMax=0.729`.
+- Combo depth3 does not beat combo depth2 across the full active window:
+  `candBaseMax=1.014`, `safeSizes=0/6`.
+- GMP remains ahead on larger rows: `candGmpMax=1.220`.
+- Worst-pair ratio remains observe-only: `maxWorstPairRatio=1.277`.
+
+Per-size point rows:
+
+| Digits | Combo Depth3 / Combo Depth2 | Combo Depth3 / Current | Combo Depth3 / GMP | Worst Pair | ComboDepth2 Stable | Current Stable | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `11717` | `1.014` | `0.729` | `0.924` | `1.098` | `0/9` | `9/9` | `8/9` | combo-depth2-regression |
+| `16384` | `1.002` | `0.717` | `0.950` | `1.031` | `2/9` | `9/9` | `9/9` | combo-depth2-regression |
+| `24103` | `1.007` | `0.659` | `1.015` | `1.071` | `0/9` | `9/9` | `3/9` | combo-depth2-regression |
+| `32768` | `1.005` | `0.699` | `1.124` | `1.141` | `0/9` | `9/9` | `0/9` | combo-depth2-regression |
+| `52163` | `0.973` | `0.625` | `1.126` | `1.169` | `6/9` | `9/9` | `0/9` | combo-depth2-regression |
+| `65536` | `0.945` | `0.638` | `1.220` | `1.277` | `9/9` | `9/9` | `0/9` | backend-regression |
+
+Decision: keep combo depth3 observe-only and do not route it. Deeper recursion
+helps the largest two rows on median, including the `52163` deterministic
+random spot, but the smaller random spots and power-of-two anchors regress
+against combo depth2. Since no size clears the safe-size gate and GMP remains
+ahead at the upper half of the window, the next multiply slice should keep
+combo depth2/leaf64 as the active baseline and look for a structural change
+that moves the backend-facing gap without sacrificing the in-between sizes.

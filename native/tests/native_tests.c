@@ -2557,6 +2557,14 @@ static void test_benchmarks(void) {
   int saw_mul_large_cpu_toom_cmb_leaf48_point52163_probe = 0;
   int saw_mul_large_cpu_toom_cmb_leaf48_point65536_probe = 0;
   int saw_mul_large_cpu_toom_cmb_leaf48_scout_probe = 0;
+  int saw_mul_large_cpu_toom_cmb_depth3_point_probe = 0;
+  int saw_mul_large_cpu_toom_cmb_depth3_point11717_probe = 0;
+  int saw_mul_large_cpu_toom_cmb_depth3_point16384_probe = 0;
+  int saw_mul_large_cpu_toom_cmb_depth3_point24103_probe = 0;
+  int saw_mul_large_cpu_toom_cmb_depth3_point32768_probe = 0;
+  int saw_mul_large_cpu_toom_cmb_depth3_point52163_probe = 0;
+  int saw_mul_large_cpu_toom_cmb_depth3_point65536_probe = 0;
+  int saw_mul_large_cpu_toom_cmb_depth3_scout_probe = 0;
 #endif
   int saw_mul_unroll4_vs_scratch_probe = 0;
   int saw_mul_unroll4_vs_gmp_probe = 0;
@@ -2678,7 +2686,8 @@ static void test_benchmarks(void) {
           strcmp(report->results[index].operation, "mul-large-toom-div2-point") == 0 ||
           strcmp(report->results[index].operation, "mul-large-toom-div3-point") == 0 ||
           strcmp(report->results[index].operation, "mul-large-toom-div2-div3-point") == 0 ||
-          strcmp(report->results[index].operation, "mul-large-toom-cmb-leaf48-point") == 0) {
+          strcmp(report->results[index].operation, "mul-large-toom-cmb-leaf48-point") == 0 ||
+          strcmp(report->results[index].operation, "mul-large-toom-cmb-depth3-point") == 0) {
         CHECK(report->results[index].sample_count == 9);
       } else {
         CHECK(report->results[index].sample_count == 5);
@@ -3996,6 +4005,60 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "sameRunAudit=yes") != NULL);
         CHECK(strstr(report->results[index].detail, "featureGate=large-multiply-cpu-toom-combo-leaf48-scout") != NULL);
         CHECK(strstr(report->results[index].detail, "gmpClue=toom33-combo-leaf-threshold") != NULL);
+        CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+        CHECK(strstr(report->results[index].detail, "replacementReady=false") != NULL);
+        if (report->results[index].digits == 16384 ||
+            report->results[index].digits == 32768 ||
+            report->results[index].digits == 65536) {
+          CHECK(strstr(report->results[index].detail, "sizeRole=power2-anchor") != NULL);
+        } else {
+          CHECK(strstr(report->results[index].detail, "sizeRole=deterministic-random-spot") != NULL);
+        }
+      }
+      if (strcmp(report->results[index].operation, "mul-large-toom-cmb-depth3-point") == 0) {
+        saw_mul_large_cpu_toom_cmb_depth3_point_probe = 1;
+        if (report->results[index].digits == 11717) saw_mul_large_cpu_toom_cmb_depth3_point11717_probe = 1;
+        else if (report->results[index].digits == 16384) saw_mul_large_cpu_toom_cmb_depth3_point16384_probe = 1;
+        else if (report->results[index].digits == 24103) saw_mul_large_cpu_toom_cmb_depth3_point24103_probe = 1;
+        else if (report->results[index].digits == 32768) saw_mul_large_cpu_toom_cmb_depth3_point32768_probe = 1;
+        else if (report->results[index].digits == 52163) saw_mul_large_cpu_toom_cmb_depth3_point52163_probe = 1;
+        else if (report->results[index].digits == 65536) saw_mul_large_cpu_toom_cmb_depth3_point65536_probe = 1;
+        else CHECK(0);
+        CHECK(report->results[index].parity_verified);
+        CHECK(!report->results[index].replacement_ready);
+        CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+        CHECK(report->results[index].sample_count == 9);
+        CHECK(strstr(report->results[index].detail, "op=mul-cmb-depth3-point") != NULL);
+        CHECK(strstr(report->results[index].detail, "parent=cmb-depth3-scout") != NULL);
+        CHECK(strstr(report->results[index].detail, "policy=full-workspace-combo-depth3-ge11717") != NULL);
+        CHECK(strstr(report->results[index].detail, "leafThreshold=64") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseDepth=2") != NULL);
+        CHECK(strstr(report->results[index].detail, "candDepth=3") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+        CHECK(strstr(report->results[index].detail, "samples=9") != NULL);
+        CHECK(strstr(report->results[index].detail, "requiredStablePairs=8/9") != NULL);
+        CHECK(strstr(report->results[index].detail, "stableBase=") != NULL);
+        CHECK(strstr(report->results[index].detail, "stableCurrent=") != NULL);
+        CHECK(strstr(report->results[index].detail, "stableGmp=") != NULL);
+        CHECK(strstr(report->results[index].detail, "hashSafe=18/18") != NULL);
+        CHECK(strstr(report->results[index].detail, "hashGate=matched") != NULL);
+        CHECK(strstr(report->results[index].detail, "parity=matched") != NULL);
+        CHECK(strstr(report->results[index].detail, "thresholdSafety=active-window") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=full-ws-combo-depth3") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=full-ws-combo-depth2") != NULL);
+        CHECK(strstr(report->results[index].detail, "oracle=mpz_mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "candBaseRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "candCurrentRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "candGmpRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseGmpRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "currentGmpRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "worstPairRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
+        CHECK(strstr(report->results[index].detail, "timingMode=rotating") != NULL);
+        CHECK(strstr(report->results[index].detail, "sameInput=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "sameRunAudit=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=large-multiply-cpu-toom-combo-depth3-scout") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpClue=toom33-combo-depth-limit") != NULL);
         CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
         CHECK(strstr(report->results[index].detail, "replacementReady=false") != NULL);
         if (report->results[index].digits == 16384 ||
@@ -5416,6 +5479,46 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "gmpClue=toom33-combo-leaf-threshold") != NULL);
         CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
         CHECK(strstr(report->results[index].detail, "replacementReady=false") != NULL);
+      } else if (strcmp(report->results[index].operation, "mul-large-toom-cmb-depth3-scout") == 0) {
+        saw_mul_large_cpu_toom_cmb_depth3_scout_probe = 1;
+        CHECK(report->results[index].sample_count == 6);
+        CHECK(report->results[index].digits == 65536);
+        CHECK(!report->results[index].replacement_ready);
+        CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+        CHECK(strstr(report->results[index].detail, "op=mul-large-toom-cmb-depth3-scout") != NULL);
+        CHECK(strstr(report->results[index].detail, "policy=full-workspace-combo-depth3-ge11717") != NULL);
+        CHECK(strstr(report->results[index].detail, "sizes=11717,16384,24103,32768,52163,65536") != NULL);
+        CHECK(strstr(report->results[index].detail, "sizeCount=6") != NULL);
+        CHECK(strstr(report->results[index].detail, "minDigits=11717") != NULL);
+        CHECK(strstr(report->results[index].detail, "leafThreshold=64") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseDepth=2") != NULL);
+        CHECK(strstr(report->results[index].detail, "candDepth=3") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+        CHECK(strstr(report->results[index].detail, "samples=9") != NULL);
+        CHECK(strstr(report->results[index].detail, "requiredStablePairs=8/9") != NULL);
+        CHECK(strstr(report->results[index].detail, "safeSizes=") != NULL);
+        CHECK(strstr(report->results[index].detail, "hashSafe=108/108") != NULL);
+        CHECK(strstr(report->results[index].detail, "hashGate=matched") != NULL);
+        CHECK(strstr(report->results[index].detail, "parity=matched") != NULL);
+        CHECK(strstr(report->results[index].detail, "forcedCandidate=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "thresholdSafety=active-window") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=full-ws-combo-depth3") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=full-ws-combo-depth2") != NULL);
+        CHECK(strstr(report->results[index].detail, "oracle=mpz_mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "candBaseMax=") != NULL);
+        CHECK(strstr(report->results[index].detail, "candCurrentMax=") != NULL);
+        CHECK(strstr(report->results[index].detail, "candGmpMax=") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseGmpMax=") != NULL);
+        CHECK(strstr(report->results[index].detail, "currentGmpMax=") != NULL);
+        CHECK(strstr(report->results[index].detail, "maxWorstPairRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
+        CHECK(strstr(report->results[index].detail, "timingMode=rotating-batch") != NULL);
+        CHECK(strstr(report->results[index].detail, "sameInput=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "sameRunAudit=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=large-multiply-cpu-toom-combo-depth3-scout") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpClue=toom33-combo-depth-limit") != NULL);
+        CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+        CHECK(strstr(report->results[index].detail, "replacementReady=false") != NULL);
 #endif
       } else if (strcmp(report->results[index].operation, "format-dc-route-safety") == 0) {
         saw_format_dc_route_safety_gate = 1;
@@ -5802,6 +5905,14 @@ static void test_benchmarks(void) {
   CHECK(saw_mul_large_cpu_toom_cmb_leaf48_point52163_probe);
   CHECK(saw_mul_large_cpu_toom_cmb_leaf48_point65536_probe);
   CHECK(saw_mul_large_cpu_toom_cmb_leaf48_scout_probe);
+  CHECK(saw_mul_large_cpu_toom_cmb_depth3_point_probe);
+  CHECK(saw_mul_large_cpu_toom_cmb_depth3_point11717_probe);
+  CHECK(saw_mul_large_cpu_toom_cmb_depth3_point16384_probe);
+  CHECK(saw_mul_large_cpu_toom_cmb_depth3_point24103_probe);
+  CHECK(saw_mul_large_cpu_toom_cmb_depth3_point32768_probe);
+  CHECK(saw_mul_large_cpu_toom_cmb_depth3_point52163_probe);
+  CHECK(saw_mul_large_cpu_toom_cmb_depth3_point65536_probe);
+  CHECK(saw_mul_large_cpu_toom_cmb_depth3_scout_probe);
 #endif
   CHECK(saw_square_policy1000_probe);
   CHECK(saw_square_policy4096_probe);
@@ -6229,6 +6340,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "mul-large-toom-cmb-leaf48-scout") != NULL);
   CHECK(strstr(json, "large-multiply-cpu-toom-combo-leaf48-scout") != NULL);
   CHECK(strstr(json, "full-workspace-combo-leaf48-ge11717") != NULL);
+  CHECK(strstr(json, "mul-large-toom-cmb-depth3-point") != NULL);
+  CHECK(strstr(json, "mul-large-toom-cmb-depth3-scout") != NULL);
+  CHECK(strstr(json, "large-multiply-cpu-toom-combo-depth3-scout") != NULL);
+  CHECK(strstr(json, "full-workspace-combo-depth3-ge11717") != NULL);
   CHECK(strstr(json, "thresholdSafety=active-window") != NULL);
   CHECK(strstr(json, "mul-toom3-unroll4-vs-scratch") != NULL);
   CHECK(strstr(json, "mul-toom3-unroll4-vs-gmp") != NULL);
@@ -6427,6 +6542,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "mul-large-toom-cmb-leaf48-scout") != NULL);
   CHECK(strstr(tsv, "large-multiply-cpu-toom-combo-leaf48-scout") != NULL);
   CHECK(strstr(tsv, "full-workspace-combo-leaf48-ge11717") != NULL);
+  CHECK(strstr(tsv, "mul-large-toom-cmb-depth3-point") != NULL);
+  CHECK(strstr(tsv, "mul-large-toom-cmb-depth3-scout") != NULL);
+  CHECK(strstr(tsv, "large-multiply-cpu-toom-combo-depth3-scout") != NULL);
+  CHECK(strstr(tsv, "full-workspace-combo-depth3-ge11717") != NULL);
   CHECK(strstr(tsv, "thresholdSafety=active-window") != NULL);
   CHECK(strstr(tsv, "mul-toom3-unroll4-vs-scratch") != NULL);
   CHECK(strstr(tsv, "mul-toom3-unroll4-vs-gmp") != NULL);
@@ -6548,6 +6667,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_json, "mul-large-toom-cmb-leaf48-scout") != NULL);
   CHECK(strstr(benchmark_json, "large-multiply-cpu-toom-combo-leaf48-scout") != NULL);
   CHECK(strstr(benchmark_json, "full-workspace-combo-leaf48-ge11717") != NULL);
+  CHECK(strstr(benchmark_json, "mul-large-toom-cmb-depth3-point") != NULL);
+  CHECK(strstr(benchmark_json, "mul-large-toom-cmb-depth3-scout") != NULL);
+  CHECK(strstr(benchmark_json, "large-multiply-cpu-toom-combo-depth3-scout") != NULL);
+  CHECK(strstr(benchmark_json, "full-workspace-combo-depth3-ge11717") != NULL);
 #endif
   CHECK(strstr(benchmark_json, "\"msvcUint128Helpers\"") != NULL);
   CHECK(strstr(benchmark_json, "\"scratchRows\"") != NULL);
@@ -6798,6 +6921,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "mul-large-toom-cmb-leaf48-point") != NULL);
   CHECK(strstr(benchmark_tsv, "large-multiply-cpu-toom-combo-leaf48-scout") != NULL);
   CHECK(strstr(benchmark_tsv, "full-workspace-combo-leaf48-ge11717") != NULL);
+  CHECK(strstr(benchmark_tsv, "mul-large-toom-cmb-depth3-scout") != NULL);
+  CHECK(strstr(benchmark_tsv, "mul-large-toom-cmb-depth3-point") != NULL);
+  CHECK(strstr(benchmark_tsv, "large-multiply-cpu-toom-combo-depth3-scout") != NULL);
+  CHECK(strstr(benchmark_tsv, "full-workspace-combo-depth3-ge11717") != NULL);
   CHECK(strstr(benchmark_tsv, "thresholdSafety=active-window") != NULL);
   CHECK(strstr(benchmark_tsv, "hashSafe=108/108") != NULL);
   CHECK(strstr(benchmark_tsv, "hashSafe=18/18") != NULL);
@@ -6871,6 +6998,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "mul-large-toom-div2-div3-scout") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-large-toom-cmb-leaf48-point") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-large-toom-cmb-leaf48-scout") != NULL);
+  CHECK(strstr(benchmark_frontier, "mul-large-toom-cmb-depth3-point") != NULL);
+  CHECK(strstr(benchmark_frontier, "mul-large-toom-cmb-depth3-scout") != NULL);
 #endif
   CHECK(strstr(benchmark_frontier, "mod-u32-precompute") != NULL);
   CHECK(strstr(benchmark_frontier, "gcd-u32-precompute") != NULL);
@@ -7027,6 +7156,9 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_progress, "mul-large-toom-cmb-leaf48-point") != NULL);
   CHECK(strstr(benchmark_progress, "mul-large-toom-cmb-leaf48-scout") != NULL);
   CHECK(strstr(benchmark_progress, "full-workspace-combo-leaf48-ge11717") != NULL);
+  CHECK(strstr(benchmark_progress, "mul-large-toom-cmb-depth3-point") != NULL);
+  CHECK(strstr(benchmark_progress, "mul-large-toom-cmb-depth3-scout") != NULL);
+  CHECK(strstr(benchmark_progress, "full-workspace-combo-depth3-ge11717") != NULL);
 #endif
   CHECK(strstr(benchmark_progress, "Setup/warmup context rows observed") != NULL);
   CHECK(strstr(benchmark_progress, "Warmup-review rows observed") != NULL);
@@ -7092,6 +7224,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_progress_tsv, "mul-large-toom-cmb-leaf48-scout") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "large-multiply-cpu-toom-combo-leaf48-scout") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "full-workspace-combo-leaf48-ge11717") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "mul-large-toom-cmb-depth3-point") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "mul-large-toom-cmb-depth3-scout") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "large-multiply-cpu-toom-combo-depth3-scout") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "full-workspace-combo-depth3-ge11717") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "active-window") != NULL);
 #endif
   CHECK(strstr(benchmark_progress_tsv, "format-route-tournament-detail") != NULL);
