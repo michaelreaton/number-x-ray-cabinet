@@ -386,6 +386,33 @@ to `1.008`. Do not route combo leaf48; keep combo leaf64 as the stronger
 active-window scout and move next toward backend/GMP gap work or broader Toom
 structure.
 
+## Full-Workspace Combo Depth3 Scout
+
+Follow-up run:
+
+- Validation: `native/build-codex-large-mul-campaign/Release/xray_native_tests.exe`
+  printed `native xray tests passed`
+- Artifact:
+  `native-test-runs/20260619-142015-c4b04caf/benchmark.tsv`
+
+This run adds `mul-large-toom-cmb-depth3-scout` plus per-size
+`mul-large-toom-cmb-depth3-point` rows. The candidate keeps the combined
+division-by-two plus division-by-three interpolation shortcut and raises the
+recursive Toom depth limit from 2 to 3 at leaf64. The active window remains
+`11717`, `16384`, `24103`, `32768`, `52163`, and `65536`, preserving the
+deterministic random spots between the power-of-two anchors.
+
+| Row | Sizes | ComboDepth2 Max | Current Max | GMP Max | Worst Pair | Safe Sizes | Hash | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `mul-large-toom-cmb-depth3-scout` | `11717..65536` | `1.014` | `0.729` | `1.220` | `1.277` | `0/6` | `108/108` | observe only |
+
+Deeper recursion is exact and still beats current production multiply, but it
+does not clear the combo depth2 baseline gate. The random spots are again
+useful: `11717` and `24103` regress against combo depth2, while the larger
+`52163` random spot improves on median but still misses GMP and worst-pair
+safety. Keep depth3 observe-only; the combo depth2/leaf64 path remains the
+stronger active-window baseline.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor
