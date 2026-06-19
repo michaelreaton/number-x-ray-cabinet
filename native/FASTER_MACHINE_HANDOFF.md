@@ -257,6 +257,29 @@ active window, but it loses to leaf64 at every measured size and remains
 GMP/worst-pair unsafe. Do not promote leaf96; continue with lower-level Toom
 arithmetic or a different handoff shape.
 
+## Leaf48 Full-Workspace Scout
+
+Follow-up run:
+
+- Validation: `native/build-codex-large-mul-campaign/Release/xray_native_tests.exe`
+  printed `native xray tests passed`
+- Artifact:
+  `native-test-runs/20260619-105456-c4b04caf/benchmark.tsv`
+
+This run adds `mul-large-toom-leaf48-scout` plus per-size
+`mul-large-toom-leaf48-point` rows over the same active window, including
+deterministic random spots between powers of two.
+
+| Row | Sizes | Leaf64 Max | Current Max | GMP Max | Worst Pair | Safe Sizes | Hash | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `mul-large-toom-leaf48-scout` | `11717..65536` | `1.030` | `0.804` | `1.340` | `1.457` | `0/6` | `108/108` | observe only |
+
+Leaf48 is closer than leaf96 and wins median against leaf64 at `16384`,
+`32768`, and `65536`, but it loses at `11717`, `24103`, and `52163`; those
+deterministic random spots keep the gate honest. Do not promote leaf48; move
+next into Toom interpolation/evaluation cost or another structural arithmetic
+improvement below the handoff threshold.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor

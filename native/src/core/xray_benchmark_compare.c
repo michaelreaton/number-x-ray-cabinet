@@ -1155,7 +1155,9 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
         compare_streq(row->operation, "mul-large-toom-depth-point") ||
         compare_streq(row->operation, "mul-large-toom-depth-scout") ||
         compare_streq(row->operation, "mul-large-toom-leaf-point") ||
-        compare_streq(row->operation, "mul-large-toom-leaf-scout")) {
+        compare_streq(row->operation, "mul-large-toom-leaf-scout") ||
+        compare_streq(row->operation, "mul-large-toom-leaf48-point") ||
+        compare_streq(row->operation, "mul-large-toom-leaf48-scout")) {
       large_mul_campaign_total++;
       insert_progress_row(
         large_mul_campaign,

@@ -8489,6 +8489,43 @@ static void run_mul_full_workspace_depth_scout_case(
     XRAY_BENCH_DEEP_SAMPLES);
 }
 
+typedef struct XrayMulFullWorkspaceLeafScoutLabels {
+  char aggregate_operation[32];
+  char point_operation[32];
+  char point_detail_op[32];
+  char parent[32];
+  char candidate[32];
+  char baseline[32];
+  char feature_gate[64];
+  char baseline_status[24];
+  char clean_status[24];
+} XrayMulFullWorkspaceLeafScoutLabels;
+
+static void mul_full_workspace_leaf_scout_labels(
+  XrayMulFullWorkspaceLeafScoutLabels *labels,
+  size_t candidate_leaf_threshold,
+  size_t baseline_leaf_threshold) {
+  memset(labels, 0, sizeof(*labels));
+  if (candidate_leaf_threshold == 96 && baseline_leaf_threshold == 64) {
+    snprintf(labels->aggregate_operation, sizeof(labels->aggregate_operation), "mul-large-toom-leaf-scout");
+    snprintf(labels->point_operation, sizeof(labels->point_operation), "mul-large-toom-leaf-point");
+    snprintf(labels->point_detail_op, sizeof(labels->point_detail_op), "mul-leaf-point");
+    snprintf(labels->parent, sizeof(labels->parent), "leaf-scout");
+    snprintf(labels->feature_gate, sizeof(labels->feature_gate), "large-multiply-cpu-toom-leaf-scout");
+    snprintf(labels->clean_status, sizeof(labels->clean_status), "leaf-scout-clean");
+  } else {
+    snprintf(labels->aggregate_operation, sizeof(labels->aggregate_operation), "mul-large-toom-leaf%zu-scout", candidate_leaf_threshold);
+    snprintf(labels->point_operation, sizeof(labels->point_operation), "mul-large-toom-leaf%zu-point", candidate_leaf_threshold);
+    snprintf(labels->point_detail_op, sizeof(labels->point_detail_op), "mul-leaf%zu-point", candidate_leaf_threshold);
+    snprintf(labels->parent, sizeof(labels->parent), "leaf%zu-scout", candidate_leaf_threshold);
+    snprintf(labels->feature_gate, sizeof(labels->feature_gate), "large-multiply-cpu-toom-leaf%zu-scout", candidate_leaf_threshold);
+    snprintf(labels->clean_status, sizeof(labels->clean_status), "leaf%zu-scout-clean", candidate_leaf_threshold);
+  }
+  snprintf(labels->candidate, sizeof(labels->candidate), "full-ws-leaf%zu", candidate_leaf_threshold);
+  snprintf(labels->baseline, sizeof(labels->baseline), "full-ws-leaf%zu", baseline_leaf_threshold);
+  snprintf(labels->baseline_status, sizeof(labels->baseline_status), "leaf%zu-regression", baseline_leaf_threshold);
+}
+
 static void append_mul_full_workspace_leaf_scout_result(
   XrayBenchmarkReport *report,
   const char *policy,
@@ -8501,6 +8538,8 @@ static void append_mul_full_workspace_leaf_scout_result(
   size_t point_count,
   size_t sample_count) {
   if (!report || !policy || !points || point_count == 0) return;
+  XrayMulFullWorkspaceLeafScoutLabels labels;
+  mul_full_workspace_leaf_scout_labels(&labels, candidate_leaf_threshold, baseline_leaf_threshold);
   size_t required_stable = policy_required_stable_samples(sample_count);
   size_t safe_size_count = 0;
   size_t hash_match_count = 0;
@@ -8573,7 +8612,7 @@ static void append_mul_full_workspace_leaf_scout_result(
   memset(&result, 0, sizeof(result));
   snprintf(result.name, sizeof(result.name), "policy scout mul full workspace leaf %zu", candidate_leaf_threshold);
   snprintf(result.category, sizeof(result.category), "policy-gate");
-  snprintf(result.operation, sizeof(result.operation), "mul-large-toom-leaf-scout");
+  snprintf(result.operation, sizeof(result.operation), "%s", labels.aggregate_operation);
   result.digits = points[point_count - 1U].digits;
   result.scratch_us = candidate_us ? candidate_us : 1;
   result.gmp_us = baseline_us ? baseline_us : 1;
@@ -8589,15 +8628,16 @@ static void append_mul_full_workspace_leaf_scout_result(
   snprintf(result.status, sizeof(result.status), "%s",
     !parity ? "mismatch" :
     (!hash_gate ? "hash-mismatch" :
-    (!baseline_ratio_safe ? "leaf64-regression" :
+    (!baseline_ratio_safe ? labels.baseline_status :
     (!current_ratio_safe ? "current-regression" :
     (!backend_ratio_safe ? "backend-regression" :
     (!worst_pair_safe ? "worst-pair-regression" :
-    (!stable_safe ? "needs-stability" : "leaf-scout-clean")))))));
+    (!stable_safe ? "needs-stability" : labels.clean_status)))))));
   result.passed = parity && hash_gate;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=mul-large-toom-leaf-scout policy=%s sizes=%s sizeCount=%zu minDigits=%zu baseLeaf=%zu candLeaf=%zu depthLimit=%zu operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s forcedCandidate=yes thresholdSafety=active-window candidate=full-ws-leaf96 baseline=full-ws-leaf64 oracle=mpz_mul candBaseMax=%.3f candCurrentMax=%.3f candGmpMax=%.3f baseGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes featureGate=large-multiply-cpu-toom-leaf-scout gmpClue=toom33-leaf-threshold noAutoRoute=1 replacementReady=false adoption=%s",
+    "op=%s policy=%s sizes=%s sizeCount=%zu minDigits=%zu baseLeaf=%zu candLeaf=%zu depthLimit=%zu operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s forcedCandidate=yes thresholdSafety=active-window candidate=%s baseline=%s oracle=mpz_mul candBaseMax=%.3f candCurrentMax=%.3f candGmpMax=%.3f baseGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes featureGate=%s gmpClue=toom33-leaf-threshold noAutoRoute=1 replacementReady=false adoption=%s",
+    labels.aggregate_operation,
     policy,
     sizes ? sizes : "unknown",
     point_count,
@@ -8615,12 +8655,15 @@ static void append_mul_full_workspace_leaf_scout_result(
     expected_hash_count,
     hash_gate ? "matched" : "blocked",
     parity ? "matched" : "blocked",
+    labels.candidate,
+    labels.baseline,
     max_candidate_baseline_ratio,
     max_candidate_current_ratio,
     max_candidate_gmp_ratio,
     max_baseline_gmp_ratio,
     max_current_gmp_ratio,
     max_worst_pair_ratio,
+    labels.feature_gate,
     result.adoption);
   append_result(report, &result);
 }
@@ -8634,6 +8677,8 @@ static void append_mul_full_workspace_leaf_scout_point_result(
   const XrayMulFullWorkspaceDepthScoutPoint *point,
   size_t sample_count) {
   if (!report || !policy || !point) return;
+  XrayMulFullWorkspaceLeafScoutLabels labels;
+  mul_full_workspace_leaf_scout_labels(&labels, candidate_leaf_threshold, baseline_leaf_threshold);
   size_t required_stable = policy_required_stable_samples(sample_count);
   size_t expected_hash_count = sample_count * XRAY_MUL_OPERAND_FAMILIES;
   int hash_gate = point->hash_match_count == expected_hash_count;
@@ -8657,7 +8702,7 @@ static void append_mul_full_workspace_leaf_scout_point_result(
   memset(&result, 0, sizeof(result));
   snprintf(result.name, sizeof(result.name), "kernel large mul leaf scout point %zu digits", point->digits);
   snprintf(result.category, sizeof(result.category), "kernel-probe");
-  snprintf(result.operation, sizeof(result.operation), "mul-large-toom-leaf-point");
+  snprintf(result.operation, sizeof(result.operation), "%s", labels.point_operation);
   result.digits = point->digits;
   result.scratch_us = point->candidate_us ? point->candidate_us : 1;
   result.gmp_us = point->baseline_us ? point->baseline_us : 1;
@@ -8675,13 +8720,15 @@ static void append_mul_full_workspace_leaf_scout_point_result(
   snprintf(result.status, sizeof(result.status), "%s",
     !point->parity ? "mismatch" :
     (!hash_gate ? "hash-mismatch" :
-    (!baseline_safe ? "leaf64-regression" :
+    (!baseline_safe ? labels.baseline_status :
     (!current_safe ? "current-regression" :
-    (!backend_safe ? "backend-regression" : "leaf-point-clean")))));
+    (!backend_safe ? "backend-regression" : labels.clean_status)))));
   result.passed = point->parity && hash_gate;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=mul-leaf-point parent=leaf-scout policy=%s sizeRole=%s baseLeaf=%zu candLeaf=%zu depthLimit=%zu operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu stablePairs=%zu/%zu stableBase=%zu/%zu stableCurrent=%zu/%zu stableGmp=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s thresholdSafety=active-window candidate=full-ws-leaf96 baseline=full-ws-leaf64 oracle=mpz_mul candBaseRatio=%.3f candCurrentRatio=%.3f candGmpRatio=%.3f baseGmpRatio=%.3f currentGmpRatio=%.3f worstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating sameInput=yes sameRunAudit=yes featureGate=large-multiply-cpu-toom-leaf-scout gmpClue=toom33-leaf-threshold noAutoRoute=1 replacementReady=false adoption=%s",
+    "op=%s parent=%s policy=%s sizeRole=%s baseLeaf=%zu candLeaf=%zu depthLimit=%zu operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu stablePairs=%zu/%zu stableBase=%zu/%zu stableCurrent=%zu/%zu stableGmp=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s thresholdSafety=active-window candidate=%s baseline=%s oracle=mpz_mul candBaseRatio=%.3f candCurrentRatio=%.3f candGmpRatio=%.3f baseGmpRatio=%.3f currentGmpRatio=%.3f worstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating sameInput=yes sameRunAudit=yes featureGate=%s gmpClue=toom33-leaf-threshold noAutoRoute=1 replacementReady=false adoption=%s",
+    labels.point_detail_op,
+    labels.parent,
     policy,
     large_mul_campaign_size_role(point->digits),
     baseline_leaf_threshold,
@@ -8703,12 +8750,15 @@ static void append_mul_full_workspace_leaf_scout_point_result(
     expected_hash_count,
     hash_gate ? "matched" : "blocked",
     point->parity ? "matched" : "blocked",
+    labels.candidate,
+    labels.baseline,
     point->candidate_baseline_ratio,
     point->candidate_current_ratio,
     point->candidate_gmp_ratio,
     point->baseline_gmp_ratio,
     point->current_gmp_ratio,
     worst_pair_ratio,
+    labels.feature_gate,
     result.adoption);
   append_result(report, &result);
 }
@@ -13054,6 +13104,16 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     "full-workspace-leaf96-ge11717",
     11717,
     96,
+    64,
+    2,
+    mul_full_workspace_deep_audit_digits,
+    sizeof(mul_full_workspace_deep_audit_digits) / sizeof(mul_full_workspace_deep_audit_digits[0]));
+  run_mul_full_workspace_leaf_scout_case(
+    report,
+    941U,
+    "full-workspace-leaf48-ge11717",
+    11717,
+    48,
     64,
     2,
     mul_full_workspace_deep_audit_digits,

@@ -3268,3 +3268,45 @@ deterministic random spots, but leaf64 remains the stronger full-workspace
 handoff and GMP remains ahead. The next multiply PR should inspect lower-level
 Toom arithmetic or a different handoff shape rather than raising the recursive
 leaf threshold to 96.
+
+## 2026-06-19: Full Workspace Leaf48 Scout
+
+Run:
+
+- Release:
+  `native-test-runs/20260619-105456-c4b04caf`
+
+This run adds `mul-large-toom-leaf48-scout`, an observe-only active-window scout
+that compares leaf48 depth-2 full recursive Toom workspace against the leaf64
+depth-2 full-workspace baseline, current production multiply, and `mpz_mul`.
+The measured window again includes the deterministic in-between spots `11717`,
+`24103`, and `52163` between power-of-two anchors.
+
+Observed aggregate:
+
+- Exact parity/hash against leaf64, current, and GMP: `hashSafe=108/108`,
+  `hashGate=matched`, `parity=matched`.
+- Leaf48 beats current production multiply on median:
+  `candCurrentMax=0.804`.
+- Leaf48 does not beat leaf64 across the full active window:
+  `candBaseMax=1.030`, `safeSizes=0/6`, `stableSampleCount=0/6`.
+- GMP and worst-pair gates still fail: `candGmpMax=1.340`,
+  `maxWorstPairRatio=1.457`.
+
+Per-size point rows:
+
+| Digits | Leaf48 / Leaf64 | Leaf48 / Current | Leaf48 / GMP | Worst Pair | Leaf Stable | Current Stable | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `11717` | `1.030` | `0.804` | `1.039` | `1.065` | `1/9` | `9/9` | `0/9` | leaf64-regression |
+| `16384` | `0.964` | `0.761` | `0.995` | `1.054` | `7/9` | `9/9` | `5/9` | leaf64-regression |
+| `24103` | `1.025` | `0.687` | `1.079` | `1.178` | `0/9` | `9/9` | `2/9` | leaf64-regression |
+| `32768` | `0.985` | `0.667` | `1.105` | `1.186` | `4/9` | `9/9` | `0/9` | leaf64-regression |
+| `52163` | `1.004` | `0.645` | `1.107` | `1.266` | `3/9` | `9/9` | `0/9` | leaf64-regression |
+| `65536` | `0.977` | `0.670` | `1.340` | `1.457` | `6/9` | `9/9` | `0/9` | leaf64-regression |
+
+Decision: keep leaf48 observe-only. It is much closer than leaf96 and has
+anchor-size pockets at `16384`, `32768`, and `65536`, but the deterministic
+random spots fail the leaf64 baseline gate, the stable-pair gate never reaches
+`8/9`, and GMP remains ahead. The next multiply slice should move below the
+handoff threshold knobs into Toom interpolation/evaluation cost or another
+structural arithmetic improvement.
