@@ -7845,6 +7845,85 @@ static void append_mul_full_workspace_deep_audit_result(
   append_result(report, &result);
 }
 
+static void append_mul_full_workspace_deep_audit_point_result(
+  XrayBenchmarkReport *report,
+  const char *policy,
+  const char *candidate,
+  size_t leaf_threshold,
+  size_t depth_limit,
+  const XrayMulThresholdRouteAuditPoint *point,
+  size_t sample_count) {
+  if (!report || !policy || !candidate || !point) return;
+  size_t required_stable = policy_required_stable_samples(sample_count);
+  size_t expected_hash_count = sample_count * XRAY_MUL_OPERAND_FAMILIES;
+  int hash_gate = point->hash_match_count == expected_hash_count;
+  int current_safe = point->candidate_current_ratio > 0.0 &&
+    point->candidate_current_ratio <= 0.98 &&
+    point->candidate_current_stable >= required_stable &&
+    xray_no_worst_pair_regression(point->candidate_current_worst);
+  int backend_safe = point->candidate_gmp_ratio > 0.0 &&
+    point->candidate_gmp_ratio <= 1.0 &&
+    point->candidate_gmp_stable >= required_stable &&
+    xray_no_worst_pair_regression(point->candidate_gmp_worst);
+  double worst_pair_ratio = point->candidate_current_worst > point->candidate_gmp_worst ?
+    point->candidate_current_worst :
+    point->candidate_gmp_worst;
+
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "kernel large mul full deep audit point %zu digits", point->digits);
+  snprintf(result.category, sizeof(result.category), "kernel-probe");
+  snprintf(result.operation, sizeof(result.operation), "mul-large-toom-full-deep-point");
+  result.digits = point->digits;
+  result.scratch_us = point->candidate_us ? point->candidate_us : 1;
+  result.gmp_us = point->current_us ? point->current_us : 1;
+  result.speed_ratio = point->candidate_current_ratio > 0.0 ?
+    point->candidate_current_ratio :
+    (double)result.scratch_us / (double)result.gmp_us;
+  result.max_allowed_speed_ratio = 0.98;
+  result.stable_sample_count = point->candidate_current_stable;
+  result.sample_count = sample_count;
+  result.worst_pair_ratio = worst_pair_ratio;
+  result.parity_verified = point->parity && hash_gate;
+  result.replacement_ready = 0;
+  snprintf(result.adoption, sizeof(result.adoption), "%s",
+    point->parity ? "observe-only" : "blocked-output-mismatch");
+  snprintf(result.status, sizeof(result.status), "%s",
+    !point->parity ? "mismatch" :
+    (!hash_gate ? "hash-mismatch" :
+    (!current_safe ? "current-regression" :
+    (!backend_safe ? "backend-regression" : "active-point-clean"))));
+  result.passed = point->parity && hash_gate;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  snprintf(result.detail, sizeof(result.detail),
+    "op=mul-full-deep-point parent=full-deep-audit policy=%s sizeRole=%s leafThreshold=%zu depthLimit=%zu operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu stablePairs=%zu/%zu gmpStablePairs=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s thresholdSafety=active-window candidate=%s baseline=current-scratch-mul oracle=mpz_mul candCurrentRatio=%.3f candGmpRatio=%.3f currentGmpRatio=%.3f worstPairRatio=%.3f currentWorst=%.3f gmpWorst=%.3f ratioMethod=paired-median timingMode=rotating sameInput=yes sameRunAudit=yes featureGate=large-multiply-cpu-toom-full-deep-audit gmpClue=toom33-recursive-current-route-audit noAutoRoute=1 replacementReady=false adoption=%s",
+    policy,
+    large_mul_campaign_size_role(point->digits),
+    leaf_threshold,
+    depth_limit,
+    (unsigned int)XRAY_MUL_OPERAND_FAMILIES,
+    sample_count,
+    required_stable,
+    sample_count,
+    point->candidate_current_stable,
+    sample_count,
+    point->candidate_gmp_stable,
+    sample_count,
+    point->hash_match_count,
+    expected_hash_count,
+    hash_gate ? "matched" : "blocked",
+    point->parity ? "matched" : "blocked",
+    candidate,
+    point->candidate_current_ratio,
+    point->candidate_gmp_ratio,
+    point->current_gmp_ratio,
+    worst_pair_ratio,
+    point->candidate_current_worst,
+    point->candidate_gmp_worst,
+    result.adoption);
+  append_result(report, &result);
+}
+
 static void run_mul_full_workspace_deep_audit_case(
   XrayBenchmarkReport *report,
   unsigned int seed,
@@ -7869,6 +7948,14 @@ static void run_mul_full_workspace_deep_audit_case(
       seed + (unsigned int)(index * 41U),
       leaf_threshold,
       depth_limit,
+      XRAY_BENCH_DEEP_SAMPLES);
+    append_mul_full_workspace_deep_audit_point_result(
+      report,
+      policy,
+      candidate,
+      leaf_threshold,
+      depth_limit,
+      &points[index],
       XRAY_BENCH_DEEP_SAMPLES);
   }
   append_mul_full_workspace_deep_audit_result(

@@ -1150,6 +1150,7 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
         compare_streq(row->operation, "mul-large-cpu-toom-ws-branch") ||
         compare_streq(row->operation, "mul-large-cpu-toom-full-ws") ||
         compare_streq(row->operation, "mul-large-cpu-toom-full-audit") ||
+        compare_streq(row->operation, "mul-large-toom-full-deep-point") ||
         compare_streq(row->operation, "mul-large-toom-full-deep-audit")) {
       large_mul_campaign_total++;
       insert_progress_row(
