@@ -413,6 +413,32 @@ useful: `11717` and `24103` regress against combo depth2, while the larger
 safety. Keep depth3 observe-only; the combo depth2/leaf64 path remains the
 stronger active-window baseline.
 
+## Full-Workspace Combo Lower-Window Scout
+
+Follow-up run:
+
+- Validation: `native/build-codex-large-mul-campaign/Release/xray_native_tests.exe`
+  printed `native xray tests passed`
+- Artifact:
+  `native-test-runs/20260619-145709-c4b04caf/benchmark.tsv`
+
+This run adds `mul-large-toom-cmb-lower-scout` plus per-size
+`mul-large-toom-cmb-lower-point` rows. It checks the current strongest
+combined interpolation candidate at the lower promotion blockers:
+`4096`, `5639`, and `8192`, with `5639` as the deterministic random spot
+between the power-of-two anchors. Production multiply remains unchanged.
+
+| Row | Sizes | Leaf64 Max | Current Max | GMP Max | Worst Pair | Safe Sizes | Hash | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `mul-large-toom-cmb-lower-scout` | `4096,5639,8192` | `0.979` | `0.911` | `0.893` | `1.012` | `1/3` | `54/54` | observe only |
+
+The combo candidate is median-positive against current production and
+GMP/MPIR at every lower-window size, so the lower band is no longer an obvious
+median blocker. It is still not promotion-ready: `5639` and `8192` miss the
+`8/9` baseline-stability bar, and the aggregate worst pair reaches `1.012`.
+Keep this as a lower-window scout and require a repeat/route audit before any
+default route change.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor

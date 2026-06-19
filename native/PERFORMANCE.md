@@ -3536,3 +3536,43 @@ against combo depth2. Since no size clears the safe-size gate and GMP remains
 ahead at the upper half of the window, the next multiply slice should keep
 combo depth2/leaf64 as the active baseline and look for a structural change
 that moves the backend-facing gap without sacrificing the in-between sizes.
+
+## 2026-06-19: Full Workspace Combo Lower-Window Scout
+
+Run:
+
+- Release:
+  `native-test-runs/20260619-145709-c4b04caf`
+
+This run adds `mul-large-toom-cmb-lower-scout`, an observe-only lower-window
+gate for the current strongest combined interpolation candidate. It compares
+`full-ws-combo-depth2` against the plain leaf64 full-workspace baseline,
+current production multiply, and GMP/MPIR at `4096`, `5639`, and `8192`.
+The `5639` row is the deterministic in-between spot for the lower
+power-of-two gap. Production multiply remains unchanged.
+
+Observed aggregate:
+
+- Exact parity/hash against leaf64, current, and GMP:
+  `hashSafe=54/54`, `hashGate=matched`, `parity=matched`.
+- Combo depth2 beats current production multiply on median:
+  `candCurrentMax=0.911`.
+- Combo depth2 beats GMP/MPIR on median at all three lower sizes:
+  `candGmpMax=0.893`.
+- The lower gate is still not promotion-ready:
+  `safeSizes=1/3`, `maxWorstPairRatio=1.012`.
+
+Per-size point rows:
+
+| Digits | Combo Depth2 / Leaf64 | Combo Depth2 / Current | Combo Depth2 / GMP | Worst Pair | Leaf64 Stable | Current Stable | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `4096` | `0.952` | `0.911` | `0.827` | `0.973` | `9/9` | `9/9` | `9/9` | combo-lower-clean |
+| `5639` | `0.964` | `0.901` | `0.792` | `1.007` | `6/9` | `9/9` | `9/9` | leaf64-regression |
+| `8192` | `0.979` | `0.854` | `0.893` | `1.012` | `6/9` | `9/9` | `9/9` | leaf64-regression |
+
+Decision: keep the lower combo scout observe-only. This is the best lower-band
+signal so far because it is median-positive against current production and
+GMP/MPIR at `4096`, the `5639` random spot, and `8192`. The strict proof bar
+still blocks promotion because `5639` and `8192` miss baseline stability and
+worst-pair safety. A route audit may be worth testing only after a repeat run
+or a candidate that reduces those lower-window worst-pair tails.

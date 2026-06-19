@@ -7253,6 +7253,7 @@ typedef struct {
   char gmp_clue[64];
   char baseline_status[32];
   char clean_status[32];
+  char threshold_safety[32];
 } XrayMulFullWorkspaceDepthScoutLabels;
 
 static void mul_full_workspace_depth_scout_labels(
@@ -7277,6 +7278,24 @@ static void mul_full_workspace_depth_scout_labels(
     snprintf(labels->gmp_clue, sizeof(labels->gmp_clue), "toom33-combo-depth-limit");
     snprintf(labels->baseline_status, sizeof(labels->baseline_status), "combo-depth2-regression");
     snprintf(labels->clean_status, sizeof(labels->clean_status), "combo-depth3-clean");
+    snprintf(labels->threshold_safety, sizeof(labels->threshold_safety), "active-window");
+    return;
+  }
+  if (candidate_depth_limit == 2 &&
+      baseline_depth_limit == 2 &&
+      candidate_interp_flags == combo_interp_flags &&
+      baseline_interp_flags == 0U) {
+    snprintf(labels->aggregate_operation, sizeof(labels->aggregate_operation), "mul-large-toom-cmb-lower-scout");
+    snprintf(labels->point_operation, sizeof(labels->point_operation), "mul-large-toom-cmb-lower-point");
+    snprintf(labels->point_detail_op, sizeof(labels->point_detail_op), "mul-cmb-lower-point");
+    snprintf(labels->parent, sizeof(labels->parent), "cmb-lower-scout");
+    snprintf(labels->candidate, sizeof(labels->candidate), "full-ws-combo-depth2");
+    snprintf(labels->baseline, sizeof(labels->baseline), "full-ws-leaf64");
+    snprintf(labels->feature_gate, sizeof(labels->feature_gate), "large-multiply-cpu-toom-combo-lower-scout");
+    snprintf(labels->gmp_clue, sizeof(labels->gmp_clue), "toom33-combo-lower-window");
+    snprintf(labels->baseline_status, sizeof(labels->baseline_status), "leaf64-regression");
+    snprintf(labels->clean_status, sizeof(labels->clean_status), "combo-lower-clean");
+    snprintf(labels->threshold_safety, sizeof(labels->threshold_safety), "lower-window");
     return;
   }
   snprintf(labels->aggregate_operation, sizeof(labels->aggregate_operation), "mul-large-toom-depth-scout");
@@ -7289,6 +7308,7 @@ static void mul_full_workspace_depth_scout_labels(
   snprintf(labels->gmp_clue, sizeof(labels->gmp_clue), "toom33-depth-limit");
   snprintf(labels->baseline_status, sizeof(labels->baseline_status), "depth%zu-regression", baseline_depth_limit);
   snprintf(labels->clean_status, sizeof(labels->clean_status), "depth-scout-clean");
+  snprintf(labels->threshold_safety, sizeof(labels->threshold_safety), "active-window");
 }
 
 static int run_mul_threshold_route_audit_batch_step(
@@ -8432,7 +8452,7 @@ static void append_mul_full_workspace_depth_scout_result(
   result.passed = parity && hash_gate;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=%s policy=%s sizes=%s sizeCount=%zu minDigits=%zu leafThreshold=%zu baseDepth=%zu candDepth=%zu operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=%s gmpClue=%s forcedCandidate=yes thresholdSafety=active-window candidate=%s baseline=%s oracle=mpz_mul candBaseMax=%.3f candCurrentMax=%.3f candGmpMax=%.3f baseGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
+    "op=%s policy=%s sizes=%s sizeCount=%zu minDigits=%zu leafThreshold=%zu baseDepth=%zu candDepth=%zu operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=%s gmpClue=%s forcedCandidate=yes thresholdSafety=%s candidate=%s baseline=%s oracle=mpz_mul candBaseMax=%.3f candCurrentMax=%.3f candGmpMax=%.3f baseGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
     labels.aggregate_operation,
     policy,
     sizes ? sizes : "unknown",
@@ -8454,6 +8474,7 @@ static void append_mul_full_workspace_depth_scout_result(
     result.adoption,
     labels.feature_gate,
     labels.gmp_clue,
+    labels.threshold_safety,
     labels.candidate,
     labels.baseline,
     max_candidate_baseline_ratio,
@@ -8530,7 +8551,7 @@ static void append_mul_full_workspace_depth_scout_point_result(
   result.passed = point->parity && hash_gate;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=%s parent=%s policy=%s sizeRole=%s leafThreshold=%zu baseDepth=%zu candDepth=%zu operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu stablePairs=%zu/%zu stableBase=%zu/%zu stableCurrent=%zu/%zu stableGmp=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=%s gmpClue=%s thresholdSafety=active-window candidate=%s baseline=%s oracle=mpz_mul candBaseRatio=%.3f candCurrentRatio=%.3f candGmpRatio=%.3f baseGmpRatio=%.3f currentGmpRatio=%.3f worstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating sameInput=yes sameRunAudit=yes",
+    "op=%s parent=%s policy=%s sizeRole=%s leafThreshold=%zu baseDepth=%zu candDepth=%zu operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu stablePairs=%zu/%zu stableBase=%zu/%zu stableCurrent=%zu/%zu stableGmp=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=%s gmpClue=%s thresholdSafety=%s candidate=%s baseline=%s oracle=mpz_mul candBaseRatio=%.3f candCurrentRatio=%.3f candGmpRatio=%.3f baseGmpRatio=%.3f currentGmpRatio=%.3f worstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating sameInput=yes sameRunAudit=yes",
     labels.point_detail_op,
     labels.parent,
     policy,
@@ -8557,6 +8578,7 @@ static void append_mul_full_workspace_depth_scout_point_result(
     result.adoption,
     labels.feature_gate,
     labels.gmp_clue,
+    labels.threshold_safety,
     labels.candidate,
     labels.baseline,
     point->candidate_baseline_ratio,
@@ -14062,6 +14084,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     mul_policy_toom_rec_safety_digits,
     sizeof(mul_policy_toom_rec_safety_digits) / sizeof(mul_policy_toom_rec_safety_digits[0]));
 #if XRAY_HAS_MSVC_BMI2_ADX_INTRINSICS
+  const size_t mul_full_workspace_lower_gate_digits[] = {4096, 5639, 8192};
   const size_t mul_full_workspace_deep_audit_digits[] = {11717, 16384, 24103, 32768, 52163, 65536};
   run_mul_full_workspace_deep_audit_case(
     report,
@@ -14160,6 +14183,18 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3,
     mul_full_workspace_deep_audit_digits,
     sizeof(mul_full_workspace_deep_audit_digits) / sizeof(mul_full_workspace_deep_audit_digits[0]));
+  run_mul_full_workspace_depth_scout_case(
+    report,
+    1253U,
+    "full-workspace-combo-lower-ge4096",
+    4096,
+    64,
+    2,
+    2,
+    XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3,
+    0,
+    mul_full_workspace_lower_gate_digits,
+    sizeof(mul_full_workspace_lower_gate_digits) / sizeof(mul_full_workspace_lower_gate_digits[0]));
 #endif
 
   const size_t digits[] = {512, 1000, 2048, 4096, 8192, 16384};
