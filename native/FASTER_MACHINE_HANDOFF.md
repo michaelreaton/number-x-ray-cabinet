@@ -620,6 +620,46 @@ route. The next CPU multiply slice should target the high-end arithmetic gap
 itself, likely with a different multiplication structure rather than another
 l64/l48 threshold tweak.
 
+## 2026-06-19: Combo Upper Same-Input Tournament
+
+Run:
+
+- Release:
+  `native-test-runs/20260619-193550-c4b04caf`
+
+This run adds `mul-large-toom-cmb-tourn`, a benchmark-only upper-window
+tournament over the four strongest current combo shapes on identical operand
+fingerprints in the same run:
+
+- `full-ws-combo-l64d2`
+- `full-ws-combo-l48d3`
+- `full-ws-combo-l48d4`
+- `full-ws-combo-handoff-l64d2-l48d3`
+
+It covers `24103`, `32768`, `52163`, and `65536`, preserving the deterministic
+random spots between the power-of-two anchors.
+
+Observed aggregate:
+
+| Operation | Sizes | Winner / Current Max | Winner / GMP Max | Current / GMP Max | Worst Pair Max | Safe Sizes | Hash Gate | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `mul-large-toom-cmb-tourn` | `24103,32768,52163,65536` | `0.657` | `1.197` | `1.906` | `1.302` | `0/4` | `288/288` | observe only |
+
+Per-size winners:
+
+| Digits | Winner | Winner / Current | Winner / GMP | Current / GMP | Worst Pair | Status |
+| ---: | --- | ---: | ---: | ---: | ---: | --- |
+| `24103` | `full-ws-combo-l48d4` | `0.587` | `0.967` | `1.587` | `1.172` | backend-regression |
+| `32768` | `full-ws-combo-l48d4` | `0.657` | `1.069` | `1.627` | `1.221` | backend-regression |
+| `52163` | `full-ws-combo-l48d3` | `0.574` | `1.066` | `1.813` | `1.098` | backend-regression |
+| `65536` | `full-ws-combo-l48d3` | `0.612` | `1.197` | `1.906` | `1.302` | backend-regression |
+
+Decision: keep the tournament observe-only. It proves the prior row-to-row
+comparisons were not hiding a simple threshold answer: l48d4 wins the lower
+half of the upper window, l48d3 wins the two largest sizes, and every winner
+still fails GMP/MPIR or worst-pair safety. The next implementation slice should
+target a structural high-end multiply improvement, not another promotion audit.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor

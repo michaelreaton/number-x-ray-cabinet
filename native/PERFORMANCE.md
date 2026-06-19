@@ -3797,3 +3797,44 @@ current-production side of the full-window story, but it remains blocked by
 GMP/MPIR, worst-pair, and stability gates. The next CPU multiply work should
 attack the high-end arithmetic gap directly instead of only moving the l48d3
 handoff threshold.
+
+## 2026-06-19: Combo Upper Same-Input Tournament
+
+Run:
+
+- Release:
+  `native-test-runs/20260619-193550-c4b04caf`
+
+This run adds `mul-large-toom-cmb-tourn`, a benchmark-only upper-window
+tournament over `full-ws-combo-l64d2`, `full-ws-combo-l48d3`,
+`full-ws-combo-l48d4`, and `full-ws-combo-handoff-l64d2-l48d3`. It compares
+all four candidates, current production multiply, and GMP/MPIR on identical
+operand fingerprints in the same run for `24103`, `32768`, `52163`, and
+`65536`.
+
+Observed aggregate:
+
+- Exact parity/hash across every route, sample, and operand family:
+  `hashSafe=288/288`, `hashGate=matched`, `parity=matched`.
+- The best per-size route beats current production multiply:
+  `winnerCurrentMax=0.657`.
+- It still does not close the GMP/MPIR gap:
+  `winnerGmpMax=1.197`, `safeSizes=0/4`.
+- Worst-pair safety remains blocked:
+  `maxWorstPairRatio=1.302`.
+- Winner list:
+  `full-ws-combo-l48d4,full-ws-combo-l48d4,full-ws-combo-l48d3,full-ws-combo-l48d3`.
+
+Per-size winners:
+
+| Digits | Winner | Winner / Current | Winner / GMP | Current / GMP | Worst Pair | Status |
+| ---: | --- | ---: | ---: | ---: | ---: | --- |
+| `24103` | `full-ws-combo-l48d4` | `0.587` | `0.967` | `1.587` | `1.172` | backend-regression |
+| `32768` | `full-ws-combo-l48d4` | `0.657` | `1.069` | `1.627` | `1.221` | backend-regression |
+| `52163` | `full-ws-combo-l48d3` | `0.574` | `1.066` | `1.813` | `1.098` | backend-regression |
+| `65536` | `full-ws-combo-l48d3` | `0.612` | `1.197` | `1.906` | `1.302` | backend-regression |
+
+Decision: keep the tournament observe-only. Same-input evidence now says l48d4
+is the better lower-upper candidate, l48d3 is the better high-upper candidate,
+and neither is promotion-ready against GMP/MPIR and worst-pair gates. Use this
+as the next structural-design clue rather than a production route candidate.
