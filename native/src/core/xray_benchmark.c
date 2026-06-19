@@ -36,6 +36,10 @@
 #define XRAY_BENCH_SPARSE_PAIR_MIN_PRODUCTS 64U
 #define XRAY_BENCH_TOOM_INTERP_DIV2 1U
 #define XRAY_BENCH_TOOM_INTERP_DIV3 2U
+#define XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT 4U
+#define XRAY_MUL_COMBO_TOURNAMENT_LANE_COUNT (XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT + 2U)
+#define XRAY_MUL_COMBO_TOURNAMENT_CURRENT_LANE XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT
+#define XRAY_MUL_COMBO_TOURNAMENT_GMP_LANE (XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT + 1U)
 
 static volatile unsigned long long kernel_probe_sink = 0;
 
@@ -7243,6 +7247,31 @@ typedef struct {
 } XrayMulFullWorkspaceDepthScoutPoint;
 
 typedef struct {
+  const char *candidate;
+  size_t leaf_threshold;
+  size_t depth_limit;
+  int use_handoff;
+} XrayMulComboTournamentRoute;
+
+typedef struct {
+  size_t digits;
+  unsigned long long route_us[XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT];
+  unsigned long long current_us;
+  unsigned long long gmp_us;
+  double route_current_ratio[XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT];
+  double route_gmp_ratio[XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT];
+  double current_gmp_ratio;
+  double route_current_worst[XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT];
+  double route_gmp_worst[XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT];
+  size_t route_current_stable[XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT];
+  size_t route_gmp_stable[XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT];
+  size_t route_hash_match_count[XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT];
+  int route_parity[XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT];
+  size_t winner_index;
+  size_t sample_count;
+} XrayMulComboTournamentPoint;
+
+typedef struct {
   char aggregate_operation[32];
   char point_operation[32];
   char point_detail_op[32];
@@ -8442,6 +8471,508 @@ static void run_mul_full_workspace_combo_handoff_audit_case(
       XRAY_BENCH_DEEP_SAMPLES);
   }
   append_mul_full_workspace_combo_handoff_result(
+    report,
+    policy,
+    size_list,
+    handoff_digits,
+    points,
+    size_count,
+    XRAY_BENCH_DEEP_SAMPLES);
+}
+
+static const XrayMulComboTournamentRoute mul_combo_tournament_routes[XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT] = {
+  {"full-ws-combo-l64d2", 64, 2, 0},
+  {"full-ws-combo-l48d3", 48, 3, 0},
+  {"full-ws-combo-l48d4", 48, 4, 0},
+  {"full-ws-combo-handoff-l64d2-l48d3", 0, 0, 1}
+};
+
+static size_t mul_combo_tournament_route_leaf(size_t route_index, size_t digits, size_t handoff_digits) {
+  if (route_index >= XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT) return 0;
+  const XrayMulComboTournamentRoute *route = &mul_combo_tournament_routes[route_index];
+  return route->use_handoff ?
+    mul_full_workspace_combo_handoff_leaf(digits, handoff_digits) :
+    route->leaf_threshold;
+}
+
+static size_t mul_combo_tournament_route_depth(size_t route_index, size_t digits, size_t handoff_digits) {
+  if (route_index >= XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT) return 0;
+  const XrayMulComboTournamentRoute *route = &mul_combo_tournament_routes[route_index];
+  return route->use_handoff ?
+    mul_full_workspace_combo_handoff_depth(digits, handoff_digits) :
+    route->depth_limit;
+}
+
+static const char *mul_combo_tournament_route_active(size_t route_index, size_t digits, size_t handoff_digits) {
+  if (route_index >= XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT) return "unknown";
+  const XrayMulComboTournamentRoute *route = &mul_combo_tournament_routes[route_index];
+  return route->use_handoff ?
+    mul_full_workspace_combo_handoff_active_candidate(digits, handoff_digits) :
+    route->candidate;
+}
+
+static int run_mul_combo_tournament_batch_step(
+  unsigned int lane,
+  XrayScratchBigInt route_out[XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT][XRAY_MUL_OPERAND_FAMILIES],
+  XrayScratchBigInt *current_out,
+  const XrayScratchBigInt *left,
+  const XrayScratchBigInt *right,
+  mpz_t *gout,
+  const mpz_t *gleft,
+  const mpz_t *gright,
+  size_t digits,
+  size_t handoff_digits,
+  unsigned int interp_flags,
+  unsigned int batch,
+  unsigned long long route_us[XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT][XRAY_BENCH_MAX_SAMPLES],
+  size_t sample,
+  unsigned long long *current_us,
+  unsigned long long *gmp_us) {
+  if (lane < XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT) {
+    unsigned long long started = xray_now_us();
+    size_t leaf_threshold = mul_combo_tournament_route_leaf(lane, digits, handoff_digits);
+    size_t depth_limit = mul_combo_tournament_route_depth(lane, digits, handoff_digits);
+    int ok = 1;
+    for (unsigned int index = 0; ok && index < batch; ++index) {
+      for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+        ok = run_mul_full_workspace_candidate_probe(
+          &route_out[lane][family],
+          &left[family],
+          &right[family],
+          leaf_threshold,
+          depth_limit,
+          interp_flags);
+      }
+    }
+    route_us[lane][sample] += xray_now_us() - started;
+    return ok;
+  }
+  if (lane == XRAY_MUL_COMBO_TOURNAMENT_CURRENT_LANE) {
+    unsigned long long started = xray_now_us();
+    int ok = 1;
+    for (unsigned int index = 0; ok && index < batch; ++index) {
+      for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+        ok = xray_bigint_mul(&current_out[family], &left[family], &right[family]);
+      }
+    }
+    *current_us += xray_now_us() - started;
+    return ok;
+  }
+  if (lane == XRAY_MUL_COMBO_TOURNAMENT_GMP_LANE) {
+    unsigned long long started = xray_now_us();
+    for (unsigned int index = 0; index < batch; ++index) {
+      for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+        mpz_mul(gout[family], gleft[family], gright[family]);
+      }
+    }
+    *gmp_us += xray_now_us() - started;
+    return 1;
+  }
+  return 0;
+}
+
+static XrayMulComboTournamentPoint measure_mul_combo_tournament_point(
+  size_t digits,
+  unsigned int seed,
+  size_t handoff_digits,
+  size_t sample_count) {
+  XrayMulComboTournamentPoint point;
+  memset(&point, 0, sizeof(point));
+  point.digits = digits;
+  if (sample_count == 0 || sample_count > XRAY_BENCH_MAX_SAMPLES) sample_count = XRAY_BENCH_SAMPLES;
+  point.sample_count = sample_count;
+
+  char *left_text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  char *right_text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  XrayScratchBigInt left[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt right[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt route_out[XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT][XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt current_out[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gleft[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gright[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gout[XRAY_MUL_OPERAND_FAMILIES];
+
+  unsigned int iterations = perf_iterations("mul", digits);
+  unsigned int batch_iterations = iterations >= 64U ? 8U : (iterations >= 16U ? 4U : 1U);
+  int ok = 1;
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    xray_bigint_init(&left[family]);
+    xray_bigint_init(&right[family]);
+    xray_bigint_init(&current_out[family]);
+    mpz_inits(gleft[family], gright[family], gout[family], NULL);
+    for (size_t route = 0; route < XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT; ++route) {
+      xray_bigint_init(&route_out[route][family]);
+    }
+    left_text[family] = benchmark_decimal(
+      digits,
+      seed + mul_operand_families[family].left_seed + (unsigned int)(family * 31U),
+      mul_operand_families[family].left_high_lead);
+    right_text[family] = benchmark_decimal(
+      digits,
+      seed + mul_operand_families[family].right_seed + (unsigned int)(family * 37U),
+      mul_operand_families[family].right_high_lead);
+    ok = ok &&
+      left_text[family] &&
+      right_text[family] &&
+      xray_bigint_set_decimal(&left[family], left_text[family]) &&
+      xray_bigint_set_decimal(&right[family], right_text[family]) &&
+      mpz_set_str(gleft[family], left_text[family], 10) == 0 &&
+      mpz_set_str(gright[family], right_text[family], 10) == 0;
+  }
+
+  unsigned long long route_samples[XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT][XRAY_BENCH_MAX_SAMPLES] = {{0}};
+  unsigned long long current_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  int route_parity[XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT] = {1, 1, 1, 1};
+  unsigned int combo_interp_flags = XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3;
+
+  for (size_t sample = 0; ok && sample < sample_count; ++sample) {
+    unsigned int completed = 0;
+    unsigned int phase = (unsigned int)(sample % XRAY_MUL_COMBO_TOURNAMENT_LANE_COUNT);
+    while (ok && completed < iterations) {
+      unsigned int remaining = iterations - completed;
+      unsigned int batch = remaining < batch_iterations ? remaining : batch_iterations;
+      for (unsigned int lane = 0; ok && lane < XRAY_MUL_COMBO_TOURNAMENT_LANE_COUNT; ++lane) {
+        ok = run_mul_combo_tournament_batch_step(
+          (phase + lane) % XRAY_MUL_COMBO_TOURNAMENT_LANE_COUNT,
+          route_out,
+          current_out,
+          left,
+          right,
+          gout,
+          gleft,
+          gright,
+          digits,
+          handoff_digits,
+          combo_interp_flags,
+          batch,
+          route_samples,
+          sample,
+          &current_samples[sample],
+          &gmp_samples[sample]);
+      }
+      phase = (phase + 1U) % XRAY_MUL_COMBO_TOURNAMENT_LANE_COUNT;
+      completed += batch;
+    }
+
+    for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+      char *route_text[XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT] = {0};
+      char *current_text = xray_bigint_get_decimal(&current_out[family]);
+      char *gmp_text = mpz_get_str(NULL, 10, gout[family]);
+      uint64_t current_hash = xray_benchmark_text_hash64(current_text);
+      uint64_t gmp_hash = xray_benchmark_text_hash64(gmp_text);
+      for (size_t route = 0; route < XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT; ++route) {
+        route_text[route] = xray_bigint_get_decimal(&route_out[route][family]);
+        uint64_t route_hash = xray_benchmark_text_hash64(route_text[route]);
+        int sample_match = ok &&
+          route_text[route] &&
+          current_text &&
+          gmp_text &&
+          strcmp(route_text[route], current_text) == 0 &&
+          strcmp(route_text[route], gmp_text) == 0;
+        if (sample_match &&
+            route_hash != 0ULL &&
+            route_hash == current_hash &&
+            route_hash == gmp_hash) {
+          point.route_hash_match_count[route]++;
+        }
+        route_parity[route] = route_parity[route] && sample_match;
+        free(route_text[route]);
+      }
+      free(current_text);
+      free(gmp_text);
+    }
+  }
+
+  double best_ratio = 0.0;
+  for (size_t route = 0; route < XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT; ++route) {
+    point.route_us[route] = median_samples(route_samples[route], sample_count);
+    point.route_current_ratio[route] = median_paired_ratio(route_samples[route], current_samples, sample_count);
+    point.route_gmp_ratio[route] = median_paired_ratio(route_samples[route], gmp_samples, sample_count);
+    point.route_current_worst[route] = max_paired_ratio(route_samples[route], current_samples, sample_count);
+    point.route_gmp_worst[route] = max_paired_ratio(route_samples[route], gmp_samples, sample_count);
+    point.route_current_stable[route] = paired_ratio_wins(route_samples[route], current_samples, sample_count, 0.98);
+    point.route_gmp_stable[route] = paired_ratio_wins(route_samples[route], gmp_samples, sample_count, 1.0);
+    point.route_parity[route] = route_parity[route] && ok;
+    if (point.route_current_ratio[route] > 0.0 &&
+        (best_ratio <= 0.0 || point.route_current_ratio[route] < best_ratio)) {
+      best_ratio = point.route_current_ratio[route];
+      point.winner_index = route;
+    }
+  }
+  point.current_us = median_samples(current_samples, sample_count);
+  point.gmp_us = median_samples(gmp_samples, sample_count);
+  point.current_gmp_ratio = median_paired_ratio(current_samples, gmp_samples, sample_count);
+
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    mpz_clears(gleft[family], gright[family], gout[family], NULL);
+    xray_bigint_clear(&left[family]);
+    xray_bigint_clear(&right[family]);
+    xray_bigint_clear(&current_out[family]);
+    for (size_t route = 0; route < XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT; ++route) {
+      xray_bigint_clear(&route_out[route][family]);
+    }
+    free(left_text[family]);
+    free(right_text[family]);
+  }
+  return point;
+}
+
+static void append_mul_combo_tournament_point_result(
+  XrayBenchmarkReport *report,
+  const char *policy,
+  size_t handoff_digits,
+  const XrayMulComboTournamentPoint *point,
+  size_t route_index,
+  size_t sample_count) {
+  if (!report || !policy || !point || route_index >= XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT) return;
+  const XrayMulComboTournamentRoute *route = &mul_combo_tournament_routes[route_index];
+  size_t required_stable = policy_required_stable_samples(sample_count);
+  size_t expected_hash_count = sample_count * XRAY_MUL_OPERAND_FAMILIES;
+  int hash_gate = point->route_hash_match_count[route_index] == expected_hash_count;
+  int is_winner = route_index == point->winner_index;
+  int current_safe = point->route_current_ratio[route_index] > 0.0 &&
+    point->route_current_ratio[route_index] <= 0.98 &&
+    point->route_current_stable[route_index] >= required_stable &&
+    xray_no_worst_pair_regression(point->route_current_worst[route_index]);
+  int backend_safe = point->route_gmp_ratio[route_index] > 0.0 &&
+    point->route_gmp_ratio[route_index] <= 1.0 &&
+    point->route_gmp_stable[route_index] >= required_stable &&
+    xray_no_worst_pair_regression(point->route_gmp_worst[route_index]);
+  double worst_pair_ratio = point->route_current_worst[route_index] > point->route_gmp_worst[route_index] ?
+    point->route_current_worst[route_index] :
+    point->route_gmp_worst[route_index];
+  size_t leaf_threshold = mul_combo_tournament_route_leaf(route_index, point->digits, handoff_digits);
+  size_t depth_limit = mul_combo_tournament_route_depth(route_index, point->digits, handoff_digits);
+  const char *active_candidate = mul_combo_tournament_route_active(route_index, point->digits, handoff_digits);
+  const char *winner = mul_combo_tournament_routes[point->winner_index].candidate;
+
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "kernel large mul combo tournament point %zu digits", point->digits);
+  snprintf(result.category, sizeof(result.category), "kernel-probe");
+  snprintf(result.operation, sizeof(result.operation), "mul-large-toom-cmb-tourn-pt");
+  result.digits = point->digits;
+  result.scratch_us = point->route_us[route_index] ? point->route_us[route_index] : 1;
+  result.gmp_us = point->current_us ? point->current_us : 1;
+  result.speed_ratio = point->route_current_ratio[route_index] > 0.0 ?
+    point->route_current_ratio[route_index] :
+    (double)result.scratch_us / (double)result.gmp_us;
+  result.max_allowed_speed_ratio = 0.98;
+  result.stable_sample_count = point->route_current_stable[route_index];
+  result.sample_count = sample_count;
+  result.worst_pair_ratio = worst_pair_ratio;
+  result.parity_verified = point->route_parity[route_index] && hash_gate;
+  result.replacement_ready = 0;
+  snprintf(result.adoption, sizeof(result.adoption), "%s",
+    point->route_parity[route_index] ? "observe-only" : "blocked-output-mismatch");
+  snprintf(result.status, sizeof(result.status), "%s",
+    !point->route_parity[route_index] ? "mismatch" :
+    (!hash_gate ? "hash-mismatch" :
+    (!is_winner ? "tournament-observed" :
+    (!current_safe ? "current-regression" :
+    (!backend_safe ? "backend-regression" : "tournament-winner")))));
+  result.passed = point->route_parity[route_index] && hash_gate;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  snprintf(result.detail, sizeof(result.detail),
+    "op=mul-cmb-tourn-point parent=cmb-upper-tournament policy=%s sizeRole=%s route=%s routeIndex=%zu/%u isWinner=%s winner=%s leafThreshold=%zu depthLimit=%zu handoffDigits=%zu activeCandidate=%s routes=l64d2,l48d3,l48d4,hand32768 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu stablePairs=%zu/%zu stableCurrent=%zu/%zu stableGmp=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom-combo-upper-tournament gmpClue=toom33-combo-upper-same-input-tournament thresholdSafety=upper-window candidate=%s baseline=current-scratch-mul oracle=mpz_mul routeCurrentRatio=%.3f routeGmpRatio=%.3f currentGmpRatio=%.3f worstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunTournament=yes",
+    policy,
+    large_mul_campaign_size_role(point->digits),
+    route->candidate,
+    route_index + 1U,
+    (unsigned int)XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT,
+    is_winner ? "true" : "false",
+    winner,
+    leaf_threshold,
+    depth_limit,
+    handoff_digits,
+    active_candidate,
+    (unsigned int)XRAY_MUL_OPERAND_FAMILIES,
+    sample_count,
+    required_stable,
+    sample_count,
+    point->route_current_stable[route_index],
+    sample_count,
+    point->route_current_stable[route_index],
+    sample_count,
+    point->route_gmp_stable[route_index],
+    sample_count,
+    point->route_hash_match_count[route_index],
+    expected_hash_count,
+    hash_gate ? "matched" : "blocked",
+    point->route_parity[route_index] ? "matched" : "blocked",
+    result.adoption,
+    route->candidate,
+    point->route_current_ratio[route_index],
+    point->route_gmp_ratio[route_index],
+    point->current_gmp_ratio,
+    worst_pair_ratio);
+  append_result(report, &result);
+}
+
+static void append_mul_combo_tournament_result(
+  XrayBenchmarkReport *report,
+  const char *policy,
+  const char *sizes,
+  size_t handoff_digits,
+  const XrayMulComboTournamentPoint *points,
+  size_t point_count,
+  size_t sample_count) {
+  if (!report || !policy || !points || point_count == 0) return;
+  size_t required_stable = policy_required_stable_samples(sample_count);
+  size_t safe_size_count = 0;
+  size_t hash_match_count = 0;
+  size_t expected_hash_count = point_count * sample_count * XRAY_MUL_OPERAND_FAMILIES * XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT;
+  int parity = 1;
+  int hash_gate = 1;
+  int current_ratio_safe = 1;
+  int backend_ratio_safe = 1;
+  int stable_safe = 1;
+  int worst_pair_safe = 1;
+  unsigned long long winner_us = 0;
+  unsigned long long current_us = 0;
+  double max_winner_current_ratio = 0.0;
+  double max_winner_gmp_ratio = 0.0;
+  double max_current_gmp_ratio = 0.0;
+  double max_worst_pair_ratio = 0.0;
+  char winner_list[192] = {0};
+
+  for (size_t index = 0; index < point_count; ++index) {
+    const XrayMulComboTournamentPoint *point = &points[index];
+    size_t winner = point->winner_index;
+    size_t point_expected_hash_count = sample_count * XRAY_MUL_OPERAND_FAMILIES;
+    int point_hash_gate = point->route_hash_match_count[winner] == point_expected_hash_count;
+    int point_parity = point->route_parity[winner];
+    double point_worst = point->route_current_worst[winner] > point->route_gmp_worst[winner] ?
+      point->route_current_worst[winner] :
+      point->route_gmp_worst[winner];
+
+    for (size_t route = 0; route < XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT; ++route) {
+      parity = parity && point->route_parity[route];
+      hash_gate = hash_gate && point->route_hash_match_count[route] == point_expected_hash_count;
+      hash_match_count += point->route_hash_match_count[route];
+    }
+    if (point->route_us[winner] > winner_us) winner_us = point->route_us[winner];
+    if (point->current_us > current_us) current_us = point->current_us;
+    if (point->route_current_ratio[winner] > max_winner_current_ratio) max_winner_current_ratio = point->route_current_ratio[winner];
+    if (point->route_gmp_ratio[winner] > max_winner_gmp_ratio) max_winner_gmp_ratio = point->route_gmp_ratio[winner];
+    if (point->current_gmp_ratio > max_current_gmp_ratio) max_current_gmp_ratio = point->current_gmp_ratio;
+    if (point_worst > max_worst_pair_ratio) max_worst_pair_ratio = point_worst;
+
+    int point_current_safe = point->route_current_ratio[winner] > 0.0 &&
+      point->route_current_ratio[winner] <= 0.98 &&
+      point->route_current_stable[winner] >= required_stable &&
+      xray_no_worst_pair_regression(point->route_current_worst[winner]);
+    int point_backend_safe = point->route_gmp_ratio[winner] > 0.0 &&
+      point->route_gmp_ratio[winner] <= 1.0 &&
+      point->route_gmp_stable[winner] >= required_stable &&
+      xray_no_worst_pair_regression(point->route_gmp_worst[winner]);
+    current_ratio_safe = current_ratio_safe && point->route_current_ratio[winner] > 0.0 && point->route_current_ratio[winner] <= 0.98;
+    backend_ratio_safe = backend_ratio_safe && point->route_gmp_ratio[winner] > 0.0 && point->route_gmp_ratio[winner] <= 1.0;
+    stable_safe = stable_safe &&
+      point->route_current_stable[winner] >= required_stable &&
+      point->route_gmp_stable[winner] >= required_stable;
+    worst_pair_safe = worst_pair_safe &&
+      xray_no_worst_pair_regression(point->route_current_worst[winner]) &&
+      xray_no_worst_pair_regression(point->route_gmp_worst[winner]);
+    if (point_parity && point_hash_gate && point_current_safe && point_backend_safe) safe_size_count++;
+
+    size_t used = strlen(winner_list);
+    if (used < sizeof(winner_list)) {
+      snprintf(
+        winner_list + used,
+        sizeof(winner_list) - used,
+        "%s%s",
+        winner_list[0] ? "," : "",
+        mul_combo_tournament_routes[winner].candidate);
+    }
+  }
+
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "policy scout mul combo upper tournament");
+  snprintf(result.category, sizeof(result.category), "policy-gate");
+  snprintf(result.operation, sizeof(result.operation), "mul-large-toom-cmb-tourn");
+  result.digits = points[point_count - 1U].digits;
+  result.scratch_us = winner_us ? winner_us : 1;
+  result.gmp_us = current_us ? current_us : 1;
+  result.speed_ratio = max_winner_current_ratio > 0.0 ? max_winner_current_ratio : (double)result.scratch_us / (double)result.gmp_us;
+  result.max_allowed_speed_ratio = 1.0;
+  result.stable_sample_count = safe_size_count;
+  result.sample_count = point_count;
+  result.worst_pair_ratio = max_worst_pair_ratio;
+  result.parity_verified = parity && hash_gate;
+  result.replacement_ready = 0;
+  snprintf(result.adoption, sizeof(result.adoption), "%s",
+    !parity ? "blocked-output-mismatch" : "observe-only");
+  snprintf(result.status, sizeof(result.status), "%s",
+    !parity ? "mismatch" :
+    (!hash_gate ? "hash-mismatch" :
+    (!current_ratio_safe ? "current-regression" :
+    (!backend_ratio_safe ? "backend-regression" :
+    (!worst_pair_safe ? "worst-pair-regression" :
+    (!stable_safe ? "needs-stability" : "combo-tournament-clean"))))));
+  result.passed = parity && hash_gate;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  snprintf(result.detail, sizeof(result.detail),
+    "op=mul-large-toom-cmb-tourn policy=%s sizes=%s sizeCount=%zu minDigits=%zu handoffDigits=%zu routes=l64d2,l48d3,l48d4,hand32768 routesTested=%u winnerList=%s operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom-combo-upper-tournament gmpClue=toom33-combo-upper-same-input-tournament forcedCandidate=yes thresholdSafety=upper-window candidate=best-combo-upper-tournament activeCandidate=winner-by-size baseline=current-scratch-mul oracle=mpz_mul winnerCurrentMax=%.3f winnerGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunTournament=yes",
+    policy,
+    sizes ? sizes : "unknown",
+    point_count,
+    points[0].digits,
+    handoff_digits,
+    (unsigned int)XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT,
+    winner_list[0] ? winner_list : "unknown",
+    (unsigned int)XRAY_MUL_OPERAND_FAMILIES,
+    sample_count,
+    required_stable,
+    sample_count,
+    safe_size_count,
+    point_count,
+    hash_match_count,
+    expected_hash_count,
+    hash_gate ? "matched" : "blocked",
+    parity ? "matched" : "blocked",
+    result.adoption,
+    max_winner_current_ratio,
+    max_winner_gmp_ratio,
+    max_current_gmp_ratio,
+    max_worst_pair_ratio);
+  append_result(report, &result);
+}
+
+static void run_mul_combo_tournament_case(
+  XrayBenchmarkReport *report,
+  unsigned int seed,
+  const char *policy,
+  size_t handoff_digits,
+  const size_t *sizes,
+  size_t size_count) {
+  if (!report || !policy || !sizes || size_count == 0 || size_count > XRAY_FORMAT_ROUTE_TOURNAMENT_MAX) return;
+  XrayMulComboTournamentPoint points[XRAY_FORMAT_ROUTE_TOURNAMENT_MAX];
+  memset(points, 0, sizeof(points));
+  char size_list[96] = {0};
+  for (size_t index = 0; index < size_count; ++index) {
+    size_t used = strlen(size_list);
+    if (used < sizeof(size_list)) {
+      snprintf(size_list + used, sizeof(size_list) - used, "%s%zu", size_list[0] ? "," : "", sizes[index]);
+    }
+    points[index] = measure_mul_combo_tournament_point(
+      sizes[index],
+      seed + (unsigned int)(index * 61U),
+      handoff_digits,
+      XRAY_BENCH_DEEP_SAMPLES);
+    for (size_t route = 0; route < XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT; ++route) {
+      append_mul_combo_tournament_point_result(
+        report,
+        policy,
+        handoff_digits,
+        &points[index],
+        route,
+        XRAY_BENCH_DEEP_SAMPLES);
+    }
+  }
+  append_mul_combo_tournament_result(
     report,
     policy,
     size_list,
@@ -14658,6 +15189,13 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     3,
     XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3,
     XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3,
+    mul_full_workspace_upper_gate_digits,
+    sizeof(mul_full_workspace_upper_gate_digits) / sizeof(mul_full_workspace_upper_gate_digits[0]));
+  run_mul_combo_tournament_case(
+    report,
+    1399U,
+    "full-workspace-combo-upper-tournament-ge24103",
+    32768,
     mul_full_workspace_upper_gate_digits,
     sizeof(mul_full_workspace_upper_gate_digits) / sizeof(mul_full_workspace_upper_gate_digits[0]));
 #endif
