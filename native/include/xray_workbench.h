@@ -665,6 +665,19 @@ XRAY_API int xray_bigint_mul_toom3_unroll4_recursive_full_workspace_probe(XraySc
 XRAY_API int xray_bigint_mul_toom3_unroll4_recursive_full_workspace_div2_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold, size_t depth_limit);
 
 /**
+ * Multiply through the full-workspace recursive Toom-3 probe while replacing
+ * the exact division-by-three interpolation step with an odd-limb exact
+ * division shortcut.
+ *
+ * This diagnostic probe keeps production multiply unchanged and exists only to
+ * isolate lower-level Toom interpolation cost. depth_limit bounds recursion for
+ * benchmark safety. out may alias either input. Returns 1 on success and 0 on
+ * allocation failure, unsupported operand shape, or failed exact-divisibility
+ * checks.
+ */
+XRAY_API int xray_bigint_mul_toom3_unroll4_recursive_full_workspace_div3_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold, size_t depth_limit);
+
+/**
  * Multiply with the unroll4 basecase probe route.
  *
  * This is a benchmark/research probe. Returns 1 on success and 0 on allocation
