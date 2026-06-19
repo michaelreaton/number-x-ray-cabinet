@@ -3707,3 +3707,49 @@ the next route candidate. Depth4 gives a modest middle-upper hint, especially
 around `32768`, but it worsens the aggregate GMP gap and remains behind l48d3
 at the high end. The next CPU multiply slice should test a different high-end
 structure or handoff strategy rather than depth5.
+
+## 2026-06-19: Combo Leaf48 Depth3 Full-Window Audit
+
+Run:
+
+- Release:
+  `native-test-runs/20260619-184951-c4b04caf`
+
+This run adds `mul-large-toom-cmb-l48d3-full`, an observe-only full-window
+audit for the best recent upper-window combo shape. It covers the full
+`4096` through `65536` campaign, including deterministic random spots
+`5639`, `11717`, `24103`, and `52163`, and compares l48d3 against l64d2,
+current production multiply, and GMP/MPIR in the same run.
+
+Observed aggregate:
+
+- Exact parity/hash across all nine sizes:
+  `hashSafe=162/162`, `hashGate=matched`, `parity=matched`.
+- It beats current production multiply at every measured size:
+  `candCurrentMax=0.981`.
+- It is not clean against the prior combo baseline:
+  `candBaseMax=1.051`.
+- It does not close the GMP/MPIR gap:
+  `candGmpMax=1.179`, `safeSizes=0/9`.
+- Worst-pair safety remains blocked:
+  `maxWorstPairRatio=1.216`.
+
+Per-size point rows:
+
+| Digits | L48D3 / L64D2 | L48D3 / Current | L48D3 / GMP | L64D2 / GMP | Current / GMP | Worst Pair | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `4096` | `1.051` | `0.981` | `0.872` | `0.811` | `0.897` | `1.126` | combo-l64d2-regression |
+| `5639` | `0.987` | `0.875` | `0.771` | `0.759` | `0.878` | `1.112` | combo-l64d2-regression |
+| `8192` | `1.014` | `0.876` | `0.901` | `0.901` | `1.039` | `1.136` | combo-l64d2-regression |
+| `11717` | `1.042` | `0.735` | `0.923` | `0.887` | `1.225` | `1.203` | combo-l64d2-regression |
+| `16384` | `0.991` | `0.705` | `0.937` | `0.952` | `1.336` | `1.132` | combo-l64d2-regression |
+| `24103` | `0.997` | `0.667` | `0.999` | `1.014` | `1.510` | `1.118` | combo-l64d2-regression |
+| `32768` | `0.964` | `0.665` | `1.068` | `1.107` | `1.601` | `1.216` | combo-l64d2-regression |
+| `52163` | `0.921` | `0.600` | `1.055` | `1.141` | `1.762` | `1.065` | backend-regression |
+| `65536` | `0.915` | `0.625` | `1.179` | `1.294` | `1.899` | `1.205` | backend-regression |
+
+Decision: keep l48d3 full-window observe-only. The current-production win is
+real but not sufficient for promotion because the row fails l64d2, GMP/MPIR,
+worst-pair, and stability gates. The next multiply slice should not be another
+simple leaf/depth tweak; it needs a different high-end structure or a narrowly
+proved handoff policy.

@@ -538,6 +538,47 @@ upper medians, but loses at `24103` and `65536`, worsens the aggregate
 result for simply increasing Toom recursion depth; the next high-end slice
 should test a different structure or handoff rather than depth5.
 
+## Combo Leaf48 Depth3 Full-Window Audit
+
+Follow-up run:
+
+- Validation: `native/build-codex-large-mul-campaign/Release/xray_native_tests.exe`
+  printed `native xray tests passed`
+- Artifact:
+  `native-test-runs/20260619-184951-c4b04caf/benchmark.tsv`
+
+This run adds `mul-large-toom-cmb-l48d3-full` plus per-size
+`mul-large-toom-cmb-l48d3-fpt` rows across the complete CPU multiply campaign
+window: `4096`, `5639`, `8192`, `11717`, `16384`, `24103`, `32768`, `52163`,
+and `65536`. The row compares the best recent upper-window shape
+(`full-ws-combo-l48d3`) against the prior combo depth2 baseline, current
+production multiply, and GMP/MPIR in the same rotating run.
+
+| Row | Sizes | Base Max | Current Max | GMP Max | Base/GMP Max | Current/GMP Max | Worst Pair | Safe Sizes | Hash | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `mul-large-toom-cmb-l48d3-full` | `4096,5639,8192,11717,16384,24103,32768,52163,65536` | `1.051` | `0.981` | `1.179` | `1.294` | `1.899` | `1.216` | `0/9` | `162/162` | observe only |
+
+Per-size signal:
+
+| Digits | L48D3 / L64D2 | L48D3 / Current | L48D3 / GMP | L64D2 / GMP | Current / GMP | Worst Pair | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `4096` | `1.051` | `0.981` | `0.872` | `0.811` | `0.897` | `1.126` | combo-l64d2-regression |
+| `5639` | `0.987` | `0.875` | `0.771` | `0.759` | `0.878` | `1.112` | combo-l64d2-regression |
+| `8192` | `1.014` | `0.876` | `0.901` | `0.901` | `1.039` | `1.136` | combo-l64d2-regression |
+| `11717` | `1.042` | `0.735` | `0.923` | `0.887` | `1.225` | `1.203` | combo-l64d2-regression |
+| `16384` | `0.991` | `0.705` | `0.937` | `0.952` | `1.336` | `1.132` | combo-l64d2-regression |
+| `24103` | `0.997` | `0.667` | `0.999` | `1.014` | `1.510` | `1.118` | combo-l64d2-regression |
+| `32768` | `0.964` | `0.665` | `1.068` | `1.107` | `1.601` | `1.216` | combo-l64d2-regression |
+| `52163` | `0.921` | `0.600` | `1.055` | `1.141` | `1.762` | `1.065` | backend-regression |
+| `65536` | `0.915` | `0.625` | `1.179` | `1.294` | `1.899` | `1.205` | backend-regression |
+
+The full-window l48d3 audit is exact and beats current production multiply at
+every measured size, including every deterministic random spot. It is still not
+promotion-ready: it regresses against the l64d2 baseline at lower anchors, loses
+to GMP/MPIR from `32768` upward, and fails worst-pair/stable-pair safety. Keep
+it as an observe-only probe and use it as evidence that the next CPU multiply
+slice needs a different high-end structure or a stricter thresholded handoff.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor

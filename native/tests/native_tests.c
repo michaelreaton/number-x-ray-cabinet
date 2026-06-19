@@ -2571,6 +2571,17 @@ static void test_benchmarks(void) {
   int saw_mul_large_cpu_toom_cmb_l48d3_point52163_probe = 0;
   int saw_mul_large_cpu_toom_cmb_l48d3_point65536_probe = 0;
   int saw_mul_large_cpu_toom_cmb_l48d3_scout_probe = 0;
+  int saw_mul_large_cpu_toom_cmb_l48d3_full_point_probe = 0;
+  int saw_mul_large_cpu_toom_cmb_l48d3_full_point4096_probe = 0;
+  int saw_mul_large_cpu_toom_cmb_l48d3_full_point5639_probe = 0;
+  int saw_mul_large_cpu_toom_cmb_l48d3_full_point8192_probe = 0;
+  int saw_mul_large_cpu_toom_cmb_l48d3_full_point11717_probe = 0;
+  int saw_mul_large_cpu_toom_cmb_l48d3_full_point16384_probe = 0;
+  int saw_mul_large_cpu_toom_cmb_l48d3_full_point24103_probe = 0;
+  int saw_mul_large_cpu_toom_cmb_l48d3_full_point32768_probe = 0;
+  int saw_mul_large_cpu_toom_cmb_l48d3_full_point52163_probe = 0;
+  int saw_mul_large_cpu_toom_cmb_l48d3_full_point65536_probe = 0;
+  int saw_mul_large_cpu_toom_cmb_l48d3_full_probe = 0;
   int saw_mul_large_cpu_toom_cmb_l48d4_point_probe = 0;
   int saw_mul_large_cpu_toom_cmb_l48d4_point24103_probe = 0;
   int saw_mul_large_cpu_toom_cmb_l48d4_point32768_probe = 0;
@@ -2717,6 +2728,7 @@ static void test_benchmarks(void) {
           strcmp(report->results[index].operation, "mul-large-toom-cmb-leaf48-point") == 0 ||
           strcmp(report->results[index].operation, "mul-large-toom-cmb-depth3-point") == 0 ||
           strcmp(report->results[index].operation, "mul-large-toom-cmb-l48d3-point") == 0 ||
+          strcmp(report->results[index].operation, "mul-large-toom-cmb-l48d3-fpt") == 0 ||
           strcmp(report->results[index].operation, "mul-large-toom-cmb-l48d4-point") == 0 ||
           strcmp(report->results[index].operation, "mul-large-toom-cmb-lower-point") == 0 ||
           strcmp(report->results[index].operation, "mul-large-toom-cmb-route-point") == 0) {
@@ -4148,6 +4160,67 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
         CHECK(strstr(report->results[index].detail, "replacementReady=false") != NULL);
         if (report->results[index].digits == 32768 ||
+            report->results[index].digits == 65536) {
+          CHECK(strstr(report->results[index].detail, "sizeRole=power2-anchor") != NULL);
+        } else {
+          CHECK(strstr(report->results[index].detail, "sizeRole=deterministic-random-spot") != NULL);
+        }
+      }
+      if (strcmp(report->results[index].operation, "mul-large-toom-cmb-l48d3-fpt") == 0) {
+        saw_mul_large_cpu_toom_cmb_l48d3_full_point_probe = 1;
+        if (report->results[index].digits == 4096) saw_mul_large_cpu_toom_cmb_l48d3_full_point4096_probe = 1;
+        else if (report->results[index].digits == 5639) saw_mul_large_cpu_toom_cmb_l48d3_full_point5639_probe = 1;
+        else if (report->results[index].digits == 8192) saw_mul_large_cpu_toom_cmb_l48d3_full_point8192_probe = 1;
+        else if (report->results[index].digits == 11717) saw_mul_large_cpu_toom_cmb_l48d3_full_point11717_probe = 1;
+        else if (report->results[index].digits == 16384) saw_mul_large_cpu_toom_cmb_l48d3_full_point16384_probe = 1;
+        else if (report->results[index].digits == 24103) saw_mul_large_cpu_toom_cmb_l48d3_full_point24103_probe = 1;
+        else if (report->results[index].digits == 32768) saw_mul_large_cpu_toom_cmb_l48d3_full_point32768_probe = 1;
+        else if (report->results[index].digits == 52163) saw_mul_large_cpu_toom_cmb_l48d3_full_point52163_probe = 1;
+        else if (report->results[index].digits == 65536) saw_mul_large_cpu_toom_cmb_l48d3_full_point65536_probe = 1;
+        else CHECK(0);
+        CHECK(report->results[index].parity_verified);
+        CHECK(!report->results[index].replacement_ready);
+        CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+        CHECK(report->results[index].sample_count == 9);
+        CHECK(strstr(report->results[index].detail, "op=mul-cmb-l48d3-full-point") != NULL);
+        CHECK(strstr(report->results[index].detail, "parent=cmb-l48d3-full") != NULL);
+        CHECK(strstr(report->results[index].detail, "policy=full-workspace-combo-l48d3-full-window-ge4096") != NULL);
+        CHECK(strstr(report->results[index].detail, "leafThreshold=48") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseLeaf=64") != NULL);
+        CHECK(strstr(report->results[index].detail, "candLeaf=48") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseDepth=2") != NULL);
+        CHECK(strstr(report->results[index].detail, "candDepth=3") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+        CHECK(strstr(report->results[index].detail, "samples=9") != NULL);
+        CHECK(strstr(report->results[index].detail, "requiredStablePairs=8/9") != NULL);
+        CHECK(strstr(report->results[index].detail, "stableBase=") != NULL);
+        CHECK(strstr(report->results[index].detail, "stableCurrent=") != NULL);
+        CHECK(strstr(report->results[index].detail, "stableGmp=") != NULL);
+        CHECK(strstr(report->results[index].detail, "hashSafe=18/18") != NULL);
+        CHECK(strstr(report->results[index].detail, "hashGate=matched") != NULL);
+        CHECK(strstr(report->results[index].detail, "parity=matched") != NULL);
+        CHECK(strstr(report->results[index].detail, "thresholdSafety=full-window") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=full-ws-combo-l48d3") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=full-ws-combo-l64d2") != NULL);
+        CHECK(strstr(report->results[index].detail, "oracle=mpz_mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "candBaseRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "candCurrentRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "candGmpRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseGmpRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "currentGmpRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "worstPairRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
+        CHECK(strstr(report->results[index].detail, "timingMode=rotating") != NULL);
+        CHECK(strstr(report->results[index].detail, "sameInput=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "sameRunAudit=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=large-multiply-cpu-toom-combo-l48d3-full") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpClue=toom33-combo-leaf48-depth3-full-window") != NULL);
+        CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+        CHECK(strstr(report->results[index].detail, "replacementReady=false") != NULL);
+        if (report->results[index].digits == 4096 ||
+            report->results[index].digits == 8192 ||
+            report->results[index].digits == 16384 ||
+            report->results[index].digits == 32768 ||
             report->results[index].digits == 65536) {
           CHECK(strstr(report->results[index].detail, "sizeRole=power2-anchor") != NULL);
         } else {
@@ -5808,6 +5881,48 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "gmpClue=toom33-combo-leaf48-depth3-upper") != NULL);
         CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
         CHECK(strstr(report->results[index].detail, "replacementReady=false") != NULL);
+      } else if (strcmp(report->results[index].operation, "mul-large-toom-cmb-l48d3-full") == 0) {
+        saw_mul_large_cpu_toom_cmb_l48d3_full_probe = 1;
+        CHECK(report->results[index].sample_count == 9);
+        CHECK(report->results[index].digits == 65536);
+        CHECK(!report->results[index].replacement_ready);
+        CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+        CHECK(strstr(report->results[index].detail, "op=mul-large-toom-cmb-l48d3-full") != NULL);
+        CHECK(strstr(report->results[index].detail, "policy=full-workspace-combo-l48d3-full-window-ge4096") != NULL);
+        CHECK(strstr(report->results[index].detail, "sizes=4096,5639,8192,11717,16384,24103,32768,52163,65536") != NULL);
+        CHECK(strstr(report->results[index].detail, "sizeCount=9") != NULL);
+        CHECK(strstr(report->results[index].detail, "minDigits=4096") != NULL);
+        CHECK(strstr(report->results[index].detail, "leafThreshold=48") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseLeaf=64") != NULL);
+        CHECK(strstr(report->results[index].detail, "candLeaf=48") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseDepth=2") != NULL);
+        CHECK(strstr(report->results[index].detail, "candDepth=3") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+        CHECK(strstr(report->results[index].detail, "samples=9") != NULL);
+        CHECK(strstr(report->results[index].detail, "requiredStablePairs=8/9") != NULL);
+        CHECK(strstr(report->results[index].detail, "safeSizes=") != NULL);
+        CHECK(strstr(report->results[index].detail, "hashSafe=162/162") != NULL);
+        CHECK(strstr(report->results[index].detail, "hashGate=matched") != NULL);
+        CHECK(strstr(report->results[index].detail, "parity=matched") != NULL);
+        CHECK(strstr(report->results[index].detail, "forcedCandidate=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "thresholdSafety=full-window") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=full-ws-combo-l48d3") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=full-ws-combo-l64d2") != NULL);
+        CHECK(strstr(report->results[index].detail, "oracle=mpz_mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "candBaseMax=") != NULL);
+        CHECK(strstr(report->results[index].detail, "candCurrentMax=") != NULL);
+        CHECK(strstr(report->results[index].detail, "candGmpMax=") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseGmpMax=") != NULL);
+        CHECK(strstr(report->results[index].detail, "currentGmpMax=") != NULL);
+        CHECK(strstr(report->results[index].detail, "maxWorstPairRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
+        CHECK(strstr(report->results[index].detail, "timingMode=rotating-batch") != NULL);
+        CHECK(strstr(report->results[index].detail, "sameInput=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "sameRunAudit=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=large-multiply-cpu-toom-combo-l48d3-full") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpClue=toom33-combo-leaf48-depth3-full-window") != NULL);
+        CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+        CHECK(strstr(report->results[index].detail, "replacementReady=false") != NULL);
       } else if (strcmp(report->results[index].operation, "mul-large-toom-cmb-l48d4-scout") == 0) {
         saw_mul_large_cpu_toom_cmb_l48d4_scout_probe = 1;
         CHECK(report->results[index].sample_count == 4);
@@ -6327,6 +6442,17 @@ static void test_benchmarks(void) {
   CHECK(saw_mul_large_cpu_toom_cmb_l48d3_point52163_probe);
   CHECK(saw_mul_large_cpu_toom_cmb_l48d3_point65536_probe);
   CHECK(saw_mul_large_cpu_toom_cmb_l48d3_scout_probe);
+  CHECK(saw_mul_large_cpu_toom_cmb_l48d3_full_point_probe);
+  CHECK(saw_mul_large_cpu_toom_cmb_l48d3_full_point4096_probe);
+  CHECK(saw_mul_large_cpu_toom_cmb_l48d3_full_point5639_probe);
+  CHECK(saw_mul_large_cpu_toom_cmb_l48d3_full_point8192_probe);
+  CHECK(saw_mul_large_cpu_toom_cmb_l48d3_full_point11717_probe);
+  CHECK(saw_mul_large_cpu_toom_cmb_l48d3_full_point16384_probe);
+  CHECK(saw_mul_large_cpu_toom_cmb_l48d3_full_point24103_probe);
+  CHECK(saw_mul_large_cpu_toom_cmb_l48d3_full_point32768_probe);
+  CHECK(saw_mul_large_cpu_toom_cmb_l48d3_full_point52163_probe);
+  CHECK(saw_mul_large_cpu_toom_cmb_l48d3_full_point65536_probe);
+  CHECK(saw_mul_large_cpu_toom_cmb_l48d3_full_probe);
   CHECK(saw_mul_large_cpu_toom_cmb_l48d4_point_probe);
   CHECK(saw_mul_large_cpu_toom_cmb_l48d4_point24103_probe);
   CHECK(saw_mul_large_cpu_toom_cmb_l48d4_point32768_probe);
@@ -6784,6 +6910,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "mul-large-toom-cmb-l48d3-scout") != NULL);
   CHECK(strstr(json, "large-multiply-cpu-toom-combo-l48d3-scout") != NULL);
   CHECK(strstr(json, "full-workspace-combo-l48d3-upper-ge24103") != NULL);
+  CHECK(strstr(json, "mul-large-toom-cmb-l48d3-fpt") != NULL);
+  CHECK(strstr(json, "mul-large-toom-cmb-l48d3-full") != NULL);
+  CHECK(strstr(json, "large-multiply-cpu-toom-combo-l48d3-full") != NULL);
+  CHECK(strstr(json, "full-workspace-combo-l48d3-full-window-ge4096") != NULL);
   CHECK(strstr(json, "mul-large-toom-cmb-l48d4-point") != NULL);
   CHECK(strstr(json, "mul-large-toom-cmb-l48d4-scout") != NULL);
   CHECK(strstr(json, "large-multiply-cpu-toom-combo-l48d4-scout") != NULL);
@@ -7002,6 +7132,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "mul-large-toom-cmb-l48d3-scout") != NULL);
   CHECK(strstr(tsv, "large-multiply-cpu-toom-combo-l48d3-scout") != NULL);
   CHECK(strstr(tsv, "full-workspace-combo-l48d3-upper-ge24103") != NULL);
+  CHECK(strstr(tsv, "mul-large-toom-cmb-l48d3-fpt") != NULL);
+  CHECK(strstr(tsv, "mul-large-toom-cmb-l48d3-full") != NULL);
+  CHECK(strstr(tsv, "large-multiply-cpu-toom-combo-l48d3-full") != NULL);
+  CHECK(strstr(tsv, "full-workspace-combo-l48d3-full-window-ge4096") != NULL);
   CHECK(strstr(tsv, "mul-large-toom-cmb-l48d4-point") != NULL);
   CHECK(strstr(tsv, "mul-large-toom-cmb-l48d4-scout") != NULL);
   CHECK(strstr(tsv, "large-multiply-cpu-toom-combo-l48d4-scout") != NULL);
@@ -7143,6 +7277,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_json, "mul-large-toom-cmb-l48d3-scout") != NULL);
   CHECK(strstr(benchmark_json, "large-multiply-cpu-toom-combo-l48d3-scout") != NULL);
   CHECK(strstr(benchmark_json, "full-workspace-combo-l48d3-upper-ge24103") != NULL);
+  CHECK(strstr(benchmark_json, "mul-large-toom-cmb-l48d3-fpt") != NULL);
+  CHECK(strstr(benchmark_json, "mul-large-toom-cmb-l48d3-full") != NULL);
+  CHECK(strstr(benchmark_json, "large-multiply-cpu-toom-combo-l48d3-full") != NULL);
+  CHECK(strstr(benchmark_json, "full-workspace-combo-l48d3-full-window-ge4096") != NULL);
   CHECK(strstr(benchmark_json, "mul-large-toom-cmb-l48d4-point") != NULL);
   CHECK(strstr(benchmark_json, "mul-large-toom-cmb-l48d4-scout") != NULL);
   CHECK(strstr(benchmark_json, "large-multiply-cpu-toom-combo-l48d4-scout") != NULL);
@@ -7413,6 +7551,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "mul-large-toom-cmb-l48d3-point") != NULL);
   CHECK(strstr(benchmark_tsv, "large-multiply-cpu-toom-combo-l48d3-scout") != NULL);
   CHECK(strstr(benchmark_tsv, "full-workspace-combo-l48d3-upper-ge24103") != NULL);
+  CHECK(strstr(benchmark_tsv, "mul-large-toom-cmb-l48d3-full") != NULL);
+  CHECK(strstr(benchmark_tsv, "mul-large-toom-cmb-l48d3-fpt") != NULL);
+  CHECK(strstr(benchmark_tsv, "large-multiply-cpu-toom-combo-l48d3-full") != NULL);
+  CHECK(strstr(benchmark_tsv, "full-workspace-combo-l48d3-full-window-ge4096") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-large-toom-cmb-l48d4-scout") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-large-toom-cmb-l48d4-point") != NULL);
   CHECK(strstr(benchmark_tsv, "large-multiply-cpu-toom-combo-l48d4-scout") != NULL);
@@ -7502,6 +7644,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "mul-large-toom-cmb-depth3-scout") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-large-toom-cmb-l48d3-point") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-large-toom-cmb-l48d3-scout") != NULL);
+  CHECK(strstr(benchmark_frontier, "mul-large-toom-cmb-l48d3-fpt") != NULL);
+  CHECK(strstr(benchmark_frontier, "mul-large-toom-cmb-l48d3-full") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-large-toom-cmb-l48d4-point") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-large-toom-cmb-l48d4-scout") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-large-toom-cmb-lower-point") != NULL);
@@ -7670,6 +7814,9 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_progress, "mul-large-toom-cmb-l48d3-point") != NULL);
   CHECK(strstr(benchmark_progress, "mul-large-toom-cmb-l48d3-scout") != NULL);
   CHECK(strstr(benchmark_progress, "full-workspace-combo-l48d3-upper-ge24103") != NULL);
+  CHECK(strstr(benchmark_progress, "mul-large-toom-cmb-l48d3-fpt") != NULL);
+  CHECK(strstr(benchmark_progress, "mul-large-toom-cmb-l48d3-full") != NULL);
+  CHECK(strstr(benchmark_progress, "full-workspace-combo-l48d3-full-window-ge4096") != NULL);
   CHECK(strstr(benchmark_progress, "mul-large-toom-cmb-l48d4-point") != NULL);
   CHECK(strstr(benchmark_progress, "mul-large-toom-cmb-l48d4-scout") != NULL);
   CHECK(strstr(benchmark_progress, "full-workspace-combo-l48d4-upper-ge24103") != NULL);
@@ -7752,6 +7899,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_progress_tsv, "mul-large-toom-cmb-l48d3-scout") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "large-multiply-cpu-toom-combo-l48d3-scout") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "full-workspace-combo-l48d3-upper-ge24103") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "mul-large-toom-cmb-l48d3-fpt") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "mul-large-toom-cmb-l48d3-full") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "large-multiply-cpu-toom-combo-l48d3-full") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "full-workspace-combo-l48d3-full-window-ge4096") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "mul-large-toom-cmb-l48d4-point") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "mul-large-toom-cmb-l48d4-scout") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "large-multiply-cpu-toom-combo-l48d4-scout") != NULL);
