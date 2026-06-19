@@ -3779,6 +3779,84 @@ static void append_large_mul_cpu_toom_view_branch_result(
   append_result(report, &result);
 }
 
+static void append_large_mul_cpu_toom_workspace_branch_result(
+  XrayBenchmarkReport *report,
+  size_t digits,
+  const char *size_role,
+  size_t leaf_threshold,
+  size_t depth_limit,
+  size_t operand_families,
+  unsigned int iterations,
+  int parity,
+  unsigned long long toom_workspace_us,
+  unsigned long long toom_view_us,
+  unsigned long long toom_copy_us,
+  unsigned long long current_us,
+  unsigned long long workspace_us,
+  unsigned long long gmp_us,
+  double toom_workspace_current_ratio,
+  double toom_workspace_view_ratio,
+  double toom_workspace_copy_ratio,
+  double toom_workspace_workspace_ratio,
+  double toom_workspace_gmp_ratio,
+  size_t stable_current_count,
+  size_t stable_view_count,
+  size_t stable_copy_count,
+  size_t stable_workspace_count,
+  size_t stable_gmp_count,
+  size_t sample_count,
+  double worst_pair_ratio) {
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "kernel large mul CPU Toom workspace branch %zu digits", digits);
+  snprintf(result.category, sizeof(result.category), "kernel-probe");
+  snprintf(result.operation, sizeof(result.operation), "mul-large-cpu-toom-ws-branch");
+  result.digits = digits;
+  result.scratch_us = toom_workspace_us ? toom_workspace_us : 1;
+  result.gmp_us = toom_view_us ? toom_view_us : 1;
+  result.speed_ratio = toom_workspace_view_ratio > 0.0 ? toom_workspace_view_ratio : (double)result.scratch_us / (double)result.gmp_us;
+  result.max_allowed_speed_ratio = 0.98;
+  result.stable_sample_count = stable_view_count;
+  if (stable_current_count < result.stable_sample_count) result.stable_sample_count = stable_current_count;
+  if (stable_copy_count < result.stable_sample_count) result.stable_sample_count = stable_copy_count;
+  if (stable_workspace_count < result.stable_sample_count) result.stable_sample_count = stable_workspace_count;
+  if (stable_gmp_count < result.stable_sample_count) result.stable_sample_count = stable_gmp_count;
+  result.sample_count = sample_count;
+  result.worst_pair_ratio = worst_pair_ratio;
+  result.parity_verified = parity;
+  result.replacement_ready = 0;
+  snprintf(result.adoption, sizeof(result.adoption), "%s", parity ? "observe-only" : "blocked-output-mismatch");
+  snprintf(result.status, sizeof(result.status), "%s",
+    !parity ? "mismatch" : (result.speed_ratio < 1.0 ? "candidate-faster-probe" : "split-view-best"));
+  result.passed = parity;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  snprintf(result.detail, sizeof(result.detail),
+    "op=mul-large-cpu-toom-ws-branch digits=%zu sizeRole=%s leafThreshold=%zu depthLimit=%zu operandFamilies=%zu samples=%zu iterations=%u stablePairs=%zu/%zu ratio=%.3f toomWsCurrentRatio=%.3f toomWsViewRatio=%.3f toomWsCopyRatio=%.3f toomWsWorkspaceRatio=%.3f toomWsGmpRatio=%.3f worstPairRatio=%.3f ratioMethod=paired-median max=%.2f candidate=recursive-toom3+unroll4-workspace baseline=recursive-toom3+unroll4-split-view comparison=toom-ws+toom-view+toom-copy+current+karatsuba-ws+mpz_mul oracle=mpz_mul featureGate=large-multiply-cpu-toom-ws-branch gmpClue=toom33-recursive-temp-reuse noAutoRoute=1 replacementReady=false adoption=%s",
+    digits,
+    size_role ? size_role : "unknown",
+    leaf_threshold,
+    depth_limit,
+    operand_families,
+    sample_count,
+    iterations,
+    result.stable_sample_count,
+    sample_count,
+    result.speed_ratio,
+    toom_workspace_current_ratio,
+    toom_workspace_view_ratio,
+    toom_workspace_copy_ratio,
+    toom_workspace_workspace_ratio,
+    toom_workspace_gmp_ratio,
+    result.worst_pair_ratio,
+    result.max_allowed_speed_ratio,
+    result.adoption);
+  (void)toom_copy_us;
+  (void)current_us;
+  (void)workspace_us;
+  (void)gmp_us;
+  append_result(report, &result);
+}
+
 static void append_mul_unroll4_vs_gmp_probe_result(
   XrayBenchmarkReport *report,
   const char *operation_name,
@@ -8511,6 +8589,7 @@ static void run_large_mul_cpu_campaign_case(XrayBenchmarkReport *report, size_t 
 #if XRAY_HAS_MSVC_BMI2_ADX_INTRINSICS
   XrayScratchBigInt toom_out[XRAY_MUL_OPERAND_FAMILIES];
   XrayScratchBigInt toom_view_out[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt toom_workspace_out[XRAY_MUL_OPERAND_FAMILIES];
 #endif
   mpz_t ga[XRAY_MUL_OPERAND_FAMILIES];
   mpz_t gb[XRAY_MUL_OPERAND_FAMILIES];
@@ -8528,6 +8607,7 @@ static void run_large_mul_cpu_campaign_case(XrayBenchmarkReport *report, size_t 
 #if XRAY_HAS_MSVC_BMI2_ADX_INTRINSICS
     xray_bigint_init(&toom_out[family]);
     xray_bigint_init(&toom_view_out[family]);
+    xray_bigint_init(&toom_workspace_out[family]);
 #endif
     mpz_inits(ga[family], gb[family], gout[family], NULL);
     left_text[family] = benchmark_decimal(digits, mul_operand_families[family].left_seed, mul_operand_families[family].left_high_lead);
@@ -8548,7 +8628,8 @@ static void run_large_mul_cpu_campaign_case(XrayBenchmarkReport *report, size_t 
 #if XRAY_HAS_MSVC_BMI2_ADX_INTRINSICS
   unsigned long long toom_samples[XRAY_BENCH_SAMPLES] = {0};
   unsigned long long toom_view_samples[XRAY_BENCH_SAMPLES] = {0};
-  const unsigned int lane_count = 6U;
+  unsigned long long toom_workspace_samples[XRAY_BENCH_SAMPLES] = {0};
+  const unsigned int lane_count = 7U;
 #else
   const unsigned int lane_count = 4U;
 #endif
@@ -8556,6 +8637,7 @@ static void run_large_mul_cpu_campaign_case(XrayBenchmarkReport *report, size_t 
 #if XRAY_HAS_MSVC_BMI2_ADX_INTRINSICS
   int toom_parity = 1;
   int toom_view_parity = 1;
+  int toom_workspace_parity = 1;
 #endif
   for (unsigned int sample = 0; ok && sample < XRAY_BENCH_SAMPLES; ++sample) {
     for (unsigned int lane_offset = 0; ok && lane_offset < lane_count; ++lane_offset) {
@@ -8609,6 +8691,14 @@ static void run_large_mul_cpu_campaign_case(XrayBenchmarkReport *report, size_t 
           }
         }
         toom_view_samples[sample] = xray_now_us() - toom_view_started;
+      } else if (lane == 6U) {
+        unsigned long long toom_workspace_started = xray_now_us();
+        for (unsigned int index = 0; ok && index < iterations; ++index) {
+          for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+            ok = xray_bigint_mul_toom3_unroll4_recursive_workspace_probe(&toom_workspace_out[family], &a[family], &b[family], leaf_threshold, toom_depth_limit);
+          }
+        }
+        toom_workspace_samples[sample] = xray_now_us() - toom_workspace_started;
 #endif
       }
     }
@@ -8631,6 +8721,13 @@ static void run_large_mul_cpu_campaign_case(XrayBenchmarkReport *report, size_t 
         xray_bigint_compare(&toom_view_out[family], &workspace_out[family]) == 0 &&
         xray_bigint_compare(&toom_view_out[family], &toom_out[family]) == 0 &&
         scratch_value_matches_mpz(&toom_view_out[family], gout[family]);
+      toom_workspace_parity = toom_workspace_parity &&
+        ok &&
+        xray_bigint_compare(&toom_workspace_out[family], &current_out[family]) == 0 &&
+        xray_bigint_compare(&toom_workspace_out[family], &workspace_out[family]) == 0 &&
+        xray_bigint_compare(&toom_workspace_out[family], &toom_out[family]) == 0 &&
+        xray_bigint_compare(&toom_workspace_out[family], &toom_view_out[family]) == 0 &&
+        scratch_value_matches_mpz(&toom_workspace_out[family], gout[family]);
 #endif
     }
   }
@@ -8725,6 +8822,44 @@ static void run_large_mul_cpu_campaign_case(XrayBenchmarkReport *report, size_t 
     paired_ratio_wins(toom_view_samples, gmp_samples, XRAY_BENCH_SAMPLES, 1.0),
     XRAY_BENCH_SAMPLES,
     toom_view_worst_pair_ratio);
+
+  double toom_workspace_current_worst = max_paired_ratio(toom_workspace_samples, current_samples, XRAY_BENCH_SAMPLES);
+  double toom_workspace_view_worst = max_paired_ratio(toom_workspace_samples, toom_view_samples, XRAY_BENCH_SAMPLES);
+  double toom_workspace_copy_worst = max_paired_ratio(toom_workspace_samples, toom_samples, XRAY_BENCH_SAMPLES);
+  double toom_workspace_workspace_worst = max_paired_ratio(toom_workspace_samples, workspace_samples, XRAY_BENCH_SAMPLES);
+  double toom_workspace_gmp_worst = max_paired_ratio(toom_workspace_samples, gmp_samples, XRAY_BENCH_SAMPLES);
+  double toom_workspace_worst_pair_ratio = toom_workspace_current_worst;
+  if (toom_workspace_view_worst > toom_workspace_worst_pair_ratio) toom_workspace_worst_pair_ratio = toom_workspace_view_worst;
+  if (toom_workspace_copy_worst > toom_workspace_worst_pair_ratio) toom_workspace_worst_pair_ratio = toom_workspace_copy_worst;
+  if (toom_workspace_workspace_worst > toom_workspace_worst_pair_ratio) toom_workspace_worst_pair_ratio = toom_workspace_workspace_worst;
+  if (toom_workspace_gmp_worst > toom_workspace_worst_pair_ratio) toom_workspace_worst_pair_ratio = toom_workspace_gmp_worst;
+  append_large_mul_cpu_toom_workspace_branch_result(
+    report,
+    digits,
+    large_mul_campaign_size_role(digits),
+    leaf_threshold,
+    toom_depth_limit,
+    XRAY_MUL_OPERAND_FAMILIES,
+    iterations,
+    toom_workspace_parity,
+    median_samples(toom_workspace_samples, XRAY_BENCH_SAMPLES),
+    median_samples(toom_view_samples, XRAY_BENCH_SAMPLES),
+    median_samples(toom_samples, XRAY_BENCH_SAMPLES),
+    median_samples(current_samples, XRAY_BENCH_SAMPLES),
+    median_samples(workspace_samples, XRAY_BENCH_SAMPLES),
+    median_samples(gmp_samples, XRAY_BENCH_SAMPLES),
+    median_paired_ratio(toom_workspace_samples, current_samples, XRAY_BENCH_SAMPLES),
+    median_paired_ratio(toom_workspace_samples, toom_view_samples, XRAY_BENCH_SAMPLES),
+    median_paired_ratio(toom_workspace_samples, toom_samples, XRAY_BENCH_SAMPLES),
+    median_paired_ratio(toom_workspace_samples, workspace_samples, XRAY_BENCH_SAMPLES),
+    median_paired_ratio(toom_workspace_samples, gmp_samples, XRAY_BENCH_SAMPLES),
+    paired_ratio_wins(toom_workspace_samples, current_samples, XRAY_BENCH_SAMPLES, 0.98),
+    paired_ratio_wins(toom_workspace_samples, toom_view_samples, XRAY_BENCH_SAMPLES, 0.98),
+    paired_ratio_wins(toom_workspace_samples, toom_samples, XRAY_BENCH_SAMPLES, 0.98),
+    paired_ratio_wins(toom_workspace_samples, workspace_samples, XRAY_BENCH_SAMPLES, 0.98),
+    paired_ratio_wins(toom_workspace_samples, gmp_samples, XRAY_BENCH_SAMPLES, 1.0),
+    XRAY_BENCH_SAMPLES,
+    toom_workspace_worst_pair_ratio);
 #endif
 
   for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
@@ -8737,6 +8872,7 @@ static void run_large_mul_cpu_campaign_case(XrayBenchmarkReport *report, size_t 
 #if XRAY_HAS_MSVC_BMI2_ADX_INTRINSICS
     xray_bigint_clear(&toom_out[family]);
     xray_bigint_clear(&toom_view_out[family]);
+    xray_bigint_clear(&toom_workspace_out[family]);
 #endif
     free(left_text[family]);
     free(right_text[family]);

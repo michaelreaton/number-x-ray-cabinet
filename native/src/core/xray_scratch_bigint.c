@@ -318,6 +318,7 @@ char *xray_bigint_route_config_json(void) {
       "\"karatsuba-workspace\","
       "\"toom3\","
       "\"toom3-split-view\","
+      "\"toom3-workspace\","
       "\"sparse-shape\""
     "]"
     ",\"mpirGmpClue\":\"GMP separates decimal conversion into thresholded parse/format stages; Number X-Ray routes only same-run winners and keeps unproven formatter probes default-off.\""
@@ -4041,6 +4042,419 @@ static int mul_toom3_probe_internal(
   return ok;
 }
 
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+enum {
+  XRAY_TOOM3_POINT_0 = 0,
+  XRAY_TOOM3_POINT_1 = 1,
+  XRAY_TOOM3_POINT_MINUS_1 = 2,
+  XRAY_TOOM3_POINT_2 = 3,
+  XRAY_TOOM3_POINT_INF = 4,
+  XRAY_TOOM3_POINT_COUNT = 5
+};
+
+typedef struct XrayToom3WorkspaceFrame {
+  XraySignedScratchBigInt x[XRAY_TOOM3_POINT_COUNT];
+  XraySignedScratchBigInt y[XRAY_TOOM3_POINT_COUNT];
+  XraySignedScratchBigInt v[XRAY_TOOM3_POINT_COUNT];
+  XraySignedScratchBigInt twice_vinf;
+  XraySignedScratchBigInt signed_temp;
+  XrayScratchBigInt eval_temp;
+  XrayScratchBigInt div_temp;
+} XrayToom3WorkspaceFrame;
+
+typedef struct XrayToom3Workspace {
+  XrayToom3WorkspaceFrame *frames;
+  size_t frame_count;
+} XrayToom3Workspace;
+
+static int mul_toom3_workspace_recurse(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *left,
+  const XrayScratchBigInt *right,
+  size_t leaf_threshold,
+  int use_unroll4,
+  size_t depth_limit,
+  XrayToom3Workspace *workspace,
+  size_t depth);
+
+static void signed_reset(XraySignedScratchBigInt *value) {
+  if (!value) return;
+  value->sign = 0;
+  value->mag.count = 0;
+}
+
+static int signed_set_positive_eval(
+  XraySignedScratchBigInt *out,
+  const XrayScratchBigInt *part0,
+  const XrayScratchBigInt *part1,
+  const XrayScratchBigInt *part2,
+  uint64_t weight1,
+  uint64_t weight2) {
+  if (!out) return 0;
+  int ok = eval_toom3_positive(&out->mag, part0, part1, part2, weight1, weight2);
+  out->sign = ok && out->mag.count ? 1 : 0;
+  return ok;
+}
+
+static int eval_toom3_minus_one_workspace(
+  XraySignedScratchBigInt *out,
+  const XrayScratchBigInt *part0,
+  const XrayScratchBigInt *part1,
+  const XrayScratchBigInt *part2,
+  XrayScratchBigInt *positive) {
+  if (!out || !positive) return 0;
+  int ok = eval_toom3_positive(positive, part0, part1, part2, 0, 1);
+  if (ok) {
+    int compare = xray_bigint_compare(positive, part1);
+    if (compare == 0) {
+      ok = set_u32(&out->mag, 0);
+      out->sign = 0;
+    } else if (compare > 0) {
+      ok = xray_bigint_sub(&out->mag, positive, part1);
+      out->sign = ok && out->mag.count ? 1 : 0;
+    } else {
+      ok = xray_bigint_sub(&out->mag, part1, positive);
+      out->sign = ok && out->mag.count ? -1 : 0;
+    }
+  }
+  return ok;
+}
+
+static int signed_add_workspace(
+  XraySignedScratchBigInt *out,
+  const XraySignedScratchBigInt *left,
+  const XraySignedScratchBigInt *right,
+  XraySignedScratchBigInt *temp) {
+  if (!out || !left || !right || !temp) return 0;
+  signed_reset(temp);
+  int ok = 1;
+  if (left->sign == 0) ok = signed_copy(temp, right);
+  else if (right->sign == 0) ok = signed_copy(temp, left);
+  else if (left->sign == right->sign) {
+    ok = xray_bigint_add(&temp->mag, &left->mag, &right->mag);
+    temp->sign = ok && temp->mag.count ? left->sign : 0;
+  } else {
+    int compare = xray_bigint_compare(&left->mag, &right->mag);
+    if (compare == 0) {
+      ok = set_u32(&temp->mag, 0);
+      temp->sign = 0;
+    } else if (compare > 0) {
+      ok = xray_bigint_sub(&temp->mag, &left->mag, &right->mag);
+      temp->sign = ok && temp->mag.count ? left->sign : 0;
+    } else {
+      ok = xray_bigint_sub(&temp->mag, &right->mag, &left->mag);
+      temp->sign = ok && temp->mag.count ? right->sign : 0;
+    }
+  }
+  if (ok) ok = signed_copy(out, temp);
+  return ok;
+}
+
+static int signed_sub_workspace(
+  XraySignedScratchBigInt *out,
+  const XraySignedScratchBigInt *left,
+  const XraySignedScratchBigInt *right,
+  XraySignedScratchBigInt *temp) {
+  if (!out || !left || !right || !temp) return 0;
+  XraySignedScratchBigInt neg_right = *right;
+  neg_right.sign = -neg_right.sign;
+  return signed_add_workspace(out, left, &neg_right, temp);
+}
+
+static int signed_sub_inplace_workspace(
+  XraySignedScratchBigInt *value,
+  const XraySignedScratchBigInt *subtrahend,
+  XraySignedScratchBigInt *temp) {
+  return signed_sub_workspace(value, value, subtrahend, temp);
+}
+
+static int signed_divexact_u32_workspace(
+  XraySignedScratchBigInt *value,
+  uint32_t divisor,
+  XrayScratchBigInt *quotient) {
+  if (!value || !quotient || divisor == 0) return 0;
+  if (value->sign == 0) return 1;
+  quotient->count = 0;
+  uint32_t remainder = 0;
+  int ok = xray_bigint_divmod_u32(quotient, &remainder, &value->mag, divisor) && remainder == 0;
+  if (ok) {
+    ok = xray_bigint_copy(&value->mag, quotient);
+    signed_normalize(value);
+  }
+  return ok;
+}
+
+static void toom3_workspace_frame_init(XrayToom3WorkspaceFrame *frame) {
+  if (!frame) return;
+  for (size_t index = 0; index < XRAY_TOOM3_POINT_COUNT; ++index) {
+    signed_init(&frame->x[index]);
+    signed_init(&frame->y[index]);
+    signed_init(&frame->v[index]);
+  }
+  signed_init(&frame->twice_vinf);
+  signed_init(&frame->signed_temp);
+  xray_bigint_init(&frame->eval_temp);
+  xray_bigint_init(&frame->div_temp);
+}
+
+static void toom3_workspace_frame_clear(XrayToom3WorkspaceFrame *frame) {
+  if (!frame) return;
+  for (size_t index = 0; index < XRAY_TOOM3_POINT_COUNT; ++index) {
+    signed_clear(&frame->x[index]);
+    signed_clear(&frame->y[index]);
+    signed_clear(&frame->v[index]);
+  }
+  signed_clear(&frame->twice_vinf);
+  signed_clear(&frame->signed_temp);
+  xray_bigint_clear(&frame->eval_temp);
+  xray_bigint_clear(&frame->div_temp);
+}
+
+static void toom3_workspace_frame_reset(XrayToom3WorkspaceFrame *frame) {
+  if (!frame) return;
+  for (size_t index = 0; index < XRAY_TOOM3_POINT_COUNT; ++index) {
+    signed_reset(&frame->x[index]);
+    signed_reset(&frame->y[index]);
+    signed_reset(&frame->v[index]);
+  }
+  signed_reset(&frame->twice_vinf);
+  signed_reset(&frame->signed_temp);
+  frame->eval_temp.count = 0;
+  frame->div_temp.count = 0;
+}
+
+static void toom3_workspace_init(XrayToom3Workspace *workspace) {
+  if (!workspace) return;
+  workspace->frames = NULL;
+  workspace->frame_count = 0;
+}
+
+static void toom3_workspace_clear(XrayToom3Workspace *workspace) {
+  if (!workspace) return;
+  for (size_t index = 0; index < workspace->frame_count; ++index) {
+    toom3_workspace_frame_clear(&workspace->frames[index]);
+  }
+  free(workspace->frames);
+  workspace->frames = NULL;
+  workspace->frame_count = 0;
+}
+
+static int toom3_workspace_ensure_frames(XrayToom3Workspace *workspace, size_t frame_count) {
+  if (!workspace) return 0;
+  if (workspace->frame_count >= frame_count) return 1;
+  XrayToom3WorkspaceFrame *frames = (XrayToom3WorkspaceFrame *)realloc(
+    workspace->frames,
+    sizeof(XrayToom3WorkspaceFrame) * frame_count);
+  if (!frames) return 0;
+  workspace->frames = frames;
+  for (size_t index = workspace->frame_count; index < frame_count; ++index) {
+    toom3_workspace_frame_init(&workspace->frames[index]);
+  }
+  workspace->frame_count = frame_count;
+  return 1;
+}
+
+static int toom3_workspace_reserve_signed(XraySignedScratchBigInt *value, size_t capacity) {
+  return value && reserve_limbs(&value->mag, capacity);
+}
+
+static int toom3_workspace_frame_reserve(XrayToom3WorkspaceFrame *frame, size_t capacity) {
+  if (!frame) return 0;
+  for (size_t index = 0; index < XRAY_TOOM3_POINT_COUNT; ++index) {
+    if (!toom3_workspace_reserve_signed(&frame->x[index], capacity) ||
+        !toom3_workspace_reserve_signed(&frame->y[index], capacity) ||
+        !toom3_workspace_reserve_signed(&frame->v[index], capacity)) {
+      return 0;
+    }
+  }
+  return toom3_workspace_reserve_signed(&frame->twice_vinf, capacity) &&
+    toom3_workspace_reserve_signed(&frame->signed_temp, capacity) &&
+    reserve_limbs(&frame->eval_temp, capacity) &&
+    reserve_limbs(&frame->div_temp, capacity);
+}
+
+static int toom3_workspace_prepare(
+  XrayToom3Workspace *workspace,
+  size_t max_count,
+  size_t depth_limit) {
+  size_t frame_count = depth_limit >= 1U ? depth_limit : 1U;
+  if (!toom3_workspace_ensure_frames(workspace, frame_count)) return 0;
+  size_t frame_count_estimate = max_count ? max_count : 1U;
+  for (size_t index = 0; index < frame_count; ++index) {
+    if (frame_count_estimate > (SIZE_MAX - 16U) / 2U) return 0;
+    size_t capacity = frame_count_estimate * 2U + 16U;
+    if (capacity < 16U) capacity = 16U;
+    if (!toom3_workspace_frame_reserve(&workspace->frames[index], capacity)) return 0;
+    frame_count_estimate = (frame_count_estimate + 2U) / 3U + 4U;
+  }
+  return 1;
+}
+
+static int signed_mul_toom3_workspace_mode(
+  XraySignedScratchBigInt *out,
+  const XraySignedScratchBigInt *left,
+  const XraySignedScratchBigInt *right,
+  size_t threshold,
+  int use_unroll4,
+  size_t depth_limit,
+  XrayToom3Workspace *workspace,
+  size_t depth) {
+  if (!out || !left || !right) return 0;
+  if (left->sign == 0 || right->sign == 0) {
+    out->sign = 0;
+    return set_u32(&out->mag, 0);
+  }
+  int ok = mul_toom3_workspace_recurse(&out->mag, &left->mag, &right->mag, threshold, use_unroll4, depth_limit, workspace, depth);
+  out->sign = ok && out->mag.count ? left->sign * right->sign : 0;
+  return ok;
+}
+
+static int mul_toom3_workspace_recurse(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *left,
+  const XrayScratchBigInt *right,
+  size_t leaf_threshold,
+  int use_unroll4,
+  size_t depth_limit,
+  XrayToom3Workspace *workspace,
+  size_t depth) {
+  if (!out || !left || !right) return 0;
+  if (left->count == 0 || right->count == 0) return set_u32(out, 0);
+  size_t max_count = left->count > right->count ? left->count : right->count;
+  size_t min_count = left->count < right->count ? left->count : right->count;
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  if (depth_limit == 0 || max_count < active_threshold * 3U || min_count * 3U < max_count * 2U) {
+    return mul_dispatch_threshold_mode_ex(out, left, right, active_threshold, use_unroll4, 1, 1);
+  }
+  if (!workspace || depth >= workspace->frame_count) return 0;
+
+  size_t split = (max_count + 2U) / 3U;
+  XrayScratchBigInt a0, a1, a2, b0, b1, b2;
+  view_bigint_slice(&a0, left, 0, split);
+  view_bigint_slice(&a1, left, split, split);
+  view_bigint_slice(&a2, left, split * 2U, left->count > split * 2U ? left->count - split * 2U : 0);
+  view_bigint_slice(&b0, right, 0, split);
+  view_bigint_slice(&b1, right, split, split);
+  view_bigint_slice(&b2, right, split * 2U, right->count > split * 2U ? right->count - split * 2U : 0);
+
+  XrayToom3WorkspaceFrame *frame = &workspace->frames[depth];
+  toom3_workspace_frame_reset(frame);
+  int ok = signed_set_unsigned(&frame->x[XRAY_TOOM3_POINT_0], &a0) &&
+    signed_set_positive_eval(&frame->x[XRAY_TOOM3_POINT_1], &a0, &a1, &a2, 1, 1) &&
+    eval_toom3_minus_one_workspace(&frame->x[XRAY_TOOM3_POINT_MINUS_1], &a0, &a1, &a2, &frame->eval_temp) &&
+    signed_set_positive_eval(&frame->x[XRAY_TOOM3_POINT_2], &a0, &a1, &a2, 2, 4) &&
+    signed_set_unsigned(&frame->x[XRAY_TOOM3_POINT_INF], &a2) &&
+    signed_set_unsigned(&frame->y[XRAY_TOOM3_POINT_0], &b0) &&
+    signed_set_positive_eval(&frame->y[XRAY_TOOM3_POINT_1], &b0, &b1, &b2, 1, 1) &&
+    eval_toom3_minus_one_workspace(&frame->y[XRAY_TOOM3_POINT_MINUS_1], &b0, &b1, &b2, &frame->eval_temp) &&
+    signed_set_positive_eval(&frame->y[XRAY_TOOM3_POINT_2], &b0, &b1, &b2, 2, 4) &&
+    signed_set_unsigned(&frame->y[XRAY_TOOM3_POINT_INF], &b2) &&
+    signed_mul_toom3_workspace_mode(
+      &frame->v[XRAY_TOOM3_POINT_0],
+      &frame->x[XRAY_TOOM3_POINT_0],
+      &frame->y[XRAY_TOOM3_POINT_0],
+      active_threshold,
+      use_unroll4,
+      depth_limit - 1U,
+      workspace,
+      depth + 1U) &&
+    signed_mul_toom3_workspace_mode(
+      &frame->v[XRAY_TOOM3_POINT_1],
+      &frame->x[XRAY_TOOM3_POINT_1],
+      &frame->y[XRAY_TOOM3_POINT_1],
+      active_threshold,
+      use_unroll4,
+      depth_limit - 1U,
+      workspace,
+      depth + 1U) &&
+    signed_mul_toom3_workspace_mode(
+      &frame->v[XRAY_TOOM3_POINT_MINUS_1],
+      &frame->x[XRAY_TOOM3_POINT_MINUS_1],
+      &frame->y[XRAY_TOOM3_POINT_MINUS_1],
+      active_threshold,
+      use_unroll4,
+      depth_limit - 1U,
+      workspace,
+      depth + 1U) &&
+    signed_mul_toom3_workspace_mode(
+      &frame->v[XRAY_TOOM3_POINT_2],
+      &frame->x[XRAY_TOOM3_POINT_2],
+      &frame->y[XRAY_TOOM3_POINT_2],
+      active_threshold,
+      use_unroll4,
+      depth_limit - 1U,
+      workspace,
+      depth + 1U) &&
+    signed_mul_toom3_workspace_mode(
+      &frame->v[XRAY_TOOM3_POINT_INF],
+      &frame->x[XRAY_TOOM3_POINT_INF],
+      &frame->y[XRAY_TOOM3_POINT_INF],
+      active_threshold,
+      use_unroll4,
+      depth_limit - 1U,
+      workspace,
+      depth + 1U);
+
+  XraySignedScratchBigInt *v0 = &frame->v[XRAY_TOOM3_POINT_0];
+  XraySignedScratchBigInt *v1 = &frame->v[XRAY_TOOM3_POINT_1];
+  XraySignedScratchBigInt *vm1 = &frame->v[XRAY_TOOM3_POINT_MINUS_1];
+  XraySignedScratchBigInt *v2 = &frame->v[XRAY_TOOM3_POINT_2];
+  XraySignedScratchBigInt *vinf = &frame->v[XRAY_TOOM3_POINT_INF];
+
+  if (ok) {
+    ok = signed_sub_inplace_workspace(v2, vm1, &frame->signed_temp) &&
+      signed_divexact_u32_workspace(v2, 3, &frame->div_temp) &&
+      signed_sub_workspace(vm1, v1, vm1, &frame->signed_temp) &&
+      signed_divexact_u32_workspace(vm1, 2, &frame->div_temp) &&
+      signed_sub_inplace_workspace(v1, v0, &frame->signed_temp) &&
+      signed_sub_inplace_workspace(v2, v1, &frame->signed_temp) &&
+      signed_divexact_u32_workspace(v2, 2, &frame->div_temp) &&
+      signed_sub_inplace_workspace(v1, vm1, &frame->signed_temp) &&
+      signed_sub_inplace_workspace(v1, vinf, &frame->signed_temp) &&
+      signed_copy(&frame->twice_vinf, vinf) &&
+      signed_mul_u32_inplace(&frame->twice_vinf, 2) &&
+      signed_sub_inplace_workspace(v2, &frame->twice_vinf, &frame->signed_temp) &&
+      signed_sub_inplace_workspace(vm1, v2, &frame->signed_temp);
+  }
+
+  if (ok) {
+    ok = v0->sign >= 0 && vm1->sign >= 0 && v1->sign >= 0 && v2->sign >= 0 && vinf->sign >= 0;
+  }
+  if (ok) {
+    out->count = 0;
+    ok = reserve_limbs(out, left->count + right->count + 4U) &&
+      add_shifted_inplace(out, &v0->mag, 0) &&
+      add_shifted_inplace(out, &vm1->mag, split) &&
+      add_shifted_inplace(out, &v1->mag, split * 2U) &&
+      add_shifted_inplace(out, &v2->mag, split * 3U) &&
+      add_shifted_inplace(out, &vinf->mag, split * 4U);
+    if (ok) normalize(out);
+  }
+  return ok;
+}
+
+static int mul_toom3_workspace_probe_internal(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *left,
+  const XrayScratchBigInt *right,
+  size_t leaf_threshold,
+  size_t depth_limit) {
+  if (!out || !left || !right) return 0;
+  size_t left_count = left->count;
+  size_t right_count = right->count;
+  size_t max_count = left_count > right_count ? left_count : right_count;
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  size_t active_depth = depth_limit >= 1U ? depth_limit : 1U;
+  XrayToom3Workspace workspace;
+  toom3_workspace_init(&workspace);
+  int ok = toom3_workspace_prepare(&workspace, max_count, active_depth) &&
+    reserve_limbs(out, left_count + right_count + 4U) &&
+    mul_toom3_workspace_recurse(out, left, right, active_threshold, 1, active_depth, &workspace, 0);
+  toom3_workspace_clear(&workspace);
+  return ok;
+}
+#endif
+
 static int mul_dispatch(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
   if (try_sparse_mul_dispatch_route(out, left, right)) return 1;
 #if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
@@ -4310,6 +4724,30 @@ int xray_bigint_mul_toom3_unroll4_recursive_view_probe(XrayScratchBigInt *out, c
     return ok;
   }
   return mul_toom3_probe_internal(out, left, right, active_threshold, 1, active_depth, 1);
+#else
+  (void)out;
+  (void)left;
+  (void)right;
+  (void)leaf_threshold;
+  (void)depth_limit;
+  return 0;
+#endif
+}
+
+int xray_bigint_mul_toom3_unroll4_recursive_workspace_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold, size_t depth_limit) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (!out || !left || !right) return 0;
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  size_t active_depth = depth_limit >= 1U ? depth_limit : 1U;
+  if (out == left || out == right) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = mul_toom3_workspace_probe_internal(&temp, left, right, active_threshold, active_depth);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return mul_toom3_workspace_probe_internal(out, left, right, active_threshold, active_depth);
 #else
   (void)out;
   (void)left;

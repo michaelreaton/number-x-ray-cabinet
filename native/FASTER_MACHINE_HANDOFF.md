@@ -92,10 +92,34 @@ Toom split-view rows from the same run:
 | `mul-large-cpu-toom-view-branch` | 52163 | `0.990` | `1.800` | `0/5` | observe only |
 | `mul-large-cpu-toom-view-branch` | 65536 | `0.977` | `2.108` | `0/5` | observe only |
 
-The workspace, copied Toom, and split-view Toom probes are exact and sometimes
-median-positive, including several in-between sizes, but none clears the
-promotion bar. Treat them as opt-in probes and faster-machine targets, not
-production routes.
+The stacked Toom workspace probe run:
+
+- Validation: `native/build-codex-large-mul-campaign/Release/xray_native_tests.exe`
+  printed `native xray tests passed`
+- Artifact:
+  `native-test-runs/20260619-001030-c4b04caf/benchmark.tsv`
+
+This run adds `mul-large-cpu-toom-ws-branch`, which compares recursive Toom-3
+plus unroll4 with read-only operand-third views and reusable per-depth Toom
+temporaries against current, Karatsuba workspace, copied Toom, split-view Toom,
+and `mpz_mul`.
+
+| Row | Digits | Ratio | Worst Pair | Stable Pairs | Decision |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `mul-large-cpu-toom-ws-branch` | 4096 | `0.855` | `1.120` | `1/5` | observe only |
+| `mul-large-cpu-toom-ws-branch` | 5639 | `0.957` | `1.127` | `0/5` | observe only |
+| `mul-large-cpu-toom-ws-branch` | 8192 | `0.924` | `1.171` | `2/5` | observe only |
+| `mul-large-cpu-toom-ws-branch` | 11717 | `0.838` | `1.134` | `0/5` | observe only |
+| `mul-large-cpu-toom-ws-branch` | 16384 | `0.940` | `1.265` | `2/5` | observe only |
+| `mul-large-cpu-toom-ws-branch` | 24103 | `1.015` | `1.644` | `0/5` | observe only |
+| `mul-large-cpu-toom-ws-branch` | 32768 | `1.047` | `1.380` | `0/5` | observe only |
+| `mul-large-cpu-toom-ws-branch` | 52163 | `0.914` | `1.371` | `0/5` | observe only |
+| `mul-large-cpu-toom-ws-branch` | 65536 | `0.901` | `2.585` | `1/5` | observe only |
+
+The workspace, copied Toom, split-view Toom, and Toom workspace probes are exact
+and sometimes median-positive, including several in-between sizes, but none
+clears the promotion bar. Treat them as opt-in probes and faster-machine targets,
+not production routes.
 
 ## Rebuild And Validate
 
