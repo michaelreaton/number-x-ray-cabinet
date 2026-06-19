@@ -466,6 +466,43 @@ also remains a backend regression. Keep the route audit as evidence that the
 app-shaped route is now better than current production, but continue attacking
 the backend-facing gap before any default multiply route change.
 
+## Combo Leaf48 Depth3 Upper Scout
+
+Follow-up run:
+
+- Validation: `native/build-codex-large-mul-campaign/Release/xray_native_tests.exe`
+  printed `native xray tests passed`
+- Artifact:
+  `native-test-runs/20260619-160707-c4b04caf/benchmark.tsv`
+
+This run adds `mul-large-toom-cmb-l48d3-scout` plus per-size
+`mul-large-toom-cmb-l48d3-point` rows for the upper failure band:
+`24103`, `32768`, `52163`, and `65536`. The candidate combines the two
+stronger individual scouts, using combo interpolation with leaf48 and depth3,
+then compares it against the current combo leaf64/depth2 shape, current
+production multiply, and GMP/MPIR in the same rotating run.
+
+| Row | Sizes | Base Max | Current Max | GMP Max | Current/GMP Max | Worst Pair | Safe Sizes | Hash | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `mul-large-toom-cmb-l48d3-scout` | `24103,32768,52163,65536` | `0.980` | `0.633` | `1.180` | `2.041` | `1.208` | `0/4` | `72/72` | observe only |
+
+Per-size signal:
+
+| Digits | L48D3 / L64D2 | L48D3 / Current | L48D3 / GMP | L64D2 / GMP | Current / GMP | Worst Pair | Stable Base | Stable GMP | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `24103` | `0.980` | `0.633` | `0.973` | `0.988` | `1.545` | `1.055` | `4/9` | `7/9` | combo-l64d2-regression |
+| `32768` | `0.969` | `0.626` | `1.048` | `1.089` | `1.682` | `1.065` | `7/9` | `0/9` | combo-l64d2-regression |
+| `52163` | `0.920` | `0.568` | `1.049` | `1.136` | `1.844` | `1.070` | `9/9` | `0/9` | backend-regression |
+| `65536` | `0.917` | `0.571` | `1.180` | `1.279` | `2.041` | `1.208` | `9/9` | `0/9` | backend-regression |
+
+This is a useful improvement over the previous full-window route candidate:
+the upper-band `candGmpMax` improves from about `1.278` to `1.180`, and
+`24103` now beats GMP/MPIR on median. It is still not promotion-ready:
+`32768`, `52163`, and `65536` remain backend regressions, and worst-pair plus
+stable-pair gates fail. The next upper-band scout should look beyond simple
+leaf/depth combination, likely at deeper structure or a handoff strategy for
+the high end.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor

@@ -3624,3 +3624,46 @@ still blocks production routing because GMP/MPIR wins from `24103` through
 `65536`, and the worst-pair gate fails in the same upper band. The next CPU
 multiply work should target the backend-facing gap above `16384`, not another
 lower-window route check.
+
+## 2026-06-19: Combo Leaf48 Depth3 Upper Scout
+
+Run:
+
+- Release:
+  `native-test-runs/20260619-160707-c4b04caf`
+
+This run adds `mul-large-toom-cmb-l48d3-scout`, an observe-only upper-window
+scout for combo interpolation with leaf48 and depth3. The window is focused on
+the failing high end from the full route audit: `24103`, `32768`, `52163`, and
+`65536`. It keeps the deterministic random spots between powers of two in the
+same evidence band as the powers of two.
+
+Observed aggregate:
+
+- Exact parity/hash against the combo baseline, current production, and GMP:
+  `hashSafe=72/72`, `hashGate=matched`, `parity=matched`.
+- L48D3 improves over the leaf64/depth2 combo baseline on median at every
+  upper size: `candBaseMax=0.980`.
+- It strongly beats current production multiply in the same run:
+  `candCurrentMax=0.633`.
+- It narrows, but does not close, the GMP/MPIR gap:
+  `candGmpMax=1.180`, `safeSizes=0/4`.
+- Worst-pair safety remains blocked:
+  `maxWorstPairRatio=1.208`.
+
+Per-size point rows:
+
+| Digits | L48D3 / L64D2 | L48D3 / Current | L48D3 / GMP | L64D2 / GMP | Current / GMP | Worst Pair | Stable Base | Stable Current | Stable GMP | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `24103` | `0.980` | `0.633` | `0.973` | `0.988` | `1.545` | `1.055` | `4/9` | `9/9` | `7/9` | combo-l64d2-regression |
+| `32768` | `0.969` | `0.626` | `1.048` | `1.089` | `1.682` | `1.065` | `7/9` | `9/9` | `0/9` | combo-l64d2-regression |
+| `52163` | `0.920` | `0.568` | `1.049` | `1.136` | `1.844` | `1.070` | `9/9` | `9/9` | `0/9` | backend-regression |
+| `65536` | `0.917` | `0.571` | `1.180` | `1.279` | `2.041` | `1.208` | `9/9` | `9/9` | `0/9` | backend-regression |
+
+Decision: keep L48D3 observe-only. It is useful evidence because it combines
+the previous leaf and depth scout wins and reduces the upper-band backend gap
+from the route audit (`candGmpMax` about `1.278` there, `1.180` here), with
+`24103` now median-faster than GMP/MPIR. It still fails the strict promotion
+bar at `32768`, `52163`, and `65536`, and the worst-pair/stable-pair gates do
+not pass. The next CPU multiply slice should move beyond leaf/depth tuning and
+try a deeper high-end structure or handoff strategy.

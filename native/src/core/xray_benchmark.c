@@ -7305,13 +7305,36 @@ typedef struct {
 
 static void mul_full_workspace_depth_scout_labels(
   XrayMulFullWorkspaceDepthScoutLabels *labels,
+  size_t candidate_leaf_threshold,
+  size_t baseline_leaf_threshold,
   size_t candidate_depth_limit,
   size_t baseline_depth_limit,
   unsigned int candidate_interp_flags,
   unsigned int baseline_interp_flags) {
   memset(labels, 0, sizeof(*labels));
   unsigned int combo_interp_flags = XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3;
-  if (candidate_depth_limit == 3 &&
+  if (candidate_leaf_threshold == 48 &&
+      baseline_leaf_threshold == 64 &&
+      candidate_depth_limit == 3 &&
+      baseline_depth_limit == 2 &&
+      candidate_interp_flags == combo_interp_flags &&
+      baseline_interp_flags == combo_interp_flags) {
+    snprintf(labels->aggregate_operation, sizeof(labels->aggregate_operation), "mul-large-toom-cmb-l48d3-scout");
+    snprintf(labels->point_operation, sizeof(labels->point_operation), "mul-large-toom-cmb-l48d3-point");
+    snprintf(labels->point_detail_op, sizeof(labels->point_detail_op), "mul-cmb-l48d3-point");
+    snprintf(labels->parent, sizeof(labels->parent), "cmb-l48d3-scout");
+    snprintf(labels->candidate, sizeof(labels->candidate), "full-ws-combo-l48d3");
+    snprintf(labels->baseline, sizeof(labels->baseline), "full-ws-combo-l64d2");
+    snprintf(labels->feature_gate, sizeof(labels->feature_gate), "large-multiply-cpu-toom-combo-l48d3-scout");
+    snprintf(labels->gmp_clue, sizeof(labels->gmp_clue), "toom33-combo-leaf48-depth3-upper");
+    snprintf(labels->baseline_status, sizeof(labels->baseline_status), "combo-l64d2-regression");
+    snprintf(labels->clean_status, sizeof(labels->clean_status), "combo-l48d3-clean");
+    snprintf(labels->threshold_safety, sizeof(labels->threshold_safety), "upper-window");
+    return;
+  }
+  if (candidate_leaf_threshold == 64 &&
+      baseline_leaf_threshold == 64 &&
+      candidate_depth_limit == 3 &&
       baseline_depth_limit == 2 &&
       candidate_interp_flags == combo_interp_flags &&
       baseline_interp_flags == combo_interp_flags) {
@@ -7328,7 +7351,9 @@ static void mul_full_workspace_depth_scout_labels(
     snprintf(labels->threshold_safety, sizeof(labels->threshold_safety), "active-window");
     return;
   }
-  if (candidate_depth_limit == 2 &&
+  if (candidate_leaf_threshold == 64 &&
+      baseline_leaf_threshold == 64 &&
+      candidate_depth_limit == 2 &&
       baseline_depth_limit == 2 &&
       candidate_interp_flags == combo_interp_flags &&
       baseline_interp_flags == 0U) {
@@ -8412,7 +8437,8 @@ static void append_mul_full_workspace_depth_scout_result(
   const char *policy,
   const char *sizes,
   size_t min_digits,
-  size_t leaf_threshold,
+  size_t candidate_leaf_threshold,
+  size_t baseline_leaf_threshold,
   size_t candidate_depth_limit,
   size_t baseline_depth_limit,
   unsigned int candidate_interp_flags,
@@ -8424,6 +8450,8 @@ static void append_mul_full_workspace_depth_scout_result(
   XrayMulFullWorkspaceDepthScoutLabels labels;
   mul_full_workspace_depth_scout_labels(
     &labels,
+    candidate_leaf_threshold,
+    baseline_leaf_threshold,
     candidate_depth_limit,
     baseline_depth_limit,
     candidate_interp_flags,
@@ -8524,13 +8552,15 @@ static void append_mul_full_workspace_depth_scout_result(
   result.passed = parity && hash_gate;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=%s policy=%s sizes=%s sizeCount=%zu minDigits=%zu leafThreshold=%zu baseDepth=%zu candDepth=%zu operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=%s gmpClue=%s forcedCandidate=yes thresholdSafety=%s candidate=%s baseline=%s oracle=mpz_mul candBaseMax=%.3f candCurrentMax=%.3f candGmpMax=%.3f baseGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
+    "op=%s policy=%s sizes=%s sizeCount=%zu minDigits=%zu leafThreshold=%zu baseLeaf=%zu candLeaf=%zu baseDepth=%zu candDepth=%zu operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=%s gmpClue=%s forcedCandidate=yes thresholdSafety=%s candidate=%s baseline=%s oracle=mpz_mul candBaseMax=%.3f candCurrentMax=%.3f candGmpMax=%.3f baseGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
     labels.aggregate_operation,
     policy,
     sizes ? sizes : "unknown",
     point_count,
     min_digits,
-    leaf_threshold,
+    candidate_leaf_threshold,
+    baseline_leaf_threshold,
+    candidate_leaf_threshold,
     baseline_depth_limit,
     candidate_depth_limit,
     (unsigned int)XRAY_MUL_OPERAND_FAMILIES,
@@ -8561,7 +8591,8 @@ static void append_mul_full_workspace_depth_scout_result(
 static void append_mul_full_workspace_depth_scout_point_result(
   XrayBenchmarkReport *report,
   const char *policy,
-  size_t leaf_threshold,
+  size_t candidate_leaf_threshold,
+  size_t baseline_leaf_threshold,
   size_t candidate_depth_limit,
   size_t baseline_depth_limit,
   unsigned int candidate_interp_flags,
@@ -8572,6 +8603,8 @@ static void append_mul_full_workspace_depth_scout_point_result(
   XrayMulFullWorkspaceDepthScoutLabels labels;
   mul_full_workspace_depth_scout_labels(
     &labels,
+    candidate_leaf_threshold,
+    baseline_leaf_threshold,
     candidate_depth_limit,
     baseline_depth_limit,
     candidate_interp_flags,
@@ -8623,12 +8656,14 @@ static void append_mul_full_workspace_depth_scout_point_result(
   result.passed = point->parity && hash_gate;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=%s parent=%s policy=%s sizeRole=%s leafThreshold=%zu baseDepth=%zu candDepth=%zu operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu stablePairs=%zu/%zu stableBase=%zu/%zu stableCurrent=%zu/%zu stableGmp=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=%s gmpClue=%s thresholdSafety=%s candidate=%s baseline=%s oracle=mpz_mul candBaseRatio=%.3f candCurrentRatio=%.3f candGmpRatio=%.3f baseGmpRatio=%.3f currentGmpRatio=%.3f worstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating sameInput=yes sameRunAudit=yes",
+    "op=%s parent=%s policy=%s sizeRole=%s leafThreshold=%zu baseLeaf=%zu candLeaf=%zu baseDepth=%zu candDepth=%zu operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu stablePairs=%zu/%zu stableBase=%zu/%zu stableCurrent=%zu/%zu stableGmp=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=%s gmpClue=%s thresholdSafety=%s candidate=%s baseline=%s oracle=mpz_mul candBaseRatio=%.3f candCurrentRatio=%.3f candGmpRatio=%.3f baseGmpRatio=%.3f currentGmpRatio=%.3f worstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating sameInput=yes sameRunAudit=yes",
     labels.point_detail_op,
     labels.parent,
     policy,
     large_mul_campaign_size_role(point->digits),
-    leaf_threshold,
+    candidate_leaf_threshold,
+    baseline_leaf_threshold,
+    candidate_leaf_threshold,
     baseline_depth_limit,
     candidate_depth_limit,
     (unsigned int)XRAY_MUL_OPERAND_FAMILIES,
@@ -8667,7 +8702,8 @@ static void run_mul_full_workspace_depth_scout_case(
   unsigned int seed,
   const char *policy,
   size_t min_digits,
-  size_t leaf_threshold,
+  size_t candidate_leaf_threshold,
+  size_t baseline_leaf_threshold,
   size_t candidate_depth_limit,
   size_t baseline_depth_limit,
   unsigned int candidate_interp_flags,
@@ -8686,8 +8722,8 @@ static void run_mul_full_workspace_depth_scout_case(
     points[index] = measure_mul_full_workspace_depth_scout_point(
       sizes[index],
       seed + (unsigned int)(index * 43U),
-      leaf_threshold,
-      leaf_threshold,
+      candidate_leaf_threshold,
+      baseline_leaf_threshold,
       candidate_depth_limit,
       baseline_depth_limit,
       candidate_interp_flags,
@@ -8696,7 +8732,8 @@ static void run_mul_full_workspace_depth_scout_case(
     append_mul_full_workspace_depth_scout_point_result(
       report,
       policy,
-      leaf_threshold,
+      candidate_leaf_threshold,
+      baseline_leaf_threshold,
       candidate_depth_limit,
       baseline_depth_limit,
       candidate_interp_flags,
@@ -8709,7 +8746,8 @@ static void run_mul_full_workspace_depth_scout_case(
     policy,
     size_list,
     min_digits,
-    leaf_threshold,
+    candidate_leaf_threshold,
+    baseline_leaf_threshold,
     candidate_depth_limit,
     baseline_depth_limit,
     candidate_interp_flags,
@@ -14158,6 +14196,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
 #if XRAY_HAS_MSVC_BMI2_ADX_INTRINSICS
   const size_t mul_full_workspace_lower_gate_digits[] = {4096, 5639, 8192};
   const size_t mul_full_workspace_deep_audit_digits[] = {11717, 16384, 24103, 32768, 52163, 65536};
+  const size_t mul_full_workspace_upper_gate_digits[] = {24103, 32768, 52163, 65536};
   const size_t mul_full_workspace_full_window_digits[] = {4096, 5639, 8192, 11717, 16384, 24103, 32768, 52163, 65536};
   run_mul_full_workspace_deep_audit_case(
     report,
@@ -14175,6 +14214,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     761U,
     "full-workspace-depth3-ge11717",
     11717,
+    64,
     64,
     3,
     2,
@@ -14251,6 +14291,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     "full-workspace-combo-depth3-ge11717",
     11717,
     64,
+    64,
     3,
     2,
     XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3,
@@ -14262,6 +14303,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     1253U,
     "full-workspace-combo-lower-ge4096",
     4096,
+    64,
     64,
     2,
     2,
@@ -14280,6 +14322,19 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3,
     mul_full_workspace_full_window_digits,
     sizeof(mul_full_workspace_full_window_digits) / sizeof(mul_full_workspace_full_window_digits[0]));
+  run_mul_full_workspace_depth_scout_case(
+    report,
+    1327U,
+    "full-workspace-combo-l48d3-upper-ge24103",
+    24103,
+    48,
+    64,
+    3,
+    2,
+    XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3,
+    XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3,
+    mul_full_workspace_upper_gate_digits,
+    sizeof(mul_full_workspace_upper_gate_digits) / sizeof(mul_full_workspace_upper_gate_digits[0]));
 #endif
 
   const size_t digits[] = {512, 1000, 2048, 4096, 8192, 16384};
