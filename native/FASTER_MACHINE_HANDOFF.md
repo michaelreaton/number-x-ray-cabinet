@@ -121,6 +121,35 @@ and sometimes median-positive, including several in-between sizes, but none
 clears the promotion bar. Treat them as opt-in probes and faster-machine targets,
 not production routes.
 
+The stacked full workspace probe run:
+
+- Validation: `native/build-codex-large-mul-campaign/Release/xray_native_tests.exe`
+  printed `native xray tests passed`
+- Artifact:
+  `native-test-runs/20260619-004040-c4b04caf/benchmark.tsv`
+
+This run adds `mul-large-cpu-toom-full-ws`, which keeps production multiply
+unchanged and reuses Karatsuba temporaries on the recursive Toom handoff path in
+addition to the per-depth Toom temporaries.
+
+| Row | Digits | Ratio | Worst Pair | Stable Pairs | Decision |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `mul-large-cpu-toom-full-ws` | 4096 | `0.913` | `1.495` | `1/5` | observe only |
+| `mul-large-cpu-toom-full-ws` | 5639 | `0.911` | `1.500` | `2/5` | observe only |
+| `mul-large-cpu-toom-full-ws` | 8192 | `0.954` | `1.379` | `3/5` | observe only |
+| `mul-large-cpu-toom-full-ws` | 11717 | `0.975` | `1.240` | `1/5` | observe only |
+| `mul-large-cpu-toom-full-ws` | 16384 | `0.947` | `1.169` | `2/5` | observe only |
+| `mul-large-cpu-toom-full-ws` | 24103 | `0.945` | `1.459` | `0/5` | observe only |
+| `mul-large-cpu-toom-full-ws` | 32768 | `0.960` | `1.496` | `1/5` | observe only |
+| `mul-large-cpu-toom-full-ws` | 52163 | `0.937` | `1.369` | `0/5` | observe only |
+| `mul-large-cpu-toom-full-ws` | 65536 | `1.052` | `1.769` | `0/5` | observe only |
+
+The full workspace row is exact and median-positive against the prior Toom
+workspace baseline at eight of nine campaign sizes, including all deterministic
+in-between sizes, but still fails the promotion bar on worst-pair safety and
+stable-pair counts. Treat it as the next faster-machine route-audit candidate,
+not as a default route.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor
