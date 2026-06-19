@@ -4994,7 +4994,7 @@ static void run_format_pair_writer_probe_case(XrayBenchmarkReport *report, size_
 
 typedef char *(*XrayFormatProbeFn)(const XrayScratchBigInt *value);
 
-#define XRAY_FORMAT_ROUTE_TOURNAMENT_MAX 8U
+#define XRAY_FORMAT_ROUTE_TOURNAMENT_MAX 10U
 
 typedef struct XrayFormatRouteTournamentEntry {
   const char *name;
@@ -7247,6 +7247,53 @@ typedef struct {
   char point_operation[32];
   char point_detail_op[32];
   char parent[32];
+  char candidate[48];
+  char feature_gate[64];
+  char gmp_clue[64];
+  char clean_status[32];
+  char threshold_safety[32];
+} XrayMulFullWorkspaceRouteAuditLabels;
+
+static int run_mul_full_workspace_candidate_probe(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *left,
+  const XrayScratchBigInt *right,
+  size_t leaf_threshold,
+  size_t depth_limit,
+  unsigned int interp_flags);
+
+static void mul_full_workspace_route_audit_labels(
+  XrayMulFullWorkspaceRouteAuditLabels *labels,
+  unsigned int interp_flags) {
+  memset(labels, 0, sizeof(*labels));
+  unsigned int combo_interp_flags = XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3;
+  if (interp_flags == combo_interp_flags) {
+    snprintf(labels->aggregate_operation, sizeof(labels->aggregate_operation), "mul-large-toom-cmb-route-audit");
+    snprintf(labels->point_operation, sizeof(labels->point_operation), "mul-large-toom-cmb-route-point");
+    snprintf(labels->point_detail_op, sizeof(labels->point_detail_op), "mul-cmb-route-point");
+    snprintf(labels->parent, sizeof(labels->parent), "cmb-route-audit");
+    snprintf(labels->candidate, sizeof(labels->candidate), "full-ws-combo-depth2");
+    snprintf(labels->feature_gate, sizeof(labels->feature_gate), "large-multiply-cpu-toom-combo-route-audit");
+    snprintf(labels->gmp_clue, sizeof(labels->gmp_clue), "toom33-combo-full-window");
+    snprintf(labels->clean_status, sizeof(labels->clean_status), "combo-route-clean");
+    snprintf(labels->threshold_safety, sizeof(labels->threshold_safety), "full-window");
+    return;
+  }
+  snprintf(labels->aggregate_operation, sizeof(labels->aggregate_operation), "mul-large-toom-full-deep-audit");
+  snprintf(labels->point_operation, sizeof(labels->point_operation), "mul-large-toom-full-deep-point");
+  snprintf(labels->point_detail_op, sizeof(labels->point_detail_op), "mul-full-deep-point");
+  snprintf(labels->parent, sizeof(labels->parent), "full-deep-audit");
+  snprintf(labels->feature_gate, sizeof(labels->feature_gate), "large-multiply-cpu-toom-full-deep-audit");
+  snprintf(labels->gmp_clue, sizeof(labels->gmp_clue), "toom33-recursive-current-route-audit");
+  snprintf(labels->clean_status, sizeof(labels->clean_status), "active-window-clean");
+  snprintf(labels->threshold_safety, sizeof(labels->threshold_safety), "active-window");
+}
+
+typedef struct {
+  char aggregate_operation[32];
+  char point_operation[32];
+  char point_detail_op[32];
+  char parent[32];
   char candidate[32];
   char baseline[32];
   char feature_gate[64];
@@ -7647,6 +7694,7 @@ static int run_mul_full_workspace_route_audit_batch_step(
   const mpz_t *gright,
   size_t leaf_threshold,
   size_t depth_limit,
+  unsigned int interp_flags,
   unsigned int batch,
   unsigned long long *candidate_us,
   unsigned long long *current_us,
@@ -7656,12 +7704,13 @@ static int run_mul_full_workspace_route_audit_batch_step(
     int ok = 1;
     for (unsigned int index = 0; ok && index < batch; ++index) {
       for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
-        ok = xray_bigint_mul_toom3_unroll4_recursive_full_workspace_probe(
+        ok = run_mul_full_workspace_candidate_probe(
           &candidate_out[family],
           &left[family],
           &right[family],
           leaf_threshold,
-          depth_limit);
+          depth_limit,
+          interp_flags);
       }
     }
     *candidate_us += xray_now_us() - started;
@@ -7694,6 +7743,7 @@ static XrayMulThresholdRouteAuditPoint measure_mul_full_workspace_route_audit_po
   unsigned int seed,
   size_t leaf_threshold,
   size_t depth_limit,
+  unsigned int interp_flags,
   size_t sample_count) {
   XrayMulThresholdRouteAuditPoint point;
   memset(&point, 0, sizeof(point));
@@ -7759,6 +7809,7 @@ static XrayMulThresholdRouteAuditPoint measure_mul_full_workspace_route_audit_po
           gright,
           leaf_threshold,
           depth_limit,
+          interp_flags,
           batch,
           &candidate_samples[sample],
           &current_samples[sample],
@@ -7826,10 +7877,14 @@ static void append_mul_full_workspace_deep_audit_result(
   size_t min_digits,
   size_t leaf_threshold,
   size_t depth_limit,
+  unsigned int interp_flags,
   const XrayMulThresholdRouteAuditPoint *points,
   size_t point_count,
   size_t sample_count) {
   if (!report || !policy || !candidate || !points || point_count == 0) return;
+  XrayMulFullWorkspaceRouteAuditLabels labels;
+  mul_full_workspace_route_audit_labels(&labels, interp_flags);
+  const char *candidate_label = labels.candidate[0] ? labels.candidate : candidate;
   size_t required_stable = policy_required_stable_samples(sample_count);
   size_t safe_size_count = 0;
   size_t hash_match_count = 0;
@@ -7888,7 +7943,7 @@ static void append_mul_full_workspace_deep_audit_result(
   memset(&result, 0, sizeof(result));
   snprintf(result.name, sizeof(result.name), "policy audit mul full workspace %s", policy);
   snprintf(result.category, sizeof(result.category), "policy-gate");
-  snprintf(result.operation, sizeof(result.operation), "mul-large-toom-full-deep-audit");
+  snprintf(result.operation, sizeof(result.operation), "%s", labels.aggregate_operation);
   result.digits = points[point_count - 1U].digits;
   result.scratch_us = candidate_us ? candidate_us : 1;
   result.gmp_us = current_us ? current_us : 1;
@@ -7908,11 +7963,12 @@ static void append_mul_full_workspace_deep_audit_result(
     (!backend_ratio_safe ? "backend-regression" :
     (!worst_pair_safe ? "worst-pair-regression" :
     (!stable_safe ? "needs-stability" :
-    (safe_size_count == point_count ? "active-window-clean" : "needs-stability")))))));
+    (safe_size_count == point_count ? labels.clean_status : "needs-stability")))))));
   result.passed = parity && hash_gate;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=mul-large-toom-full-deep-audit policy=%s sizes=%s sizeCount=%zu minDigits=%zu leafThreshold=%zu depthLimit=%zu operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s forcedCandidate=yes thresholdSafety=active-window candidate=%s baseline=current-scratch-mul oracle=mpz_mul candCurrentMax=%.3f candGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes featureGate=large-multiply-cpu-toom-full-deep-audit gmpClue=toom33-recursive-current-route-audit noAutoRoute=1 replacementReady=false adoption=%s",
+    "op=%s policy=%s sizes=%s sizeCount=%zu minDigits=%zu leafThreshold=%zu depthLimit=%zu operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s forcedCandidate=yes thresholdSafety=%s candidate=%s baseline=current-scratch-mul oracle=mpz_mul candCurrentMax=%.3f candGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes featureGate=%s gmpClue=%s noAutoRoute=1 replacementReady=false adoption=%s",
+    labels.aggregate_operation,
     policy,
     sizes ? sizes : "unknown",
     point_count,
@@ -7929,11 +7985,14 @@ static void append_mul_full_workspace_deep_audit_result(
     expected_hash_count,
     hash_gate ? "matched" : "blocked",
     parity ? "matched" : "blocked",
-    candidate,
+    labels.threshold_safety,
+    candidate_label,
     max_candidate_current_ratio,
     max_candidate_gmp_ratio,
     max_current_gmp_ratio,
     max_worst_pair_ratio,
+    labels.feature_gate,
+    labels.gmp_clue,
     result.adoption);
   append_result(report, &result);
 }
@@ -7944,9 +8003,13 @@ static void append_mul_full_workspace_deep_audit_point_result(
   const char *candidate,
   size_t leaf_threshold,
   size_t depth_limit,
+  unsigned int interp_flags,
   const XrayMulThresholdRouteAuditPoint *point,
   size_t sample_count) {
   if (!report || !policy || !candidate || !point) return;
+  XrayMulFullWorkspaceRouteAuditLabels labels;
+  mul_full_workspace_route_audit_labels(&labels, interp_flags);
+  const char *candidate_label = labels.candidate[0] ? labels.candidate : candidate;
   size_t required_stable = policy_required_stable_samples(sample_count);
   size_t expected_hash_count = sample_count * XRAY_MUL_OPERAND_FAMILIES;
   int hash_gate = point->hash_match_count == expected_hash_count;
@@ -7966,7 +8029,7 @@ static void append_mul_full_workspace_deep_audit_point_result(
   memset(&result, 0, sizeof(result));
   snprintf(result.name, sizeof(result.name), "kernel large mul full deep audit point %zu digits", point->digits);
   snprintf(result.category, sizeof(result.category), "kernel-probe");
-  snprintf(result.operation, sizeof(result.operation), "mul-large-toom-full-deep-point");
+  snprintf(result.operation, sizeof(result.operation), "%s", labels.point_operation);
   result.digits = point->digits;
   result.scratch_us = point->candidate_us ? point->candidate_us : 1;
   result.gmp_us = point->current_us ? point->current_us : 1;
@@ -7985,11 +8048,13 @@ static void append_mul_full_workspace_deep_audit_point_result(
     !point->parity ? "mismatch" :
     (!hash_gate ? "hash-mismatch" :
     (!current_safe ? "current-regression" :
-    (!backend_safe ? "backend-regression" : "active-point-clean"))));
+    (!backend_safe ? "backend-regression" : labels.clean_status))));
   result.passed = point->parity && hash_gate;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=mul-full-deep-point parent=full-deep-audit policy=%s sizeRole=%s leafThreshold=%zu depthLimit=%zu operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu stablePairs=%zu/%zu gmpStablePairs=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s thresholdSafety=active-window candidate=%s baseline=current-scratch-mul oracle=mpz_mul candCurrentRatio=%.3f candGmpRatio=%.3f currentGmpRatio=%.3f worstPairRatio=%.3f currentWorst=%.3f gmpWorst=%.3f ratioMethod=paired-median timingMode=rotating sameInput=yes sameRunAudit=yes featureGate=large-multiply-cpu-toom-full-deep-audit gmpClue=toom33-recursive-current-route-audit noAutoRoute=1 replacementReady=false adoption=%s",
+    "op=%s parent=%s policy=%s sizeRole=%s leafThreshold=%zu depthLimit=%zu operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu stablePairs=%zu/%zu gmpStablePairs=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s thresholdSafety=%s candidate=%s baseline=current-scratch-mul oracle=mpz_mul candCurrentRatio=%.3f candGmpRatio=%.3f currentGmpRatio=%.3f worstPairRatio=%.3f currentWorst=%.3f gmpWorst=%.3f ratioMethod=paired-median timingMode=rotating sameInput=yes sameRunAudit=yes featureGate=%s gmpClue=%s noAutoRoute=1 replacementReady=false adoption=%s",
+    labels.point_detail_op,
+    labels.parent,
     policy,
     large_mul_campaign_size_role(point->digits),
     leaf_threshold,
@@ -8006,13 +8071,16 @@ static void append_mul_full_workspace_deep_audit_point_result(
     expected_hash_count,
     hash_gate ? "matched" : "blocked",
     point->parity ? "matched" : "blocked",
-    candidate,
+    labels.threshold_safety,
+    candidate_label,
     point->candidate_current_ratio,
     point->candidate_gmp_ratio,
     point->current_gmp_ratio,
     worst_pair_ratio,
     point->candidate_current_worst,
     point->candidate_gmp_worst,
+    labels.feature_gate,
+    labels.gmp_clue,
     result.adoption);
   append_result(report, &result);
 }
@@ -8025,6 +8093,7 @@ static void run_mul_full_workspace_deep_audit_case(
   size_t min_digits,
   size_t leaf_threshold,
   size_t depth_limit,
+  unsigned int interp_flags,
   const size_t *sizes,
   size_t size_count) {
   if (!report || !policy || !candidate || !sizes || size_count == 0 || size_count > XRAY_FORMAT_ROUTE_TOURNAMENT_MAX) return;
@@ -8041,6 +8110,7 @@ static void run_mul_full_workspace_deep_audit_case(
       seed + (unsigned int)(index * 41U),
       leaf_threshold,
       depth_limit,
+      interp_flags,
       XRAY_BENCH_DEEP_SAMPLES);
     append_mul_full_workspace_deep_audit_point_result(
       report,
@@ -8048,6 +8118,7 @@ static void run_mul_full_workspace_deep_audit_case(
       candidate,
       leaf_threshold,
       depth_limit,
+      interp_flags,
       &points[index],
       XRAY_BENCH_DEEP_SAMPLES);
   }
@@ -8059,6 +8130,7 @@ static void run_mul_full_workspace_deep_audit_case(
     min_digits,
     leaf_threshold,
     depth_limit,
+    interp_flags,
     points,
     size_count,
     XRAY_BENCH_DEEP_SAMPLES);
@@ -14086,6 +14158,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
 #if XRAY_HAS_MSVC_BMI2_ADX_INTRINSICS
   const size_t mul_full_workspace_lower_gate_digits[] = {4096, 5639, 8192};
   const size_t mul_full_workspace_deep_audit_digits[] = {11717, 16384, 24103, 32768, 52163, 65536};
+  const size_t mul_full_workspace_full_window_digits[] = {4096, 5639, 8192, 11717, 16384, 24103, 32768, 52163, 65536};
   run_mul_full_workspace_deep_audit_case(
     report,
     619U,
@@ -14094,6 +14167,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     11717,
     64,
     2,
+    0,
     mul_full_workspace_deep_audit_digits,
     sizeof(mul_full_workspace_deep_audit_digits) / sizeof(mul_full_workspace_deep_audit_digits[0]));
   run_mul_full_workspace_depth_scout_case(
@@ -14195,6 +14269,17 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     0,
     mul_full_workspace_lower_gate_digits,
     sizeof(mul_full_workspace_lower_gate_digits) / sizeof(mul_full_workspace_lower_gate_digits[0]));
+  run_mul_full_workspace_deep_audit_case(
+    report,
+    1297U,
+    "full-workspace-combo-route-ge4096",
+    "full-ws-combo-depth2",
+    4096,
+    64,
+    2,
+    XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3,
+    mul_full_workspace_full_window_digits,
+    sizeof(mul_full_workspace_full_window_digits) / sizeof(mul_full_workspace_full_window_digits[0]));
 #endif
 
   const size_t digits[] = {512, 1000, 2048, 4096, 8192, 16384};

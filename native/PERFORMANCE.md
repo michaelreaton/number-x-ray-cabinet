@@ -3576,3 +3576,51 @@ GMP/MPIR at `4096`, the `5639` random spot, and `8192`. The strict proof bar
 still blocks promotion because `5639` and `8192` miss baseline stability and
 worst-pair safety. A route audit may be worth testing only after a repeat run
 or a candidate that reduces those lower-window worst-pair tails.
+
+## 2026-06-19: Full Workspace Combo Full-Window Route Audit
+
+Run:
+
+- Release:
+  `native-test-runs/20260619-153624-c4b04caf`
+
+This run adds `mul-large-toom-cmb-route-audit`, an observe-only route audit
+for `full-ws-combo-depth2` over the complete multiply promotion window:
+`4096`, `5639`, `8192`, `11717`, `16384`, `24103`, `32768`, `52163`, and
+`65536`. Unlike the lower-window scout, this audit compares directly against
+current production multiply and GMP/MPIR, so it is the route-facing verdict
+for the combined interpolation candidate. Production multiply remains
+unchanged.
+
+Observed aggregate:
+
+- Exact parity/hash against current production and GMP:
+  `hashSafe=162/162`, `hashGate=matched`, `parity=matched`.
+- Combo depth2 beats current production multiply at every measured size:
+  `candCurrentMax=0.924`.
+- GMP/MPIR still blocks promotion on the upper half:
+  `candGmpMax=1.298`, `safeSizes=5/9`.
+- Worst-pair safety still blocks promotion:
+  `maxWorstPairRatio=1.378`.
+
+Per-size point rows:
+
+| Digits | Combo / Current | Combo / GMP | Current / GMP | Worst Pair | Current Stable | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `4096` | `0.924` | `0.836` | `0.909` | `0.964` | `9/9` | `9/9` | combo-route-clean |
+| `5639` | `0.882` | `0.805` | `0.922` | `0.909` | `9/9` | `9/9` | combo-route-clean |
+| `8192` | `0.848` | `0.880` | `1.038` | `0.994` | `8/9` | `9/9` | combo-route-clean |
+| `11717` | `0.695` | `0.929` | `1.324` | `0.983` | `9/9` | `9/9` | combo-route-clean |
+| `16384` | `0.689` | `0.952` | `1.376` | `0.980` | `9/9` | `9/9` | combo-route-clean |
+| `24103` | `0.642` | `1.006` | `1.560` | `1.032` | `9/9` | `4/9` | backend-regression |
+| `32768` | `0.685` | `1.114` | `1.639` | `1.183` | `9/9` | `0/9` | backend-regression |
+| `52163` | `0.618` | `1.135` | `1.827` | `1.145` | `9/9` | `0/9` | backend-regression |
+| `65536` | `0.662` | `1.298` | `1.947` | `1.378` | `9/9` | `0/9` | backend-regression |
+
+Decision: keep the combo route observe-only. This is the first full-window
+audit showing the app-shaped combo route beats current production multiply at
+every target size and every deterministic random spot. The strict proof bar
+still blocks production routing because GMP/MPIR wins from `24103` through
+`65536`, and the worst-pair gate fails in the same upper band. The next CPU
+multiply work should target the backend-facing gap above `16384`, not another
+lower-window route check.

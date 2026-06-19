@@ -439,6 +439,33 @@ median blocker. It is still not promotion-ready: `5639` and `8192` miss the
 Keep this as a lower-window scout and require a repeat/route audit before any
 default route change.
 
+## Full-Window Combo Route Audit
+
+Follow-up run:
+
+- Validation: `native/build-codex-large-mul-campaign/Release/xray_native_tests.exe`
+  printed `native xray tests passed`
+- Artifact:
+  `native-test-runs/20260619-153624-c4b04caf/benchmark.tsv`
+
+This run adds `mul-large-toom-cmb-route-audit` plus per-size
+`mul-large-toom-cmb-route-point` rows over the complete promotion window:
+`4096`, `5639`, `8192`, `11717`, `16384`, `24103`, `32768`, `52163`, and
+`65536`. The audit compares `full-ws-combo-depth2` directly against current
+production multiply and GMP/MPIR with no diagnostic leaf64 baseline in the
+gate. Production multiply remains unchanged.
+
+| Row | Sizes | Current Max | GMP Max | Current/GMP Max | Worst Pair | Safe Sizes | Hash | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `mul-large-toom-cmb-route-audit` | `4096..65536` + spots | `0.924` | `1.298` | `1.947` | `1.378` | `5/9` | `162/162` | observe only |
+
+The combo route beats current production multiply at every measured size,
+including all deterministic random spots. It is not promotion-ready because
+the GMP/MPIR gate fails starting at `24103`; the upper random spot `52163`
+also remains a backend regression. Keep the route audit as evidence that the
+app-shaped route is now better than current production, but continue attacking
+the backend-facing gap before any default multiply route change.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor
