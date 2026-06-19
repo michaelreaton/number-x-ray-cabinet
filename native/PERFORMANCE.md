@@ -3667,3 +3667,43 @@ from the route audit (`candGmpMax` about `1.278` there, `1.180` here), with
 bar at `32768`, `52163`, and `65536`, and the worst-pair/stable-pair gates do
 not pass. The next CPU multiply slice should move beyond leaf/depth tuning and
 try a deeper high-end structure or handoff strategy.
+
+## 2026-06-19: Combo Leaf48 Depth4 Upper Scout
+
+Run:
+
+- Release:
+  `native-test-runs/20260619-163518-c4b04caf`
+
+This run adds `mul-large-toom-cmb-l48d4-scout`, an observe-only upper-window
+scout for combo interpolation with leaf48 and depth4. It checks the same
+upper band as the l48d3 scout: `24103`, `32768`, `52163`, and `65536`, keeping
+both deterministic random spots visible next to the powers of two.
+
+Observed aggregate:
+
+- Exact parity/hash against l48d3, current production, and GMP:
+  `hashSafe=72/72`, `hashGate=matched`, `parity=matched`.
+- Depth4 does not beat the l48d3 baseline overall:
+  `candBaseMax=1.030`.
+- It still beats current production multiply:
+  `candCurrentMax=0.632`.
+- It does not close the GMP/MPIR gap:
+  `candGmpMax=1.221`, `safeSizes=0/4`.
+- Worst-pair safety remains blocked:
+  `maxWorstPairRatio=1.300`.
+
+Per-size point rows:
+
+| Digits | L48D4 / L48D3 | L48D4 / Current | L48D4 / GMP | L48D3 / GMP | Current / GMP | Worst Pair | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `24103` | `1.030` | `0.602` | `0.995` | `0.967` | `1.654` | `1.090` | combo-l48d3-regression |
+| `32768` | `1.018` | `0.632` | `1.029` | `1.085` | `1.757` | `1.225` | combo-l48d3-regression |
+| `52163` | `0.958` | `0.543` | `1.106` | `1.125` | `1.944` | `1.199` | combo-l48d3-regression |
+| `65536` | `0.991` | `0.558` | `1.221` | `1.185` | `2.117` | `1.300` | combo-l48d3-regression |
+
+Decision: keep l48d4 observe-only and do not pursue a simple depth increase as
+the next route candidate. Depth4 gives a modest middle-upper hint, especially
+around `32768`, but it worsens the aggregate GMP gap and remains behind l48d3
+at the high end. The next CPU multiply slice should test a different high-end
+structure or handoff strategy rather than depth5.

@@ -503,6 +503,41 @@ stable-pair gates fail. The next upper-band scout should look beyond simple
 leaf/depth combination, likely at deeper structure or a handoff strategy for
 the high end.
 
+## Combo Leaf48 Depth4 Upper Scout
+
+Follow-up run:
+
+- Validation: `native/build-codex-large-mul-campaign/Release/xray_native_tests.exe`
+  printed `native xray tests passed`
+- Artifact:
+  `native-test-runs/20260619-163518-c4b04caf/benchmark.tsv`
+
+This run adds `mul-large-toom-cmb-l48d4-scout` plus per-size
+`mul-large-toom-cmb-l48d4-point` rows for the same upper window:
+`24103`, `32768`, `52163`, and `65536`. The candidate keeps combo
+interpolation and leaf48, then raises the recursion cap from depth3 to depth4.
+It compares directly against the l48d3 scout shape, current production multiply,
+and GMP/MPIR in the same rotating run.
+
+| Row | Sizes | Base Max | Current Max | GMP Max | Base/GMP Max | Current/GMP Max | Worst Pair | Safe Sizes | Hash | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `mul-large-toom-cmb-l48d4-scout` | `24103,32768,52163,65536` | `1.030` | `0.632` | `1.221` | `1.185` | `2.117` | `1.300` | `0/4` | `72/72` | observe only |
+
+Per-size signal:
+
+| Digits | L48D4 / L48D3 | L48D4 / Current | L48D4 / GMP | L48D3 / GMP | Current / GMP | Worst Pair | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `24103` | `1.030` | `0.602` | `0.995` | `0.967` | `1.654` | `1.090` | combo-l48d3-regression |
+| `32768` | `1.018` | `0.632` | `1.029` | `1.085` | `1.757` | `1.225` | combo-l48d3-regression |
+| `52163` | `0.958` | `0.543` | `1.106` | `1.125` | `1.944` | `1.199` | combo-l48d3-regression |
+| `65536` | `0.991` | `0.558` | `1.221` | `1.185` | `2.117` | `1.300` | combo-l48d3-regression |
+
+Depth4 does not beat the l48d3 upper scout overall. It improves some middle
+upper medians, but loses at `24103` and `65536`, worsens the aggregate
+`candGmpMax`, and leaves all promotion gates closed. Treat this as a negative
+result for simply increasing Toom recursion depth; the next high-end slice
+should test a different structure or handoff rather than depth5.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor
