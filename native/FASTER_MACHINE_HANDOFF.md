@@ -998,6 +998,39 @@ and `65536` miss stable-pair gates, and the high end remains slower than
 GMP/MPIR. Allocation cost was part of the Toom-4 problem, but it was not the
 whole blocker.
 
+## 2026-06-20: Top-Level Toom-4 Inner-Handoff Scout
+
+Artifact: `native-test-runs/20260620-054314-c4b04caf`
+
+This run adds `mul-large-toom4-top-handoff`, a benchmark-only handoff scout for
+the reusable top-level Toom-4 route. The candidate keeps top-level Toom-4 and
+workspace reuse but uses `leaf64/depth2` for recursive point products; the
+baseline is the prior reusable `leaf48/depth3` Toom-4 point-product handoff.
+It covers the same upper window and deterministic random spots and remains
+diagnostic only: `noAutoRoute=1`, `replacementReady=false`, production multiply
+unchanged.
+
+Summary:
+
+| Row | Sizes | Candidate / Baseline Max | Candidate / Current Max | Candidate / GMP Max | Baseline / GMP Max | Current / GMP Max | Worst Pair Max | Safe Sizes | Hash Safe | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `mul-large-toom4-top-handoff` | `24103,32768,52163,65536` | `0.995` | `0.650` | `1.134` | `1.159` | `1.881` | `1.255` | `0/4` | `72/72` | observe only |
+
+Per-size signal:
+
+| Digits | L64D2 / L48D3 Toom-4 | L64D2 / Current | L64D2 / GMP | L48D3 / GMP | Current / GMP | Worst Pair | Stable vs L48D3 | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `24103` | `0.961` | `0.650` | `0.987` | `1.040` | `1.519` | `1.103` | `6/9` | `5/9` | toom4-handoff-baseline-regression |
+| `32768` | `0.946` | `0.630` | `1.068` | `1.107` | `1.720` | `1.221` | `6/9` | `1/9` | toom4-handoff-baseline-regression |
+| `52163` | `0.967` | `0.584` | `1.053` | `1.088` | `1.826` | `1.255` | `6/9` | `2/9` | toom4-handoff-baseline-regression |
+| `65536` | `0.995` | `0.601` | `1.134` | `1.159` | `1.881` | `1.198` | `1/9` | `0/9` | toom4-handoff-baseline-regression |
+
+Decision: reject the `leaf64/depth2` inner handoff as a promotion direction.
+It improves median time over `leaf48/depth3` at every measured upper size, but
+the gains are not strict-gate safe, `65536` is nearly flat, and worst-pair/GMP
+stability remains blocked. This suggests the reusable Toom-4 path needs a
+different arithmetic shape, not just a shallower inner Toom-3 handoff.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor
