@@ -736,6 +736,38 @@ proof bar badly: `safeSizes=0/9`, GMP/MPIR regressions start at `11717`, and
 worst-pair safety fails at both random spots and power-of-two anchors. This is
 useful route-map evidence, not a production route.
 
+## 2026-06-20: Combo Best-Map Duplicate-Control Audit
+
+Run:
+
+- Release:
+  `native-test-runs/20260620-013252-c4b04caf`
+
+This run adds `mul-large-toom-cmb-map-ctrl`, a focused duplicate-control audit
+for the two worst-pair outlier sizes from the best-map route: deterministic
+random spot `24103` and power-of-two anchor `32768`. It times the exact same
+best-map route against a duplicate of itself, current production multiply, and
+`mpz_mul` on the same operand fingerprints in the same run.
+
+Observed aggregate:
+
+| Operation | Sizes | Control Ratio Max | Control Worst Max | Candidate / Current Max | Candidate / GMP Max | Current / GMP Max | Worst Pair Max | Safe Sizes | Hash Gate | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `mul-large-toom-cmb-map-ctrl` | `24103,32768` | `0.997` | `1.077` | `0.638` | `1.040` | `1.633` | `1.091` | `0/2` | `36/36` | observe only |
+
+Per-size signal:
+
+| Digits | Control Ratio | Control Worst | Candidate / Current | Candidate / GMP | Current / GMP | Product Worst | Control Stable | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `24103` | `0.991` | `1.077` | `0.638` | `0.979` | `1.540` | `1.058` | `9/9` | `7/9` | backend-regression |
+| `32768` | `0.997` | `1.044` | `0.637` | `1.040` | `1.633` | `1.091` | `9/9` | `0/9` | backend-regression |
+
+Decision: treat the previous best-map outlier signal as real enough to block
+promotion, not just harness noise. The self-duplicate control is stable at both
+sizes, while the same candidate still misses GMP/MPIR and stable-pair gates.
+Keep the route observe-only and move the next multiply work toward a deeper
+arithmetic-structure change.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor

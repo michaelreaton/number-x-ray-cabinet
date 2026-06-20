@@ -992,7 +992,7 @@ typedef struct XrayBenchmarkResult {
   int replacement_ready;
   unsigned long elapsed_ms;
   int passed;
-  char detail[1024];
+  char detail[2048];
 } XrayBenchmarkResult;
 
 typedef struct XrayBenchmarkLaneSummary {
