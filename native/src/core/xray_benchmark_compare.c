@@ -1176,6 +1176,8 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
         compare_streq(row->operation, "mul-large-toom-cmb-hand") ||
         compare_streq(row->operation, "mul-large-toom-cmb-tourn-pt") ||
         compare_streq(row->operation, "mul-large-toom-cmb-tourn") ||
+        compare_streq(row->operation, "mul-large-toom-cmb-reuse-pt") ||
+        compare_streq(row->operation, "mul-large-toom-cmb-reuse") ||
         compare_streq(row->operation, "mul-large-toom-cmb-l48d4-point") ||
         compare_streq(row->operation, "mul-large-toom-cmb-l48d4-scout") ||
         compare_streq(row->operation, "mul-large-toom-cmb-lower-point") ||
