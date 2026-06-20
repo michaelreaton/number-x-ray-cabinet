@@ -1274,6 +1274,39 @@ spot and anchor. That supports a later forced route audit for this transition
 pocket, but the broader upper-window GMP miss still blocks any default-route
 change.
 
+## 2026-06-20: Combo Reuse Transition Forced Route Audit
+
+Artifact:
+`native-test-runs/20260620-162931-c4b04caf`
+
+Validation: `native/build-codex-neg2-msvc142-nmake/xray_native_tests.exe`
+printed `native xray tests passed` with the Release MSVC 14.29 NMake build.
+
+This run adds `mul-large-toom-cmb-troute`, a benchmark-only forced route audit
+for the reusable combo map in the transition window. It covers the deterministic
+random spot `11717` and the power-of-two anchor `16384`, comparing the forced
+candidate against the current production route, `mpz_mul`, and the nonreuse
+combo baseline in the same rotating run. Production multiply remains unchanged.
+
+Summary:
+
+| Row | Sizes | Candidate / Baseline Max | Candidate / Current Max | Candidate / GMP Max | Baseline / GMP Max | Current / GMP Max | Worst Pair Max | Safe Sizes | Hash Safe | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `mul-large-toom-cmb-troute` | `11717,16384` | `1.041` | `0.660` | `0.971` | `0.923` | `1.388` | `1.642` | `0/2` | `36/36` | observe only |
+
+Per-size signal:
+
+| Digits | Candidate / Baseline | Candidate / Current | Candidate / GMP | Baseline / GMP | Current / GMP | Worst Pair | Baseline Stable | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `11717` | `0.987` | `0.598` | `0.861` | `0.794` | `1.316` | `1.115` | `4/9` | `8/9` | reuse-baseline-regression |
+| `16384` | `1.041` | `0.660` | `0.971` | `0.923` | `1.388` | `1.642` | `2/9` | `5/9` | reuse-baseline-regression |
+
+Decision: do not promote the transition route. The candidate is exact and still
+beats current production multiply plus GMP/MPIR in this window, but it does not
+beat the nonreuse combo baseline at every size, stable-pair counts are weak
+against that baseline, and worst-pair safety is too noisy. Keep the route audit
+as diagnostic evidence and look for a stronger backend or interpolation shape
+before any production default change.
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor
