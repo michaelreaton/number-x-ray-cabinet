@@ -4501,3 +4501,39 @@ exact, but the matching combo reuse baseline is substantially better and the
 high row is still slower than GMP/MPIR. Future multiply work should stop tuning
 top-level Toom-5 handoff in this form and move to lower-level backend structure
 or another multiplication family.
+
+## 2026-06-20: Combo Reuse Transition GMP Duplicate-Control Audit
+
+Local Release validation artifact `native-test-runs/20260620-143501-c4b04caf`
+adds `mul-large-toom-cmb-gmptrans`, a benchmark-only duplicate-control audit for
+the reusable combo map at deterministic random spot `11717` and power-of-two
+anchor `16384`. The candidate is
+`full-ws-combo-reuse-map-l64d2-l48d4-l48d3`; current production multiply,
+primary `mpz_mul`, and duplicate `mpz_mul` remain in the same rotating run.
+
+Observed aggregate:
+
+- Exact parity/hash passed:
+  `hashSafe=36/36`, `hashGate=matched`, `parity=matched`.
+- The duplicate GMP/MPIR lane is stable in the transition window:
+  `gmpControlRatioMax=1.025`, `gmpControlWorstMax=1.073`,
+  `gmpControlSafety=stable`.
+- The reusable combo map passes the strict transition-window control gate:
+  `candGmpMax=0.924`, `candGmpDuplicateMax=0.908`, `safeSizes=2/2`.
+- Current production multiply is slower in the same run:
+  `currentGmpMax=1.401`.
+- Worst-pair safety is clean for this window:
+  `maxWorstPairRatio=1.080`.
+
+Per-size point rows:
+
+| Digits | Candidate / GMP | Candidate / GMP Duplicate | Current / GMP | GMP Control | GMP Control Worst | Worst Pair | GMP Stable | Control Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `11717` | `0.924` | `0.903` | `1.347` | `1.025` | `1.073` | `1.073` | `9/9` | `9/9` | combo-gmp-control-clean |
+| `16384` | `0.906` | `0.908` | `1.401` | `0.991` | `1.058` | `1.080` | `9/9` | `9/9` | combo-gmp-control-clean |
+
+Decision: keep this as observe-only evidence and do not change production
+routing. The transition window is genuinely promising and the duplicate
+GMP/MPIR control says the win is not an oracle-noise artifact, but promotion
+still needs a forced route audit and cannot ignore the previously measured
+upper-window GMP miss.
