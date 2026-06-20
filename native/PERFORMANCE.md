@@ -4346,3 +4346,46 @@ combo is still the stronger upper-window comparator in the strict gate:
 median win is not stable enough, and GMP/MPIR plus worst-pair gates remain
 blocked. The next multiply branch should leave this Toom-4 line and try a
 different multiplication structure or a wider handoff strategy.
+
+## 2026-06-20: Combo Reuse GMP Duplicate-Control Audit
+
+Local Release validation artifact
+`native-test-runs/20260620-091748-c4b04caf` adds
+`mul-large-toom-cmb-gmpctrl`, a benchmark-only duplicate-control audit for the
+reusable combo map. The candidate is
+`full-ws-combo-reuse-map-l64d2-l48d4-l48d3`; current production multiply,
+primary `mpz_mul`, and duplicate `mpz_mul` remain in the same rotating run for
+`24103`, `32768`, `52163`, and `65536`.
+
+Observed aggregate:
+
+- Exact parity/hash passed:
+  `hashSafe=72/72`, `hashGate=matched`, `parity=matched`.
+- The duplicate GMP/MPIR lane is stable in this run:
+  `gmpControlRatioMax=1.014`, `gmpControlWorstMax=1.129`,
+  `gmpControlSafety=stable`.
+- The reusable combo map still fails the strict upper-window gate:
+  `candGmpMax=1.106`, `candGmpDuplicateMax=1.112`, `safeSizes=0/4`.
+- Current production multiply remains much slower than GMP/MPIR at the high
+  end:
+  `currentGmpMax=1.893`.
+- Worst-pair safety remains blocked:
+  `maxWorstPairRatio=1.237`.
+
+Per-size point rows:
+
+| Digits | Candidate / GMP | Candidate / GMP Duplicate | Current / GMP | GMP Control | GMP Control Worst | Worst Pair | GMP Stable | Control Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `24103` | `0.962` | `0.961` | `1.523` | `0.981` | `1.055` | `1.055` | `7/9` | `9/9` | backend-regression |
+| `32768` | `1.031` | `1.049` | `1.566` | `0.996` | `1.129` | `1.129` | `3/9` | `8/9` | backend-regression |
+| `52163` | `1.033` | `1.035` | `1.782` | `0.987` | `1.091` | `1.093` | `2/9` | `9/9` | backend-regression |
+| `65536` | `1.106` | `1.112` | `1.893` | `1.014` | `1.098` | `1.237` | `0/9` | `9/9` | backend-regression |
+
+Decision: keep the duplicate-control row as methodology evidence and do not
+promote the reusable combo map. The stable duplicate `mpz_mul` lane makes the
+result sharper: the upper-window miss is a backend/stability gap, not just a
+noisy oracle comparison. `24103` is still useful as a deterministic random
+spot because it is median-positive but misses the stable-pair bar by one pair;
+`32768`, `52163`, and `65536` remain slower than GMP/MPIR. The next multiply
+work should keep the control-aware same-run methodology and move to a different
+arithmetic shape or broader handoff.

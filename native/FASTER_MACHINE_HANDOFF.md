@@ -1099,6 +1099,43 @@ production multiply, but it loses to combo reuse at `24103`, `32768`, and
 worst-pair, safe-size, and GMP/MPIR gates. Keep it as evidence that top-level
 Toom-4 is not the next default route shape.
 
+## 2026-06-20: Combo Reuse GMP Duplicate-Control Audit
+
+Artifact: `native-test-runs/20260620-091748-c4b04caf`
+
+This run adds `mul-large-toom-cmb-gmpctrl`, a benchmark-only duplicate-control
+audit for the reusable combo map on the upper mixed window: `24103`, `32768`,
+`52163`, and `65536`. The candidate is
+`full-ws-combo-reuse-map-l64d2-l48d4-l48d3`; it is compared against current
+production multiply, a primary `mpz_mul` oracle, and an independent duplicate
+`mpz_mul` lane in the same rotating batch. It preserves both deterministic
+random spots and power-of-two anchors and remains diagnostic only:
+`noAutoRoute=1`, `replacementReady=false`, production multiply unchanged.
+
+Summary:
+
+| Row | Sizes | Candidate / GMP Max | Candidate / GMP Duplicate Max | Current / GMP Max | GMP Control Max | GMP Control Worst | Worst Pair Max | Safe Sizes | Hash Safe | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `mul-large-toom-cmb-gmpctrl` | `24103,32768,52163,65536` | `1.106` | `1.112` | `1.893` | `1.014` | `1.129` | `1.237` | `0/4` | `72/72` | observe only |
+
+Per-size signal:
+
+| Digits | Candidate / GMP | Candidate / GMP Duplicate | Current / GMP | GMP Control | GMP Control Worst | Worst Pair | GMP Stable | Control Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `24103` | `0.962` | `0.961` | `1.523` | `0.981` | `1.055` | `1.055` | `7/9` | `9/9` | backend-regression |
+| `32768` | `1.031` | `1.049` | `1.566` | `0.996` | `1.129` | `1.129` | `3/9` | `8/9` | backend-regression |
+| `52163` | `1.033` | `1.035` | `1.782` | `0.987` | `1.091` | `1.093` | `2/9` | `9/9` | backend-regression |
+| `65536` | `1.106` | `1.112` | `1.893` | `1.014` | `1.098` | `1.237` | `0/9` | `9/9` | backend-regression |
+
+Decision: keep the reusable combo map as the strongest known diagnostic route,
+but do not promote it. The duplicate `mpz_mul` control lane is stable in this
+run, so the upper-window GMP/MPIR miss is a real backend/stability gap rather
+than just oracle-lane noise. `24103` is median-positive but still one stable
+pair short of the `8/9` gate; `32768`, `52163`, and `65536` remain slower than
+GMP/MPIR. The next CPU multiply work should use this control-aware methodology
+and move to a different arithmetic structure or broader handoff, not another
+simple Toom-4/top-level variant.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor
