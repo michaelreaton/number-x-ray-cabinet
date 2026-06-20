@@ -695,6 +695,47 @@ improvement is not stable enough for a route gate and still leaves the GMP/MPIR
 gap open. The next structural work should keep caller-owned workspaces in mind,
 but also attack the arithmetic shape itself.
 
+## 2026-06-19: Combo Best-Map Full-Window Audit
+
+Run:
+
+- Release:
+  `native-test-runs/20260619-202535-c4b04caf`
+
+This run adds `mul-large-toom-cmb-map`, a benchmark-only full-window audit of
+the strongest known fixed map from the recent lower, handoff, tournament, and
+reuse scouts. It keeps `full-ws-combo-l64d2` below `24103`, switches to
+`full-ws-combo-l48d4` for `24103` and `32768`, then switches to
+`full-ws-combo-l48d3` for `52163` and `65536`. The row covers the full campaign
+window, including every deterministic in-between size.
+
+Observed aggregate:
+
+| Operation | Sizes | Candidate / Current Max | Candidate / GMP Max | Current / GMP Max | Worst Pair Max | Safe Sizes | Hash Gate | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `mul-large-toom-cmb-map` | `4096,5639,8192,11717,16384,24103,32768,52163,65536` | `0.930` | `1.204` | `2.063` | `2.869` | `0/9` | `162/162` | observe only |
+
+Per-size signal:
+
+| Digits | Active Candidate | Candidate / Current | Candidate / GMP | Current / GMP | Worst Pair | Status |
+| ---: | --- | ---: | ---: | ---: | ---: | --- |
+| `4096` | `full-ws-combo-l64d2` | `0.921` | `0.860` | `0.945` | `1.195` | current-regression |
+| `5639` | `full-ws-combo-l64d2` | `0.919` | `0.809` | `0.838` | `1.206` | current-regression |
+| `8192` | `full-ws-combo-l64d2` | `0.930` | `0.953` | `1.147` | `1.560` | current-regression |
+| `11717` | `full-ws-combo-l64d2` | `0.741` | `1.021` | `1.432` | `1.170` | backend-regression |
+| `16384` | `full-ws-combo-l64d2` | `0.667` | `0.972` | `1.495` | `1.152` | backend-regression |
+| `24103` | `full-ws-combo-l48d4` | `0.739` | `1.088` | `1.385` | `2.204` | current-regression |
+| `32768` | `full-ws-combo-l48d4` | `0.634` | `1.119` | `1.758` | `2.869` | current-regression |
+| `52163` | `full-ws-combo-l48d3` | `0.567` | `1.092` | `1.927` | `1.158` | backend-regression |
+| `65536` | `full-ws-combo-l48d3` | `0.591` | `1.204` | `2.063` | `1.232` | backend-regression |
+
+Decision: keep the best-map audit observe-only. It gives the clearest
+full-window summary of the current multiply campaign and beats current
+production multiply at every measured size, but it still misses the strict
+proof bar badly: `safeSizes=0/9`, GMP/MPIR regressions start at `11717`, and
+worst-pair safety fails at both random spots and power-of-two anchors. This is
+useful route-map evidence, not a production route.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor
