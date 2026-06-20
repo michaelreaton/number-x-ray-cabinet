@@ -1457,6 +1457,17 @@ XRAY_API char *xray_cyclotomic_scan_json(const char *raw_input);
 XRAY_API int xray_benchmark_run(XrayBenchmarkReport *report);
 
 /**
+ * Run a focused diagnostic benchmark subset.
+ *
+ * This is intended for local novelty scouting, not promotion evidence. The
+ * default benchmark ladder is unchanged; callers must opt in with a focus name.
+ * Supported focus names are implementation-defined diagnostic labels such as
+ * "mul-large", "mul-combo-lower", "mul-combo-transition",
+ * "mul-combo-upper", "mul-combo-reuse", and "mul-novelty".
+ */
+XRAY_API int xray_benchmark_run_focus(XrayBenchmarkReport *report, const char *focus);
+
+/**
  * Run the benchmark ladder and stream each completed result row.
  *
  * result_callback may be NULL. When supplied, it is called after each row has
@@ -1466,6 +1477,19 @@ XRAY_API int xray_benchmark_run(XrayBenchmarkReport *report);
  */
 XRAY_API int xray_benchmark_run_with_callback(
   XrayBenchmarkReport *report,
+  XrayBenchmarkResultCallback result_callback,
+  void *user_data);
+
+/**
+ * Run a focused diagnostic benchmark subset and stream completed result rows.
+ *
+ * The focus path skips the full ladder and should be used to discover promising
+ * candidates before running the complete parity, visibility, and promotion
+ * gates.
+ */
+XRAY_API int xray_benchmark_run_focus_with_callback(
+  XrayBenchmarkReport *report,
+  const char *focus,
   XrayBenchmarkResultCallback result_callback,
   void *user_data);
 

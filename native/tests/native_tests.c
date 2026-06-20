@@ -10776,6 +10776,17 @@ static void test_benchmarks(void) {
   xray_workbench_report_clear(&workbench);
 }
 
+static void test_benchmark_focus_api(void) {
+  XrayBenchmarkReport report;
+  CHECK(xray_benchmark_run_focus(&report, "no-such-focus"));
+  CHECK(report.result_count == 0);
+  char *tsv = xray_benchmark_report_tsv(&report);
+  CHECK(tsv != NULL);
+  CHECK(strstr(tsv, "category\tname\toperation\tdigits") != NULL);
+  xray_free(tsv);
+  xray_benchmark_report_clear(&report);
+}
+
 static int should_run_native_test(int argc, char **argv, const char *name, const char *group) {
   if (argc <= 1) return 1;
   for (int index = 1; index < argc; ++index) {
@@ -10830,6 +10841,7 @@ int main(int argc, char **argv) {
   RUN_NATIVE_TEST(test_workspace_and_gnfs_artifacts, "artifacts");
   RUN_NATIVE_TEST(test_report_json_ffi_helpers, "ffi");
   RUN_NATIVE_TEST(test_large_nonhit_does_not_false_solve, "solver");
+  RUN_NATIVE_TEST(test_benchmark_focus_api, "benchmark");
   RUN_NATIVE_TEST(test_benchmarks, "benchmark");
   if (ran_tests == 0) {
     fprintf(stderr, "no native tests matched filter\n");

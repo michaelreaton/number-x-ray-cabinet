@@ -1264,19 +1264,30 @@ Run these in order.
    - Compare `mul-dense-leaf-vs-scan`.
    - Compare scratch `mul` rows against `mpz_mul`.
 
-2. Increase samples only for promising rows.
+2. Scout novelty with focused runs before spending full-suite time.
+   - Use `xray_cli.exe --bench-focus mul-novelty --bench-tsv` to cover the
+     mixed `4096` through `65536` multiply window, including deterministic
+     in-between sizes, without running unrelated benchmark families.
+   - Use narrower focus labels such as `mul-combo-lower`,
+     `mul-combo-transition`, `mul-combo-upper`, and `mul-combo-reuse` when a
+     candidate pocket is already known.
+   - Treat focus output as triage only: keep the raw TSV, but do not promote or
+     publish a route until the full parity, route-audit, worst-pair, and
+     stable-pair gates pass.
+
+3. Increase samples only for promising rows.
    - Do not globally lengthen every benchmark.
    - Require paired medians and same-run ratios.
    - Keep raw `benchmark.tsv`, `frontier.txt`, and report JSON.
 
-3. Test split views plus allocation/workspace reduction.
+4. Test split views plus allocation/workspace reduction.
    - Keep production multiply unchanged until a route audit passes.
    - Measure copied slices, split views, and split views with reusable
      temporaries in the same run.
    - Use the same operand families and leaf threshold first, then sweep
      thresholds only if the route is stable.
 
-4. Revisit AVX/BMI2/ADX only with local proof.
+5. Revisit AVX/BMI2/ADX only with local proof.
    - Record CPU feature detection in the report.
    - Compare compiler flags in same-run or adjacent clean builds.
    - Do not trust prior AVX claims without local rows from this machine.
