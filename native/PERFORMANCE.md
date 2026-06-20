@@ -3838,3 +3838,42 @@ Decision: keep the tournament observe-only. Same-input evidence now says l48d4
 is the better lower-upper candidate, l48d3 is the better high-upper candidate,
 and neither is promotion-ready against GMP/MPIR and worst-pair gates. Use this
 as the next structural-design clue rather than a production route candidate.
+
+## 2026-06-19: Combo Reusable Workspace Scout
+
+Run:
+
+- Release:
+  `native-test-runs/20260619-200105-c4b04caf`
+
+This run adds `mul-large-toom-cmb-reuse`, a benchmark-only no-realloc scout for
+the upper-window tournament winners. It uses caller-owned recursive Toom and
+Karatsuba workspaces across repeated multiply calls and compares against the
+same route without workspace reuse on identical operands in the same run.
+
+Observed aggregate:
+
+- Exact parity/hash:
+  `hashSafe=72/72`, `hashGate=matched`, `parity=matched`.
+- Reuse beats the same non-reuse route on median at every size, but not by the
+  strict route gate:
+  `candBaseMax=0.990`.
+- It beats current production multiply:
+  `candCurrentMax=0.621`.
+- It still does not close the GMP/MPIR gap:
+  `candGmpMax=1.177`, `safeSizes=0/4`.
+- Worst-pair safety remains blocked:
+  `maxWorstPairRatio=1.209`.
+
+Per-size point rows:
+
+| Digits | Active Candidate | Reuse / Non-Reuse | Reuse / Current | Reuse / GMP | Non-Reuse / GMP | Current / GMP | Worst Pair | Status |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `24103` | `full-ws-combo-l48d4` | `0.893` | `0.613` | `0.926` | `1.014` | `1.583` | `1.138` | reuse-baseline-regression |
+| `32768` | `full-ws-combo-l48d4` | `0.958` | `0.621` | `1.001` | `1.097` | `1.600` | `1.181` | reuse-baseline-regression |
+| `52163` | `full-ws-combo-l48d3` | `0.948` | `0.594` | `1.079` | `1.137` | `1.819` | `1.125` | backend-regression |
+| `65536` | `full-ws-combo-l48d3` | `0.990` | `0.611` | `1.177` | `1.191` | `1.916` | `1.209` | reuse-baseline-regression |
+
+Decision: keep reusable workspaces as an implementation clue, not a route. The
+allocation/preparation tax is measurable, but the upper-window gap still needs
+arithmetic-structure work before a promotion audit can make sense.

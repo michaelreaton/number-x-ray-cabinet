@@ -9022,6 +9022,515 @@ static int run_mul_full_workspace_candidate_probe(
     depth_limit);
 }
 
+static size_t mul_combo_reuse_scout_leaf(size_t digits) {
+  (void)digits;
+  return 48U;
+}
+
+static size_t mul_combo_reuse_scout_depth(size_t digits) {
+  return digits < 52163U ? 4U : 3U;
+}
+
+static const char *mul_combo_reuse_scout_active_candidate(size_t digits) {
+  return digits < 52163U ? "full-ws-combo-l48d4" : "full-ws-combo-l48d3";
+}
+
+static int run_mul_full_workspace_reuse_candidate_probe(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *left,
+  const XrayScratchBigInt *right,
+  size_t leaf_threshold,
+  size_t depth_limit,
+  unsigned int interp_flags,
+  XrayBigIntMulWorkspace *workspace) {
+  unsigned int both = XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3;
+  if ((interp_flags & both) == both) {
+    return xray_bigint_mul_toom3_unroll4_recursive_full_workspace_reuse_div2_div3_probe(
+      out,
+      left,
+      right,
+      leaf_threshold,
+      depth_limit,
+      workspace);
+  }
+  return 0;
+}
+
+static int run_mul_combo_reuse_scout_batch_step(
+  int lane,
+  XrayScratchBigInt *candidate_out,
+  XrayScratchBigInt *baseline_out,
+  XrayScratchBigInt *current_out,
+  const XrayScratchBigInt *left,
+  const XrayScratchBigInt *right,
+  mpz_t *gout,
+  const mpz_t *gleft,
+  const mpz_t *gright,
+  size_t digits,
+  XrayBigIntMulWorkspace *workspace,
+  unsigned int batch,
+  unsigned long long *candidate_us,
+  unsigned long long *baseline_us,
+  unsigned long long *current_us,
+  unsigned long long *gmp_us) {
+  size_t leaf_threshold = mul_combo_reuse_scout_leaf(digits);
+  size_t depth_limit = mul_combo_reuse_scout_depth(digits);
+  unsigned int combo_interp_flags = XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3;
+  if (lane == 0) {
+    unsigned long long started = xray_now_us();
+    int ok = 1;
+    for (unsigned int index = 0; ok && index < batch; ++index) {
+      for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+        ok = run_mul_full_workspace_reuse_candidate_probe(
+          &candidate_out[family],
+          &left[family],
+          &right[family],
+          leaf_threshold,
+          depth_limit,
+          combo_interp_flags,
+          workspace);
+      }
+    }
+    *candidate_us += xray_now_us() - started;
+    return ok;
+  }
+  if (lane == 1) {
+    unsigned long long started = xray_now_us();
+    int ok = 1;
+    for (unsigned int index = 0; ok && index < batch; ++index) {
+      for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+        ok = run_mul_full_workspace_candidate_probe(
+          &baseline_out[family],
+          &left[family],
+          &right[family],
+          leaf_threshold,
+          depth_limit,
+          combo_interp_flags);
+      }
+    }
+    *baseline_us += xray_now_us() - started;
+    return ok;
+  }
+  if (lane == 2) {
+    unsigned long long started = xray_now_us();
+    int ok = 1;
+    for (unsigned int index = 0; ok && index < batch; ++index) {
+      for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+        ok = xray_bigint_mul(&current_out[family], &left[family], &right[family]);
+      }
+    }
+    *current_us += xray_now_us() - started;
+    return ok;
+  }
+
+  unsigned long long started = xray_now_us();
+  for (unsigned int index = 0; index < batch; ++index) {
+    for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+      mpz_mul(gout[family], gleft[family], gright[family]);
+    }
+  }
+  *gmp_us += xray_now_us() - started;
+  return 1;
+}
+
+static XrayMulFullWorkspaceDepthScoutPoint measure_mul_combo_reuse_scout_point(
+  size_t digits,
+  unsigned int seed,
+  size_t sample_count) {
+  XrayMulFullWorkspaceDepthScoutPoint point;
+  memset(&point, 0, sizeof(point));
+  point.digits = digits;
+  if (sample_count == 0 || sample_count > XRAY_BENCH_MAX_SAMPLES) sample_count = XRAY_BENCH_SAMPLES;
+  point.sample_count = sample_count;
+
+  char *left_text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  char *right_text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  XrayScratchBigInt left[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt right[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt candidate_out[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt baseline_out[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt current_out[XRAY_MUL_OPERAND_FAMILIES];
+  XrayBigIntMulWorkspace workspace;
+  mpz_t gleft[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gright[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gout[XRAY_MUL_OPERAND_FAMILIES];
+
+  unsigned int iterations = perf_iterations("mul", digits);
+  unsigned int batch_iterations = iterations >= 64U ? 8U : (iterations >= 16U ? 4U : 1U);
+  xray_bigint_mul_workspace_init(&workspace);
+  int ok = 1;
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    xray_bigint_init(&left[family]);
+    xray_bigint_init(&right[family]);
+    xray_bigint_init(&candidate_out[family]);
+    xray_bigint_init(&baseline_out[family]);
+    xray_bigint_init(&current_out[family]);
+    mpz_inits(gleft[family], gright[family], gout[family], NULL);
+    left_text[family] = benchmark_decimal(
+      digits,
+      seed + mul_operand_families[family].left_seed + (unsigned int)(family * 31U),
+      mul_operand_families[family].left_high_lead);
+    right_text[family] = benchmark_decimal(
+      digits,
+      seed + mul_operand_families[family].right_seed + (unsigned int)(family * 37U),
+      mul_operand_families[family].right_high_lead);
+    ok = ok &&
+      left_text[family] &&
+      right_text[family] &&
+      xray_bigint_set_decimal(&left[family], left_text[family]) &&
+      xray_bigint_set_decimal(&right[family], right_text[family]) &&
+      mpz_set_str(gleft[family], left_text[family], 10) == 0 &&
+      mpz_set_str(gright[family], right_text[family], 10) == 0;
+  }
+
+  unsigned long long candidate_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long baseline_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long current_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  int parity = 1;
+  for (size_t sample = 0; ok && sample < sample_count; ++sample) {
+    unsigned int completed = 0;
+    unsigned int phase = (unsigned int)(sample % 4U);
+    while (ok && completed < iterations) {
+      unsigned int remaining = iterations - completed;
+      unsigned int batch = remaining < batch_iterations ? remaining : batch_iterations;
+      for (unsigned int lane = 0; ok && lane < 4U; ++lane) {
+        ok = run_mul_combo_reuse_scout_batch_step(
+          (int)((phase + lane) % 4U),
+          candidate_out,
+          baseline_out,
+          current_out,
+          left,
+          right,
+          gout,
+          gleft,
+          gright,
+          digits,
+          &workspace,
+          batch,
+          &candidate_samples[sample],
+          &baseline_samples[sample],
+          &current_samples[sample],
+          &gmp_samples[sample]);
+      }
+      phase = (phase + 1U) % 4U;
+      completed += batch;
+    }
+
+    for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+      char *candidate_text = xray_bigint_get_decimal(&candidate_out[family]);
+      char *baseline_text = xray_bigint_get_decimal(&baseline_out[family]);
+      char *current_text = xray_bigint_get_decimal(&current_out[family]);
+      char *gmp_text = mpz_get_str(NULL, 10, gout[family]);
+      uint64_t candidate_hash = xray_benchmark_text_hash64(candidate_text);
+      uint64_t baseline_hash = xray_benchmark_text_hash64(baseline_text);
+      uint64_t current_hash = xray_benchmark_text_hash64(current_text);
+      uint64_t gmp_hash = xray_benchmark_text_hash64(gmp_text);
+      int sample_match = ok &&
+        candidate_text &&
+        baseline_text &&
+        current_text &&
+        gmp_text &&
+        strcmp(candidate_text, baseline_text) == 0 &&
+        strcmp(candidate_text, current_text) == 0 &&
+        strcmp(candidate_text, gmp_text) == 0;
+      if (sample_match &&
+          candidate_hash != 0ULL &&
+          candidate_hash == baseline_hash &&
+          candidate_hash == current_hash &&
+          candidate_hash == gmp_hash) {
+        point.hash_match_count++;
+      }
+      parity = parity && sample_match;
+      free(candidate_text);
+      free(baseline_text);
+      free(current_text);
+      free(gmp_text);
+    }
+  }
+
+  point.candidate_us = median_samples(candidate_samples, sample_count);
+  point.baseline_us = median_samples(baseline_samples, sample_count);
+  point.current_us = median_samples(current_samples, sample_count);
+  point.gmp_us = median_samples(gmp_samples, sample_count);
+  point.candidate_baseline_ratio = median_paired_ratio(candidate_samples, baseline_samples, sample_count);
+  point.candidate_current_ratio = median_paired_ratio(candidate_samples, current_samples, sample_count);
+  point.candidate_gmp_ratio = median_paired_ratio(candidate_samples, gmp_samples, sample_count);
+  point.baseline_gmp_ratio = median_paired_ratio(baseline_samples, gmp_samples, sample_count);
+  point.current_gmp_ratio = median_paired_ratio(current_samples, gmp_samples, sample_count);
+  point.candidate_baseline_worst = max_paired_ratio(candidate_samples, baseline_samples, sample_count);
+  point.candidate_current_worst = max_paired_ratio(candidate_samples, current_samples, sample_count);
+  point.candidate_gmp_worst = max_paired_ratio(candidate_samples, gmp_samples, sample_count);
+  point.candidate_baseline_stable = paired_ratio_wins(candidate_samples, baseline_samples, sample_count, 0.98);
+  point.candidate_current_stable = paired_ratio_wins(candidate_samples, current_samples, sample_count, 0.98);
+  point.candidate_gmp_stable = paired_ratio_wins(candidate_samples, gmp_samples, sample_count, 1.0);
+  point.parity = parity && ok;
+
+  xray_bigint_mul_workspace_clear(&workspace);
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    mpz_clears(gleft[family], gright[family], gout[family], NULL);
+    xray_bigint_clear(&left[family]);
+    xray_bigint_clear(&right[family]);
+    xray_bigint_clear(&candidate_out[family]);
+    xray_bigint_clear(&baseline_out[family]);
+    xray_bigint_clear(&current_out[family]);
+    free(left_text[family]);
+    free(right_text[family]);
+  }
+  return point;
+}
+
+static void append_mul_combo_reuse_scout_result(
+  XrayBenchmarkReport *report,
+  const char *policy,
+  const char *sizes,
+  const XrayMulFullWorkspaceDepthScoutPoint *points,
+  size_t point_count,
+  size_t sample_count) {
+  if (!report || !policy || !points || point_count == 0) return;
+  size_t required_stable = policy_required_stable_samples(sample_count);
+  size_t safe_size_count = 0;
+  size_t hash_match_count = 0;
+  size_t expected_hash_count = point_count * sample_count * XRAY_MUL_OPERAND_FAMILIES;
+  int parity = 1;
+  int hash_gate = 1;
+  int baseline_ratio_safe = 1;
+  int current_ratio_safe = 1;
+  int backend_ratio_safe = 1;
+  int stable_safe = 1;
+  int worst_pair_safe = 1;
+  unsigned long long candidate_us = 0;
+  unsigned long long baseline_us = 0;
+  double max_candidate_baseline_ratio = 0.0;
+  double max_candidate_current_ratio = 0.0;
+  double max_candidate_gmp_ratio = 0.0;
+  double max_baseline_gmp_ratio = 0.0;
+  double max_current_gmp_ratio = 0.0;
+  double max_worst_pair_ratio = 0.0;
+
+  for (size_t index = 0; index < point_count; ++index) {
+    const XrayMulFullWorkspaceDepthScoutPoint *point = &points[index];
+    size_t point_expected_hash_count = sample_count * XRAY_MUL_OPERAND_FAMILIES;
+    parity = parity && point->parity;
+    hash_gate = hash_gate && point->hash_match_count == point_expected_hash_count;
+    hash_match_count += point->hash_match_count;
+    if (point->candidate_us > candidate_us) candidate_us = point->candidate_us;
+    if (point->baseline_us > baseline_us) baseline_us = point->baseline_us;
+    if (point->candidate_baseline_ratio > max_candidate_baseline_ratio) max_candidate_baseline_ratio = point->candidate_baseline_ratio;
+    if (point->candidate_current_ratio > max_candidate_current_ratio) max_candidate_current_ratio = point->candidate_current_ratio;
+    if (point->candidate_gmp_ratio > max_candidate_gmp_ratio) max_candidate_gmp_ratio = point->candidate_gmp_ratio;
+    if (point->baseline_gmp_ratio > max_baseline_gmp_ratio) max_baseline_gmp_ratio = point->baseline_gmp_ratio;
+    if (point->current_gmp_ratio > max_current_gmp_ratio) max_current_gmp_ratio = point->current_gmp_ratio;
+    if (point->candidate_baseline_worst > max_worst_pair_ratio) max_worst_pair_ratio = point->candidate_baseline_worst;
+    if (point->candidate_current_worst > max_worst_pair_ratio) max_worst_pair_ratio = point->candidate_current_worst;
+    if (point->candidate_gmp_worst > max_worst_pair_ratio) max_worst_pair_ratio = point->candidate_gmp_worst;
+    int point_baseline_safe = point->candidate_baseline_ratio > 0.0 &&
+      point->candidate_baseline_ratio <= 0.98 &&
+      point->candidate_baseline_stable >= required_stable &&
+      xray_no_worst_pair_regression(point->candidate_baseline_worst);
+    int point_current_safe = point->candidate_current_ratio > 0.0 &&
+      point->candidate_current_ratio <= 0.98 &&
+      point->candidate_current_stable >= required_stable &&
+      xray_no_worst_pair_regression(point->candidate_current_worst);
+    int point_backend_safe = point->candidate_gmp_ratio > 0.0 &&
+      point->candidate_gmp_ratio <= 1.0 &&
+      point->candidate_gmp_stable >= required_stable &&
+      xray_no_worst_pair_regression(point->candidate_gmp_worst);
+    baseline_ratio_safe = baseline_ratio_safe && point->candidate_baseline_ratio > 0.0 && point->candidate_baseline_ratio <= 0.98;
+    current_ratio_safe = current_ratio_safe && point->candidate_current_ratio > 0.0 && point->candidate_current_ratio <= 0.98;
+    backend_ratio_safe = backend_ratio_safe && point->candidate_gmp_ratio > 0.0 && point->candidate_gmp_ratio <= 1.0;
+    stable_safe = stable_safe &&
+      point->candidate_baseline_stable >= required_stable &&
+      point->candidate_current_stable >= required_stable &&
+      point->candidate_gmp_stable >= required_stable;
+    worst_pair_safe = worst_pair_safe &&
+      xray_no_worst_pair_regression(point->candidate_baseline_worst) &&
+      xray_no_worst_pair_regression(point->candidate_current_worst) &&
+      xray_no_worst_pair_regression(point->candidate_gmp_worst);
+    if (point->parity &&
+        point->hash_match_count == point_expected_hash_count &&
+        point_baseline_safe &&
+        point_current_safe &&
+        point_backend_safe) {
+      safe_size_count++;
+    }
+  }
+
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "policy scout mul combo reuse workspace");
+  snprintf(result.category, sizeof(result.category), "policy-gate");
+  snprintf(result.operation, sizeof(result.operation), "mul-large-toom-cmb-reuse");
+  result.digits = points[point_count - 1U].digits;
+  result.scratch_us = candidate_us ? candidate_us : 1;
+  result.gmp_us = baseline_us ? baseline_us : 1;
+  result.speed_ratio = max_candidate_baseline_ratio > 0.0 ? max_candidate_baseline_ratio : (double)result.scratch_us / (double)result.gmp_us;
+  result.max_allowed_speed_ratio = 1.0;
+  result.stable_sample_count = safe_size_count;
+  result.sample_count = point_count;
+  result.worst_pair_ratio = max_worst_pair_ratio;
+  result.parity_verified = parity && hash_gate;
+  result.replacement_ready = 0;
+  snprintf(result.adoption, sizeof(result.adoption), "%s",
+    !parity ? "blocked-output-mismatch" : "observe-only");
+  snprintf(result.status, sizeof(result.status), "%s",
+    !parity ? "mismatch" :
+    (!hash_gate ? "hash-mismatch" :
+    (!baseline_ratio_safe ? "reuse-baseline-regression" :
+    (!current_ratio_safe ? "current-regression" :
+    (!backend_ratio_safe ? "backend-regression" :
+    (!worst_pair_safe ? "worst-pair-regression" :
+    (!stable_safe ? "needs-stability" : "combo-reuse-clean")))))));
+  result.passed = parity && hash_gate;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  snprintf(result.detail, sizeof(result.detail),
+    "op=mul-large-toom-cmb-reuse policy=%s sizes=%s sizeCount=%zu minDigits=%zu routePolicy=tournament-winner-l48d4-l48d3 leafThreshold=48 depths=4,4,3,3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom-combo-reuse-workspace gmpClue=toom33-combo-reusable-workspace forcedCandidate=yes thresholdSafety=upper-window candidate=full-ws-combo-reuse-winner baseline=full-ws-combo-nonreuse-winner oracle=mpz_mul candBaseMax=%.3f candCurrentMax=%.3f candGmpMax=%.3f baseGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
+    policy,
+    sizes ? sizes : "unknown",
+    point_count,
+    points[0].digits,
+    (unsigned int)XRAY_MUL_OPERAND_FAMILIES,
+    sample_count,
+    required_stable,
+    sample_count,
+    safe_size_count,
+    point_count,
+    hash_match_count,
+    expected_hash_count,
+    hash_gate ? "matched" : "blocked",
+    parity ? "matched" : "blocked",
+    result.adoption,
+    max_candidate_baseline_ratio,
+    max_candidate_current_ratio,
+    max_candidate_gmp_ratio,
+    max_baseline_gmp_ratio,
+    max_current_gmp_ratio,
+    max_worst_pair_ratio);
+  append_result(report, &result);
+}
+
+static void append_mul_combo_reuse_scout_point_result(
+  XrayBenchmarkReport *report,
+  const char *policy,
+  const XrayMulFullWorkspaceDepthScoutPoint *point,
+  size_t sample_count) {
+  if (!report || !policy || !point) return;
+  size_t required_stable = policy_required_stable_samples(sample_count);
+  size_t expected_hash_count = sample_count * XRAY_MUL_OPERAND_FAMILIES;
+  int hash_gate = point->hash_match_count == expected_hash_count;
+  int baseline_safe = point->candidate_baseline_ratio > 0.0 &&
+    point->candidate_baseline_ratio <= 0.98 &&
+    point->candidate_baseline_stable >= required_stable &&
+    xray_no_worst_pair_regression(point->candidate_baseline_worst);
+  int current_safe = point->candidate_current_ratio > 0.0 &&
+    point->candidate_current_ratio <= 0.98 &&
+    point->candidate_current_stable >= required_stable &&
+    xray_no_worst_pair_regression(point->candidate_current_worst);
+  int backend_safe = point->candidate_gmp_ratio > 0.0 &&
+    point->candidate_gmp_ratio <= 1.0 &&
+    point->candidate_gmp_stable >= required_stable &&
+    xray_no_worst_pair_regression(point->candidate_gmp_worst);
+  double worst_pair_ratio = point->candidate_baseline_worst;
+  if (point->candidate_current_worst > worst_pair_ratio) worst_pair_ratio = point->candidate_current_worst;
+  if (point->candidate_gmp_worst > worst_pair_ratio) worst_pair_ratio = point->candidate_gmp_worst;
+  size_t leaf_threshold = mul_combo_reuse_scout_leaf(point->digits);
+  size_t depth_limit = mul_combo_reuse_scout_depth(point->digits);
+  const char *active_candidate = mul_combo_reuse_scout_active_candidate(point->digits);
+
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "kernel large mul combo reuse point %zu digits", point->digits);
+  snprintf(result.category, sizeof(result.category), "kernel-probe");
+  snprintf(result.operation, sizeof(result.operation), "mul-large-toom-cmb-reuse-pt");
+  result.digits = point->digits;
+  result.scratch_us = point->candidate_us ? point->candidate_us : 1;
+  result.gmp_us = point->baseline_us ? point->baseline_us : 1;
+  result.speed_ratio = point->candidate_baseline_ratio > 0.0 ?
+    point->candidate_baseline_ratio :
+    (double)result.scratch_us / (double)result.gmp_us;
+  result.max_allowed_speed_ratio = 0.98;
+  result.stable_sample_count = point->candidate_baseline_stable;
+  result.sample_count = sample_count;
+  result.worst_pair_ratio = worst_pair_ratio;
+  result.parity_verified = point->parity && hash_gate;
+  result.replacement_ready = 0;
+  snprintf(result.adoption, sizeof(result.adoption), "%s",
+    point->parity ? "observe-only" : "blocked-output-mismatch");
+  snprintf(result.status, sizeof(result.status), "%s",
+    !point->parity ? "mismatch" :
+    (!hash_gate ? "hash-mismatch" :
+    (!baseline_safe ? "reuse-baseline-regression" :
+    (!current_safe ? "current-regression" :
+    (!backend_safe ? "backend-regression" : "combo-reuse-clean")))));
+  result.passed = point->parity && hash_gate;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  snprintf(result.detail, sizeof(result.detail),
+    "op=mul-cmb-reuse-point parent=cmb-reuse-scout policy=%s sizeRole=%s routePolicy=tournament-winner-l48d4-l48d3 activeCandidate=%s leafThreshold=%zu depthLimit=%zu operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu stablePairs=%zu/%zu stableBase=%zu/%zu stableCurrent=%zu/%zu stableGmp=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom-combo-reuse-workspace gmpClue=toom33-combo-reusable-workspace thresholdSafety=upper-window candidate=full-ws-combo-reuse-winner baseline=full-ws-combo-nonreuse-winner oracle=mpz_mul candBaseRatio=%.3f candCurrentRatio=%.3f candGmpRatio=%.3f baseGmpRatio=%.3f currentGmpRatio=%.3f worstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating sameInput=yes sameRunAudit=yes",
+    policy,
+    large_mul_campaign_size_role(point->digits),
+    active_candidate,
+    leaf_threshold,
+    depth_limit,
+    (unsigned int)XRAY_MUL_OPERAND_FAMILIES,
+    sample_count,
+    required_stable,
+    sample_count,
+    point->candidate_baseline_stable,
+    sample_count,
+    point->candidate_baseline_stable,
+    sample_count,
+    point->candidate_current_stable,
+    sample_count,
+    point->candidate_gmp_stable,
+    sample_count,
+    point->hash_match_count,
+    expected_hash_count,
+    hash_gate ? "matched" : "blocked",
+    point->parity ? "matched" : "blocked",
+    result.adoption,
+    point->candidate_baseline_ratio,
+    point->candidate_current_ratio,
+    point->candidate_gmp_ratio,
+    point->baseline_gmp_ratio,
+    point->current_gmp_ratio,
+    worst_pair_ratio);
+  append_result(report, &result);
+}
+
+static void run_mul_combo_reuse_scout_case(
+  XrayBenchmarkReport *report,
+  unsigned int seed,
+  const char *policy,
+  const size_t *sizes,
+  size_t size_count) {
+  if (!report || !policy || !sizes || size_count == 0 || size_count > XRAY_FORMAT_ROUTE_TOURNAMENT_MAX) return;
+  XrayMulFullWorkspaceDepthScoutPoint points[XRAY_FORMAT_ROUTE_TOURNAMENT_MAX];
+  memset(points, 0, sizeof(points));
+  char size_list[96] = {0};
+  for (size_t index = 0; index < size_count; ++index) {
+    size_t used = strlen(size_list);
+    if (used < sizeof(size_list)) {
+      snprintf(size_list + used, sizeof(size_list) - used, "%s%zu", size_list[0] ? "," : "", sizes[index]);
+    }
+    points[index] = measure_mul_combo_reuse_scout_point(
+      sizes[index],
+      seed + (unsigned int)(index * 67U),
+      XRAY_BENCH_DEEP_SAMPLES);
+    append_mul_combo_reuse_scout_point_result(
+      report,
+      policy,
+      &points[index],
+      XRAY_BENCH_DEEP_SAMPLES);
+  }
+  append_mul_combo_reuse_scout_result(
+    report,
+    policy,
+    size_list,
+    points,
+    size_count,
+    XRAY_BENCH_DEEP_SAMPLES);
+}
+
 static int run_mul_full_workspace_depth_scout_batch_step(
   int lane,
   XrayScratchBigInt *candidate_out,
@@ -15196,6 +15705,12 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     1399U,
     "full-workspace-combo-upper-tournament-ge24103",
     32768,
+    mul_full_workspace_upper_gate_digits,
+    sizeof(mul_full_workspace_upper_gate_digits) / sizeof(mul_full_workspace_upper_gate_digits[0]));
+  run_mul_combo_reuse_scout_case(
+    report,
+    1423U,
+    "full-workspace-combo-reuse-upper-ge24103",
     mul_full_workspace_upper_gate_digits,
     sizeof(mul_full_workspace_upper_gate_digits) / sizeof(mul_full_workspace_upper_gate_digits[0]));
 #endif

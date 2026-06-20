@@ -44,6 +44,13 @@ typedef struct XrayBigIntDivisionWorkspace {
   XrayScratchBigInt remainder_slice;
 } XrayBigIntDivisionWorkspace;
 
+typedef struct XrayBigIntMulWorkspace {
+  void *toom3_frames;
+  size_t toom3_frame_count;
+  void *karatsuba_frames;
+  size_t karatsuba_frame_count;
+} XrayBigIntMulWorkspace;
+
 typedef struct XrayBigIntRouteConfig {
   unsigned int word_bits;
   size_t karatsuba_threshold_limbs;
@@ -689,6 +696,34 @@ XRAY_API int xray_bigint_mul_toom3_unroll4_recursive_full_workspace_div3_probe(X
  * exact-divisibility checks.
  */
 XRAY_API int xray_bigint_mul_toom3_unroll4_recursive_full_workspace_div2_div3_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold, size_t depth_limit);
+
+/**
+ * Initialize reusable scratch storage for benchmark-only multiply probes.
+ *
+ * The workspace owns opaque Toom-3 and Karatsuba recursion frames that can be
+ * reused across repeated diagnostic multiply calls. It is not used by
+ * production multiply routing. Call xray_bigint_mul_workspace_clear() when
+ * done.
+ */
+XRAY_API void xray_bigint_mul_workspace_init(XrayBigIntMulWorkspace *workspace);
+
+/**
+ * Release memory owned by a reusable multiply workspace.
+ */
+XRAY_API void xray_bigint_mul_workspace_clear(XrayBigIntMulWorkspace *workspace);
+
+/**
+ * Multiply through the full-workspace recursive Toom-3 combo probe using
+ * caller-owned recursive workspaces that persist across calls.
+ *
+ * This diagnostic probe is benchmark-only: production multiply remains
+ * unchanged, out may alias either input, and the route uses the same combined
+ * exact `/2` plus `/3` interpolation shortcuts as
+ * xray_bigint_mul_toom3_unroll4_recursive_full_workspace_div2_div3_probe().
+ * Returns 1 on success and 0 on allocation failure, unsupported operand shape,
+ * invalid workspace, or failed exact-divisibility checks.
+ */
+XRAY_API int xray_bigint_mul_toom3_unroll4_recursive_full_workspace_reuse_div2_div3_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold, size_t depth_limit, XrayBigIntMulWorkspace *workspace);
 
 /**
  * Multiply with the unroll4 basecase probe route.

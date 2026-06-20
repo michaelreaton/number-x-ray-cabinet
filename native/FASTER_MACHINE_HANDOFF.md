@@ -660,6 +660,41 @@ half of the upper window, l48d3 wins the two largest sizes, and every winner
 still fails GMP/MPIR or worst-pair safety. The next implementation slice should
 target a structural high-end multiply improvement, not another promotion audit.
 
+## 2026-06-19: Combo Reusable Workspace Scout
+
+Run:
+
+- Release:
+  `native-test-runs/20260619-200105-c4b04caf`
+
+This run adds `mul-large-toom-cmb-reuse`, a benchmark-only no-realloc scout.
+It uses the same winner-by-size route from the upper tournament:
+`full-ws-combo-l48d4` at `24103` and `32768`, then
+`full-ws-combo-l48d3` at `52163` and `65536`. The candidate keeps
+caller-owned Toom/Karatsuba recursive workspaces across repeated multiply
+calls; the baseline uses the same route without workspace reuse.
+
+Observed aggregate:
+
+| Operation | Sizes | Reuse / Non-Reuse Max | Reuse / Current Max | Reuse / GMP Max | Non-Reuse / GMP Max | Worst Pair Max | Safe Sizes | Hash Gate | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `mul-large-toom-cmb-reuse` | `24103,32768,52163,65536` | `0.990` | `0.621` | `1.177` | `1.191` | `1.209` | `0/4` | `72/72` | observe only |
+
+Per-size signal:
+
+| Digits | Active Candidate | Reuse / Non-Reuse | Reuse / Current | Reuse / GMP | Non-Reuse / GMP | Current / GMP | Worst Pair | Status |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `24103` | `full-ws-combo-l48d4` | `0.893` | `0.613` | `0.926` | `1.014` | `1.583` | `1.138` | reuse-baseline-regression |
+| `32768` | `full-ws-combo-l48d4` | `0.958` | `0.621` | `1.001` | `1.097` | `1.600` | `1.181` | reuse-baseline-regression |
+| `52163` | `full-ws-combo-l48d3` | `0.948` | `0.594` | `1.079` | `1.137` | `1.819` | `1.125` | backend-regression |
+| `65536` | `full-ws-combo-l48d3` | `0.990` | `0.611` | `1.177` | `1.191` | `1.916` | `1.209` | reuse-baseline-regression |
+
+Decision: keep the reusable workspace probe observe-only. It proves allocator
+and workspace-preparation overhead are real on the upper window, but the
+improvement is not stable enough for a route gate and still leaves the GMP/MPIR
+gap open. The next structural work should keep caller-owned workspaces in mind,
+but also attack the arithmetic shape itself.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor
