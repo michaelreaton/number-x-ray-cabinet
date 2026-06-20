@@ -4265,3 +4265,43 @@ Decision: reject the `leaf64/depth2` inner handoff for promotion. The median
 improvement is real but too thin and too unstable, especially at `65536`, and
 the route remains GMP/MPIR and worst-pair unsafe. Do not continue by only
 tuning the inner Toom-3 leaf/depth pair.
+
+## 2026-06-20: Top-Level Toom-4 Factored-Division Scout
+
+Local Release validation artifact
+`native-test-runs/20260620-063633-c4b04caf` adds
+`mul-large-toom4-top-fdiv`, a benchmark-only interpolation scout for the
+reusable top-level Toom-4 route. The candidate is
+`full-ws-toom4-top-reuse-factored-div-l48d3`; the baseline is
+`full-ws-toom4-top-reuse-l48d3`; current production multiply and `mpz_mul`
+remain in the same timing run.
+
+Observed aggregate:
+
+- Exact parity/hash passed:
+  `hashSafe=72/72`, `hashGate=matched`, `parity=matched`.
+- Factored exact division does not beat the reusable Toom-4 baseline across the
+  window:
+  `candBaseMax=1.017`, `safeSizes=0/4`.
+- It remains faster than current production multiply:
+  `candCurrentMax=0.661`.
+- It is not competitive with GMP/MPIR at the high end:
+  `candGmpMax=1.094`.
+- Worst-pair safety remains blocked:
+  `maxWorstPairRatio=1.162`.
+
+Per-size point rows:
+
+| Digits | Factored Div / Reuse Toom-4 | Factored Div / Current | Factored Div / GMP | Reuse Toom-4 / GMP | Current / GMP | Worst Pair | Stable vs Reuse | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `24103` | `1.017` | `0.661` | `0.948` | `0.936` | `1.481` | `1.162` | `2/9` | `7/9` | toom4-fdiv-baseline-reg |
+| `32768` | `0.979` | `0.624` | `1.025` | `1.044` | `1.645` | `1.051` | `5/9` | `3/9` | toom4-fdiv-baseline-reg |
+| `52163` | `0.977` | `0.561` | `1.022` | `1.050` | `1.809` | `1.044` | `6/9` | `1/9` | toom4-fdiv-baseline-reg |
+| `65536` | `0.984` | `0.553` | `1.094` | `1.110` | `1.986` | `1.131` | `3/9` | `0/9` | toom4-fdiv-baseline-reg |
+
+Decision: reject factored exact division as a promotion path. It confirms the
+Toom-4 interpolation divisions are exact and somewhat worth isolating, but
+generic small-divisor division is not the remaining blocker: `24103` regresses
+against the reusable baseline, and the upper rows remain GMP/MPIR and
+worst-pair unsafe. Keep the row observe-only and move the next scout to a
+different multiplication structure or a broader handoff strategy.

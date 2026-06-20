@@ -47,9 +47,11 @@
 #define XRAY_BIGINT_SPARSE_STACK_INDEX_CAP 64U
 #define XRAY_BIGINT_FERMAT_65537 65537U
 #define XRAY_BIGINT_DIVEXACT_3_INVERSE UINT64_C(0xAAAAAAAAAAAAAAAB)
+#define XRAY_BIGINT_DIVEXACT_5_INVERSE UINT64_C(0xCCCCCCCCCCCCCCCD)
 #define XRAY_TOOM3_INTERP_SHIFT_DIV2 1U
 #define XRAY_TOOM3_INTERP_EXACT_DIV3 2U
 #define XRAY_TOOM3_INTERP_INPLACE_DIV 4U
+#define XRAY_TOOM4_INTERP_FACTORED_DIV 8U
 
 static const uint64_t parse_decimal_powers[] = {
   UINT64_C(1),
@@ -4229,6 +4231,41 @@ static int signed_divexact_u3_workspace(
   return ok;
 }
 
+static int divexact_u5_copy(XrayScratchBigInt *quotient, const XrayScratchBigInt *value) {
+  if (!quotient || !value) return 0;
+  if (value->count == 0) {
+    quotient->count = 0;
+    return 1;
+  }
+  if (!reserve_limbs(quotient, value->count)) return 0;
+  uint64_t carry = 0;
+  for (size_t index = 0; index < value->count; ++index) {
+    uint64_t word = value->limbs[index];
+    uint64_t digit = (word - carry) * XRAY_BIGINT_DIVEXACT_5_INVERSE;
+    uint64_t product_low = 0;
+    uint64_t product_high = mul_add_small_word(digit, 5U, carry, &product_low);
+    if (product_low != word || product_high > 4U) return 0;
+    quotient->limbs[index] = digit;
+    carry = product_high;
+  }
+  if (carry != 0) return 0;
+  quotient->count = value->count;
+  normalize(quotient);
+  return 1;
+}
+
+static int signed_divexact_u5_workspace(
+  XraySignedScratchBigInt *value,
+  XrayScratchBigInt *quotient) {
+  if (!value || !quotient) return 0;
+  if (value->sign == 0) return 1;
+  quotient->count = 0;
+  int ok = divexact_u5_copy(quotient, &value->mag) &&
+    xray_bigint_copy(&value->mag, quotient);
+  if (ok) signed_normalize(value);
+  return ok;
+}
+
 static int divexact_u3_inplace(XrayScratchBigInt *value) {
   if (!value) return 0;
   if (value->count == 0) return 1;
@@ -4750,7 +4787,8 @@ static int signed_linear_combination_divexact_workspace(
   uint32_t divisor,
   XraySignedScratchBigInt *scaled,
   XraySignedScratchBigInt *temp,
-  XrayScratchBigInt *quotient) {
+  XrayScratchBigInt *quotient,
+  unsigned int interp_flags) {
   if (!out || !terms || !coefficients || !scaled || !temp || !quotient || divisor == 0) return 0;
   signed_reset(out);
   for (size_t index = 0; index < term_count; ++index) {
@@ -4760,6 +4798,22 @@ static int signed_linear_combination_divexact_workspace(
     int ok = signed_scaled_copy(scaled, terms[index], magnitude);
     if (ok && coefficient < 0) scaled->sign = -scaled->sign;
     if (!ok || !signed_add_workspace(out, out, scaled, temp)) return 0;
+  }
+  if (interp_flags & XRAY_TOOM4_INTERP_FACTORED_DIV) {
+    if (divisor == 24U) {
+      return signed_divexact_pow2_workspace(out, 3, quotient) &&
+        signed_divexact_u3_workspace(out, quotient);
+    }
+    if (divisor == 60U) {
+      return signed_divexact_pow2_workspace(out, 2, quotient) &&
+        signed_divexact_u3_workspace(out, quotient) &&
+        signed_divexact_u5_workspace(out, quotient);
+    }
+    if (divisor == 120U) {
+      return signed_divexact_pow2_workspace(out, 3, quotient) &&
+        signed_divexact_u3_workspace(out, quotient) &&
+        signed_divexact_u5_workspace(out, quotient);
+    }
   }
   return signed_divexact_u32_workspace(out, divisor, quotient);
 }
@@ -4895,11 +4949,11 @@ static int mul_toom4_top_full_workspace_probe_internal(
       signed_toom4_adjust_value(&sm2, &v[T4_M2], &v[T4_0], &v[T4_INF], 64U, &scaled, &temp) &&
       signed_toom4_adjust_value(&s3, &v[T4_3], &v[T4_0], &v[T4_INF], 729U, &scaled, &temp) &&
       signed_copy(&coeff[0], &v[T4_0]) &&
-      signed_linear_combination_divexact_workspace(&coeff[1], terms, c1_coeffs, 5U, 60U, &scaled, &temp, &quotient) &&
-      signed_linear_combination_divexact_workspace(&coeff[2], terms, c2_coeffs, 5U, 24U, &scaled, &temp, &quotient) &&
-      signed_linear_combination_divexact_workspace(&coeff[3], terms, c3_coeffs, 5U, 24U, &scaled, &temp, &quotient) &&
-      signed_linear_combination_divexact_workspace(&coeff[4], terms, c4_coeffs, 5U, 24U, &scaled, &temp, &quotient) &&
-      signed_linear_combination_divexact_workspace(&coeff[5], terms, c5_coeffs, 5U, 120U, &scaled, &temp, &quotient) &&
+      signed_linear_combination_divexact_workspace(&coeff[1], terms, c1_coeffs, 5U, 60U, &scaled, &temp, &quotient, interp_flags) &&
+      signed_linear_combination_divexact_workspace(&coeff[2], terms, c2_coeffs, 5U, 24U, &scaled, &temp, &quotient, interp_flags) &&
+      signed_linear_combination_divexact_workspace(&coeff[3], terms, c3_coeffs, 5U, 24U, &scaled, &temp, &quotient, interp_flags) &&
+      signed_linear_combination_divexact_workspace(&coeff[4], terms, c4_coeffs, 5U, 24U, &scaled, &temp, &quotient, interp_flags) &&
+      signed_linear_combination_divexact_workspace(&coeff[5], terms, c5_coeffs, 5U, 120U, &scaled, &temp, &quotient, interp_flags) &&
       signed_copy(&coeff[6], &v[T4_INF]);
   }
 
@@ -5501,6 +5555,40 @@ int xray_bigint_mul_toom4_top_full_workspace_reuse_probe(
   size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : 48U;
   size_t active_depth = depth_limit >= 1U ? depth_limit : 1U;
   unsigned int interp_flags = XRAY_TOOM3_INTERP_SHIFT_DIV2 | XRAY_TOOM3_INTERP_EXACT_DIV3;
+  if (out == left || out == right) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = mul_toom4_top_full_workspace_probe_internal(&temp, left, right, active_threshold, active_depth, interp_flags, workspace);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return mul_toom4_top_full_workspace_probe_internal(out, left, right, active_threshold, active_depth, interp_flags, workspace);
+#else
+  (void)out;
+  (void)left;
+  (void)right;
+  (void)leaf_threshold;
+  (void)depth_limit;
+  (void)workspace;
+  return 0;
+#endif
+}
+
+int xray_bigint_mul_toom4_top_full_workspace_reuse_factored_div_probe(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *left,
+  const XrayScratchBigInt *right,
+  size_t leaf_threshold,
+  size_t depth_limit,
+  XrayBigIntMulWorkspace *workspace) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (!out || !left || !right || !workspace) return 0;
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : 48U;
+  size_t active_depth = depth_limit >= 1U ? depth_limit : 1U;
+  unsigned int interp_flags = XRAY_TOOM3_INTERP_SHIFT_DIV2 |
+    XRAY_TOOM3_INTERP_EXACT_DIV3 |
+    XRAY_TOOM4_INTERP_FACTORED_DIV;
   if (out == left || out == right) {
     XrayScratchBigInt temp;
     xray_bigint_init(&temp);
