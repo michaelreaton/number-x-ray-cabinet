@@ -9873,11 +9873,6 @@ static const char *mul_combo_reuse_neg2_active_candidate(size_t digits) {
   return digits < 52163U ? "full-ws-combo-neg2-l48d4" : "full-ws-combo-neg2-l48d3";
 }
 
-static const char *mul_toom5_top_reuse_active_candidate(size_t digits) {
-  (void)digits;
-  return "full-ws-toom5-top-reuse-l32d2";
-}
-
 static int run_mul_full_workspace_reuse_candidate_probe(
   XrayScratchBigInt *out,
   const XrayScratchBigInt *left,
@@ -10487,15 +10482,17 @@ static XrayMulFullWorkspaceDepthScoutPoint measure_mul_combo_reuse_neg2_map_poin
 static XrayMulFullWorkspaceDepthScoutPoint measure_mul_toom5_top_vs_combo_reuse_point(
   size_t digits,
   unsigned int seed,
-  size_t sample_count) {
+  size_t sample_count,
+  size_t leaf_threshold,
+  size_t depth_limit) {
   unsigned int combo_interp_flags = XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3;
   unsigned int toom5_interp_flags = combo_interp_flags | XRAY_BENCH_TOOM_INTERP_TOOM5_TOP;
   return measure_mul_dual_reuse_route_point(
     digits,
     seed,
     sample_count,
-    32U,
-    2U,
+    leaf_threshold,
+    depth_limit,
     toom5_interp_flags,
     combo_interp_flags);
 }
@@ -12468,8 +12465,17 @@ static void append_mul_toom5_top_vs_combo_reuse_result(
   const char *sizes,
   const XrayMulFullWorkspaceDepthScoutPoint *points,
   size_t point_count,
-  size_t sample_count) {
-  if (!report || !policy || !points || point_count == 0) return;
+  size_t sample_count,
+  const char *operation,
+  const char *name_suffix,
+  const char *route_policy,
+  const char *candidate,
+  const char *baseline,
+  const char *feature_gate,
+  const char *gmp_clue,
+  size_t leaf_threshold,
+  size_t depth_limit) {
+  if (!report || !policy || !points || point_count == 0 || !operation || !name_suffix || !route_policy || !candidate || !baseline || !feature_gate || !gmp_clue) return;
   size_t required_stable = policy_required_stable_samples(sample_count);
   size_t safe_size_count = 0;
   size_t hash_match_count = 0;
@@ -12540,9 +12546,9 @@ static void append_mul_toom5_top_vs_combo_reuse_result(
 
   XrayBenchmarkResult result;
   memset(&result, 0, sizeof(result));
-  snprintf(result.name, sizeof(result.name), "policy scout mul Toom-5 top vs combo reuse");
+  snprintf(result.name, sizeof(result.name), "policy scout mul Toom-5 %s", name_suffix);
   snprintf(result.category, sizeof(result.category), "policy-gate");
-  snprintf(result.operation, sizeof(result.operation), "mul-large-toom5-top-reuse");
+  snprintf(result.operation, sizeof(result.operation), "%s", operation);
   result.digits = points[point_count - 1U].digits;
   result.scratch_us = candidate_us ? candidate_us : 1;
   result.gmp_us = baseline_us ? baseline_us : 1;
@@ -12566,11 +12572,15 @@ static void append_mul_toom5_top_vs_combo_reuse_result(
   result.passed = parity && hash_gate;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=mul-large-toom5-top-reuse policy=%s sizes=%s sizeCount=%zu minDigits=%zu routePolicy=toom5-top-reuse-l32d2-smoke leafThreshold=32 depthLimit=2 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom5-top-reuse gmpClue=toom5-top-nine-point-structure forcedCandidate=yes thresholdSafety=smoke-window candidate=full-ws-toom5-top-reuse-l32d2 baseline=full-ws-combo-reuse-l32d2 currentBaseline=current-scratch-mul oracle=mpz_mul candBaseMax=%.3f candCurrentMax=%.3f candGmpMax=%.3f baseGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
+    "op=%s policy=%s sizes=%s sizeCount=%zu minDigits=%zu routePolicy=%s leafThreshold=%zu depthLimit=%zu operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=%s gmpClue=%s forcedCandidate=yes thresholdSafety=smoke-window candidate=%s baseline=%s currentBaseline=current-scratch-mul oracle=mpz_mul candBaseMax=%.3f candCurrentMax=%.3f candGmpMax=%.3f baseGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
+    operation,
     policy,
     sizes ? sizes : "unknown",
     point_count,
     points[0].digits,
+    route_policy,
+    leaf_threshold,
+    depth_limit,
     (unsigned int)XRAY_MUL_OPERAND_FAMILIES,
     sample_count,
     required_stable,
@@ -12582,6 +12592,10 @@ static void append_mul_toom5_top_vs_combo_reuse_result(
     hash_gate ? "matched" : "blocked",
     parity ? "matched" : "blocked",
     result.adoption,
+    feature_gate,
+    gmp_clue,
+    candidate,
+    baseline,
     max_candidate_baseline_ratio,
     max_candidate_current_ratio,
     max_candidate_gmp_ratio,
@@ -12595,8 +12609,18 @@ static void append_mul_toom5_top_vs_combo_reuse_point_result(
   XrayBenchmarkReport *report,
   const char *policy,
   const XrayMulFullWorkspaceDepthScoutPoint *point,
-  size_t sample_count) {
-  if (!report || !policy || !point) return;
+  size_t sample_count,
+  const char *operation,
+  const char *detail_op,
+  const char *parent,
+  const char *route_policy,
+  const char *candidate,
+  const char *baseline,
+  const char *feature_gate,
+  const char *gmp_clue,
+  size_t leaf_threshold,
+  size_t depth_limit) {
+  if (!report || !policy || !point || !operation || !detail_op || !parent || !route_policy || !candidate || !baseline || !feature_gate || !gmp_clue) return;
   size_t required_stable = policy_required_stable_samples(sample_count);
   size_t expected_hash_count = sample_count * XRAY_MUL_OPERAND_FAMILIES;
   int hash_gate = point->hash_match_count == expected_hash_count;
@@ -12615,15 +12639,12 @@ static void append_mul_toom5_top_vs_combo_reuse_point_result(
   double worst_pair_ratio = point->candidate_baseline_worst;
   if (point->candidate_current_worst > worst_pair_ratio) worst_pair_ratio = point->candidate_current_worst;
   if (point->candidate_gmp_worst > worst_pair_ratio) worst_pair_ratio = point->candidate_gmp_worst;
-  size_t leaf_threshold = 32U;
-  size_t depth_limit = 2U;
-  const char *active_candidate = mul_toom5_top_reuse_active_candidate(point->digits);
 
   XrayBenchmarkResult result;
   memset(&result, 0, sizeof(result));
   snprintf(result.name, sizeof(result.name), "kernel large mul Toom-5 top reuse point %zu digits", point->digits);
   snprintf(result.category, sizeof(result.category), "kernel-probe");
-  snprintf(result.operation, sizeof(result.operation), "mul-large-toom5-top-reuse-pt");
+  snprintf(result.operation, sizeof(result.operation), "%s", operation);
   result.digits = point->digits;
   result.scratch_us = point->candidate_us ? point->candidate_us : 1;
   result.gmp_us = point->baseline_us ? point->baseline_us : 1;
@@ -12647,10 +12668,13 @@ static void append_mul_toom5_top_vs_combo_reuse_point_result(
   result.passed = point->parity && hash_gate;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=mul-toom5-top-reuse-point parent=toom5-top-vs-combo-reuse policy=%s sizeRole=%s routePolicy=toom5-top-reuse-l32d2-smoke activeCandidate=%s leafThreshold=%zu depthLimit=%zu operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu stablePairs=%zu/%zu stableBase=%zu/%zu stableCurrent=%zu/%zu stableGmp=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom5-top-reuse gmpClue=toom5-top-nine-point-structure thresholdSafety=smoke-window candidate=full-ws-toom5-top-reuse-l32d2 baseline=full-ws-combo-reuse-l32d2 currentBaseline=current-scratch-mul oracle=mpz_mul candBaseRatio=%.3f candCurrentRatio=%.3f candGmpRatio=%.3f baseGmpRatio=%.3f currentGmpRatio=%.3f worstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating sameInput=yes sameRunAudit=yes",
+    "op=%s parent=%s policy=%s sizeRole=%s routePolicy=%s activeCandidate=%s leafThreshold=%zu depthLimit=%zu operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu stablePairs=%zu/%zu stableBase=%zu/%zu stableCurrent=%zu/%zu stableGmp=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=%s gmpClue=%s thresholdSafety=smoke-window candidate=%s baseline=%s currentBaseline=current-scratch-mul oracle=mpz_mul candBaseRatio=%.3f candCurrentRatio=%.3f candGmpRatio=%.3f baseGmpRatio=%.3f currentGmpRatio=%.3f worstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating sameInput=yes sameRunAudit=yes",
+    detail_op,
+    parent,
     policy,
     large_mul_campaign_size_role(point->digits),
-    active_candidate,
+    route_policy,
+    candidate,
     leaf_threshold,
     depth_limit,
     (unsigned int)XRAY_MUL_OPERAND_FAMILIES,
@@ -12670,6 +12694,10 @@ static void append_mul_toom5_top_vs_combo_reuse_point_result(
     hash_gate ? "matched" : "blocked",
     point->parity ? "matched" : "blocked",
     result.adoption,
+    feature_gate,
+    gmp_clue,
+    candidate,
+    baseline,
     point->candidate_baseline_ratio,
     point->candidate_current_ratio,
     point->candidate_gmp_ratio,
@@ -12969,8 +12997,22 @@ static void run_mul_toom5_top_vs_combo_reuse_case(
   unsigned int seed,
   const char *policy,
   const size_t *sizes,
-  size_t size_count) {
-  if (!report || !policy || !sizes || size_count == 0 || size_count > XRAY_FORMAT_ROUTE_TOURNAMENT_MAX) return;
+  size_t size_count,
+  const char *point_operation,
+  const char *aggregate_operation,
+  const char *detail_op,
+  const char *parent,
+  const char *aggregate_name_suffix,
+  const char *route_policy,
+  const char *candidate,
+  const char *baseline,
+  const char *feature_gate,
+  const char *gmp_clue,
+  size_t leaf_threshold,
+  size_t depth_limit) {
+  if (!report || !policy || !sizes || size_count == 0 || size_count > XRAY_FORMAT_ROUTE_TOURNAMENT_MAX ||
+      !point_operation || !aggregate_operation || !detail_op || !parent || !aggregate_name_suffix ||
+      !route_policy || !candidate || !baseline || !feature_gate || !gmp_clue) return;
   XrayMulFullWorkspaceDepthScoutPoint points[XRAY_FORMAT_ROUTE_TOURNAMENT_MAX];
   memset(points, 0, sizeof(points));
   char size_list[96] = {0};
@@ -12982,12 +13024,24 @@ static void run_mul_toom5_top_vs_combo_reuse_case(
     points[index] = measure_mul_toom5_top_vs_combo_reuse_point(
       sizes[index],
       seed + (unsigned int)(index * 79U),
-      XRAY_BENCH_TOOM5_SCOUT_SAMPLES);
+      XRAY_BENCH_TOOM5_SCOUT_SAMPLES,
+      leaf_threshold,
+      depth_limit);
     append_mul_toom5_top_vs_combo_reuse_point_result(
       report,
       policy,
       &points[index],
-      XRAY_BENCH_TOOM5_SCOUT_SAMPLES);
+      XRAY_BENCH_TOOM5_SCOUT_SAMPLES,
+      point_operation,
+      detail_op,
+      parent,
+      route_policy,
+      candidate,
+      baseline,
+      feature_gate,
+      gmp_clue,
+      leaf_threshold,
+      depth_limit);
   }
   append_mul_toom5_top_vs_combo_reuse_result(
     report,
@@ -12995,7 +13049,16 @@ static void run_mul_toom5_top_vs_combo_reuse_case(
     size_list,
     points,
     size_count,
-    XRAY_BENCH_TOOM5_SCOUT_SAMPLES);
+    XRAY_BENCH_TOOM5_SCOUT_SAMPLES,
+    aggregate_operation,
+    aggregate_name_suffix,
+    route_policy,
+    candidate,
+    baseline,
+    feature_gate,
+    gmp_clue,
+    leaf_threshold,
+    depth_limit);
 }
 
 static void run_mul_combo_reuse_ipdiv_map_audit_case(
@@ -19292,6 +19355,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
   const size_t mul_full_workspace_full_window_digits[] = {4096, 5639, 8192, 11717, 16384, 24103, 32768, 52163, 65536};
   const size_t mul_full_workspace_best_map_control_digits[] = {24103, 32768};
   const size_t mul_full_workspace_toom5_smoke_digits[] = {5639, 8192};
+  const size_t mul_full_workspace_toom5_handoff_smoke_digits[] = {11717, 16384};
   run_mul_full_workspace_deep_audit_case(
     report,
     619U,
@@ -19586,7 +19650,37 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     1567U,
     "full-workspace-toom5-top-reuse-smoke-ge4096",
     mul_full_workspace_toom5_smoke_digits,
-    sizeof(mul_full_workspace_toom5_smoke_digits) / sizeof(mul_full_workspace_toom5_smoke_digits[0]));
+    sizeof(mul_full_workspace_toom5_smoke_digits) / sizeof(mul_full_workspace_toom5_smoke_digits[0]),
+    "mul-large-toom5-top-reuse-pt",
+    "mul-large-toom5-top-reuse",
+    "mul-toom5-top-reuse-point",
+    "toom5-top-vs-combo-reuse",
+    "top reuse vs combo reuse",
+    "toom5-top-reuse-l32d2-smoke",
+    "full-ws-toom5-top-reuse-l32d2",
+    "full-ws-combo-reuse-l32d2",
+    "large-multiply-cpu-toom5-top-reuse",
+    "toom5-top-nine-point-structure",
+    32U,
+    2U);
+  run_mul_toom5_top_vs_combo_reuse_case(
+    report,
+    1571U,
+    "full-workspace-toom5-top-reuse-handoff-smoke-ge11717",
+    mul_full_workspace_toom5_handoff_smoke_digits,
+    sizeof(mul_full_workspace_toom5_handoff_smoke_digits) / sizeof(mul_full_workspace_toom5_handoff_smoke_digits[0]),
+    "mul-large-toom5-top-handoff-pt",
+    "mul-large-toom5-top-handoff",
+    "mul-toom5-top-handoff-point",
+    "toom5-top-handoff-vs-combo-reuse",
+    "top handoff vs combo reuse",
+    "toom5-top-reuse-l48d2-handoff-smoke",
+    "full-ws-toom5-top-reuse-l48d2",
+    "full-ws-combo-reuse-l48d2",
+    "large-multiply-cpu-toom5-top-handoff",
+    "toom5-top-leaf48-handoff",
+    48U,
+    2U);
   run_mul_combo_reuse_ipdiv_map_audit_case(
     report,
     1531U,
