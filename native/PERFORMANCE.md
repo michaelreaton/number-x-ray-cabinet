@@ -3998,3 +3998,40 @@ production route. It beats current production multiply across the full window
 and beats GMP/MPIR through `24103`, but the GMP/stability gate fails from
 `32768` upward. Keep it observe-only and make the next PR an arithmetic-shape
 or handoff scout, not a workspace-only promotion attempt.
+
+## 2026-06-20: Combo Leaf32 Depth4 Upper Scout
+
+Local Release validation artifact
+`native-test-runs/20260620-021539-c4b04caf` adds
+`mul-large-toom-cmb-l32d4-scout`, a benchmark-only arithmetic-shape scout for
+the upper window. The candidate is `full-ws-combo-l32d4`; the baseline is
+`full-ws-combo-l48d4`; current production multiply and `mpz_mul` remain in the
+same timing run. The measured sizes are `24103`, `32768`, `52163`, and `65536`,
+so both the random spots and power-of-two anchors stay paired.
+
+Observed aggregate:
+
+- Exact parity/hash:
+  `hashSafe=72/72`, `hashGate=matched`, `parity=matched`.
+- Leaf32/depth4 does not beat the leaf48/depth4 baseline:
+  `candBaseMax=1.098`, `safeSizes=0/4`.
+- It still beats current production multiply:
+  `candCurrentMax=0.693`.
+- It is not competitive with GMP/MPIR:
+  `candGmpMax=1.188`.
+- Worst-pair safety remains blocked:
+  `maxWorstPairRatio=1.228`.
+
+Per-size point rows:
+
+| Digits | L32D4 / L48D4 | L32D4 / Current | L32D4 / GMP | L48D4 / GMP | Current / GMP | Worst Pair | Stable vs L48D4 | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `24103` | `0.976` | `0.651` | `0.979` | `1.001` | `1.508` | `1.014` | `5/9` | `8/9` | combo-l48d4-regression |
+| `32768` | `1.070` | `0.693` | `1.079` | `1.035` | `1.585` | `1.166` | `0/9` | `0/9` | combo-l48d4-regression |
+| `52163` | `1.098` | `0.645` | `1.146` | `1.052` | `1.776` | `1.165` | `0/9` | `0/9` | combo-l48d4-regression |
+| `65536` | `1.011` | `0.626` | `1.188` | `1.167` | `1.900` | `1.228` | `1/9` | `0/9` | combo-l48d4-regression |
+
+Decision: reject `l32d4` as a route direction. It slightly improves the
+`24103` median but loses the larger rows to `l48d4`, and it worsens stability
+and worst-pair behavior. Keep the row as negative evidence and move the next
+multiply scout toward handoff or interpolation/evaluation changes.
