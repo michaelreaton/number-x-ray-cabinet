@@ -3877,3 +3877,47 @@ Per-size point rows:
 Decision: keep reusable workspaces as an implementation clue, not a route. The
 allocation/preparation tax is measurable, but the upper-window gap still needs
 arithmetic-structure work before a promotion audit can make sense.
+
+## 2026-06-19: Combo Best-Map Full-Window Audit
+
+Run:
+
+- Release:
+  `native-test-runs/20260619-202535-c4b04caf`
+
+This run adds `mul-large-toom-cmb-map`, a benchmark-only fixed-map audit across
+the full `4096` through `65536` campaign. The map uses `full-ws-combo-l64d2`
+below `24103`, `full-ws-combo-l48d4` at `24103` and `32768`, and
+`full-ws-combo-l48d3` at `52163` and `65536`. That keeps every deterministic
+in-between spot in the same row as the power-of-two anchors.
+
+Observed aggregate:
+
+- Exact parity/hash:
+  `hashSafe=162/162`, `hashGate=matched`, `parity=matched`.
+- It beats current production multiply at every measured size:
+  `candCurrentMax=0.930`.
+- It still does not clear GMP/MPIR:
+  `candGmpMax=1.204`, `safeSizes=0/9`.
+- Worst-pair safety is the clearest blocker:
+  `maxWorstPairRatio=2.869`.
+
+Per-size point rows:
+
+| Digits | Active Candidate | Candidate / Current | Candidate / GMP | Current / GMP | Worst Pair | Status |
+| ---: | --- | ---: | ---: | ---: | ---: | --- |
+| `4096` | `full-ws-combo-l64d2` | `0.921` | `0.860` | `0.945` | `1.195` | current-regression |
+| `5639` | `full-ws-combo-l64d2` | `0.919` | `0.809` | `0.838` | `1.206` | current-regression |
+| `8192` | `full-ws-combo-l64d2` | `0.930` | `0.953` | `1.147` | `1.560` | current-regression |
+| `11717` | `full-ws-combo-l64d2` | `0.741` | `1.021` | `1.432` | `1.170` | backend-regression |
+| `16384` | `full-ws-combo-l64d2` | `0.667` | `0.972` | `1.495` | `1.152` | backend-regression |
+| `24103` | `full-ws-combo-l48d4` | `0.739` | `1.088` | `1.385` | `2.204` | current-regression |
+| `32768` | `full-ws-combo-l48d4` | `0.634` | `1.119` | `1.758` | `2.869` | current-regression |
+| `52163` | `full-ws-combo-l48d3` | `0.567` | `1.092` | `1.927` | `1.158` | backend-regression |
+| `65536` | `full-ws-combo-l48d3` | `0.591` | `1.204` | `2.063` | `1.232` | backend-regression |
+
+Decision: keep the best-map audit observe-only. The map is a useful summary of
+the strongest known app-shaped multiply route and is consistently faster than
+current production multiply, but it is not close to promotion-ready. The random
+spots are again decision-changing: `5639`, `24103`, and `52163` all expose
+different blocker shapes, while `32768` remains the worst-pair outlier.
