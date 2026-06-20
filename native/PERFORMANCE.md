@@ -3921,3 +3921,37 @@ the strongest known app-shaped multiply route and is consistently faster than
 current production multiply, but it is not close to promotion-ready. The random
 spots are again decision-changing: `5639`, `24103`, and `52163` all expose
 different blocker shapes, while `32768` remains the worst-pair outlier.
+
+## 2026-06-20: Combo Best-Map Duplicate-Control Audit
+
+Local Release validation artifact
+`native-test-runs/20260620-013252-c4b04caf` adds
+`mul-large-toom-cmb-map-ctrl`, a duplicate-control audit for `24103` and
+`32768`. The candidate and baseline are the exact same best-map route on the
+same operand fingerprints; current production multiply and `mpz_mul` stay in
+the same timing run.
+
+Observed aggregate:
+
+- Exact parity/hash:
+  `hashSafe=36/36`, `hashGate=matched`, `parity=matched`.
+- Duplicate control is stable:
+  `controlRatioMax=0.997`, `controlWorstMax=1.077`, `controlSafety=stable`.
+- The candidate still beats current production multiply:
+  `candCurrentMax=0.638`.
+- It still misses GMP/MPIR and stable-pair gates:
+  `candGmpMax=1.040`, `safeSizes=0/2`.
+- Worst-pair safety remains blocked:
+  `maxWorstPairRatio=1.091`.
+
+Per-size point rows:
+
+| Digits | Control Ratio | Control Worst | Candidate / Current | Candidate / GMP | Current / GMP | Product Worst | Control Stable | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `24103` | `0.991` | `1.077` | `0.638` | `0.979` | `1.540` | `1.058` | `9/9` | `7/9` | backend-regression |
+| `32768` | `0.997` | `1.044` | `0.637` | `1.040` | `1.633` | `1.091` | `9/9` | `0/9` | backend-regression |
+
+Decision: the best-map outlier failure is not explained by duplicate-route
+measurement noise. Keep the route observe-only; the next multiply slice should
+change the arithmetic structure rather than rerun the same map as a promotion
+candidate.
