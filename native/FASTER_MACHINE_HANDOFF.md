@@ -867,6 +867,35 @@ strict gate, remains behind GMP/MPIR at every upper-window size, and keeps the
 worst-pair/stability failures. Treat the result as evidence that temporary-copy
 removal inside interpolation is not the high-end blocker by itself.
 
+## 2026-06-20: Combo Leaf64 Depth3 Upper Scout
+
+Artifact: `native-test-runs/20260620-025945-c4b04caf`
+
+This run adds `mul-large-toom-cmb-l64d3-scout`, a benchmark-only upper-window
+leaf/depth scout. It compares `full-ws-combo-l64d3` against
+`full-ws-combo-l48d4` on identical operand fingerprints at `24103`, `32768`,
+`52163`, and `65536`.
+
+Summary:
+
+| Row | Sizes | Candidate / Baseline Max | Candidate / Current Max | Candidate / GMP Max | Baseline / GMP Max | Current / GMP Max | Worst Pair Max | Safe Sizes | Hash Safe | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `mul-large-toom-cmb-l64d3-scout` | `24103,32768,52163,65536` | `1.059` | `0.696` | `1.201` | `1.170` | `1.900` | `1.224` | `0/4` | `72/72` | observe only |
+
+Per-size signal:
+
+| Digits | L64D3 / L48D4 | L64D3 / Current | L64D3 / GMP | L48D4 / GMP | Current / GMP | Worst Pair | Stable vs L48D4 | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `24103` | `0.983` | `0.642` | `0.978` | `0.996` | `1.548` | `1.017` | `4/9` | `8/9` | combo-l48d4-regression |
+| `32768` | `1.059` | `0.696` | `1.113` | `1.047` | `1.598` | `1.185` | `0/9` | `0/9` | combo-l48d4-regression |
+| `52163` | `1.050` | `0.624` | `1.105` | `1.048` | `1.751` | `1.122` | `0/9` | `0/9` | combo-l48d4-regression |
+| `65536` | `1.026` | `0.638` | `1.201` | `1.170` | `1.900` | `1.224` | `0/9` | `0/9` | combo-l48d4-regression |
+
+Decision: reject leaf64/depth3 as a route direction. It is only near-useful at
+the `24103` random spot and still misses the strict 0.98 baseline gate there;
+the larger rows regress against `l48d4`, fail GMP/MPIR, and fail stability.
+Future scouts should move away from simple leaf/depth reshaping.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor

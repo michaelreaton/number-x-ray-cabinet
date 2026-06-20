@@ -4073,3 +4073,40 @@ Decision: reject `ipdiv` as a promotion direction. It keeps exact parity and
 beats current production multiply, but it cannot consistently beat `l48d4` or
 GMP/MPIR and fails the stability/worst-pair gates. The next multiply scout
 needs a larger structural change than removing interpolation copy-back.
+
+## 2026-06-20: Combo Leaf64 Depth3 Upper Scout
+
+Local Release validation artifact
+`native-test-runs/20260620-025945-c4b04caf` adds
+`mul-large-toom-cmb-l64d3-scout`, a benchmark-only leaf/depth scout for the
+upper window. The candidate is `full-ws-combo-l64d3`; the baseline is
+`full-ws-combo-l48d4`; current production multiply and `mpz_mul` remain in the
+same timing run. The measured sizes are `24103`, `32768`, `52163`, and
+`65536`, preserving both deterministic random spots and power-of-two anchors.
+
+Observed aggregate:
+
+- Exact parity/hash:
+  `hashSafe=72/72`, `hashGate=matched`, `parity=matched`.
+- Leaf64/depth3 does not beat the leaf48/depth4 baseline:
+  `candBaseMax=1.059`, `safeSizes=0/4`.
+- It still beats current production multiply:
+  `candCurrentMax=0.696`.
+- It is not competitive with GMP/MPIR:
+  `candGmpMax=1.201`.
+- Worst-pair safety remains blocked:
+  `maxWorstPairRatio=1.224`.
+
+Per-size point rows:
+
+| Digits | L64D3 / L48D4 | L64D3 / Current | L64D3 / GMP | L48D4 / GMP | Current / GMP | Worst Pair | Stable vs L48D4 | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `24103` | `0.983` | `0.642` | `0.978` | `0.996` | `1.548` | `1.017` | `4/9` | `8/9` | combo-l48d4-regression |
+| `32768` | `1.059` | `0.696` | `1.113` | `1.047` | `1.598` | `1.185` | `0/9` | `0/9` | combo-l48d4-regression |
+| `52163` | `1.050` | `0.624` | `1.105` | `1.048` | `1.751` | `1.122` | `0/9` | `0/9` | combo-l48d4-regression |
+| `65536` | `1.026` | `0.638` | `1.201` | `1.170` | `1.900` | `1.224` | `0/9` | `0/9` | combo-l48d4-regression |
+
+Decision: reject `l64d3` as a route direction. It nearly helps at `24103`,
+but misses the baseline gate and regresses the larger rows against `l48d4` and
+GMP/MPIR. This is more evidence that simple leaf/depth reshaping is exhausted
+for the upper window.
