@@ -835,6 +835,38 @@ stable-pair and worst-pair failures throughout. The next shape scout should
 try a different handoff or interpolation/evaluation structure, not a smaller
 Toom leaf at the same depth.
 
+## 2026-06-20: Combo In-Place Interpolation Upper Scout
+
+Artifact: `native-test-runs/20260620-024037-c4b04caf`
+
+This run adds `mul-large-toom-cmb-ipdiv`, a benchmark-only upper-window scout
+that keeps the `full-ws-combo-l48d4` arithmetic shape but performs the exact
+division-by-three and division-by-two interpolation updates in place. It
+compares `full-ws-combo-inplace-div-l48d4` against the regular
+`full-ws-combo-l48d4` path on identical operand fingerprints at `24103`,
+`32768`, `52163`, and `65536`.
+
+Summary:
+
+| Row | Sizes | Candidate / Baseline Max | Candidate / Current Max | Candidate / GMP Max | Baseline / GMP Max | Current / GMP Max | Worst Pair Max | Safe Sizes | Hash Safe | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `mul-large-toom-cmb-ipdiv` | `24103,32768,52163,65536` | `1.025` | `0.658` | `1.182` | `1.182` | `1.923` | `1.230` | `0/4` | `72/72` | observe only |
+
+Per-size signal:
+
+| Digits | In-Place / L48D4 | In-Place / Current | In-Place / GMP | L48D4 / GMP | Current / GMP | Worst Pair | Stable vs L48D4 | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `24103` | `1.025` | `0.628` | `1.015` | `1.004` | `1.617` | `1.167` | `3/9` | `4/9` | combo-l48d4-regression |
+| `32768` | `0.995` | `0.658` | `1.054` | `1.060` | `1.609` | `1.084` | `1/9` | `0/9` | combo-l48d4-regression |
+| `52163` | `1.000` | `0.568` | `1.055` | `1.054` | `1.858` | `1.070` | `0/9` | `0/9` | combo-l48d4-regression |
+| `65536` | `1.009` | `0.617` | `1.182` | `1.182` | `1.923` | `1.230` | `0/9` | `0/9` | combo-l48d4-regression |
+
+Decision: reject in-place interpolation division as a promotion direction. It
+preserves exact parity but does not beat the regular `l48d4` baseline under the
+strict gate, remains behind GMP/MPIR at every upper-window size, and keeps the
+worst-pair/stability failures. Treat the result as evidence that temporary-copy
+removal inside interpolation is not the high-end blocker by itself.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor
