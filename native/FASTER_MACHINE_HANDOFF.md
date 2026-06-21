@@ -1555,6 +1555,14 @@ Run these in order.
      The five-repeat recheck,
      `native-test-runs/20260621-093000-backend-gap-repeat5/repeat_stable_chunks.tsv`,
      retired that hint: no backend-gap operation had a repeat-stable chunk.
+     The ranked two-repeat matrix,
+     `native-test-runs/20260621-095000-ranked-novelty-matrix-repeat2/matrix_ranked.tsv`,
+     found only `mul-large-toom-cmb-hpocket` with single-point chunks
+     `11717,14831`, longest span `1`, and worst-pair max `2.269166`; this is
+     not a large contiguous piecemeal lead.
+   - On local Windows MPIR builds, set
+     `$env:PATH = "C:\vcpkg\installed\x64-windows\bin;$env:PATH"` before
+     invoking `xray_cli.exe` if the CLI exits silently with status 1.
    - Read `safeSizeChunks` and `longestSafeSizeChunk*` as contiguous measured
      benchmark points only. They are useful for piecemeal follow-up audits over
      promising pockets, but they do not prove every unmeasured digit between the

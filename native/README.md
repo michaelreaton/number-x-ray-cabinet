@@ -462,6 +462,10 @@ native\build\Release\xray_native_tests.exe --only=bigint --only=parser --only=ff
 native\build\Release\xray_cli.exe --rsa260
 ```
 
+For local Windows builds that link MPIR dynamically through vcpkg, put the MPIR
+runtime on `PATH` before invoking `xray_cli.exe`, for example:
+`$env:PATH = "C:\vcpkg\installed\x64-windows\bin;$env:PATH"`.
+
 The CLI emits the same reproducible JSON shape used by the GTK app. Use
 `--bench-frontier` when you want stdout to show the human-readable benchmark
 frontier while still writing the full run artifacts. Use `--bench-progress` for
