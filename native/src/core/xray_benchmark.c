@@ -19763,6 +19763,112 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
 #endif
 }
 
+static int benchmark_focus_eq(const char *focus, const char *token) {
+  return focus && token && strcmp(focus, token) == 0;
+}
+
+static int benchmark_focus_any_mul_combo(const char *focus) {
+  return benchmark_focus_eq(focus, "mul-combo") ||
+    benchmark_focus_eq(focus, "mul-novelty");
+}
+
+static void run_mul_large_focus_cases(XrayBenchmarkReport *report) {
+  const size_t dense_leaf_digits[] = {4096, 8192, 16384};
+  for (size_t digit_index = 0; digit_index < sizeof(dense_leaf_digits) / sizeof(dense_leaf_digits[0]); ++digit_index) {
+    run_mul_dense_leaf_vs_scan_probe_case(report, dense_leaf_digits[digit_index], 64);
+    run_mul_karatsuba_view_vs_copy_probe_case(report, dense_leaf_digits[digit_index], 64);
+  }
+  const size_t large_mul_campaign_digits[] = {4096, 5639, 8192, 11717, 16384, 24103, 32768, 52163, 65536};
+  for (size_t digit_index = 0; digit_index < sizeof(large_mul_campaign_digits) / sizeof(large_mul_campaign_digits[0]); ++digit_index) {
+    run_large_mul_cpu_campaign_case(report, large_mul_campaign_digits[digit_index], 64);
+  }
+}
+
+#if XRAY_HAS_MSVC_BMI2_ADX_INTRINSICS
+static void run_mul_combo_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  const size_t mul_full_workspace_upper_gate_digits[] = {24103, 32768, 52163, 65536};
+  const size_t mul_full_workspace_lower_gate_digits[] = {4096, 5639, 8192};
+  const size_t mul_full_workspace_full_window_digits[] = {4096, 5639, 8192, 11717, 16384, 24103, 32768, 52163, 65536};
+  const size_t mul_full_workspace_best_map_control_digits[] = {24103, 32768};
+  const size_t mul_full_workspace_transition_control_digits[] = {11717, 16384};
+  int any_combo = benchmark_focus_any_mul_combo(focus);
+
+  if (any_combo || benchmark_focus_eq(focus, "mul-combo-lower")) {
+    run_mul_full_workspace_depth_scout_case(
+      report,
+      1253U,
+      "full-workspace-combo-lower-ge4096",
+      4096,
+      64,
+      64,
+      2,
+      2,
+      XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3,
+      0,
+      mul_full_workspace_lower_gate_digits,
+      sizeof(mul_full_workspace_lower_gate_digits) / sizeof(mul_full_workspace_lower_gate_digits[0]));
+  }
+
+  if (any_combo || benchmark_focus_eq(focus, "mul-combo-transition")) {
+    run_mul_combo_reuse_map_audit_case(
+      report,
+      1523U,
+      "full-workspace-combo-reuse-map-transition-ge11717",
+      mul_full_workspace_transition_control_digits,
+      sizeof(mul_full_workspace_transition_control_digits) / sizeof(mul_full_workspace_transition_control_digits[0]));
+    run_mul_combo_reuse_map_gmp_control_case(
+      report,
+      1549U,
+      "full-workspace-combo-reuse-gmp-control-transition-ge11717",
+      mul_full_workspace_transition_control_digits,
+      sizeof(mul_full_workspace_transition_control_digits) / sizeof(mul_full_workspace_transition_control_digits[0]));
+  }
+
+  if (any_combo || benchmark_focus_eq(focus, "mul-combo-upper")) {
+    run_mul_combo_tournament_case(
+      report,
+      1399U,
+      "full-workspace-combo-upper-tournament-ge24103",
+      32768,
+      mul_full_workspace_upper_gate_digits,
+      sizeof(mul_full_workspace_upper_gate_digits) / sizeof(mul_full_workspace_upper_gate_digits[0]));
+  }
+
+  if (benchmark_focus_eq(focus, "mul-combo") || benchmark_focus_eq(focus, "mul-combo-reuse")) {
+    run_mul_combo_reuse_scout_case(
+      report,
+      1423U,
+      "full-workspace-combo-reuse-upper-ge24103",
+      mul_full_workspace_upper_gate_digits,
+      sizeof(mul_full_workspace_upper_gate_digits) / sizeof(mul_full_workspace_upper_gate_digits[0]));
+    run_mul_full_workspace_combo_best_map_audit_case(
+      report,
+      1451U,
+      "full-workspace-combo-best-map-ge4096",
+      mul_full_workspace_full_window_digits,
+      sizeof(mul_full_workspace_full_window_digits) / sizeof(mul_full_workspace_full_window_digits[0]));
+    run_mul_combo_best_map_control_case(
+      report,
+      1481U,
+      "full-workspace-combo-best-map-control-24103-32768",
+      mul_full_workspace_best_map_control_digits,
+      sizeof(mul_full_workspace_best_map_control_digits) / sizeof(mul_full_workspace_best_map_control_digits[0]));
+    run_mul_combo_reuse_map_audit_case(
+      report,
+      1511U,
+      "full-workspace-combo-reuse-map-ge4096",
+      mul_full_workspace_full_window_digits,
+      sizeof(mul_full_workspace_full_window_digits) / sizeof(mul_full_workspace_full_window_digits[0]));
+    run_mul_combo_reuse_map_gmp_control_case(
+      report,
+      1543U,
+      "full-workspace-combo-reuse-gmp-control-upper-ge24103",
+      mul_full_workspace_upper_gate_digits,
+      sizeof(mul_full_workspace_upper_gate_digits) / sizeof(mul_full_workspace_upper_gate_digits[0]));
+  }
+}
+#endif
+
 int xray_benchmark_run_with_callback(
   XrayBenchmarkReport *report,
   XrayBenchmarkResultCallback result_callback,
@@ -19794,6 +19900,37 @@ int xray_benchmark_run_with_callback(
 
 int xray_benchmark_run(XrayBenchmarkReport *report) {
   return xray_benchmark_run_with_callback(report, NULL, NULL);
+}
+
+int xray_benchmark_run_focus_with_callback(
+  XrayBenchmarkReport *report,
+  const char *focus,
+  XrayBenchmarkResultCallback result_callback,
+  void *user_data) {
+  if (!report) return 0;
+  memset(report, 0, sizeof(*report));
+  report->result_callback = result_callback;
+  report->result_callback_user_data = user_data;
+  unsigned long started = xray_now_ms();
+  xray_cpu_features_detect(&report->cpu);
+
+  if (benchmark_focus_eq(focus, "mul-large") || benchmark_focus_eq(focus, "mul-novelty")) {
+    run_mul_large_focus_cases(report);
+  }
+#if XRAY_HAS_MSVC_BMI2_ADX_INTRINSICS
+  run_mul_combo_focus_cases(report, focus);
+#else
+  (void)focus;
+#endif
+
+  report->elapsed_ms = xray_now_ms() - started;
+  report->result_callback = NULL;
+  report->result_callback_user_data = NULL;
+  return 1;
+}
+
+int xray_benchmark_run_focus(XrayBenchmarkReport *report, const char *focus) {
+  return xray_benchmark_run_focus_with_callback(report, focus, NULL, NULL);
 }
 
 void xray_benchmark_report_clear(XrayBenchmarkReport *report) {

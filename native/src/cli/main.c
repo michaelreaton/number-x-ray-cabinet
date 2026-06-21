@@ -10,10 +10,12 @@ static const char *rsa260(void) {
 }
 
 static void usage(const char *argv0) {
-  fprintf(stderr, "Usage: %s [--bench|--bench-frontier] [--rsa260] [exact-integer-expression]\n", argv0);
+  fprintf(stderr, "Usage: %s [--bench|--bench-frontier|--bench-tsv] [--rsa260] [exact-integer-expression]\n", argv0);
+  fprintf(stderr, "       %s --bench-focus FOCUS [--bench-frontier|--bench-tsv]\n", argv0);
   fprintf(stderr, "       %s [--bench-min-digits N] [--bench-max-digits N] [--bench-filter TEXT] --bench-progress artifact.tsv\n", argv0);
   fprintf(stderr, "       %s [--bench-min-digits N] [--bench-max-digits N] [--bench-filter TEXT] --bench-progress-tsv artifact.tsv\n", argv0);
   fprintf(stderr, "       %s [--bench-min-digits N] [--bench-max-digits N] [--bench-filter TEXT] --bench-compare left.tsv right.tsv\n", argv0);
+  fprintf(stderr, "Focus examples: mul-large, mul-combo-lower, mul-combo-transition, mul-combo-upper, mul-combo-reuse, mul-novelty\n");
 }
 
 static int parse_size_arg(const char *text, size_t *out) {
@@ -70,9 +72,11 @@ int main(int argc, char **argv) {
   } mode = XRAY_CLI_RUN;
   int run_bench = 0;
   int print_frontier = 0;
+  int print_tsv = 0;
   size_t bench_min_digits = 0;
   size_t bench_max_digits = 0;
   const char *bench_filter = NULL;
+  const char *bench_focus = NULL;
 
   for (int index = 1; index < argc; ++index) {
     if (strcmp(argv[index], "--help") == 0 || strcmp(argv[index], "-h") == 0) {
@@ -80,6 +84,18 @@ int main(int argc, char **argv) {
       return 0;
     }
     else if (strcmp(argv[index], "--bench") == 0) run_bench = 1;
+    else if (strcmp(argv[index], "--bench-tsv") == 0) {
+      run_bench = 1;
+      print_tsv = 1;
+    }
+    else if (strcmp(argv[index], "--bench-focus") == 0 || strcmp(argv[index], "--focus-bench") == 0) {
+      if (index + 1 >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      run_bench = 1;
+      bench_focus = argv[++index];
+    }
     else if (strcmp(argv[index], "--bench-min-digits") == 0 || strcmp(argv[index], "--min-digits") == 0) {
       if (index + 1 >= argc || !parse_size_arg(argv[index + 1], &bench_min_digits)) {
         usage(argv[0]);
@@ -225,6 +241,35 @@ int main(int argc, char **argv) {
   }
   config.enable_benchmark = run_bench;
 
+  if (bench_focus && bench_focus[0]) {
+    XrayBenchmarkReport benchmark;
+    if (!xray_benchmark_run_focus(&benchmark, bench_focus)) {
+      fprintf(stderr, "Focused benchmark run failed.\n");
+      return 4;
+    }
+    if (print_frontier) {
+      char *frontier = xray_benchmark_frontier_text(&benchmark);
+      if (frontier) {
+        puts(frontier);
+        free(frontier);
+      }
+    } else if (print_tsv) {
+      char *tsv = xray_benchmark_report_tsv(&benchmark);
+      if (tsv) {
+        puts(tsv);
+        xray_free(tsv);
+      }
+    } else {
+      char *json = xray_benchmark_report_json(&benchmark);
+      if (json) {
+        puts(json);
+        xray_free(json);
+      }
+    }
+    xray_benchmark_report_clear(&benchmark);
+    return 0;
+  }
+
   XrayWorkbenchReport report;
   xray_workbench_run(input, &config, &report);
   if (print_frontier) {
@@ -232,6 +277,12 @@ int main(int argc, char **argv) {
     if (frontier) {
       puts(frontier);
       free(frontier);
+    }
+  } else if (print_tsv) {
+    char *tsv = xray_benchmark_report_tsv(&report.benchmark);
+    if (tsv) {
+      puts(tsv);
+      xray_free(tsv);
     }
   } else if (report.json) {
     puts(report.json);

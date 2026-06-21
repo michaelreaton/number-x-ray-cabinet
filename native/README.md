@@ -431,6 +431,9 @@ Primary references: [GMP multiplication algorithms](https://gmplib.org/manual/Mu
 native\build\Release\xray_cli.exe --help
 native\build\Release\xray_cli.exe --bench 10403
 native\build\Release\xray_cli.exe --bench-frontier 10403
+native\build\Release\xray_cli.exe --bench-focus mul-novelty --bench-tsv
+native\build\Release\xray_cli.exe --bench-focus mul-combo-lower --bench-frontier
+native\build\Release\xray_cli.exe --bench-focus mul-combo-transition --bench-frontier
 native\build\Release\xray_cli.exe --bench-progress native\build\native-test-runs\<run>\benchmark.tsv
 native\build\Release\xray_cli.exe --bench-min-digits 768 --bench-max-digits 1000 --bench-progress native\build\native-test-runs\<run>\benchmark.tsv
 native\build\Release\xray_cli.exe --bench-filter mul --bench-compare native\build-release\native-test-runs\<run>\benchmark.tsv native\build-ltcg\native-test-runs\<run>\benchmark.tsv
@@ -445,8 +448,14 @@ The CLI emits the same reproducible JSON shape used by the GTK app. Use
 `--bench-frontier` when you want stdout to show the human-readable benchmark
 frontier while still writing the full run artifacts. Use `--bench-progress` for
 a one-artifact digest of what is completed, still open, noisy, or excluded as
-control evidence. Use `--bench-progress-tsv` when another tool needs the same
-progress classification as a TSV table instead of prose. Use `--bench-compare`
+control evidence. Use `--bench-focus FOCUS` for a local diagnostic scout that
+skips the full ladder and runs only the named family, such as `mul-novelty`,
+`mul-large`, `mul-combo-lower`, `mul-combo-transition`, `mul-combo-upper`, or
+`mul-combo-reuse`.
+Focus runs are for finding promising rows quickly; use the full benchmark ladder
+and promotion gates before treating a route as replacement-ready. Use
+`--bench-progress-tsv` when another tool needs the same progress classification
+as a TSV table instead of prose. Use `--bench-compare`
 to review two benchmark TSV artifacts, such as Release versus `/GL`, and
 surface rows that are ready in both builds, ready in only one build, or rejected
 by worst-pair safety. Add `--bench-min-digits N` and/or `--bench-max-digits N`
