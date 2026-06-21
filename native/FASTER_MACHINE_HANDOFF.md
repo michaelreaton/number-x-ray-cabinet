@@ -1543,6 +1543,10 @@ Run these in order.
      `native-test-runs/20260621-091800-toom4-top-repeat3/repeat_stable_chunks.tsv`,
      also produced no repeat-stable safe chunks, so do not widen Toom-4 top
      routes next unless a future CPU/build flips this smoke signal.
+     The expanded two-repeat matrix,
+     `native-test-runs/20260621-092200-expanded-novelty-matrix-repeat2/matrix.tsv`,
+     left only a conflicting `4096` backend-gap hint; treat it as recheck-only
+     because the earlier backend-gap three-repeat artifact found no safe chunks.
    - Read `safeSizeChunks` and `longestSafeSizeChunk*` as contiguous measured
      benchmark points only. They are useful for piecemeal follow-up audits over
      promising pockets, but they do not prove every unmeasured digit between the
