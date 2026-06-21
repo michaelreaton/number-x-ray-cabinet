@@ -1342,6 +1342,40 @@ GMP/MPIR in this focused run, but the duplicate-route control is noisy at
 `16384`, so the transition pocket remains observe-only. The reported
 `safeSizeChunks=11717` is a single adjacent measured-point chunk in this run,
 not proof of every unmeasured size around `11717`.
+
+### Transition Tournament Scout
+
+Latest focused command:
+
+```powershell
+native/build-stack-v142/xray_cli.exe --bench-focus mul-combo-transition --bench-tsv
+```
+
+Artifact:
+`native-test-runs/20260621-064718-transition-tournament/benchmark.tsv`
+
+This run adds `mul-large-toom-cmb-ttourn` plus per-route
+`mul-large-toom-cmb-ttourn-pt` rows over `11717`, `16384`, and `24103`.
+It compares `l64d2`, `l48d3`, `l48d4`, and a `16384` handoff route on
+identical operands in the same rotating run. It remains diagnostic only:
+`noAutoRoute=1`, `replacementReady=false`, production multiply unchanged.
+
+| Row | Sizes | Winner | Current Max | GMP Max | Current/GMP Max | Worst Pair | Safe Sizes | Safe Chunk | Hash | Decision |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | --- | ---: | --- |
+| `mul-large-toom-cmb-ttourn` | `11717,16384,24103` | handoff all sizes | `0.663` | `1.060` | `1.598` | `1.307` | `1/3` | `11717` | `216/216` | observe only |
+
+Per-size winner signal:
+
+| Digits | Winner Active Route | Winner / Current | Winner / GMP | Current / GMP | Worst Pair | GMP Stable | Status |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | --- |
+| `11717` | `l64d2` | `0.614` | `0.904` | `1.490` | `0.989` | `9/9` | tournament-winner |
+| `16384` | `l48d3` | `0.649` | `0.884` | `1.386` | `1.035` | `8/9` | backend-regression |
+| `24103` | `l48d3` | `0.663` | `1.060` | `1.598` | `1.307` | `2/9` | backend-regression |
+
+Decision: use this as a fast ladder scout for novelty. The handoff shape is
+the local winner, but only the `11717` measured point is a clean chunk in this
+run. Treat that as a piecemeal follow-up target, not a default-route candidate.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor
@@ -1374,8 +1408,9 @@ Run these in order.
      `mul-combo-transition`, `mul-combo-upper`, and `mul-combo-reuse` when a
      candidate pocket is already known.
    - `mul-combo-transition` now includes forced route, duplicate-route
-     self-control, and duplicate GMP/MPIR control rows for `11717` and
-     `16384`, so use it before launching a broader transition sweep.
+     self-control, duplicate GMP/MPIR control rows for `11717` and `16384`,
+     plus a `11717,16384,24103` transition tournament scout, so use it before
+     launching a broader transition sweep.
    - Treat focus output as triage only: keep the raw TSV, but do not promote or
      publish a route until the full parity, route-audit, worst-pair, and
      stable-pair gates pass.
