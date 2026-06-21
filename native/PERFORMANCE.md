@@ -141,6 +141,17 @@ hit as a primitive scheduling clue only: `mul-unroll4-vs-scratch` still had
 only a single repeat-stable `8192` point and `maxWorstPairRatio=1.363171`, so
 it does not justify a full multiply route.
 
+Follow-up backend-only recheck:
+
+`native-test-runs/20260621-103933-backend-gap-repeat5/matrix.tsv`
+
+The five-repeat `mul-backend-gap` rerun produced no repeat-stable candidate
+rows and no audit-ready rows. The previous `muladd-unroll4` primitive chunk did
+not survive intersection (`runsWithSafeChunks=3/5`, repeat-stable none,
+`maxWorstPairRatio=1.255976`). Decision: retire the backend primitive hint for
+now; do not spend the next implementation slice on unroll4 routing without a
+different lower-level idea.
+
 ## 2026-06-21: Ranked Focus Matrix
 
 `bench_focus_matrix.py` now writes `matrix_ranked.tsv` beside the complete
