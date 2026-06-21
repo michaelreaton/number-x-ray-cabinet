@@ -176,7 +176,135 @@ def rows_to_summarize(rows: list[dict[str, str]], keep_all: bool) -> list[dict[s
     aggregate = [row for row in rows if row.get("category") == "policy-gate"]
     if aggregate:
         return aggregate
-    return [row for row in rows if row.get("operation") and not row.get("operation", "").endswith("-pt")]
+    return aggregate_point_rows([row for row in rows if row.get("operation") and not row.get("operation", "").endswith("-pt")])
+
+
+def bool_field(row: dict[str, str], key: str) -> bool:
+    return row.get(key, "").strip().lower() in {"1", "true", "yes"}
+
+
+def detail_value(detail: str, key: str) -> str:
+    prefix = f"{key}="
+    for token in detail.split():
+        if token.startswith(prefix):
+            return token[len(prefix) :]
+    return ""
+
+
+def inferred_size(row: dict[str, str]) -> int | None:
+    detail = row.get("detail", "")
+    operation = row.get("operation", "")
+    workload_shape = row.get("workloadShape", "")
+    size = ""
+    if operation.startswith("sparse-") or workload_shape.startswith("sparse-"):
+        size = detail_value(detail, "bits")
+    if not size:
+        size = row.get("digits", "")
+    try:
+        return int(size)
+    except (TypeError, ValueError):
+        return None
+
+
+def safe_point_row(row: dict[str, str]) -> bool:
+    speed = parse_float(row.get("speedRatio", ""))
+    worst = parse_float(row.get("worstPairRatio", ""))
+    if speed is None or worst is None or speed > 1.0 or worst > 1.0:
+        return False
+    try:
+        stable = int(row.get("stableSampleCount", ""))
+        samples = int(row.get("sampleCount", ""))
+    except (TypeError, ValueError):
+        return False
+    if samples <= 0 or stable < samples:
+        return False
+    status = row.get("status", "").lower()
+    adoption = row.get("adoption", "").lower()
+    blocked_tokens = ("blocked", "lower-bound", "mismatch", "regression", "timeout")
+    if any(token in status or token in adoption for token in blocked_tokens):
+        return False
+    if bool_field(row, "runFailed") or bool_field(row, "lowerBound") or bool_field(row, "warmupReview"):
+        return False
+    if bool_field(row, "control") or bool_field(row, "noisyControl") or bool_field(row, "safetyRejected"):
+        return False
+    return bool_field(row, "routeCandidate") or bool_field(row, "promotionReady")
+
+
+def format_measured_chunks(point_rows: list[dict[str, str]]) -> tuple[str, str, str, str]:
+    chunks: list[list[int]] = []
+    current: list[int] = []
+    safe_sizes: list[int] = []
+    for row in sorted(point_rows, key=lambda value: inferred_size(value) or 0):
+        size = inferred_size(row)
+        if size is None:
+            if current:
+                chunks.append(current)
+                current = []
+            continue
+        if safe_point_row(row):
+            safe_sizes.append(size)
+            current.append(size)
+        elif current:
+            chunks.append(current)
+            current = []
+    if current:
+        chunks.append(current)
+
+    if not safe_sizes:
+        return "", "none", "none", "0"
+
+    def chunk_text(chunk: list[int]) -> str:
+        return str(chunk[0]) if len(chunk) == 1 else f"{chunk[0]}-{chunk[-1]}"
+
+    longest = max(chunks, key=lambda chunk: (len(chunk), -chunk[0])) if chunks else []
+    return (
+        ",".join(str(size) for size in safe_sizes),
+        ",".join(chunk_text(chunk) for chunk in chunks) if chunks else "none",
+        chunk_text(longest) if longest else "none",
+        str(len(longest)) if longest else "0",
+    )
+
+
+def aggregate_point_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    by_operation: dict[str, list[dict[str, str]]] = {}
+    for row in rows:
+        operation = row.get("operation", "")
+        if operation:
+            by_operation.setdefault(operation, []).append(row)
+
+    aggregate: list[dict[str, str]] = []
+    for operation in sorted(by_operation):
+        op_rows = by_operation[operation]
+        speed_values = [value for value in (parse_float(row.get("speedRatio", "")) for row in op_rows) if value is not None]
+        worst_values = [value for value in (parse_float(row.get("worstPairRatio", "")) for row in op_rows) if value is not None]
+        statuses = sorted({row.get("status", "") for row in op_rows if row.get("status", "")})
+        blockers = sorted({row.get("blockerReason", "") for row in op_rows if row.get("blockerReason", "")})
+        stable_total = 0
+        sample_total = 0
+        for row in op_rows:
+            try:
+                stable_total += int(row.get("stableSampleCount", ""))
+                sample_total += int(row.get("sampleCount", ""))
+            except (TypeError, ValueError):
+                pass
+        safe_sizes, safe_chunks, longest_chunk, longest_count = format_measured_chunks(op_rows)
+        aggregate.append(
+            {
+                "category": "point-aggregate",
+                "operation": operation,
+                "status": ",".join(statuses),
+                "speedRatio": f"{max(speed_values):.6f}" if speed_values else "",
+                "worstPairRatio": f"{max(worst_values):.6f}" if worst_values else "",
+                "stableSampleCount": str(stable_total) if sample_total else "",
+                "sampleCount": str(sample_total) if sample_total else "",
+                "safeSizes": safe_sizes,
+                "safeSizeChunks": safe_chunks,
+                "longestSafeSizeChunk": longest_chunk,
+                "longestSafeSizeChunkCount": longest_count,
+                "blockerReason": ",".join(blockers),
+            }
+        )
+    return aggregate
 
 
 def summarize_row(run_index: int, row: dict[str, str], artifact: Path, progress_artifact: Path) -> dict[str, str]:
@@ -423,6 +551,62 @@ def run_self_test() -> int:
     assert timeout_row["status"] == "timeout"
     assert timeout_row["safeSizeChunks"] == "none"
     assert timeout_row["blockerReason"] == "focus-timeout"
+    point_rows = aggregate_point_rows(
+        [
+            {
+                "operation": "sparse-production-mul",
+                "digits": "1234",
+                "detail": "op=sparse-zero-mul bits=4096",
+                "workloadShape": "sparse-multiply",
+                "routeCandidate": "false",
+                "promotionReady": "true",
+                "status": "replacement-ready",
+                "adoption": "allowed",
+                "speedRatio": "0.100000",
+                "worstPairRatio": "0.900000",
+                "stableSampleCount": "5",
+                "sampleCount": "5",
+                "blockerReason": "baseline-row",
+            },
+            {
+                "operation": "sparse-production-mul",
+                "digits": "1698",
+                "detail": "op=sparse-zero-mul bits=5639",
+                "workloadShape": "sparse-multiply",
+                "routeCandidate": "false",
+                "promotionReady": "true",
+                "status": "replacement-ready",
+                "adoption": "allowed",
+                "speedRatio": "0.200000",
+                "worstPairRatio": "1.100000",
+                "stableSampleCount": "5",
+                "sampleCount": "5",
+                "blockerReason": "baseline-row",
+            },
+            {
+                "operation": "sparse-production-mul",
+                "digits": "2467",
+                "detail": "op=sparse-zero-mul bits=8192",
+                "workloadShape": "sparse-multiply",
+                "routeCandidate": "false",
+                "promotionReady": "true",
+                "status": "replacement-ready",
+                "adoption": "allowed",
+                "speedRatio": "0.090000",
+                "worstPairRatio": "0.800000",
+                "stableSampleCount": "5",
+                "sampleCount": "5",
+                "blockerReason": "baseline-row",
+            },
+        ]
+    )
+    assert len(point_rows) == 1
+    assert point_rows[0]["safeSizes"] == "4096,8192"
+    assert point_rows[0]["safeSizeChunks"] == "4096,8192"
+    assert point_rows[0]["longestSafeSizeChunk"] == "4096"
+    assert point_rows[0]["longestSafeSizeChunkCount"] == "1"
+    assert point_rows[0]["speedRatio"] == "0.200000"
+    assert point_rows[0]["worstPairRatio"] == "1.100000"
     print("bench_focus_repeat self-test passed")
     return 0
 

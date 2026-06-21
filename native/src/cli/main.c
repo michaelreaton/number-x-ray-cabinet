@@ -19,7 +19,7 @@ static void usage(const char *argv0) {
   fprintf(stderr, "                mul-toom-div, mul-toom4-top, mul-backend-gap,\n");
   fprintf(stderr, "                mul-combo-lower, mul-combo-transition, mul-combo-upper,\n");
   fprintf(stderr, "                mul-combo-reuse, mul-combo-handoff-boundary,\n");
-  fprintf(stderr, "                mul-novelty\n");
+  fprintf(stderr, "                mul-sparse, mul-novelty\n");
 }
 
 static int parse_size_arg(const char *text, size_t *out) {

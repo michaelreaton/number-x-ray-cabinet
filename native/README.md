@@ -450,6 +450,7 @@ native\build\Release\xray_cli.exe --bench-focus mul-combo-transition --bench-fro
 native\build\Release\xray_cli.exe --bench-focus mul-combo-transition-controls --bench-frontier
 native\build\Release\xray_cli.exe --bench-focus mul-combo-handoff-pocket --bench-frontier
 native\build\Release\xray_cli.exe --bench-focus mul-combo-handoff-boundary --bench-frontier
+native\build\Release\xray_cli.exe --bench-focus mul-sparse --bench-frontier
 python native\tools\bench_focus_repeat.py --cli native\build\Release\xray_cli.exe --focus mul-combo-handoff-pocket --runs 3
 python native\tools\bench_focus_matrix.py --cli native\build\Release\xray_cli.exe --runs 3 --focus mul-backend-gap --focus mul-toom4-top --focus mul-toom5-smoke --focus mul-toom-div-transition --focus mul-combo-handoff-pocket
 python native\tools\bench_focus_matrix.py --cli native\build\Release\xray_cli.exe --runs 2 --timeout-seconds 90 --focus mul-backend-gap --focus mul-toom4-top
@@ -475,7 +476,8 @@ control evidence. Use `--bench-focus FOCUS` for a local diagnostic scout that
 skips the full ladder and runs only the named family, such as `mul-novelty`,
 `mul-large`, `mul-toom5-smoke`, `mul-toom-div-transition`, `mul-toom-div`,
 `mul-toom4-top`, `mul-backend-gap`, `mul-combo-lower`, `mul-combo-transition`,
-`mul-combo-handoff-boundary`, `mul-combo-upper`, or `mul-combo-reuse`. Use
+`mul-combo-handoff-boundary`, `mul-combo-upper`, `mul-combo-reuse`, or
+`mul-sparse`. Use
 `mul-toom5-smoke` when you only
 need the existing Toom-5 top-level smoke rows over `5639,8192,11717,16384`
 without the full benchmark ladder. Use `mul-toom-div-transition` when you only
@@ -490,6 +492,10 @@ unroll4 multiply-add backend has a contiguous safe chunk before another Toom
 route is worth coding; it runs the existing muladd primitive rows plus unroll4
 versus scratch/GMP rows at `4096,5639,8192,11717,16384` and emits
 `mul-backend-gap-unroll4` with `safeSizeChunks`.
+Use `mul-sparse` when you need a fast app-shaped sparse multiply scout over
+measured bit points `4096,5639,8192,11717,16384,24103,32768`; it reuses the
+existing zero-limb, forced-sparse, and pair-product multiply probes and makes no
+production route changes.
 `mul-combo-transition-controls` when you only need the
 duplicate-route and duplicate-GMP transition checks, and
 `mul-combo-handoff-pocket` when you only need the dense `10007` through `16384`
