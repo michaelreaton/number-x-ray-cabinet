@@ -123,6 +123,42 @@ production sparse win:
 | `1` | `sparse-production-pair-mul` | `0.457895` | `0.777778` | `45/45` | `4096-65536` |
 | `2` | `sparse-production-pair-mul` | `0.375000` | `0.875000` | `45/45` | `4096-65536` |
 
+Per-size rows from the preserved raw benchmark files make the size coverage
+auditable. Timings are local median microseconds from `run01.benchmark.tsv` and
+`run02.benchmark.tsv`; read them as same-machine evidence, not as portable
+absolute timings.
+
+`sparse-production-mul`:
+
+| Bits | Digits | Run 1 Scratch/GMP us | Run 1 Ratio | Run 2 Scratch/GMP us | Run 2 Ratio |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| `4096` | `1234` | `3/44` | `0.068182` | `2/45` | `0.044444` |
+| `5639` | `1698` | `2/40` | `0.050000` | `3/59` | `0.050847` |
+| `8192` | `2467` | `2/69` | `0.028986` | `2/68` | `0.029412` |
+| `11717` | `3528` | `5/224` | `0.021834` | `3/126` | `0.023810` |
+| `16384` | `4933` | `4/217` | `0.020000` | `4/194` | `0.020725` |
+| `24103` | `7256` | `10/522` | `0.014045` | `5/370` | `0.013477` |
+| `32768` | `9865` | `12/1006` | `0.011928` | `7/559` | `0.012389` |
+| `52163` | `15703` | `12/1040` | `0.011538` | `12/1025` | `0.011707` |
+| `65536` | `19729` | `17/1498` | `0.011773` | `20/1409` | `0.014347` |
+
+`sparse-production-pair-mul`:
+
+| Bits | Digits | Run 1 Scratch/GMP us | Run 1 Ratio | Run 2 Scratch/GMP us | Run 2 Ratio |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| `4096` | `1234` | `3/8` | `0.375000` | `3/8` | `0.375000` |
+| `5639` | `1696` | `4/18` | `0.250000` | `6/20` | `0.300000` |
+| `8192` | `2467` | `9/26` | `0.346154` | `9/25` | `0.360000` |
+| `11717` | `3526` | `20/54` | `0.250000` | `10/45` | `0.222222` |
+| `16384` | `4933` | `23/80` | `0.291139` | `40/116` | `0.355932` |
+| `24103` | `7244` | `69/231` | `0.291304` | `33/133` | `0.248120` |
+| `32768` | `9865` | `87/193` | `0.457895` | `64/181` | `0.320442` |
+| `52163` | `15702` | `76/397` | `0.196891` | `78/411` | `0.200514` |
+| `65536` | `19729` | `135/508` | `0.273279` | `174/511` | `0.321569` |
+
+Every row in both tables has exact parity and `5/5` stable paired samples in
+both preserved runs.
+
 Independent post-pocket novelty matrix:
 
 `native-test-runs/20260621-103409-post-pocket-novelty-repeat2/matrix.tsv`
