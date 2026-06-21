@@ -1,0 +1,85 @@
+name: Sparse Paper Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: "Repeat count for the sparse-paper matrix"
+        required: true
+        default: "2"
+      timeout_seconds:
+        description: "Per-focus timeout passed to bench_focus_matrix.py"
+        required: true
+        default: "45"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-gmp-sparse-paper:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install GMP
+        run: sudo apt-get update && sudo apt-get install -y libgmp-dev
+
+      - name: Create artifact metadata
+        run: |
+          set -euxo pipefail
+          out="native-test-runs/${GITHUB_RUN_ID}-linux-sparse-paper"
+          mkdir -p "$out"
+          {
+            echo "timestampUtc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "githubRepository=${GITHUB_REPOSITORY}"
+            echo "githubRef=${GITHUB_REF}"
+            echo "githubSha=${GITHUB_SHA}"
+            echo "runnerOs=${RUNNER_OS}"
+            echo "runnerArch=${RUNNER_ARCH}"
+            echo
+            echo "## uname"
+            uname -a
+            echo
+            echo "## compiler"
+            cc --version
+            echo
+            echo "## cmake"
+            cmake --version
+            echo
+            echo "## cpu"
+            lscpu
+            echo
+            echo "## gmp packages"
+            dpkg-query -W libgmp-dev libgmp10 || true
+          } > "$out/metadata.txt"
+          echo "XRAY_SPARSE_PAPER_OUT=$out" >> "$GITHUB_ENV"
+
+      - name: Configure Release
+        run: cmake -S native -B native/build -DCMAKE_BUILD_TYPE=Release -DXRAY_BUILD_GTK=OFF
+
+      - name: Build CLI
+        run: cmake --build native/build --config Release --parallel 2 --target xray_cli
+
+      - name: Run sparse paper matrix
+        run: |
+          set -euxo pipefail
+          python3 native/tools/bench_focus_matrix.py \
+            --cli native/build/xray_cli \
+            --runs "${{ inputs.runs }}" \
+            --preset sparse-paper \
+            --keep-all-progress-rows \
+            --timeout-seconds "${{ inputs.timeout_seconds }}" \
+            --out "$XRAY_SPARSE_PAPER_OUT"
+
+      - name: Upload sparse paper artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sparse-paper-linux-${{ github.run_id }}
+          path: native-test-runs/${{ github.run_id }}-linux-sparse-paper
+          if-no-files-found: error

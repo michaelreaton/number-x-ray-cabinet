@@ -281,6 +281,13 @@ CMake copies discovered GMP/MPIR runtime DLLs beside the Windows tools. If
 configuration prints a runtime DLL warning, set `PATH` manually or point CMake
 at the expected GMP/MPIR prefix before rerunning the commands.
 
+For the non-Windows GMP side of the evidence package, run the manual GitHub
+Actions workflow `Sparse Paper Benchmark`. It configures a Linux Release build
+with `libgmp-dev`, runs the same `--preset sparse-paper
+--keep-all-progress-rows` matrix, records runner/compiler/CPU/GMP metadata, and
+uploads the full `native-test-runs/<run_id>-linux-sparse-paper` artifact. The
+workflow is `workflow_dispatch` only so normal PR CI stays fast.
+
 Artifacts to preserve:
 
 - `matrix.tsv`
@@ -301,7 +308,8 @@ The next evidence step is not a broader claim. It is a tighter sparse paper
 package:
 
 - Rerun `mul-sparse` on at least one non-Windows GMP build and one Windows MPIR
-  build; the refreshed Windows MPIR-compatible dense-control artifact is now
+  build. Use the manual `Sparse Paper Benchmark` workflow for the Linux GMP
+  artifact; the refreshed Windows MPIR-compatible dense-control artifact is now
   preserved locally.
 - Keep dense-control rows in the per-size evidence table whenever the sparse
   paper artifact is refreshed.

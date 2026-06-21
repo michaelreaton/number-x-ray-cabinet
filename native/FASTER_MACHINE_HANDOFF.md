@@ -64,7 +64,9 @@ from the rejected full-workspace audit, backend unroll4, Toom-4/Toom-5,
 div-transition, and handoff boundary dense families. Keep the paper claim
 bounded: Number X-Ray has verified GMP/MPIR outperformance pockets, plus sparse
 app-shaped wins, but the dense full-window route is still blocked by worst-pair
-safety.
+safety. Use the manual `Sparse Paper Benchmark` GitHub Actions workflow when a
+non-Windows GMP artifact is needed for the paper; it does not run on ordinary
+pull requests.
 
 ## Current Baseline
 
