@@ -312,7 +312,7 @@ of route-completed progress even when their median ratio looks favorable.
 The matching `benchmark_progress.tsv` artifact and `--bench-progress-tsv` CLI
 mode expose the same row classification with importable booleans such as
 `routeCandidate`, `routeCompleted`, `productGated`, `hasSetupContext`,
-`warmupReview`, `lowerBound`, `runFailed`, `baseline`, `control`, and
+`warmupReview`, `lowerBound`, `runFailed`, `baselineRow`, `control`, and
 `noisyControl`.
 For threshold and route-policy rows, the progress TSV also promotes
 `safeSizes`, `safeSizeChunks`, `longestSafeSizeChunk`, and
@@ -479,7 +479,10 @@ Focus runs are for finding promising rows quickly; use the full benchmark ladder
 and promotion gates before treating a route as replacement-ready. Use
 `native/tools/bench_focus_repeat.py` to run a focus several times, preserve each
 raw `benchmark.tsv` plus `benchmark_progress.tsv`, and print a compact safe
-chunk summary for repeated noise checks. Use
+chunk summary for repeated noise checks. The helper also writes
+`repeat_stable_chunks.tsv`, which intersects safe chunks by operation across
+all repeats so single-run pockets are easy to separate from repeat-stable
+piecemeal candidates. Use
 `--bench-progress-tsv` when another tool needs the same progress classification
 as a TSV table instead of prose. Use `--bench-compare`
 to review two benchmark TSV artifacts, such as Release versus `/GL`, and

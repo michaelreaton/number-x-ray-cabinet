@@ -1512,7 +1512,9 @@ Run these in order.
      stable-pair gates pass.
    - Use `python native/tools/bench_focus_repeat.py --cli <xray_cli> --focus
      mul-combo-handoff-pocket --runs 3` to repeat a fast focus, save every raw
-     TSV/progress TSV artifact, and print the safe-chunk summary table.
+     TSV/progress TSV artifact, and print the safe-chunk summary table. The
+     helper also writes `repeat_stable_chunks.tsv`, an operation-level
+     intersection of chunks that stayed safe in every repeat.
    - Read `safeSizeChunks` and `longestSafeSizeChunk*` as contiguous measured
      benchmark points only. They are useful for piecemeal follow-up audits over
      promising pockets, but they do not prove every unmeasured digit between the
