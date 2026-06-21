@@ -49,6 +49,7 @@
 #define XRAY_BIGINT_DIVEXACT_3_INVERSE UINT64_C(0xAAAAAAAAAAAAAAAB)
 #define XRAY_TOOM3_INTERP_SHIFT_DIV2 1U
 #define XRAY_TOOM3_INTERP_EXACT_DIV3 2U
+#define XRAY_TOOM3_INTERP_INPLACE_DIV 4U
 
 static const uint64_t parse_decimal_powers[] = {
   UINT64_C(1),
@@ -4228,6 +4229,58 @@ static int signed_divexact_u3_workspace(
   return ok;
 }
 
+static int divexact_u3_inplace(XrayScratchBigInt *value) {
+  if (!value) return 0;
+  if (value->count == 0) return 1;
+  uint64_t carry = 0;
+  for (size_t index = 0; index < value->count; ++index) {
+    uint64_t word = value->limbs[index];
+    uint64_t digit = (word - carry) * XRAY_BIGINT_DIVEXACT_3_INVERSE;
+    uint64_t product_low = 0;
+    uint64_t product_high = mul_add_small_word(digit, 3U, carry, &product_low);
+    if (product_low != word || product_high > 2U) return 0;
+    value->limbs[index] = digit;
+    carry = product_high;
+  }
+  if (carry != 0) return 0;
+  normalize(value);
+  return 1;
+}
+
+static int signed_divexact_u3_inplace_workspace(XraySignedScratchBigInt *value) {
+  if (!value) return 0;
+  if (value->sign == 0) return 1;
+  int ok = divexact_u3_inplace(&value->mag);
+  if (ok) signed_normalize(value);
+  return ok;
+}
+
+static int shift_right_bits_inplace_exact(XrayScratchBigInt *value, unsigned int shift) {
+  if (!value || shift == 0 || shift >= XRAY_BIGINT_WORD_BITS) return 0;
+  if (value->count == 0) return 1;
+  uint64_t low_mask = (UINT64_C(1) << shift) - 1U;
+  if ((value->limbs[0] & low_mask) != 0) return 0;
+  uint64_t carry = 0;
+  for (size_t remaining = value->count; remaining > 0; --remaining) {
+    size_t index = remaining - 1U;
+    uint64_t word = value->limbs[index];
+    value->limbs[index] = (word >> shift) | (carry << (XRAY_BIGINT_WORD_BITS - shift));
+    carry = word & low_mask;
+  }
+  normalize(value);
+  return carry == 0;
+}
+
+static int signed_divexact_pow2_inplace_workspace(
+  XraySignedScratchBigInt *value,
+  unsigned int shift) {
+  if (!value) return 0;
+  if (value->sign == 0) return 1;
+  int ok = shift_right_bits_inplace_exact(&value->mag, shift);
+  if (ok) signed_normalize(value);
+  return ok;
+}
+
 static int signed_divexact_pow2_workspace(
   XraySignedScratchBigInt *value,
   unsigned int shift,
@@ -4479,18 +4532,24 @@ static int mul_toom3_workspace_recurse(
 
   if (ok) {
     ok = signed_sub_inplace_workspace(v2, vm1, &frame->signed_temp) &&
+      ((interp_flags & XRAY_TOOM3_INTERP_INPLACE_DIV) ?
+        signed_divexact_u3_inplace_workspace(v2) :
       ((interp_flags & XRAY_TOOM3_INTERP_EXACT_DIV3) ?
         signed_divexact_u3_workspace(v2, &frame->div_temp) :
-        signed_divexact_u32_workspace(v2, 3, &frame->div_temp)) &&
+        signed_divexact_u32_workspace(v2, 3, &frame->div_temp))) &&
       signed_sub_workspace(vm1, v1, vm1, &frame->signed_temp) &&
+      (((interp_flags & XRAY_TOOM3_INTERP_INPLACE_DIV) && (interp_flags & XRAY_TOOM3_INTERP_SHIFT_DIV2)) ?
+        signed_divexact_pow2_inplace_workspace(vm1, 1) :
       ((interp_flags & XRAY_TOOM3_INTERP_SHIFT_DIV2) ?
         signed_divexact_pow2_workspace(vm1, 1, &frame->div_temp) :
-        signed_divexact_u32_workspace(vm1, 2, &frame->div_temp)) &&
+        signed_divexact_u32_workspace(vm1, 2, &frame->div_temp))) &&
       signed_sub_inplace_workspace(v1, v0, &frame->signed_temp) &&
       signed_sub_inplace_workspace(v2, v1, &frame->signed_temp) &&
+      (((interp_flags & XRAY_TOOM3_INTERP_INPLACE_DIV) && (interp_flags & XRAY_TOOM3_INTERP_SHIFT_DIV2)) ?
+        signed_divexact_pow2_inplace_workspace(v2, 1) :
       ((interp_flags & XRAY_TOOM3_INTERP_SHIFT_DIV2) ?
         signed_divexact_pow2_workspace(v2, 1, &frame->div_temp) :
-        signed_divexact_u32_workspace(v2, 2, &frame->div_temp)) &&
+        signed_divexact_u32_workspace(v2, 2, &frame->div_temp))) &&
       signed_sub_inplace_workspace(v1, vm1, &frame->signed_temp) &&
       signed_sub_inplace_workspace(v1, vinf, &frame->signed_temp) &&
       signed_copy(&frame->twice_vinf, vinf) &&
@@ -4976,6 +5035,33 @@ int xray_bigint_mul_toom3_unroll4_recursive_full_workspace_div2_div3_probe(XrayS
   size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
   size_t active_depth = depth_limit >= 1U ? depth_limit : 1U;
   unsigned int interp_flags = XRAY_TOOM3_INTERP_SHIFT_DIV2 | XRAY_TOOM3_INTERP_EXACT_DIV3;
+  if (out == left || out == right) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = mul_toom3_full_workspace_probe_internal(&temp, left, right, active_threshold, active_depth, interp_flags);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return mul_toom3_full_workspace_probe_internal(out, left, right, active_threshold, active_depth, interp_flags);
+#else
+  (void)out;
+  (void)left;
+  (void)right;
+  (void)leaf_threshold;
+  (void)depth_limit;
+  return 0;
+#endif
+}
+
+int xray_bigint_mul_toom3_unroll4_recursive_full_workspace_inplace_div2_div3_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold, size_t depth_limit) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (!out || !left || !right) return 0;
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  size_t active_depth = depth_limit >= 1U ? depth_limit : 1U;
+  unsigned int interp_flags = XRAY_TOOM3_INTERP_SHIFT_DIV2 |
+    XRAY_TOOM3_INTERP_EXACT_DIV3 |
+    XRAY_TOOM3_INTERP_INPLACE_DIV;
   if (out == left || out == right) {
     XrayScratchBigInt temp;
     xray_bigint_init(&temp);
