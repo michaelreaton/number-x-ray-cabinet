@@ -4843,6 +4843,25 @@ with the earlier three-repeat backend-gap artifact, where the same aggregate had
 `runsWithSafeChunks=0/3`. Treat it as noise until a dedicated `4096`-only
 control survives repeated runs.
 
+## 2026-06-21: Backend 4096 Hint Recheck
+
+Local five-repeat artifact:
+`native-test-runs/20260621-093000-backend-gap-repeat5/repeat_stable_chunks.tsv`
+
+The expanded matrix left a possible single-point `4096` backend-gap hint, so
+the existing `mul-backend-gap` focus was repeated five times before adding a
+new 4096-only focus label. The recheck did not produce a repeat-stable chunk:
+
+| Operation | Runs With Safe Chunks | Repeat-Stable Chunk | Worst Pair Max | Decision |
+| --- | ---: | --- | ---: | --- |
+| `mul-backend-gap-unroll4` | `3/5` | none | `1.696977` | retire hint |
+| `mul-unroll4-vs-gmp` | `0/5` | none | `1.696977` | reject |
+| `mul-unroll4-vs-scratch` | `0/5` | none | `1.625317` | reject |
+
+Decision: do not add a dedicated 4096 backend focus yet. The apparent safe
+point hops between runs (`4096`, `5639`, or none), so it is noise under the
+current repeat-stable rule rather than a piecemeal route candidate.
+
 ## 2026-06-21: Toom Div Transition Focus
 
 Local Release validation artifact
