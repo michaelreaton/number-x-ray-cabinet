@@ -24,7 +24,7 @@ jobs:
       - name: Configure
         run: cmake -S native -B native/build -DXRAY_BUILD_GTK=OFF
       - name: Build
-        run: cmake --build native/build --config Release
+        run: cmake --build native/build --config Release --parallel 2
       - name: Test
         run: |
           ctest --test-dir native/build --output-on-failure --timeout 300 -R "xray_api_doc_coverage|xray_cli_help|xray_import_consumer"
@@ -44,7 +44,7 @@ jobs:
         run: cmake -S native -B native/build -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" -DXRAY_BUILD_GTK=OFF
       - name: Build
         shell: pwsh
-        run: cmake --build native/build --config Release
+        run: cmake --build native/build --config Release --parallel 2
       - name: Test
         shell: pwsh
         run: |
