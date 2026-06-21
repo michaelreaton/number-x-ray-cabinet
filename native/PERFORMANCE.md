@@ -4572,3 +4572,44 @@ Decision: keep this as observe-only evidence and do not promote the transition
 route. The random spot plus anchor are exact and faster than current production
 multiply, but the forced route audit fails the baseline, stable-pair, and
 worst-pair bars needed for a default-route change.
+
+## 2026-06-21: Combo Reuse Transition Self-Control Audit
+
+Local Release validation artifact
+`native-test-runs/20260621-063109-transition-self-control/benchmark.tsv`
+adds `mul-large-toom-cmb-tctrl`, a benchmark-only duplicate-route control for
+the transition pocket at deterministic random spot `11717` and power-of-two
+anchor `16384`. The candidate and duplicate baseline are both
+`full-ws-combo-reuse-map-l64d2-l48d4-l48d3`, each measured through an
+independent reusable workspace. Current production multiply and `mpz_mul` stay
+in the same rotating run.
+
+Observed aggregate:
+
+- Exact parity/hash passed:
+  `hashSafe=36/36`, `hashGate=matched`, `parity=matched`.
+- The duplicate route ratio was close, but the control was still noisy in this
+  local pass:
+  `controlRatioMax=0.997`, `controlWorstMax=1.140`,
+  `controlSafety=noisy`.
+- The candidate still beats current production multiply and GMP/MPIR in this
+  transition pocket:
+  `candCurrentMax=0.676`, `candGmpMax=0.925`, while
+  `currentGmpMax=1.378`.
+- The strict self-control gate remains observe-only:
+  `safeSizes=1/2`, `safeSizeChunks=11717`,
+  `maxWorstPairRatio=1.140`.
+
+Per-size point rows:
+
+| Digits | Control Ratio | Control Worst | Candidate / Current | Candidate / GMP | Current / GMP | Product Worst | Control Stable | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `11717` | `0.982` | `1.018` | `0.635` | `0.879` | `1.378` | `0.975` | `9/9` | `9/9` | combo-reuse-map-self-control-clean |
+| `16384` | `0.997` | `1.140` | `0.676` | `0.925` | `1.340` | `0.988` | `7/9` | `9/9` | duplicate-control-noise |
+
+Decision: keep this as observe-only noise-triage evidence and do not promote
+the transition route. The new row is valuable because a focused
+`mul-combo-transition` run can now distinguish a promising transition pocket
+from a noisy same-route comparison before spending time on wider benchmark
+sweeps. In this local run, only the `11717` measured point formed a safe chunk;
+that is a contiguous measured-point clue, not proof of an unmeasured interval.
