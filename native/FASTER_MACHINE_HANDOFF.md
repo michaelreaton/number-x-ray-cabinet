@@ -1557,6 +1557,9 @@ Run these in order.
      benchmark points only. They are useful for piecemeal follow-up audits over
      promising pockets, but they do not prove every unmeasured digit between the
      endpoints is safe.
+   - Read `repeatStableLongestChunk*` from repeat/matrix artifacts first when
+     choosing piecemeal work: larger repeat-stable spans deserve deeper
+     route-audit attention before one-off safe points.
    - Prefer `--bench-progress-tsv` for repeated focus runs because it exposes
      `safeSizes`, `safeSizeChunks`, `longestSafeSizeChunk`, and
      `longestSafeSizeChunkCount` as import columns.

@@ -34,6 +34,9 @@ REPEAT_STABLE_FIELDS = [
     "runsWithSafeChunks",
     "repeatStableSafeChunks",
     "repeatStableChunkCount",
+    "repeatStableLongestChunk",
+    "repeatStableLongestChunkSpan",
+    "repeatStableTotalChunkSpan",
     "statuses",
     "minSpeedRatio",
     "maxSpeedRatio",
@@ -263,6 +266,21 @@ def format_ranges(ranges: list[tuple[int, int]]) -> str:
     return ",".join(str(start) if start == end else f"{start}-{end}" for start, end in ranges)
 
 
+def range_span(value: tuple[int, int]) -> int:
+    start, end = value
+    return end - start + 1
+
+
+def longest_range(ranges: list[tuple[int, int]]) -> tuple[int, int] | None:
+    if not ranges:
+        return None
+    return max(ranges, key=lambda value: (range_span(value), -value[0]))
+
+
+def total_range_span(ranges: list[tuple[int, int]]) -> int:
+    return sum(range_span(value) for value in ranges)
+
+
 def repeat_stable_rows(rows: list[dict[str, str]], total_runs: int) -> list[dict[str, str]]:
     by_operation: dict[str, list[dict[str, str]]] = {}
     for row in rows:
@@ -291,6 +309,7 @@ def repeat_stable_rows(rows: list[dict[str, str]], total_runs: int) -> list[dict
         speed_values = [value for value in (parse_float(row.get("speedRatio", "")) for row in op_rows) if value is not None]
         worst_values = [value for value in (parse_float(row.get("worstPairRatio", "")) for row in op_rows) if value is not None]
         statuses = sorted({row.get("status", "") for row in op_rows if row.get("status", "")})
+        longest_chunk = longest_range(repeat_chunks)
         stable_rows.append(
             {
                 "operation": operation,
@@ -298,6 +317,9 @@ def repeat_stable_rows(rows: list[dict[str, str]], total_runs: int) -> list[dict
                 "runsWithSafeChunks": str(len(runs_with_safe_chunks)),
                 "repeatStableSafeChunks": format_ranges(repeat_chunks),
                 "repeatStableChunkCount": str(len(repeat_chunks)),
+                "repeatStableLongestChunk": format_ranges([longest_chunk]) if longest_chunk else "none",
+                "repeatStableLongestChunkSpan": str(range_span(longest_chunk)) if longest_chunk else "0",
+                "repeatStableTotalChunkSpan": str(total_range_span(repeat_chunks)),
                 "statuses": ",".join(statuses),
                 "minSpeedRatio": f"{min(speed_values):.6f}" if speed_values else "",
                 "maxSpeedRatio": f"{max(speed_values):.6f}" if speed_values else "",
@@ -386,9 +408,17 @@ def run_self_test() -> int:
     by_operation = {row["operation"]: row for row in stable}
     assert by_operation["op-a"]["repeatStableSafeChunks"] == "11717"
     assert by_operation["op-a"]["runsWithSafeChunks"] == "3"
+    assert by_operation["op-a"]["repeatStableLongestChunk"] == "11717"
+    assert by_operation["op-a"]["repeatStableLongestChunkSpan"] == "1"
+    assert by_operation["op-a"]["repeatStableTotalChunkSpan"] == "1"
     assert by_operation["op-a"]["maxWorstPairRatio"] == "1.030000"
     assert by_operation["op-b"]["repeatStableSafeChunks"] == "none"
     assert by_operation["op-b"]["runsWithSafeChunks"] == "2"
+    assert by_operation["op-b"]["repeatStableLongestChunk"] == "none"
+    assert by_operation["op-b"]["repeatStableLongestChunkSpan"] == "0"
+    sample_ranges = [(10, 12), (20, 30), (40, 45)]
+    assert longest_range(sample_ranges) == (20, 30)
+    assert total_range_span(sample_ranges) == 20
     timeout_row = timeout_summary_row(4, "op-timeout", Path("timeout.txt"))
     assert timeout_row["status"] == "timeout"
     assert timeout_row["safeSizeChunks"] == "none"
@@ -479,6 +509,8 @@ def main() -> int:
                 "runsSeen",
                 "runsWithSafeChunks",
                 "repeatStableSafeChunks",
+                "repeatStableLongestChunk",
+                "repeatStableLongestChunkSpan",
                 "maxWorstPairRatio",
                 "statuses",
             ],

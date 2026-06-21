@@ -20,6 +20,9 @@ MATRIX_FIELDS = [
     "runsWithSafeChunks",
     "repeatStableSafeChunks",
     "repeatStableChunkCount",
+    "repeatStableLongestChunk",
+    "repeatStableLongestChunkSpan",
+    "repeatStableTotalChunkSpan",
     "maxWorstPairRatio",
     "statuses",
     "focusOut",
@@ -99,6 +102,9 @@ def matrix_rows_for_focus(focus: str, focus_out: Path) -> list[dict[str, str]]:
                 "runsWithSafeChunks": row.get("runsWithSafeChunks", ""),
                 "repeatStableSafeChunks": row.get("repeatStableSafeChunks", ""),
                 "repeatStableChunkCount": row.get("repeatStableChunkCount", ""),
+                "repeatStableLongestChunk": row.get("repeatStableLongestChunk", ""),
+                "repeatStableLongestChunkSpan": row.get("repeatStableLongestChunkSpan", ""),
+                "repeatStableTotalChunkSpan": row.get("repeatStableTotalChunkSpan", ""),
                 "maxWorstPairRatio": row.get("maxWorstPairRatio", ""),
                 "statuses": row.get("statuses", ""),
                 "focusOut": str(focus_out),
@@ -124,6 +130,8 @@ def print_matrix(rows: list[dict[str, str]]) -> None:
         "runsSeen",
         "runsWithSafeChunks",
         "repeatStableSafeChunks",
+        "repeatStableLongestChunk",
+        "repeatStableLongestChunkSpan",
         "maxWorstPairRatio",
         "statuses",
     ]
@@ -190,6 +198,9 @@ def run_self_test() -> int:
                     "runsWithSafeChunks",
                     "repeatStableSafeChunks",
                     "repeatStableChunkCount",
+                    "repeatStableLongestChunk",
+                    "repeatStableLongestChunkSpan",
+                    "repeatStableTotalChunkSpan",
                     "statuses",
                     "minSpeedRatio",
                     "maxSpeedRatio",
@@ -205,6 +216,9 @@ def run_self_test() -> int:
                     "runsWithSafeChunks": "3",
                     "repeatStableSafeChunks": "11717-16384",
                     "repeatStableChunkCount": "1",
+                    "repeatStableLongestChunk": "11717-16384",
+                    "repeatStableLongestChunkSpan": "4668",
+                    "repeatStableTotalChunkSpan": "4668",
                     "statuses": "clean",
                     "minSpeedRatio": "0.700000",
                     "maxSpeedRatio": "0.900000",
@@ -215,6 +229,7 @@ def run_self_test() -> int:
         assert rows[0]["focus"] == "focus-a"
         assert rows[0]["operation"] == "op-a"
         assert rows[0]["repeatStableSafeChunks"] == "11717-16384"
+        assert rows[0]["repeatStableLongestChunkSpan"] == "4668"
         matrix_path = Path(tmp) / "matrix.tsv"
         write_matrix(matrix_path, rows)
         reread = read_tsv(matrix_path)

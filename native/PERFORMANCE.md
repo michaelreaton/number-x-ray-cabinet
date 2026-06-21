@@ -32,6 +32,20 @@ parity plus a stable same-run paired win.
   or newly wired focus labels. A timeout is evidence about throughput, not a
   route result: it writes `runNN.timeout.txt`, reports
   `blockerReason=focus-timeout`, and should be narrowed before deeper reruns.
+- Repeat-stable matrix hits should be triaged by contiguous span, not only by
+  whether any safe point exists. Prefer larger `repeatStableLongestChunk*`
+  spans for piecemeal follow-up, and keep single-size hits in the recheck lane.
+
+## 2026-06-21: Repeat-Stable Chunk Span Reporting
+
+The repeat and matrix helpers now report the longest repeat-stable contiguous
+chunk plus its inclusive digit span. This makes piecemeal route opportunities
+visible in `repeat_stable_chunks.tsv` and matrix artifacts without opening each
+raw progress TSV.
+
+Decision: use the new span columns to rank novelty follow-up. They are triage
+metadata only; promotion still requires parity, worst-pair, stable-pair,
+same-run route audit, and product-like build confirmation.
 
 ## 2026-06-21: Focus Timeout Guard
 
@@ -4754,7 +4768,9 @@ The helper now writes `repeat_stable_chunks.tsv` beside the per-run
 `summary.tsv`. That file groups rows by operation and intersects
 `safeSizeChunks` across all repeats, so a pocket that appears in only one noisy
 run is visibly different from a measured chunk that survives repeated focused
-scouts. This is reporting only; it does not relax route promotion gates.
+scouts. It also reports the longest repeat-stable chunk and inclusive digit
+span so large piecemeal pockets can be ranked quickly. This is reporting only;
+it does not relax route promotion gates.
 
 For broader novelty triage, `bench_focus_matrix.py` wraps several
 `bench_focus_repeat.py` runs and writes a top-level `matrix.tsv` with
