@@ -4613,3 +4613,39 @@ the transition route. The new row is valuable because a focused
 from a noisy same-route comparison before spending time on wider benchmark
 sweeps. In this local run, only the `11717` measured point formed a safe chunk;
 that is a contiguous measured-point clue, not proof of an unmeasured interval.
+
+## 2026-06-21: Combo Transition Tournament Scout
+
+Local Release validation artifact
+`native-test-runs/20260621-064718-transition-tournament/benchmark.tsv`
+adds `mul-large-toom-cmb-ttourn`, a benchmark-only same-input tournament over
+`11717`, `16384`, and `24103`. The row compares `l64d2`, `l48d3`, `l48d4`,
+and a `16384` handoff route on the same operand fingerprints while keeping
+current production multiply and `mpz_mul` in the rotating run.
+
+Observed aggregate:
+
+- Exact parity/hash passed across every route and size:
+  `hashSafe=216/216`, `hashGate=matched`, `parity=matched`.
+- The handoff route won all three measured sizes:
+  `winnerList=full-ws-combo-handoff-l64d2-l48d3,...`.
+- The best winner remains observe-only:
+  `winnerCurrentMax=0.663`, `winnerGmpMax=1.060`,
+  `currentGmpMax=1.598`, `maxWorstPairRatio=1.307`.
+- Contiguous measured safety is still narrow:
+  `safeSizes=1/3`, `safeSizeChunks=11717`,
+  `longestSafeSizeChunk=11717`.
+
+Per-size winner rows:
+
+| Digits | Winner | Winner / Current | Winner / GMP | Current / GMP | Worst Pair | GMP Stable | Status |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | --- |
+| `11717` | handoff active `l64d2` | `0.614` | `0.904` | `1.490` | `0.989` | `9/9` | tournament-winner |
+| `16384` | handoff active `l48d3` | `0.649` | `0.884` | `1.386` | `1.035` | `8/9` | backend-regression |
+| `24103` | handoff active `l48d3` | `0.663` | `1.060` | `1.598` | `1.307` | `2/9` | backend-regression |
+
+Decision: keep this as a fast transition-ladder scout, not promotion evidence.
+The row says the handoff shape is the best local route to inspect next, but
+only `11717` forms a safe measured chunk in this run. Piecemeal follow-up
+should expand around that chunk before spending full-suite time on the larger
+transition window.
