@@ -24,6 +24,12 @@ benchmark method around it: an app-shaped bigint engine can beat a world-class
 general-purpose library where the operand shape, route policy, and measurement
 gates are narrow enough, while still showing the losses that prevent promotion.
 
+That makes this paper a proof of method as much as a speed result. The point is
+not to replace GMP/MPIR everywhere. The point is to show how a specialized
+application can find, verify, and preserve bounded pockets where its own bigint
+route is better, then use those pockets piecemeal only when the evidence remains
+clean.
+
 ## Claim
 
 This paper makes one bounded claim:
@@ -61,6 +67,14 @@ where Number X-Ray currently needs better CPU behavior:
 The non-power-of-two sizes are deliberate. They keep the route from looking good
 only at familiar binary anchors and allow the report to describe measured
 chunks that could later be adopted piecemeal.
+
+This matters because large-integer multiplication is thresholded and
+shape-sensitive. GMP's own documentation describes a ladder of basecase,
+Karatsuba, Toom, higher-degree Toom, and FFT algorithms selected by operand
+size. A fair comparison therefore needs more than powers of two: it needs
+random-looking deterministic spots between anchors, visible route labels, and
+same-run comparisons so that step effects and threshold luck do not become a
+false win.
 
 ## Candidate Route
 
@@ -102,6 +116,32 @@ The key contracts are:
 - Worst-pair ratios and stable-pair counts remain visible.
 - Benchmark-only routes stay out of production routing until a later promotion
   audit clears every gate.
+
+The benchmark also reports `safeSizeChunks`, `longestSafeSizeChunk`, and repeat
+intersections from focused runs. These fields are not mathematical interval
+proofs. They are measured-point coverage summaries: a chunk such as
+`4096-16384` means every adjacent planned measurement point in that sequence was
+safe under the row's policy. A repeat-stable chunk means the same measured-point
+intersection survived repeated focused runs. That framing is what makes
+piecemeal route work possible without overstating what has been tested.
+
+## Contiguous Measured Chunks
+
+Number X-Ray treats contiguous safe size chunks as first-class evidence because
+production route policy does not have to be all-or-nothing. A route that is safe
+from `4096` through `16384` planned measurement points can be useful even if it
+fails at `24103` and above, provided the implementation can enforce that window
+and the route audit proves the exact policy.
+
+The initial full-window result found a lower/transition measured chunk:
+
+`4096 -> 5639 -> 8192 -> 11717 -> 16384`
+
+The later repeat tooling tightened the meaning of such chunks. A single run can
+suggest a pocket; repeated focused runs can reject it if the intersection
+disappears. This is why the paper keeps both positive and negative chunks in
+view. Piecemeal is welcome, but only measured, repeatable, route-audited
+piecemeal wins should affect production behavior.
 
 The full-window evidence artifact is:
 
@@ -220,6 +260,33 @@ This is the central methodological point: measured pocket wins are useful, and
 piecemeal adoption is welcome, but only measured safe chunks can drive route
 changes.
 
+## Negative Follow-Up Evidence
+
+The campaign did not stop after the first win. Later focused scouts asked
+whether the transition pocket could be widened or whether neighboring route
+families deserved a deeper audit. A two-repeat novelty matrix over the current
+Toom-5 smoke rows, div2/div3 transition arithmetic, and handoff-pocket route
+produced no repeat-stable safe chunks:
+
+| Focus | Operation | Repeat-Stable Chunk | Worst Pair Max | Decision |
+| --- | --- | --- | ---: | --- |
+| `mul-toom5-smoke` | `mul-large-toom5-top-handoff` | none | `1.249` | reject |
+| `mul-toom5-smoke` | `mul-large-toom5-top-reuse` | none | `1.469` | reject |
+| `mul-toom-div-transition` | `mul-large-toom-div2-scout` | none | `1.774` | reject |
+| `mul-toom-div-transition` | `mul-large-toom-div3-scout` | none | `1.320` | reject |
+| `mul-toom-div-transition` | `mul-large-toom-div2-div3-scout` | none | `1.216` | reject |
+| `mul-combo-handoff-pocket` | `mul-large-toom-cmb-hpocket` | none | `1.422` | reject |
+
+Artifact:
+
+`native-test-runs/20260621-083300-novelty-matrix-repeat2/matrix.tsv`
+
+This negative result strengthens the paper rather than weakening it. It shows
+that the method can preserve a real lower/transition win while refusing to turn
+nearby noisy median wins into a route story. The next research slice should
+look for a different route shape or a lower-level backend gap instead of
+repeating these rejected families.
+
 ## Threats To Validity
 
 The benchmark is local Release evidence, not a universal hardware result.
@@ -245,6 +312,12 @@ Useful commands in the current workbench are documented in `native/README.md`,
 including focused multiply runs, progress TSV summaries, and repeated focus
 checks.
 
+A publication-ready version should add the faster-machine reproduction table:
+compiler version, `/GL` or IPO state, CPU feature flags, GMP/MPIR backend
+identity, raw artifact paths, and a repeat-stable chunk summary. Until that
+table exists, this document remains a bounded project paper rather than a broad
+external performance claim.
+
 ## Conclusion
 
 Number X-Ray has not beaten GMP/MPIR globally. It has shown something smaller
@@ -256,7 +329,10 @@ unchanged until the strict gates pass.
 
 That is the honest win: not a sweeping replacement claim, but a verified pocket
 of superiority with enough reporting discipline to make the result reproducible
-and useful for future piecemeal route work.
+and useful for future piecemeal route work. If the next backend gap produces a
+larger repeat-stable chunk, the same paper can grow naturally: it will add the
+new chunk beside the old one instead of rewriting a local win into a global
+claim.
 
 ## References
 
