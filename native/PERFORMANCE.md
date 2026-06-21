@@ -65,6 +65,31 @@ in same-run paired measurements. Do not generalize it to dense multiply or to
 unmeasured bit points; any production promotion still needs the usual parity,
 stable-pair, worst-pair, route-audit, and product-build gates.
 
+## 2026-06-21: Mul-Large Upper Baseline Focus
+
+`--bench-focus mul-large` now includes the historical dense leaf and Karatsuba
+split-view baseline probe rows at `32768` and `65536` in addition to
+`4096,8192,16384`. The full benchmark ladder still keeps those baseline rows at
+the smaller anchor set; this change is for focused reproduction and paper
+evidence only.
+
+Local two-repeat artifact:
+`native-test-runs/20260621-101950-mul-large-upper-baselines-repeat2/matrix.tsv`
+
+| Operation | Runs With Safe Chunks | Repeat-Stable Chunk | Longest Span | Worst Pair Max | Decision |
+| --- | ---: | --- | ---: | ---: | --- |
+| `mul-dense-leaf-vs-scan` | `0/2` | none | `0` | `1.347154` | baseline-only |
+| `mul-karatsuba-view-vs-copy` | `0/2` | none | `0` | `1.522843` | baseline-only |
+| `mul-large-cpu-campaign` | `0/2` | none | `0` | `2.410811` | reject full-window route |
+| `mul-large-cpu-toom-full-audit` | `2/2` | `8192-24103` | `15912` | `1.371459` | recheck piecemeal chunk |
+
+Decision: the focused upper anchors reproduce the dense/view baselines without
+creating a promotion candidate. The useful novelty signal is the repeat-stable
+measured chunk on `mul-large-cpu-toom-full-audit`: it survived the two-run
+intersection from `8192` through `24103`, but its worst-pair max still blocks
+promotion. Treat it as a piecemeal route-audit target, not as proof that the
+full `4096` through `65536` dense window is solved.
+
 ## 2026-06-21: Ranked Focus Matrix
 
 `bench_focus_matrix.py` now writes `matrix_ranked.tsv` beside the complete

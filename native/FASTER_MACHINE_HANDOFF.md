@@ -4,6 +4,25 @@ This handoff captures the current bigint benchmark state and the next
 experiments to run on a faster CPU. Treat these notes as a reproducibility
 checklist, not as proof that a route should be promoted.
 
+## Current Stack-Drain Update
+
+Latest local focus artifact:
+
+`native-test-runs/20260621-101950-mul-large-upper-baselines-repeat2/matrix.tsv`
+
+`--bench-focus mul-large` now reproduces dense leaf and Karatsuba split-view
+baseline probes at `32768` and `65536` as well as `4096,8192,16384`, while the
+full benchmark ladder keeps the shorter baseline set to avoid slowing ordinary
+tests. In the two-repeat focus matrix, those baseline probes produced no
+repeat-stable safe chunk. The useful piecemeal signal was
+`mul-large-cpu-toom-full-audit` with repeat-stable chunk `8192-24103`,
+inclusive span `15912`, and `maxWorstPairRatio=1.371459`.
+
+Next action: treat `8192-24103` as a dense piecemeal audit/recheck target, not
+as a production route. Keep the paper claim bounded: Number X-Ray has verified
+GMP/MPIR outperformance pockets, plus sparse app-shaped wins, but the dense
+full-window route is still blocked by worst-pair safety.
+
 ## Current Baseline
 
 Latest merged bigint benchmark PR:

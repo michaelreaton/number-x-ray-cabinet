@@ -144,6 +144,32 @@ route beat GMP/MPIR at these five adjacent planned measurement points." It does
 not support the statement "this route beats GMP/MPIR for every decimal digit
 length from `4096` through `16384`."
 
+## Latest Focused Reproduction
+
+Recorded artifact path:
+
+`native-test-runs/20260621-101950-mul-large-upper-baselines-repeat2/matrix.tsv`
+
+This focused run extends the `mul-large` dense leaf and Karatsuba split-view
+baseline probes to the upper anchors `32768` and `65536` without widening the
+full benchmark ladder. It also reruns the full large-multiply campaign and
+chunk aggregation twice.
+
+Key repeat-stable results:
+
+| Operation | Repeat-Stable Chunk | Worst Pair Max | Interpretation |
+| --- | --- | ---: | --- |
+| `mul-dense-leaf-vs-scan` | none | `1.347154` | no dense baseline candidate |
+| `mul-karatsuba-view-vs-copy` | none | `1.522843` | no split-view baseline candidate |
+| `mul-large-cpu-campaign` | none | `2.410811` | no full-window route candidate |
+| `mul-large-cpu-toom-full-audit` | `8192-24103` | `1.371459` | piecemeal chunk to recheck, not promotable |
+
+This is the current best example of why the paper should track contiguous safe
+size chunks. A route can be scientifically useful over a measured chunk even
+when it is not ready for a default route. The next paper revision should keep
+this as a separate dense follow-up signal: it narrows the search for a
+piecemeal audit but does not strengthen the global GMP claim.
+
 ## Control Evidence: Transition GMP Duplicate
 
 Recorded artifact path:

@@ -192,6 +192,19 @@ Follow-up dense-pocket and repeat-control artifacts are recorded in
 `native/PERFORMANCE.md`; they are important because they show where tempting
 pockets failed stricter safety checks.
 
+A newer focused reproduction artifact is:
+
+`native-test-runs/20260621-101950-mul-large-upper-baselines-repeat2/matrix.tsv`
+
+That run extends the focused dense leaf and Karatsuba split-view baseline rows
+to `32768` and `65536` while preserving the full large-multiply campaign
+window. It does not create a dense production candidate. It does, however,
+show why contiguous safe-size tracking matters: `mul-large-cpu-toom-full-audit`
+had a repeat-stable measured chunk from `8192` through `24103`, while the
+dense leaf/view baseline probes and the full-window campaign produced no
+repeat-stable safe chunk. The chunk is useful as a future piecemeal audit
+target, but its `maxWorstPairRatio=1.371459` still blocks promotion.
+
 ## Main Result
 
 Operation:
@@ -296,6 +309,12 @@ result remains observe-only until a route clears the promotion bar.
 This is the central methodological point: measured pocket wins are useful, and
 piecemeal adoption is welcome, but only measured safe chunks can drive route
 changes.
+
+The newest focused `mul-large` repeat reinforces that point. It found a
+repeat-stable measured chunk for the full-workspace Toom audit row from `8192`
+through `24103`, but the worst-pair gate remained above `1.0`. The paper can
+therefore discuss the chunk as a research target and a good example of
+piecemeal evidence, not as a production-ready route.
 
 ## Negative Follow-Up Evidence
 
