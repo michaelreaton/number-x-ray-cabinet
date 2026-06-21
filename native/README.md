@@ -448,6 +448,7 @@ native\build\Release\xray_cli.exe --bench-focus mul-combo-transition --bench-fro
 native\build\Release\xray_cli.exe --bench-focus mul-combo-transition-controls --bench-frontier
 native\build\Release\xray_cli.exe --bench-focus mul-combo-handoff-pocket --bench-frontier
 python native\tools\bench_focus_repeat.py --cli native\build\Release\xray_cli.exe --focus mul-combo-handoff-pocket --runs 3
+python native\tools\bench_focus_matrix.py --cli native\build\Release\xray_cli.exe --runs 3 --focus mul-toom5-smoke --focus mul-toom-div-transition --focus mul-combo-handoff-pocket
 native\build\Release\xray_cli.exe --bench-progress native\build\native-test-runs\<run>\benchmark.tsv
 native\build\Release\xray_cli.exe --bench-min-digits 768 --bench-max-digits 1000 --bench-progress native\build\native-test-runs\<run>\benchmark.tsv
 native\build\Release\xray_cli.exe --bench-filter mul --bench-compare native\build-release\native-test-runs\<run>\benchmark.tsv native\build-ltcg\native-test-runs\<run>\benchmark.tsv
@@ -482,7 +483,9 @@ raw `benchmark.tsv` plus `benchmark_progress.tsv`, and print a compact safe
 chunk summary for repeated noise checks. The helper also writes
 `repeat_stable_chunks.tsv`, which intersects safe chunks by operation across
 all repeats so single-run pockets are easy to separate from repeat-stable
-piecemeal candidates. Use
+piecemeal candidates. Use `native/tools/bench_focus_matrix.py` to run several
+focus labels in one sweep and write a top-level `matrix.tsv` that compares
+repeat-stable chunks across route families. Use
 `--bench-progress-tsv` when another tool needs the same progress classification
 as a TSV table instead of prose. Use `--bench-compare`
 to review two benchmark TSV artifacts, such as Release versus `/GL`, and

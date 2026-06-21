@@ -1515,6 +1515,10 @@ Run these in order.
      TSV/progress TSV artifact, and print the safe-chunk summary table. The
      helper also writes `repeat_stable_chunks.tsv`, an operation-level
      intersection of chunks that stayed safe in every repeat.
+   - Use `python native/tools/bench_focus_matrix.py --cli <xray_cli> --runs 3
+     --focus mul-toom5-smoke --focus mul-toom-div-transition --focus
+     mul-combo-handoff-pocket` when you want one first-pass novelty matrix
+     across several cheap focus families before choosing a deeper audit.
    - Read `safeSizeChunks` and `longestSafeSizeChunk*` as contiguous measured
      benchmark points only. They are useful for piecemeal follow-up audits over
      promising pockets, but they do not prove every unmeasured digit between the
