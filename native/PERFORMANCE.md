@@ -4791,6 +4791,29 @@ backend gap did not produce a repeat-stable measured chunk, so the next
 multiply novelty should look for a different route shape or a lower-level
 change not covered by the existing unroll4 addmul probes.
 
+## 2026-06-21: Toom-4 Top Smoke Focus
+
+Local repeat artifact:
+`native-test-runs/20260621-091800-toom4-top-repeat3/repeat_stable_chunks.tsv`
+
+This pass adds and exercises `--bench-focus mul-toom4-top`, a narrowed
+upper-window smoke for existing Toom-4 topology scouts. The focus runs the
+reuse, factored-div, and vs-combo rows over `24103` and `32768` only, keeping
+the focus around 30 seconds per run instead of repeating the full upper-window
+Toom-4 audit.
+
+Three-repeat result:
+
+| Operation | Runs With Safe Chunks | Repeat-Stable Chunk | Worst Pair Max | Decision |
+| --- | ---: | --- | ---: | --- |
+| `mul-large-toom4-top-fdiv` | `0/3` | none | `1.261945` | reject |
+| `mul-large-toom4-top-reuse` | `1/3` | none | `1.201823` | reject |
+| `mul-large-toom4-top-vs-cmb` | `0/3` | none | `1.252331` | reject |
+
+Decision: keep the focus label for cheap future CPU/build reruns, but do not
+spend the next novelty slice widening Toom-4 top routes. The only safe chunk
+was a single-run `24103` reuse blip that disappeared under repeat intersection.
+
 ## 2026-06-21: Toom Div Transition Focus
 
 Local Release validation artifact

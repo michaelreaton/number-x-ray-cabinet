@@ -20742,6 +20742,7 @@ static void run_mul_combo_focus_cases(XrayBenchmarkReport *report, const char *f
   const size_t mul_full_workspace_transition_control_digits[] = {11717, 16384};
   const size_t mul_full_workspace_transition_tournament_digits[] = {11717, 16384, 24103};
   const size_t mul_full_workspace_handoff_pocket_digits[] = {10007, 10733, 11717, 12553, 13649, 14831, 16384};
+  const size_t mul_full_workspace_toom4_smoke_digits[] = {24103, 32768};
   const size_t mul_full_workspace_toom5_smoke_digits[] = {5639, 8192};
   const size_t mul_full_workspace_toom5_handoff_smoke_digits[] = {11717, 16384};
   int any_combo = benchmark_focus_any_mul_combo(focus);
@@ -20749,6 +20750,7 @@ static void run_mul_combo_focus_cases(XrayBenchmarkReport *report, const char *f
   int transition_controls_focus = benchmark_focus_eq(focus, "mul-combo-transition-controls");
   int handoff_pocket_focus = benchmark_focus_eq(focus, "mul-combo-handoff-pocket");
   int toom5_smoke_focus = benchmark_focus_eq(focus, "mul-toom5-smoke");
+  int toom4_top_focus = benchmark_focus_eq(focus, "mul-toom4-top");
 
   if (any_combo || benchmark_focus_eq(focus, "mul-combo-lower")) {
     run_mul_full_workspace_depth_scout_case(
@@ -20927,6 +20929,27 @@ static void run_mul_combo_focus_cases(XrayBenchmarkReport *report, const char *f
       "transition",
       "large-multiply-cpu-toom-combo-gmp-control-transition",
       "transition-window");
+  }
+
+  if (toom4_top_focus) {
+    run_mul_toom4_top_reuse_scout_case(
+      report,
+      1393U,
+      "full-workspace-toom4-top-reuse-smoke-ge24103",
+      mul_full_workspace_toom4_smoke_digits,
+      sizeof(mul_full_workspace_toom4_smoke_digits) / sizeof(mul_full_workspace_toom4_smoke_digits[0]));
+    run_mul_toom4_top_factored_div_scout_case(
+      report,
+      1451U,
+      "full-workspace-toom4-top-factored-div-smoke-ge24103",
+      mul_full_workspace_toom4_smoke_digits,
+      sizeof(mul_full_workspace_toom4_smoke_digits) / sizeof(mul_full_workspace_toom4_smoke_digits[0]));
+    run_mul_toom4_top_vs_combo_reuse_scout_case(
+      report,
+      1463U,
+      "full-workspace-toom4-top-vs-combo-reuse-smoke-ge24103",
+      mul_full_workspace_toom4_smoke_digits,
+      sizeof(mul_full_workspace_toom4_smoke_digits) / sizeof(mul_full_workspace_toom4_smoke_digits[0]));
   }
 
   if (any_combo || benchmark_focus_eq(focus, "mul-combo-upper")) {

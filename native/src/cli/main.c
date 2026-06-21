@@ -16,8 +16,9 @@ static void usage(const char *argv0) {
   fprintf(stderr, "       %s [--bench-min-digits N] [--bench-max-digits N] [--bench-filter TEXT] --bench-progress-tsv artifact.tsv\n", argv0);
   fprintf(stderr, "       %s [--bench-min-digits N] [--bench-max-digits N] [--bench-filter TEXT] --bench-compare left.tsv right.tsv\n", argv0);
   fprintf(stderr, "Focus examples: mul-large, mul-toom5-smoke, mul-toom-div-transition,\n");
-  fprintf(stderr, "                mul-toom-div, mul-backend-gap, mul-combo-lower,\n");
-  fprintf(stderr, "                mul-combo-transition, mul-combo-upper, mul-combo-reuse,\n");
+  fprintf(stderr, "                mul-toom-div, mul-toom4-top, mul-backend-gap,\n");
+  fprintf(stderr, "                mul-combo-lower, mul-combo-transition, mul-combo-upper,\n");
+  fprintf(stderr, "                mul-combo-reuse,\n");
   fprintf(stderr, "                mul-novelty\n");
 }
 
