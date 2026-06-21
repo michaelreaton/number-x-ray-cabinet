@@ -4228,3 +4228,40 @@ The reuse win is real, including at deterministic random spots, but it does
 not clear stable-pair, worst-pair, safe-size, or GMP/MPIR gates. The next
 multiply step should change the arithmetic shape or handoff strategy rather
 than only shaving recursive point-product allocation.
+
+## 2026-06-20: Top-Level Toom-4 Inner-Handoff Scout
+
+Local Release validation artifact
+`native-test-runs/20260620-054314-c4b04caf` adds
+`mul-large-toom4-top-handoff`, a benchmark-only handoff scout for the reusable
+top-level Toom-4 route. The candidate is `full-ws-toom4-top-reuse-l64d2`; the
+baseline is `full-ws-toom4-top-reuse-l48d3`; current production multiply and
+`mpz_mul` remain in the same timing run.
+
+Observed aggregate:
+
+- Exact parity/hash passed:
+  `hashSafe=72/72`, `hashGate=matched`, `parity=matched`.
+- `leaf64/depth2` improves median time over `leaf48/depth3` at every measured
+  upper size, but only barely at `65536`:
+  `candBaseMax=0.995`.
+- It still fails the strict gate:
+  `safeSizes=0/4`, `maxWorstPairRatio=1.255`.
+- It remains faster than current production multiply:
+  `candCurrentMax=0.650`.
+- It is not competitive with GMP/MPIR at the high end:
+  `candGmpMax=1.134`.
+
+Per-size point rows:
+
+| Digits | L64D2 / L48D3 Toom-4 | L64D2 / Current | L64D2 / GMP | L48D3 / GMP | Current / GMP | Worst Pair | Stable vs L48D3 | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `24103` | `0.961` | `0.650` | `0.987` | `1.040` | `1.519` | `1.103` | `6/9` | `5/9` | toom4-handoff-baseline-regression |
+| `32768` | `0.946` | `0.630` | `1.068` | `1.107` | `1.720` | `1.221` | `6/9` | `1/9` | toom4-handoff-baseline-regression |
+| `52163` | `0.967` | `0.584` | `1.053` | `1.088` | `1.826` | `1.255` | `6/9` | `2/9` | toom4-handoff-baseline-regression |
+| `65536` | `0.995` | `0.601` | `1.134` | `1.159` | `1.881` | `1.198` | `1/9` | `0/9` | toom4-handoff-baseline-regression |
+
+Decision: reject the `leaf64/depth2` inner handoff for promotion. The median
+improvement is real but too thin and too unstable, especially at `65536`, and
+the route remains GMP/MPIR and worst-pair unsafe. Do not continue by only
+tuning the inner Toom-3 leaf/depth pair.
