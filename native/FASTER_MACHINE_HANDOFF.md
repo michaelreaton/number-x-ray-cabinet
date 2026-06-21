@@ -50,6 +50,16 @@ repeat-stable safe chunks in `repeat_stable_chunks.tsv` and `matrix.tsv`.
 MPIR in both repeats. Keep this as paper honesty evidence, not a dense route
 promotion signal.
 
+Linux GMP sparse-paper cross-check:
+
+GitHub Actions run `27910603343` uploaded
+`native-test-runs/27910603343-linux-sparse-paper/matrix.tsv` from Ubuntu 24.04,
+GCC `13.3.0`, GMP `6.3.0`, Release/no-IPO, on an AMD EPYC 9V74 virtual CPU.
+`sparse-production-mul` stayed repeat-stable across `4096-65536` with
+`maxWorstPairRatio=0.190476`. Dense controls were exact but control-only and
+lost to GMP at every sampled point; `mul-dense-control` had no repeat-stable
+safe chunk and `maxWorstPairRatio=3.984733`.
+
 Backend recheck:
 
 `native-test-runs/20260621-103933-backend-gap-repeat5/matrix.tsv`
@@ -64,9 +74,9 @@ from the rejected full-workspace audit, backend unroll4, Toom-4/Toom-5,
 div-transition, and handoff boundary dense families. Keep the paper claim
 bounded: Number X-Ray has verified GMP/MPIR outperformance pockets, plus sparse
 app-shaped wins, but the dense full-window route is still blocked by worst-pair
-safety. Use the manual `Sparse Paper Benchmark` GitHub Actions workflow when a
-non-Windows GMP artifact is needed for the paper; it does not run on ordinary
-pull requests.
+safety. The manual `Sparse Paper Benchmark` GitHub Actions workflow now has one
+successful Linux GMP artifact and remains available for higher-repeat paper
+refreshes without running on ordinary pull requests.
 
 ## Current Baseline
 
