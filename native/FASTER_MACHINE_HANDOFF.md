@@ -1136,6 +1136,45 @@ GMP/MPIR. The next CPU multiply work should use this control-aware methodology
 and move to a different arithmetic structure or broader handoff, not another
 simple Toom-4/top-level variant.
 
+## 2026-06-20: Toom-3 Neg2 Arithmetic-Shape Scout
+
+Artifact:
+`native/build-codex-neg2-msvc142-nmake/native-test-runs/20260620-104543-c4b04caf`
+
+Validation: `native/build-codex-neg2-msvc142-nmake/xray_native_tests.exe`
+printed `native xray tests passed` with the Release MSVC 14.29 NMake build.
+
+This run adds `mul-large-toom-cmb-neg2`, a benchmark-only reusable Toom-3
+combo scout that evaluates the non-unit Toom-3 point at `-2` instead of `+2`
+and interpolates back to the normal coefficient order. It compares
+`full-ws-combo-reuse-neg2-l64d2-l48d4-l48d3` against the current reusable
+combo map on the same upper mixed window: `24103`, `32768`, `52163`, and
+`65536`. It preserves the deterministic random spots and power-of-two anchors
+and remains diagnostic only: `noAutoRoute=1`, `replacementReady=false`,
+production multiply unchanged.
+
+Summary:
+
+| Row | Sizes | Neg2 / Reuse Map Max | Neg2 / Current Max | Neg2 / GMP Max | Reuse Map / GMP Max | Current / GMP Max | Worst Pair Max | Safe Sizes | Hash Safe | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `mul-large-toom-cmb-neg2` | `24103,32768,52163,65536` | `1.065` | `0.614` | `1.111` | `1.080` | `1.980` | `1.199` | `0/4` | `72/72` | observe only |
+
+Per-size signal:
+
+| Digits | Neg2 / Reuse Map | Neg2 / Current | Neg2 / GMP | Reuse Map / GMP | Current / GMP | Worst Pair | Stable vs Reuse | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `24103` | `0.980` | `0.556` | `0.950` | `0.996` | `1.764` | `1.199` | `4/9` | `8/9` | reuse-neg2-baseline-regression |
+| `32768` | `1.065` | `0.614` | `1.059` | `1.018` | `1.673` | `1.108` | `1/9` | `1/9` | reuse-neg2-baseline-regression |
+| `52163` | `1.020` | `0.544` | `1.015` | `1.006` | `1.865` | `1.180` | `4/9` | `3/9` | reuse-neg2-baseline-regression |
+| `65536` | `1.006` | `0.531` | `1.111` | `1.080` | `1.980` | `1.168` | `3/9` | `1/9` | reuse-neg2-baseline-regression |
+
+Decision: reject the neg2 Toom-3 arithmetic shape as a promotion direction.
+It is exact and still much faster than current production multiply, but it
+does not beat the reusable combo map at any upper-window size under the strict
+baseline, stability, worst-pair, and GMP/MPIR gates. The result usefully rules
+out a signed evaluation/interpolation reshuffle as the next fix for the
+backend gap.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor
@@ -1195,9 +1234,10 @@ Do not promote a bigint route unless all are true:
 The strongest current clue is now structural: reusable workspace removes a real
 amount of route overhead and beats current production multiply everywhere, but
 the high end still cannot consistently beat GMP/MPIR, and factored exact
-division plus top-level Toom-4-vs-combo reuse audits did not move the strict
-gates. Keep future scouts on the mixed window with deterministic in-between
-sizes, not only power-of-two anchors. The next multiply work should try a
-different arithmetic shape below or beyond Toom-4, then use the same exact
-parity, worst-pair, stable-pair, and same-run route gates before considering
-production routing.
+division, top-level Toom-4-vs-combo reuse, and the Toom-3 neg2 arithmetic-shape
+scout did not move the strict gates. Keep future scouts on the mixed window
+with deterministic in-between sizes, not only power-of-two anchors. The next
+multiply work should try a broader handoff or a deeper multiplication structure
+below or beyond these Toom-3/Toom-4 reshuffles, then use the same exact parity,
+worst-pair, stable-pair, and same-run route gates before considering production
+routing.

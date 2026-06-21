@@ -4389,3 +4389,43 @@ spot because it is median-positive but misses the stable-pair bar by one pair;
 `32768`, `52163`, and `65536` remain slower than GMP/MPIR. The next multiply
 work should keep the control-aware same-run methodology and move to a different
 arithmetic shape or broader handoff.
+
+## 2026-06-20: Toom-3 Neg2 Arithmetic-Shape Scout
+
+Local Release validation artifact
+`native/build-codex-neg2-msvc142-nmake/native-test-runs/20260620-104543-c4b04caf`
+adds `mul-large-toom-cmb-neg2`, a benchmark-only reusable Toom-3 combo scout
+that evaluates the non-unit point at `-2` instead of `+2`. The candidate is
+`full-ws-combo-reuse-neg2-l64d2-l48d4-l48d3`; the baseline is the regular
+reusable combo map `full-ws-combo-reuse-map-l64d2-l48d4-l48d3`; current
+production multiply and `mpz_mul` remain in the same timing run for `24103`,
+`32768`, `52163`, and `65536`.
+
+Observed aggregate:
+
+- Exact parity/hash passed:
+  `hashSafe=72/72`, `hashGate=matched`, `parity=matched`.
+- Neg2 does not beat the reusable combo map:
+  `candBaseMax=1.065`, `safeSizes=0/4`.
+- It remains faster than current production multiply:
+  `candCurrentMax=0.614`.
+- It is still not competitive with GMP/MPIR at the high end:
+  `candGmpMax=1.111`.
+- Worst-pair safety remains blocked:
+  `maxWorstPairRatio=1.199`.
+
+Per-size point rows:
+
+| Digits | Neg2 / Reuse Map | Neg2 / Current | Neg2 / GMP | Reuse Map / GMP | Current / GMP | Worst Pair | Stable vs Reuse | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `24103` | `0.980` | `0.556` | `0.950` | `0.996` | `1.764` | `1.199` | `4/9` | `8/9` | reuse-neg2-baseline-regression |
+| `32768` | `1.065` | `0.614` | `1.059` | `1.018` | `1.673` | `1.108` | `1/9` | `1/9` | reuse-neg2-baseline-regression |
+| `52163` | `1.020` | `0.544` | `1.015` | `1.006` | `1.865` | `1.180` | `4/9` | `3/9` | reuse-neg2-baseline-regression |
+| `65536` | `1.006` | `0.531` | `1.111` | `1.080` | `1.980` | `1.168` | `3/9` | `1/9` | reuse-neg2-baseline-regression |
+
+Decision: reject neg2 as a promotion direction. The probe is exact and useful,
+but the signed evaluation/interpolation arithmetic shape fails every upper
+safe-size gate against the reusable combo map and does not solve the GMP/MPIR
+backend gap. Future multiply work should use the same mixed-window methodology
+but move to a broader handoff or a different multiplication structure, not
+another small Toom-3 interpolation reshuffle.
