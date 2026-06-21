@@ -11774,8 +11774,13 @@ static void test_full_audit_probe_visibility_contract(void) {
   xray_benchmark_report_clear(&report);
 }
 
-static int should_run_native_test(int argc, char **argv, const char *name, const char *group) {
-  if (argc <= 1) return 1;
+static int should_run_native_test(
+  int argc,
+  char **argv,
+  const char *name,
+  const char *group,
+  int run_by_default) {
+  if (argc <= 1) return run_by_default;
   for (int index = 1; index < argc; ++index) {
     const char *arg = argv[index];
     if (strncmp(arg, "--only=", 7) == 0) arg += 7;
@@ -11786,14 +11791,37 @@ static int should_run_native_test(int argc, char **argv, const char *name, const
 
 #define RUN_NATIVE_TEST(name, group) \
   do { \
-    if (should_run_native_test(argc, argv, #name, group)) { \
+    if (should_run_native_test(argc, argv, #name, group, 1)) { \
       name(); \
       ran_tests++; \
     } \
   } while (0)
 
+#define RUN_NATIVE_TEST_OPT_IN(name, group) \
+  do { \
+    if (should_run_native_test(argc, argv, #name, group, 0)) { \
+      name(); \
+      ran_tests++; \
+    } \
+  } while (0)
+
+static void test_native_test_filter_contract(void) {
+  char *default_args[] = {"xray_native_tests"};
+  char *benchmark_args[] = {"xray_native_tests", "--only=benchmark"};
+  char *benchmark_full_args[] = {"xray_native_tests", "--only=benchmark-full"};
+  char *benchmark_exact_args[] = {"xray_native_tests", "--only=test_benchmarks"};
+
+  CHECK(should_run_native_test(1, default_args, "test_benchmark_tsv_comparison", "benchmark", 1));
+  CHECK(!should_run_native_test(1, default_args, "test_benchmarks", "benchmark-full", 0));
+  CHECK(should_run_native_test(2, benchmark_args, "test_benchmark_tsv_comparison", "benchmark", 1));
+  CHECK(!should_run_native_test(2, benchmark_args, "test_benchmarks", "benchmark-full", 0));
+  CHECK(should_run_native_test(2, benchmark_full_args, "test_benchmarks", "benchmark-full", 0));
+  CHECK(should_run_native_test(2, benchmark_exact_args, "test_benchmarks", "benchmark-full", 0));
+}
+
 int main(int argc, char **argv) {
   int ran_tests = 0;
+  RUN_NATIVE_TEST(test_native_test_filter_contract, "runtime");
   RUN_NATIVE_TEST(test_parse_messy_input, "parser");
   RUN_NATIVE_TEST(test_public_allocator_contract, "runtime");
   RUN_NATIVE_TEST(test_runtime_version_contract, "runtime");
@@ -11831,7 +11859,7 @@ int main(int argc, char **argv) {
   RUN_NATIVE_TEST(test_benchmark_focus_api, "benchmark");
   RUN_NATIVE_TEST(test_sparse_benchmark_visibility_contract, "artifacts");
   RUN_NATIVE_TEST(test_full_audit_probe_visibility_contract, "artifacts");
-  RUN_NATIVE_TEST(test_benchmarks, "benchmark");
+  RUN_NATIVE_TEST_OPT_IN(test_benchmarks, "benchmark-full");
   if (ran_tests == 0) {
     fprintf(stderr, "no native tests matched filter\n");
     return 2;

@@ -54,6 +54,10 @@ other than vcpkg. Windows GTK builds copy `*.dll` files from
 `<XRAY_GTK_ROOT>/bin` beside `xray_workbench.exe` by default so the executable
 can be launched directly from the build folder; set
 `-DXRAY_GTK_COPY_RUNTIME_DLLS=OFF` when another packaging step owns runtime DLLs.
+CMake also copies discovered GMP/MPIR runtime DLLs beside `xray_cli`,
+`xray_native_tests`, and `xray_workbench` on Windows. If configuration prints a
+runtime DLL warning, set `PATH` manually or point CMake at the expected GMP/MPIR
+prefix.
 
 Linux/macOS with GMP and GTK4 development packages:
 
@@ -469,12 +473,15 @@ native\build\Release\xray_cli.exe --bench-progress-tsv native\build\native-test-
 native\build\Release\xray_cli.exe --bench-compare native\build-release\native-test-runs\<run>\benchmark.tsv native\build-ltcg\native-test-runs\<run>\benchmark.tsv
 native\build\Release\xray_native_tests.exe --only=runtime
 native\build\Release\xray_native_tests.exe --only=bigint --only=parser --only=ffi --only=solver --only=artifacts
+native\build\Release\xray_native_tests.exe --only=benchmark
+native\build\Release\xray_native_tests.exe --only=benchmark-full
 native\build\Release\xray_cli.exe --rsa260
 ```
 
-For local Windows builds that link MPIR dynamically through vcpkg, put the MPIR
-runtime on `PATH` before invoking `xray_cli.exe`, for example:
-`$env:PATH = "C:\vcpkg\installed\x64-windows\bin;$env:PATH"`.
+`xray_native_tests` keeps the expensive benchmark integration run out of the
+default and `--only=benchmark` paths. Use `--only=benchmark-full` or
+`--only=test_benchmarks` only when you explicitly want the full benchmark ladder
+and artifact generation.
 
 The CLI emits the same reproducible JSON shape used by the GTK app. Use
 `--bench-frontier` when you want stdout to show the human-readable benchmark
