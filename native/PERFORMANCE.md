@@ -4,6 +4,11 @@ This file records measured bigint performance decisions for the native workbench
 Benchmarks are local and noisy, so a result is actionable only when it has exact
 parity plus a stable same-run paired win.
 
+For the paper-style account of the current GMP/MPIR outperformance evidence,
+see [`SPARSE_GMP_OUTPERFORMANCE_PAPER.md`](SPARSE_GMP_OUTPERFORMANCE_PAPER.md).
+That writeup deliberately scopes the win to app-shaped sparse multiplication;
+dense full-window multiply is still a separate research campaign.
+
 ## Current Rules
 
 - `replacementReady` requires exact parity, paired-median speed within the row
