@@ -37,6 +37,19 @@ Sparse remains the only broad audit-ready multiply lane. The matrix also found
 `maxWorstPairRatio=0.971908`, but the full `mul-unroll4-vs-scratch` route still
 did not inherit that safety (`8192` only, `maxWorstPairRatio=1.363171`).
 
+Sparse paper detail refresh:
+
+`native-test-runs/20260621-121430-sparse-paper-detail-repeat2/matrix.tsv`
+
+The refreshed `--preset sparse-paper --keep-all-progress-rows` run keeps
+detailed `mul-dense-control` rows in `summary.tsv` while preserving aggregate
+repeat-stable safe chunks in `repeat_stable_chunks.tsv` and `matrix.tsv`.
+`sparse-production-mul` stayed repeat-stable across `4096-65536` with
+`maxWorstPairRatio=0.247059`. Dense controls were exact and control-only:
+`4096` and `11717` were locally faster in both repeats, while `65536` lost to
+MPIR in both repeats. Keep this as paper honesty evidence, not a dense route
+promotion signal.
+
 Backend recheck:
 
 `native-test-runs/20260621-103933-backend-gap-repeat5/matrix.tsv`

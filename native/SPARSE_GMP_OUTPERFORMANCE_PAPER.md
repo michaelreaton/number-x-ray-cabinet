@@ -200,6 +200,35 @@ This second matrix matters because it was not only a sparse rerun. It swept
 several post-pocket novelty lanes and still found sparse multiplication as the
 only broad audit-ready multiply lane.
 
+Refreshed sparse-paper control artifact:
+
+`native-test-runs/20260621-121430-sparse-paper-detail-repeat2/matrix.tsv`
+
+This refreshed Windows MPIR-compatible run used `--keep-all-progress-rows`, so
+the artifact preserves both aggregate contiguous safe chunks and the
+per-size dense-control rows. The primary `sparse-production-mul` row remained
+repeat-stable over the full measured grid:
+
+| Operation | Runs With Safe Chunks | Repeat-Stable Chunk | Worst Pair Max | Status |
+| --- | ---: | --- | ---: | --- |
+| `sparse-production-mul` | `2/2` | `4096-65536` | `0.247059` | `replacement-ready` |
+| `sparse-zero-mul` | `2/2` | `4096-65536` | `0.247059` | `candidate-faster` |
+| `sparse-production-pair-mul` | `2/2` | `5639-65536` | `1.076923` | `replacement-ready/parity` |
+| `mul-dense-control` | `0/2` | none | `1.876424` | `control-parity` |
+
+Dense-control rows from the same preserved artifact:
+
+| Bits | Digits | Run 1 Scratch/GMP us | Run 1 Ratio | Run 1 Stable Pairs | Run 2 Scratch/GMP us | Run 2 Ratio | Run 2 Stable Pairs |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `4096` | `1234` | `19/24` | `0.760000` | `3/3` | `10/12` | `0.833333` | `3/3` |
+| `11717` | `3528` | `111/144` | `0.770833` | `3/3` | `60/72` | `0.845070` | `3/3` |
+| `65536` | `19729` | `1306/814` | `1.610825` | `0/3` | `1214/784` | `1.554847` | `0/3` |
+
+All dense-control rows were exact against `mpz_mul`, marked
+`controlSafety=paper-dense-control`, and kept `replacementReady=false`. The
+upper anchor losing to MPIR is useful negative evidence: the sparse paper can
+claim a shape-selective sparse win without implying dense-route superiority.
+
 ## Dense Multiply Negative Results
 
 The sparse result should not be blurred into a generic "we beat GMP" claim.
@@ -272,9 +301,10 @@ The next evidence step is not a broader claim. It is a tighter sparse paper
 package:
 
 - Rerun `mul-sparse` on at least one non-Windows GMP build and one Windows MPIR
-  build.
-- Add the dense-control rows to the per-size evidence table once a refreshed
-  sparse-paper artifact has been preserved.
+  build; the refreshed Windows MPIR-compatible dense-control artifact is now
+  preserved locally.
+- Keep dense-control rows in the per-size evidence table whenever the sparse
+  paper artifact is refreshed.
 - Keep extending the benchmark visibility contract if new paper rows are added,
   so TSV, JSON/frontier/progress text, and GUI-visible summaries stay aligned.
 - Keep tracking contiguous safe chunks, including interior points between
