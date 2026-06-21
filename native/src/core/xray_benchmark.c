@@ -7364,6 +7364,19 @@ typedef struct {
 } XrayMulComboTournamentLabels;
 
 typedef struct {
+  const char *aggregate_name_prefix;
+  const char *aggregate_operation;
+  const char *point_name;
+  const char *point_operation;
+  const char *point_detail_op;
+  const char *parent;
+  const char *feature_gate;
+  const char *gmp_clue;
+  const char *threshold_safety;
+  const char *clean_status;
+} XrayMulComboHandoffLabels;
+
+typedef struct {
   char aggregate_operation[32];
   char point_operation[32];
   char point_detail_op[32];
@@ -8408,6 +8421,32 @@ static int mul_full_workspace_combo_handoff_uses_upper(size_t digits, size_t han
   return handoff_digits > 0 && digits >= handoff_digits;
 }
 
+static const XrayMulComboHandoffLabels mul_combo_handoff_full_labels = {
+  "policy audit mul combo handoff",
+  "mul-large-toom-cmb-hand",
+  "kernel large mul combo handoff point",
+  "mul-large-toom-cmb-hand-pt",
+  "mul-cmb-hand-point",
+  "cmb-hand-audit",
+  "large-multiply-cpu-toom-combo-handoff32768",
+  "toom33-combo-l64d2-to-l48d3-handoff",
+  "full-window",
+  "combo-handoff-clean"
+};
+
+static const XrayMulComboHandoffLabels mul_combo_handoff_pocket_labels = {
+  "policy audit mul combo handoff pocket",
+  "mul-large-toom-cmb-hpocket",
+  "kernel large mul combo handoff pocket point",
+  "mul-large-toom-cmb-hpocket-pt",
+  "mul-cmb-handoff-pocket-point",
+  "cmb-handoff-pocket-audit",
+  "large-multiply-cpu-toom-combo-handoff-pocket",
+  "toom33-combo-handoff-transition-pocket",
+  "transition-pocket",
+  "combo-handoff-pocket-clean"
+};
+
 static size_t mul_full_workspace_combo_handoff_leaf(size_t digits, size_t handoff_digits) {
   return mul_full_workspace_combo_handoff_uses_upper(digits, handoff_digits) ? 48U : 64U;
 }
@@ -8424,6 +8463,7 @@ static const char *mul_full_workspace_combo_handoff_active_candidate(size_t digi
 
 static void append_mul_full_workspace_combo_handoff_result(
   XrayBenchmarkReport *report,
+  const XrayMulComboHandoffLabels *labels,
   const char *policy,
   const char *sizes,
   size_t handoff_digits,
@@ -8431,6 +8471,7 @@ static void append_mul_full_workspace_combo_handoff_result(
   size_t point_count,
   size_t sample_count) {
   if (!report || !policy || !points || point_count == 0) return;
+  if (!labels) labels = &mul_combo_handoff_full_labels;
   size_t required_stable = policy_required_stable_samples(sample_count);
   size_t safe_size_count = 0;
   XraySafeSizeChunks safe_chunks;
@@ -8494,9 +8535,9 @@ static void append_mul_full_workspace_combo_handoff_result(
 
   XrayBenchmarkResult result;
   memset(&result, 0, sizeof(result));
-  snprintf(result.name, sizeof(result.name), "policy audit mul combo handoff %zu", handoff_digits);
+  snprintf(result.name, sizeof(result.name), "%s %zu", labels->aggregate_name_prefix, handoff_digits);
   snprintf(result.category, sizeof(result.category), "policy-gate");
-  snprintf(result.operation, sizeof(result.operation), "mul-large-toom-cmb-hand");
+  snprintf(result.operation, sizeof(result.operation), "%s", labels->aggregate_operation);
   result.digits = points[point_count - 1U].digits;
   result.scratch_us = candidate_us ? candidate_us : 1;
   result.gmp_us = current_us ? current_us : 1;
@@ -8515,11 +8556,12 @@ static void append_mul_full_workspace_combo_handoff_result(
     (!current_ratio_safe ? "current-regression" :
     (!backend_ratio_safe ? "backend-regression" :
     (!worst_pair_safe ? "worst-pair-regression" :
-    (!stable_safe ? "needs-stability" : "combo-handoff-clean"))))));
+    (!stable_safe ? "needs-stability" : labels->clean_status))))));
   result.passed = parity && hash_gate;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=mul-large-toom-cmb-hand policy=%s sizes=%s sizeCount=%zu minDigits=%zu handoffDigits=%zu lowerLeaf=64 upperLeaf=48 lowerDepth=2 upperDepth=3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu safeSizeChunks=%s longestSafeSizeChunk=%s longestSafeSizeChunkCount=%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom-combo-handoff32768 gmpClue=toom33-combo-l64d2-to-l48d3-handoff forcedCandidate=yes thresholdSafety=full-window candidate=full-ws-combo-handoff-l64d2-l48d3 activeCandidate=mixed-by-size lowerCandidate=full-ws-combo-l64d2 upperCandidate=full-ws-combo-l48d3 baseline=current-scratch-mul oracle=mpz_mul candCurrentMax=%.3f candGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
+    "op=%s policy=%s sizes=%s sizeCount=%zu minDigits=%zu handoffDigits=%zu lowerLeaf=64 upperLeaf=48 lowerDepth=2 upperDepth=3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu safeSizeChunks=%s longestSafeSizeChunk=%s longestSafeSizeChunkCount=%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=%s gmpClue=%s forcedCandidate=yes thresholdSafety=%s candidate=full-ws-combo-handoff-l64d2-l48d3 activeCandidate=mixed-by-size lowerCandidate=full-ws-combo-l64d2 upperCandidate=full-ws-combo-l48d3 baseline=current-scratch-mul oracle=mpz_mul candCurrentMax=%.3f candGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
+    labels->aggregate_operation,
     policy,
     sizes ? sizes : "unknown",
     point_count,
@@ -8539,6 +8581,9 @@ static void append_mul_full_workspace_combo_handoff_result(
     hash_gate ? "matched" : "blocked",
     parity ? "matched" : "blocked",
     result.adoption,
+    labels->feature_gate,
+    labels->gmp_clue,
+    labels->threshold_safety,
     max_candidate_current_ratio,
     max_candidate_gmp_ratio,
     max_current_gmp_ratio,
@@ -8548,11 +8593,13 @@ static void append_mul_full_workspace_combo_handoff_result(
 
 static void append_mul_full_workspace_combo_handoff_point_result(
   XrayBenchmarkReport *report,
+  const XrayMulComboHandoffLabels *labels,
   const char *policy,
   size_t handoff_digits,
   const XrayMulThresholdRouteAuditPoint *point,
   size_t sample_count) {
   if (!report || !policy || !point) return;
+  if (!labels) labels = &mul_combo_handoff_full_labels;
   size_t required_stable = policy_required_stable_samples(sample_count);
   size_t expected_hash_count = sample_count * XRAY_MUL_OPERAND_FAMILIES;
   int hash_gate = point->hash_match_count == expected_hash_count;
@@ -8573,9 +8620,9 @@ static void append_mul_full_workspace_combo_handoff_point_result(
 
   XrayBenchmarkResult result;
   memset(&result, 0, sizeof(result));
-  snprintf(result.name, sizeof(result.name), "kernel large mul combo handoff point %zu digits", point->digits);
+  snprintf(result.name, sizeof(result.name), "%s %zu digits", labels->point_name, point->digits);
   snprintf(result.category, sizeof(result.category), "kernel-probe");
-  snprintf(result.operation, sizeof(result.operation), "mul-large-toom-cmb-hand-pt");
+  snprintf(result.operation, sizeof(result.operation), "%s", labels->point_operation);
   result.digits = point->digits;
   result.scratch_us = point->candidate_us ? point->candidate_us : 1;
   result.gmp_us = point->current_us ? point->current_us : 1;
@@ -8594,11 +8641,13 @@ static void append_mul_full_workspace_combo_handoff_point_result(
     !point->parity ? "mismatch" :
     (!hash_gate ? "hash-mismatch" :
     (!current_safe ? "current-regression" :
-    (!backend_safe ? "backend-regression" : "combo-handoff-clean"))));
+    (!backend_safe ? "backend-regression" : labels->clean_status))));
   result.passed = point->parity && hash_gate;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=mul-cmb-hand-point parent=cmb-hand-audit policy=%s sizeRole=%s handoffDigits=%zu leafThreshold=%zu depthLimit=%zu lowerLeaf=64 upperLeaf=48 lowerDepth=2 upperDepth=3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu stablePairs=%zu/%zu stableCurrent=%zu/%zu stableGmp=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom-combo-handoff32768 gmpClue=toom33-combo-l64d2-to-l48d3-handoff thresholdSafety=full-window candidate=full-ws-combo-handoff-l64d2-l48d3 activeCandidate=%s lowerCandidate=full-ws-combo-l64d2 upperCandidate=full-ws-combo-l48d3 baseline=current-scratch-mul oracle=mpz_mul candCurrentRatio=%.3f candGmpRatio=%.3f currentGmpRatio=%.3f worstPairRatio=%.3f currentWorst=%.3f gmpWorst=%.3f ratioMethod=paired-median timingMode=rotating sameInput=yes sameRunAudit=yes",
+    "op=%s parent=%s policy=%s sizeRole=%s handoffDigits=%zu leafThreshold=%zu depthLimit=%zu lowerLeaf=64 upperLeaf=48 lowerDepth=2 upperDepth=3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu stablePairs=%zu/%zu stableCurrent=%zu/%zu stableGmp=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=%s gmpClue=%s thresholdSafety=%s candidate=full-ws-combo-handoff-l64d2-l48d3 activeCandidate=%s lowerCandidate=full-ws-combo-l64d2 upperCandidate=full-ws-combo-l48d3 baseline=current-scratch-mul oracle=mpz_mul candCurrentRatio=%.3f candGmpRatio=%.3f currentGmpRatio=%.3f worstPairRatio=%.3f currentWorst=%.3f gmpWorst=%.3f ratioMethod=paired-median timingMode=rotating sameInput=yes sameRunAudit=yes",
+    labels->point_detail_op,
+    labels->parent,
     policy,
     large_mul_campaign_size_role(point->digits),
     handoff_digits,
@@ -8619,6 +8668,9 @@ static void append_mul_full_workspace_combo_handoff_point_result(
     hash_gate ? "matched" : "blocked",
     point->parity ? "matched" : "blocked",
     result.adoption,
+    labels->feature_gate,
+    labels->gmp_clue,
+    labels->threshold_safety,
     active_candidate,
     point->candidate_current_ratio,
     point->candidate_gmp_ratio,
@@ -8632,11 +8684,13 @@ static void append_mul_full_workspace_combo_handoff_point_result(
 static void run_mul_full_workspace_combo_handoff_audit_case(
   XrayBenchmarkReport *report,
   unsigned int seed,
+  const XrayMulComboHandoffLabels *labels,
   const char *policy,
   size_t handoff_digits,
   const size_t *sizes,
   size_t size_count) {
   if (!report || !policy || !sizes || size_count == 0 || size_count > XRAY_FORMAT_ROUTE_TOURNAMENT_MAX) return;
+  if (!labels) labels = &mul_combo_handoff_full_labels;
   XrayMulThresholdRouteAuditPoint points[XRAY_FORMAT_ROUTE_TOURNAMENT_MAX];
   memset(points, 0, sizeof(points));
   char size_list[96] = {0};
@@ -8655,6 +8709,7 @@ static void run_mul_full_workspace_combo_handoff_audit_case(
       XRAY_BENCH_DEEP_SAMPLES);
     append_mul_full_workspace_combo_handoff_point_result(
       report,
+      labels,
       policy,
       handoff_digits,
       &points[index],
@@ -8662,6 +8717,7 @@ static void run_mul_full_workspace_combo_handoff_audit_case(
   }
   append_mul_full_workspace_combo_handoff_result(
     report,
+    labels,
     policy,
     size_list,
     handoff_digits,
@@ -20032,6 +20088,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
   const size_t mul_full_workspace_best_map_control_digits[] = {24103, 32768};
   const size_t mul_full_workspace_transition_control_digits[] = {11717, 16384};
   const size_t mul_full_workspace_transition_tournament_digits[] = {11717, 16384, 24103};
+  const size_t mul_full_workspace_handoff_pocket_digits[] = {10007, 10733, 11717, 12553, 13649, 14831, 16384};
   const size_t mul_full_workspace_toom5_smoke_digits[] = {5639, 8192};
   const size_t mul_full_workspace_toom5_handoff_smoke_digits[] = {11717, 16384};
   run_mul_full_workspace_deep_audit_case(
@@ -20174,6 +20231,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
   run_mul_full_workspace_combo_handoff_audit_case(
     report,
     1321U,
+    &mul_combo_handoff_full_labels,
     "full-workspace-combo-handoff-l48d3-ge32768",
     32768,
     mul_full_workspace_full_window_digits,
@@ -20348,6 +20406,14 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     16384,
     mul_full_workspace_transition_tournament_digits,
     sizeof(mul_full_workspace_transition_tournament_digits) / sizeof(mul_full_workspace_transition_tournament_digits[0]));
+  run_mul_full_workspace_combo_handoff_audit_case(
+    report,
+    1547U,
+    &mul_combo_handoff_pocket_labels,
+    "full-workspace-combo-handoff-pocket-ge10007",
+    16384,
+    mul_full_workspace_handoff_pocket_digits,
+    sizeof(mul_full_workspace_handoff_pocket_digits) / sizeof(mul_full_workspace_handoff_pocket_digits[0]));
   run_mul_combo_reuse_map_gmp_control_case(
     report,
     1543U,
@@ -20527,6 +20593,7 @@ static void run_mul_combo_focus_cases(XrayBenchmarkReport *report, const char *f
   const size_t mul_full_workspace_best_map_control_digits[] = {24103, 32768};
   const size_t mul_full_workspace_transition_control_digits[] = {11717, 16384};
   const size_t mul_full_workspace_transition_tournament_digits[] = {11717, 16384, 24103};
+  const size_t mul_full_workspace_handoff_pocket_digits[] = {10007, 10733, 11717, 12553, 13649, 14831, 16384};
   int any_combo = benchmark_focus_any_mul_combo(focus);
 
   if (any_combo || benchmark_focus_eq(focus, "mul-combo-lower")) {
@@ -20574,6 +20641,14 @@ static void run_mul_combo_focus_cases(XrayBenchmarkReport *report, const char *f
       16384,
       mul_full_workspace_transition_tournament_digits,
       sizeof(mul_full_workspace_transition_tournament_digits) / sizeof(mul_full_workspace_transition_tournament_digits[0]));
+    run_mul_full_workspace_combo_handoff_audit_case(
+      report,
+      1547U,
+      &mul_combo_handoff_pocket_labels,
+      "full-workspace-combo-handoff-pocket-ge10007",
+      16384,
+      mul_full_workspace_handoff_pocket_digits,
+      sizeof(mul_full_workspace_handoff_pocket_digits) / sizeof(mul_full_workspace_handoff_pocket_digits[0]));
     run_mul_combo_reuse_map_gmp_control_case(
       report,
       1549U,

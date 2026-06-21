@@ -169,6 +169,33 @@ This protects the paper from overclaiming. The transition route still beats GMP
 at the measured sizes, but it fails the nonreuse baseline, stable-pair, and
 worst-pair gates required for a default route change.
 
+## Follow-Up: Dense Handoff Pocket Scout
+
+Recorded artifact path:
+
+`native-test-runs/20260621-065905-handoff-pocket/benchmark.tsv`
+
+Operation:
+
+`mul-large-toom-cmb-hpocket`
+
+Aggregate:
+
+- Exact product parity/hash: `hashSafe=126/126`
+- Candidate versus current production max ratio: `0.771`
+- Candidate versus GMP/MPIR max ratio: `1.015`
+- Safe measured sizes under the strict gate: `0/7`
+- Contiguous safe measured chunks: `none`
+- Worst pair max ratio: `1.531`
+- Decision: observe only
+
+This follow-up is important because it tests the tempting transition handoff
+more densely at `10007`, `10733`, `11717`, `12553`, `13649`, `14831`, and
+`16384` digits. The route remains exact and faster than current production
+multiply at every measured point, but it does not clear the GMP-facing,
+worst-pair, or contiguous-safety gates. It should be cited as a guardrail:
+piecemeal adoption is welcome, but only measured safe chunks count.
+
 ## Contiguous Safe Size Reporting
 
 The paper should report contiguous measured chunks as evidence units. In the
