@@ -1,0 +1,25 @@
+name: Native Tools
+
+on:
+  pull_request:
+    paths:
+      - "native/tools/*.py"
+      - "native/tools/**/*.py"
+      - ".github/workflows/native-tools.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python-tools:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Self-test Python helpers
+        run: |
+          python3 --version
+          python3 -m compileall native/tools
+          python3 native/tools/bench_focus_repeat.py --self-test

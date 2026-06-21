@@ -8,6 +8,7 @@ on:
     paths-ignore:
       - "native/**"
       - ".github/workflows/native.yml"
+      - ".github/workflows/native-tools.yml"
   workflow_dispatch:
 
 permissions:
