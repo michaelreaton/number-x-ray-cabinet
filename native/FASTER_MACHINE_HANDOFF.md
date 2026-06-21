@@ -1575,20 +1575,22 @@ Run these in order.
      helper also writes `repeat_stable_chunks.tsv`, an operation-level
      intersection of chunks that stayed safe in every repeat.
    - Use `python native/tools/bench_focus_matrix.py --cli <xray_cli> --runs 3
-     --focus mul-backend-gap --focus mul-toom4-top --focus mul-toom5-smoke
-     --focus mul-toom-div-transition --focus mul-combo-handoff-pocket` when you
-     want one first-pass novelty matrix across several cheap focus families
-     before choosing a deeper audit. Read `matrix_ranked.tsv` first for
-     repeat-stable candidates sorted by largest contiguous span; keep
-     `matrix.tsv` as the complete evidence table. Prefer
+     --preset post-pocket-novelty` when you want one first-pass novelty matrix
+     across several cheap focus families before choosing a deeper audit. The
+     preset currently covers `mul-full-audit-pocket`, `mul-backend-gap`,
+     `mul-toom4-top`, `mul-toom5-smoke`, `mul-toom-div-transition`,
+     `mul-combo-handoff-boundary`, and `mul-sparse`, with a default
+     per-invocation timeout of `60` seconds. Add `--timeout-seconds N` only when
+     an exploratory focus needs a different bound; timed-out `xray_cli`
+     invocations write `runNN.timeout.txt` and a summary row with
+     `blockerReason=focus-timeout` instead of hanging the whole sweep. Read
+     `matrix_ranked.tsv` first for repeat-stable candidates sorted by largest
+     contiguous span; keep `matrix.tsv` as the complete evidence table. Prefer
      `matrix_audit_candidates.tsv` for the next route-audit target because it
      drops repeat-stable rows with blocker-like status or worst-pair regression.
-     Add `--timeout-seconds N` when a focus is exploratory or recently changed;
-     timed-out `xray_cli` invocations write `runNN.timeout.txt` and a summary
-     row with `blockerReason=focus-timeout` instead of hanging the whole sweep.
-     The latest two-repeat matrix artifact,
+     The earlier two-repeat matrix artifact,
      `native-test-runs/20260621-083300-novelty-matrix-repeat2/matrix.tsv`,
-     produced no repeat-stable safe chunks across those three focus families,
+     produced no repeat-stable safe chunks across that dense focus mix,
      so do not spend the next implementation slice on the current Toom-5 smoke,
      div2/div3 transition, or handoff-pocket routes.
      The follow-up `mul-backend-gap` repeat artifact,
@@ -1629,6 +1631,10 @@ Run these in order.
      rows and `0.875000` for pair-product rows. Treat this as strong
      sparse-workload GMP evidence and a piecemeal sparse probe lead, not a
      dense multiply promotion claim.
+   - Use `python native/tools/bench_focus_matrix.py --cli <xray_cli> --runs 2
+     --preset sparse-paper` when refreshing the paper evidence table without
+     running unrelated dense novelty probes. The preset covers only `mul-sparse`
+     and defaults each invocation to `45` seconds.
    - On local Windows MPIR builds, set
      `$env:PATH = "C:\vcpkg\installed\x64-windows\bin;$env:PATH"` before
      invoking `xray_cli.exe` if the CLI exits silently with status 1.
