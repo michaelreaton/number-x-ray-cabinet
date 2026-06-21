@@ -20746,7 +20746,7 @@ static int benchmark_focus_any_mul_combo(const char *focus) {
 }
 
 static void run_sparse_mul_focus_cases(XrayBenchmarkReport *report) {
-  const size_t sparse_focus_bits[] = {4096, 5639, 8192, 11717, 16384, 24103, 32768};
+  const size_t sparse_focus_bits[] = {4096, 5639, 8192, 11717, 16384, 24103, 32768, 52163, 65536};
   for (size_t index = 0; index < sizeof(sparse_focus_bits) / sizeof(sparse_focus_bits[0]); ++index) {
     run_sparse_zero_limb_probe_case(report, "mul", sparse_focus_bits[index]);
     run_sparse_forced_mul_probe_case(report, sparse_focus_bits[index]);

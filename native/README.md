@@ -493,9 +493,9 @@ route is worth coding; it runs the existing muladd primitive rows plus unroll4
 versus scratch/GMP rows at `4096,5639,8192,11717,16384` and emits
 `mul-backend-gap-unroll4` with `safeSizeChunks`.
 Use `mul-sparse` when you need a fast app-shaped sparse multiply scout over
-measured bit points `4096,5639,8192,11717,16384,24103,32768`; it reuses the
-existing zero-limb, forced-sparse, and pair-product multiply probes and makes no
-production route changes.
+measured bit points `4096,5639,8192,11717,16384,24103,32768,52163,65536`; it
+reuses the existing zero-limb, forced-sparse, and pair-product multiply probes
+and makes no production route changes.
 `mul-combo-transition-controls` when you only need the
 duplicate-route and duplicate-GMP transition checks, and
 `mul-combo-handoff-pocket` when you only need the dense `10007` through `16384`

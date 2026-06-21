@@ -45,19 +45,19 @@ parity plus a stable same-run paired win.
 
 `--bench-focus mul-sparse` exposes the existing sparse multiply probes without
 running the full ladder or changing production routing. It covers measured bit
-points `4096,5639,8192,11717,16384,24103,32768`, including non-power-of-two
-interior spots for chunk scoring.
+points `4096,5639,8192,11717,16384,24103,32768,52163,65536`, including
+non-power-of-two interior spots for chunk scoring.
 
 Local two-repeat artifact:
-`native-test-runs/20260621-095400-sparse-mul-repeat2/matrix.tsv`
+`native-test-runs/20260621-100500-sparse-upper-repeat2/matrix.tsv`
 
 | Operation | Runs With Safe Chunks | Repeat-Stable Chunk | Worst Pair Max | Status | Decision |
 | --- | ---: | --- | ---: | --- | --- |
-| `sparse-production-mul` | `2/2` | `4096-32768` | `0.203390` | `replacement-ready` | keep as app-shaped GMP evidence |
-| `sparse-zero-mul` | `2/2` | `4096-32768` | `0.203390` | `candidate-faster` | audit-ready sparse probe |
-| `sparse-pair-mul` | `2/2` | `5639-32768` | `1.111111` | `candidate-faster` | recheck only |
-| `sparse-production-pair-mul` | `2/2` | `5639-32768` | `1.111111` | `parity,replacement-ready` | recheck only |
-| `sparse-forced-mul` | `1/2` | none | `14.000000` | `candidate-faster,current-best` | reject for now |
+| `sparse-production-mul` | `2/2` | `4096-65536` | `0.222222` | `replacement-ready` | keep as app-shaped GMP evidence |
+| `sparse-zero-mul` | `2/2` | `4096-65536` | `0.222222` | `candidate-faster` | audit-ready sparse probe |
+| `sparse-pair-mul` | `2/2` | `4096-65536` | `0.875000` | `candidate-faster` | audit-ready sparse probe |
+| `sparse-production-pair-mul` | `2/2` | `4096-65536` | `0.875000` | `replacement-ready` | keep as app-shaped GMP evidence |
+| `sparse-forced-mul` | `2/2` | `32768` | `1.333333` | `candidate-faster,current-best` | recheck only |
 
 Decision: use this lane for very fast app-shaped sparse novelty scouting and
 paper evidence about sparse workloads where Number X-Ray already beats `mpz_mul`
