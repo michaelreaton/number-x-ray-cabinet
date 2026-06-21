@@ -12201,8 +12201,14 @@ static void append_mul_combo_reuse_map_result(
   const char *sizes,
   const XrayMulFullWorkspaceDepthScoutPoint *points,
   size_t point_count,
-  size_t sample_count) {
-  if (!report || !policy || !points || point_count == 0) return;
+  size_t sample_count,
+  const char *operation,
+  const char *name_suffix,
+  const char *feature_gate,
+  const char *gmp_clue,
+  const char *threshold_safety) {
+  if (!report || !policy || !points || point_count == 0 ||
+      !operation || !name_suffix || !feature_gate || !gmp_clue || !threshold_safety) return;
   size_t required_stable = policy_required_stable_samples(sample_count);
   size_t safe_size_count = 0;
   XraySafeSizeChunks safe_chunks;
@@ -12280,9 +12286,9 @@ static void append_mul_combo_reuse_map_result(
 
   XrayBenchmarkResult result;
   memset(&result, 0, sizeof(result));
-  snprintf(result.name, sizeof(result.name), "policy audit mul combo reuse map");
+  snprintf(result.name, sizeof(result.name), "policy audit mul combo reuse map %s", name_suffix);
   snprintf(result.category, sizeof(result.category), "policy-gate");
-  snprintf(result.operation, sizeof(result.operation), "mul-large-toom-cmb-reuse-map");
+  snprintf(result.operation, sizeof(result.operation), "%s", operation);
   result.digits = points[point_count - 1U].digits;
   result.scratch_us = candidate_us ? candidate_us : 1;
   result.gmp_us = current_us ? current_us : 1;
@@ -12306,7 +12312,8 @@ static void append_mul_combo_reuse_map_result(
   result.passed = parity && hash_gate;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=mul-large-toom-cmb-reuse-map policy=%s sizes=%s sizeCount=%zu minDigits=%zu routePolicy=reuse-l64d2-l48d4-l48d3 cut24103=leaf48depth4 cut52163=leaf48depth3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu safeSizeChunks=%s longestSafeSizeChunk=%s longestSafeSizeChunkCount=%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom-combo-reuse-map gmpClue=toom33-combo-reuse-map-full-window forcedCandidate=yes thresholdSafety=full-window candidate=full-ws-combo-reuse-map-l64d2-l48d4-l48d3 baseline=full-ws-combo-nonreuse-map currentBaseline=current-scratch-mul oracle=mpz_mul candBaseMax=%.3f candCurrentMax=%.3f candGmpMax=%.3f baseGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
+    "op=%s policy=%s sizes=%s sizeCount=%zu minDigits=%zu routePolicy=reuse-l64d2-l48d4-l48d3 cut24103=leaf48depth4 cut52163=leaf48depth3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu safeSizeChunks=%s longestSafeSizeChunk=%s longestSafeSizeChunkCount=%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=%s gmpClue=%s forcedCandidate=yes thresholdSafety=%s candidate=full-ws-combo-reuse-map-l64d2-l48d4-l48d3 baseline=full-ws-combo-nonreuse-map currentBaseline=current-scratch-mul oracle=mpz_mul candBaseMax=%.3f candCurrentMax=%.3f candGmpMax=%.3f baseGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
+    operation,
     policy,
     sizes ? sizes : "unknown",
     point_count,
@@ -12325,6 +12332,9 @@ static void append_mul_combo_reuse_map_result(
     hash_gate ? "matched" : "blocked",
     parity ? "matched" : "blocked",
     result.adoption,
+    feature_gate,
+    gmp_clue,
+    threshold_safety,
     max_candidate_baseline_ratio,
     max_candidate_current_ratio,
     max_candidate_gmp_ratio,
@@ -12338,8 +12348,15 @@ static void append_mul_combo_reuse_map_point_result(
   XrayBenchmarkReport *report,
   const char *policy,
   const XrayMulFullWorkspaceDepthScoutPoint *point,
-  size_t sample_count) {
-  if (!report || !policy || !point) return;
+  size_t sample_count,
+  const char *operation,
+  const char *detail_op,
+  const char *parent,
+  const char *feature_gate,
+  const char *gmp_clue,
+  const char *threshold_safety) {
+  if (!report || !policy || !point ||
+      !operation || !detail_op || !parent || !feature_gate || !gmp_clue || !threshold_safety) return;
   size_t required_stable = policy_required_stable_samples(sample_count);
   size_t expected_hash_count = sample_count * XRAY_MUL_OPERAND_FAMILIES;
   int hash_gate = point->hash_match_count == expected_hash_count;
@@ -12366,7 +12383,7 @@ static void append_mul_combo_reuse_map_point_result(
   memset(&result, 0, sizeof(result));
   snprintf(result.name, sizeof(result.name), "kernel large mul combo reuse map point %zu digits", point->digits);
   snprintf(result.category, sizeof(result.category), "kernel-probe");
-  snprintf(result.operation, sizeof(result.operation), "mul-large-toom-cmb-reuse-map-pt");
+  snprintf(result.operation, sizeof(result.operation), "%s", operation);
   result.digits = point->digits;
   result.scratch_us = point->candidate_us ? point->candidate_us : 1;
   result.gmp_us = point->current_us ? point->current_us : 1;
@@ -12390,7 +12407,9 @@ static void append_mul_combo_reuse_map_point_result(
   result.passed = point->parity && hash_gate;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=mul-cmb-reuse-map-point parent=cmb-reuse-map-audit policy=%s sizeRole=%s routePolicy=reuse-l64d2-l48d4-l48d3 activeCandidate=%s leafThreshold=%zu depthLimit=%zu cut24103=leaf48depth4 cut52163=leaf48depth3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu stablePairs=%zu/%zu stableBase=%zu/%zu stableCurrent=%zu/%zu stableGmp=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom-combo-reuse-map gmpClue=toom33-combo-reuse-map-full-window thresholdSafety=full-window candidate=full-ws-combo-reuse-map-l64d2-l48d4-l48d3 baseline=full-ws-combo-nonreuse-map currentBaseline=current-scratch-mul oracle=mpz_mul candBaseRatio=%.3f candCurrentRatio=%.3f candGmpRatio=%.3f baseGmpRatio=%.3f currentGmpRatio=%.3f worstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating sameInput=yes sameRunAudit=yes",
+    "op=%s parent=%s policy=%s sizeRole=%s routePolicy=reuse-l64d2-l48d4-l48d3 activeCandidate=%s leafThreshold=%zu depthLimit=%zu cut24103=leaf48depth4 cut52163=leaf48depth3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu stablePairs=%zu/%zu stableBase=%zu/%zu stableCurrent=%zu/%zu stableGmp=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=%s gmpClue=%s thresholdSafety=%s candidate=full-ws-combo-reuse-map-l64d2-l48d4-l48d3 baseline=full-ws-combo-nonreuse-map currentBaseline=current-scratch-mul oracle=mpz_mul candBaseRatio=%.3f candCurrentRatio=%.3f candGmpRatio=%.3f baseGmpRatio=%.3f currentGmpRatio=%.3f worstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating sameInput=yes sameRunAudit=yes",
+    detail_op,
+    parent,
     policy,
     large_mul_campaign_size_role(point->digits),
     active_candidate,
@@ -12413,6 +12432,9 @@ static void append_mul_combo_reuse_map_point_result(
     hash_gate ? "matched" : "blocked",
     point->parity ? "matched" : "blocked",
     result.adoption,
+    feature_gate,
+    gmp_clue,
+    threshold_safety,
     point->candidate_baseline_ratio,
     point->candidate_current_ratio,
     point->candidate_gmp_ratio,
@@ -13139,8 +13161,18 @@ static void run_mul_combo_reuse_map_audit_case(
   unsigned int seed,
   const char *policy,
   const size_t *sizes,
-  size_t size_count) {
-  if (!report || !policy || !sizes || size_count == 0 || size_count > XRAY_FORMAT_ROUTE_TOURNAMENT_MAX) return;
+  size_t size_count,
+  const char *point_operation,
+  const char *aggregate_operation,
+  const char *detail_op,
+  const char *parent,
+  const char *aggregate_name_suffix,
+  const char *feature_gate,
+  const char *gmp_clue,
+  const char *threshold_safety) {
+  if (!report || !policy || !sizes || size_count == 0 || size_count > XRAY_FORMAT_ROUTE_TOURNAMENT_MAX ||
+      !point_operation || !aggregate_operation || !detail_op || !parent ||
+      !aggregate_name_suffix || !feature_gate || !gmp_clue || !threshold_safety) return;
   XrayMulFullWorkspaceDepthScoutPoint points[XRAY_FORMAT_ROUTE_TOURNAMENT_MAX];
   memset(points, 0, sizeof(points));
   char size_list[96] = {0};
@@ -13157,7 +13189,13 @@ static void run_mul_combo_reuse_map_audit_case(
       report,
       policy,
       &points[index],
-      XRAY_BENCH_DEEP_SAMPLES);
+      XRAY_BENCH_DEEP_SAMPLES,
+      point_operation,
+      detail_op,
+      parent,
+      feature_gate,
+      gmp_clue,
+      threshold_safety);
   }
   append_mul_combo_reuse_map_result(
     report,
@@ -13165,7 +13203,12 @@ static void run_mul_combo_reuse_map_audit_case(
     size_list,
     points,
     size_count,
-    XRAY_BENCH_DEEP_SAMPLES);
+    XRAY_BENCH_DEEP_SAMPLES,
+    aggregate_operation,
+    aggregate_name_suffix,
+    feature_gate,
+    gmp_clue,
+    threshold_safety);
 }
 
 static void run_mul_combo_reuse_neg2_map_audit_case(
@@ -19897,7 +19940,29 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     1511U,
     "full-workspace-combo-reuse-map-ge4096",
     mul_full_workspace_full_window_digits,
-    sizeof(mul_full_workspace_full_window_digits) / sizeof(mul_full_workspace_full_window_digits[0]));
+    sizeof(mul_full_workspace_full_window_digits) / sizeof(mul_full_workspace_full_window_digits[0]),
+    "mul-large-toom-cmb-reuse-map-pt",
+    "mul-large-toom-cmb-reuse-map",
+    "mul-cmb-reuse-map-point",
+    "cmb-reuse-map-audit",
+    "full",
+    "large-multiply-cpu-toom-combo-reuse-map",
+    "toom33-combo-reuse-map-full-window",
+    "full-window");
+  run_mul_combo_reuse_map_audit_case(
+    report,
+    1523U,
+    "full-workspace-combo-reuse-map-transition-ge11717",
+    mul_full_workspace_transition_control_digits,
+    sizeof(mul_full_workspace_transition_control_digits) / sizeof(mul_full_workspace_transition_control_digits[0]),
+    "mul-large-toom-cmb-troute-pt",
+    "mul-large-toom-cmb-troute",
+    "mul-cmb-reuse-map-transition-point",
+    "cmb-reuse-map-transition-audit",
+    "transition",
+    "large-multiply-cpu-toom-combo-reuse-map-transition",
+    "toom33-combo-reuse-map-transition-window",
+    "transition-window");
   run_mul_combo_reuse_map_gmp_control_case(
     report,
     1543U,
@@ -20100,7 +20165,15 @@ static void run_mul_combo_focus_cases(XrayBenchmarkReport *report, const char *f
       1523U,
       "full-workspace-combo-reuse-map-transition-ge11717",
       mul_full_workspace_transition_control_digits,
-      sizeof(mul_full_workspace_transition_control_digits) / sizeof(mul_full_workspace_transition_control_digits[0]));
+      sizeof(mul_full_workspace_transition_control_digits) / sizeof(mul_full_workspace_transition_control_digits[0]),
+      "mul-large-toom-cmb-troute-pt",
+      "mul-large-toom-cmb-troute",
+      "mul-cmb-reuse-map-transition-point",
+      "cmb-reuse-map-transition-audit",
+      "transition",
+      "large-multiply-cpu-toom-combo-reuse-map-transition",
+      "toom33-combo-reuse-map-transition-window",
+      "transition-window");
     run_mul_combo_reuse_map_gmp_control_case(
       report,
       1549U,
@@ -20150,7 +20223,15 @@ static void run_mul_combo_focus_cases(XrayBenchmarkReport *report, const char *f
       1511U,
       "full-workspace-combo-reuse-map-ge4096",
       mul_full_workspace_full_window_digits,
-      sizeof(mul_full_workspace_full_window_digits) / sizeof(mul_full_workspace_full_window_digits[0]));
+      sizeof(mul_full_workspace_full_window_digits) / sizeof(mul_full_workspace_full_window_digits[0]),
+      "mul-large-toom-cmb-reuse-map-pt",
+      "mul-large-toom-cmb-reuse-map",
+      "mul-cmb-reuse-map-point",
+      "cmb-reuse-map-audit",
+      "full",
+      "large-multiply-cpu-toom-combo-reuse-map",
+      "toom33-combo-reuse-map-full-window",
+      "full-window");
     run_mul_combo_reuse_map_gmp_control_case(
       report,
       1543U,

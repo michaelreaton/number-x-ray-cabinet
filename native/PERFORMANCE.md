@@ -4537,3 +4537,38 @@ routing. The transition window is genuinely promising and the duplicate
 GMP/MPIR control says the win is not an oracle-noise artifact, but promotion
 still needs a forced route audit and cannot ignore the previously measured
 upper-window GMP miss.
+## 2026-06-20: Combo Reuse Transition Forced Route Audit
+
+Local Release validation artifact `native-test-runs/20260620-162931-c4b04caf`
+adds `mul-large-toom-cmb-troute`, a benchmark-only forced route audit for the
+reusable combo map at deterministic random spot `11717` and power-of-two anchor
+`16384`. The candidate is
+`full-ws-combo-reuse-map-l64d2-l48d4-l48d3`; current production multiply,
+`mpz_mul`, and the nonreuse combo baseline remain in the same rotating run.
+
+Observed aggregate:
+
+- Exact parity/hash passed:
+  `hashSafe=36/36`, `hashGate=matched`, `parity=matched`.
+- The candidate still beats current production multiply in this transition
+  pocket:
+  `candCurrentMax=0.660`, while `currentGmpMax=1.388`.
+- The candidate still beats GMP/MPIR at both sizes:
+  `candGmpMax=0.971`.
+- The strict route gate fails against the nonreuse combo baseline:
+  `candBaseMax=1.041`, `safeSizes=0/2`.
+- Worst-pair and stability are not promotion quality:
+  `maxWorstPairRatio=1.642`, `stableBase=4/9` at `11717`, and
+  `stableBase=2/9` at `16384`.
+
+Per-size point rows:
+
+| Digits | Candidate / Baseline | Candidate / Current | Candidate / GMP | Baseline / GMP | Current / GMP | Worst Pair | Baseline Stable | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `11717` | `0.987` | `0.598` | `0.861` | `0.794` | `1.316` | `1.115` | `4/9` | `8/9` | reuse-baseline-regression |
+| `16384` | `1.041` | `0.660` | `0.971` | `0.923` | `1.388` | `1.642` | `2/9` | `5/9` | reuse-baseline-regression |
+
+Decision: keep this as observe-only evidence and do not promote the transition
+route. The random spot plus anchor are exact and faster than current production
+multiply, but the forced route audit fails the baseline, stable-pair, and
+worst-pair bars needed for a default-route change.
