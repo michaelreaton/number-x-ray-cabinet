@@ -4649,3 +4649,45 @@ The row says the handoff shape is the best local route to inspect next, but
 only `11717` forms a safe measured chunk in this run. Piecemeal follow-up
 should expand around that chunk before spending full-suite time on the larger
 transition window.
+
+## 2026-06-21: Combo Handoff Pocket Scout
+
+Local Release validation artifact
+`native-test-runs/20260621-065905-handoff-pocket/benchmark.tsv` adds
+`mul-large-toom-cmb-hpocket`, a benchmark-only handoff pocket scout over seven
+measured transition sizes:
+`10007`, `10733`, `11717`, `12553`, `13649`, `14831`, and `16384`.
+The row keeps the handoff shape from the transition tournament, using
+`l64d2` below `16384` and `l48d3` at `16384`, while comparing against current
+production multiply and `mpz_mul` on the same operand fingerprints.
+
+Observed aggregate:
+
+- Exact parity/hash passed:
+  `hashSafe=126/126`, `hashGate=matched`, `parity=matched`.
+- The candidate beats current production multiply across the measured pocket:
+  `candCurrentMax=0.771`.
+- The GMP/MPIR signal is promising but not clean:
+  `candGmpMax=1.015`, with the only median GMP regression at `10733`.
+- Strict contiguous safety rejects the pocket:
+  `safeSizes=0/7`, `safeSizeChunks=none`,
+  `longestSafeSizeChunk=none`, `maxWorstPairRatio=1.531`.
+
+Per-size handoff signal:
+
+| Digits | Active Route | Candidate / Current | Candidate / GMP | Current / GMP | Worst Pair | Current Stable | GMP Stable | Status |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `10007` | `l64d2` | `0.771` | `0.971` | `1.288` | `1.092` | `9/9` | `6/9` | backend-regression |
+| `10733` | `l64d2` | `0.729` | `1.015` | `1.373` | `1.531` | `8/9` | `3/9` | current-regression |
+| `11717` | `l64d2` | `0.721` | `0.946` | `1.335` | `1.001` | `9/9` | `8/9` | backend-regression |
+| `12553` | `l64d2` | `0.674` | `0.947` | `1.418` | `1.029` | `9/9` | `8/9` | backend-regression |
+| `13649` | `l64d2` | `0.707` | `0.928` | `1.348` | `1.002` | `9/9` | `8/9` | backend-regression |
+| `14831` | `l64d2` | `0.697` | `0.906` | `1.393` | `1.333` | `9/9` | `8/9` | backend-regression |
+| `16384` | `l48d3` | `0.743` | `0.994` | `1.427` | `1.406` | `9/9` | `5/9` | backend-regression |
+
+Decision: keep this as negative pocket evidence, not a production route. The
+handoff shape is exact and materially faster than current production multiply,
+but the expanded transition pocket has no strict safe measured chunk in this
+run. Future novelty work should use duplicate controls or repeated focused runs
+before widening the window, because the same area can look attractive by median
+while still failing pair-level safety.

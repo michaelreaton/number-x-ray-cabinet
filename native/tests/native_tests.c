@@ -2784,6 +2784,15 @@ static void test_benchmarks(void) {
   int saw_mul_large_cpu_toom_cmb_hand_point52163_probe = 0;
   int saw_mul_large_cpu_toom_cmb_hand_point65536_probe = 0;
   int saw_mul_large_cpu_toom_cmb_hand_probe = 0;
+  int saw_mul_large_cpu_toom_cmb_handoff_pocket_point_probe = 0;
+  int saw_mul_large_cpu_toom_cmb_handoff_pocket_point10007_probe = 0;
+  int saw_mul_large_cpu_toom_cmb_handoff_pocket_point10733_probe = 0;
+  int saw_mul_large_cpu_toom_cmb_handoff_pocket_point11717_probe = 0;
+  int saw_mul_large_cpu_toom_cmb_handoff_pocket_point12553_probe = 0;
+  int saw_mul_large_cpu_toom_cmb_handoff_pocket_point13649_probe = 0;
+  int saw_mul_large_cpu_toom_cmb_handoff_pocket_point14831_probe = 0;
+  int saw_mul_large_cpu_toom_cmb_handoff_pocket_point16384_probe = 0;
+  int saw_mul_large_cpu_toom_cmb_handoff_pocket_probe = 0;
   int saw_mul_large_cpu_toom_cmb_tournament_point_probe = 0;
   int saw_mul_large_cpu_toom_cmb_tournament_point24103_probe = 0;
   int saw_mul_large_cpu_toom_cmb_tournament_point32768_probe = 0;
@@ -3083,6 +3092,7 @@ static void test_benchmarks(void) {
           strcmp(report->results[index].operation, "mul-large-toom-cmb-l48d3-point") == 0 ||
           strcmp(report->results[index].operation, "mul-large-toom-cmb-l48d3-fpt") == 0 ||
           strcmp(report->results[index].operation, "mul-large-toom-cmb-hand-pt") == 0 ||
+          strcmp(report->results[index].operation, "mul-large-toom-cmb-hpocket-pt") == 0 ||
           strcmp(report->results[index].operation, "mul-large-toom-cmb-tourn-pt") == 0 ||
           strcmp(report->results[index].operation, "mul-large-toom-cmb-ttourn-pt") == 0 ||
           strcmp(report->results[index].operation, "mul-large-toom-cmb-reuse-pt") == 0 ||
@@ -4667,6 +4677,69 @@ static void test_benchmarks(void) {
             report->results[index].digits == 16384 ||
             report->results[index].digits == 32768 ||
             report->results[index].digits == 65536) {
+          CHECK(strstr(report->results[index].detail, "sizeRole=power2-anchor") != NULL);
+        } else {
+          CHECK(strstr(report->results[index].detail, "sizeRole=deterministic-random-spot") != NULL);
+        }
+      }
+      if (strcmp(report->results[index].operation, "mul-large-toom-cmb-hpocket-pt") == 0) {
+        saw_mul_large_cpu_toom_cmb_handoff_pocket_point_probe = 1;
+        if (report->results[index].digits == 10007) saw_mul_large_cpu_toom_cmb_handoff_pocket_point10007_probe = 1;
+        else if (report->results[index].digits == 10733) saw_mul_large_cpu_toom_cmb_handoff_pocket_point10733_probe = 1;
+        else if (report->results[index].digits == 11717) saw_mul_large_cpu_toom_cmb_handoff_pocket_point11717_probe = 1;
+        else if (report->results[index].digits == 12553) saw_mul_large_cpu_toom_cmb_handoff_pocket_point12553_probe = 1;
+        else if (report->results[index].digits == 13649) saw_mul_large_cpu_toom_cmb_handoff_pocket_point13649_probe = 1;
+        else if (report->results[index].digits == 14831) saw_mul_large_cpu_toom_cmb_handoff_pocket_point14831_probe = 1;
+        else if (report->results[index].digits == 16384) saw_mul_large_cpu_toom_cmb_handoff_pocket_point16384_probe = 1;
+        else CHECK(0);
+        CHECK(report->results[index].parity_verified);
+        CHECK(!report->results[index].replacement_ready);
+        CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+        CHECK(report->results[index].sample_count == 9);
+        CHECK(strstr(report->results[index].detail, "op=mul-cmb-handoff-pocket-point") != NULL);
+        CHECK(strstr(report->results[index].detail, "parent=cmb-handoff-pocket-audit") != NULL);
+        CHECK(strstr(report->results[index].detail, "policy=full-workspace-combo-handoff-pocket-ge10007") != NULL);
+        CHECK(strstr(report->results[index].detail, "handoffDigits=16384") != NULL);
+        CHECK(strstr(report->results[index].detail, "lowerLeaf=64") != NULL);
+        CHECK(strstr(report->results[index].detail, "upperLeaf=48") != NULL);
+        CHECK(strstr(report->results[index].detail, "lowerDepth=2") != NULL);
+        CHECK(strstr(report->results[index].detail, "upperDepth=3") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+        CHECK(strstr(report->results[index].detail, "samples=9") != NULL);
+        CHECK(strstr(report->results[index].detail, "requiredStablePairs=8/9") != NULL);
+        CHECK(strstr(report->results[index].detail, "stableCurrent=") != NULL);
+        CHECK(strstr(report->results[index].detail, "stableGmp=") != NULL);
+        CHECK(strstr(report->results[index].detail, "hashSafe=18/18") != NULL);
+        CHECK(strstr(report->results[index].detail, "hashGate=matched") != NULL);
+        CHECK(strstr(report->results[index].detail, "parity=matched") != NULL);
+        CHECK(strstr(report->results[index].detail, "thresholdSafety=transition-pocket") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=full-ws-combo-handoff-l64d2-l48d3") != NULL);
+        CHECK(strstr(report->results[index].detail, "lowerCandidate=full-ws-combo-l64d2") != NULL);
+        CHECK(strstr(report->results[index].detail, "upperCandidate=full-ws-combo-l48d3") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=current-scratch-mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "oracle=mpz_mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "candCurrentRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "candGmpRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "currentGmpRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "worstPairRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
+        CHECK(strstr(report->results[index].detail, "timingMode=rotating") != NULL);
+        CHECK(strstr(report->results[index].detail, "sameInput=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "sameRunAudit=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=large-multiply-cpu-toom-combo-handoff-pocket") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpClue=toom33-combo-handoff-transition-pocket") != NULL);
+        CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+        CHECK(strstr(report->results[index].detail, "replacementReady=false") != NULL);
+        if (report->results[index].digits >= 16384) {
+          CHECK(strstr(report->results[index].detail, "activeCandidate=full-ws-combo-l48d3") != NULL);
+          CHECK(strstr(report->results[index].detail, "leafThreshold=48") != NULL);
+          CHECK(strstr(report->results[index].detail, "depthLimit=3") != NULL);
+        } else {
+          CHECK(strstr(report->results[index].detail, "activeCandidate=full-ws-combo-l64d2") != NULL);
+          CHECK(strstr(report->results[index].detail, "leafThreshold=64") != NULL);
+          CHECK(strstr(report->results[index].detail, "depthLimit=2") != NULL);
+        }
+        if (report->results[index].digits == 16384) {
           CHECK(strstr(report->results[index].detail, "sizeRole=power2-anchor") != NULL);
         } else {
           CHECK(strstr(report->results[index].detail, "sizeRole=deterministic-random-spot") != NULL);
@@ -7665,6 +7738,51 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "gmpClue=toom33-combo-l64d2-to-l48d3-handoff") != NULL);
         CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
         CHECK(strstr(report->results[index].detail, "replacementReady=false") != NULL);
+      } else if (strcmp(report->results[index].operation, "mul-large-toom-cmb-hpocket") == 0) {
+        saw_mul_large_cpu_toom_cmb_handoff_pocket_probe = 1;
+        CHECK(report->results[index].sample_count == 7);
+        CHECK(report->results[index].digits == 16384);
+        CHECK(!report->results[index].replacement_ready);
+        CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+        CHECK(strstr(report->results[index].detail, "op=mul-large-toom-cmb-hpocket") != NULL);
+        CHECK(strstr(report->results[index].detail, "policy=full-workspace-combo-handoff-pocket-ge10007") != NULL);
+        CHECK(strstr(report->results[index].detail, "sizes=10007,10733,11717,12553,13649,14831,16384") != NULL);
+        CHECK(strstr(report->results[index].detail, "sizeCount=7") != NULL);
+        CHECK(strstr(report->results[index].detail, "minDigits=10007") != NULL);
+        CHECK(strstr(report->results[index].detail, "handoffDigits=16384") != NULL);
+        CHECK(strstr(report->results[index].detail, "lowerLeaf=64") != NULL);
+        CHECK(strstr(report->results[index].detail, "upperLeaf=48") != NULL);
+        CHECK(strstr(report->results[index].detail, "lowerDepth=2") != NULL);
+        CHECK(strstr(report->results[index].detail, "upperDepth=3") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+        CHECK(strstr(report->results[index].detail, "samples=9") != NULL);
+        CHECK(strstr(report->results[index].detail, "requiredStablePairs=8/9") != NULL);
+        CHECK(strstr(report->results[index].detail, "safeSizes=") != NULL);
+        CHECK(strstr(report->results[index].detail, "safeSizeChunks=") != NULL);
+        CHECK(strstr(report->results[index].detail, "longestSafeSizeChunk=") != NULL);
+        CHECK(strstr(report->results[index].detail, "hashSafe=126/126") != NULL);
+        CHECK(strstr(report->results[index].detail, "hashGate=matched") != NULL);
+        CHECK(strstr(report->results[index].detail, "parity=matched") != NULL);
+        CHECK(strstr(report->results[index].detail, "forcedCandidate=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "thresholdSafety=transition-pocket") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=full-ws-combo-handoff-l64d2-l48d3") != NULL);
+        CHECK(strstr(report->results[index].detail, "activeCandidate=mixed-by-size") != NULL);
+        CHECK(strstr(report->results[index].detail, "lowerCandidate=full-ws-combo-l64d2") != NULL);
+        CHECK(strstr(report->results[index].detail, "upperCandidate=full-ws-combo-l48d3") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=current-scratch-mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "oracle=mpz_mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "candCurrentMax=") != NULL);
+        CHECK(strstr(report->results[index].detail, "candGmpMax=") != NULL);
+        CHECK(strstr(report->results[index].detail, "currentGmpMax=") != NULL);
+        CHECK(strstr(report->results[index].detail, "maxWorstPairRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
+        CHECK(strstr(report->results[index].detail, "timingMode=rotating-batch") != NULL);
+        CHECK(strstr(report->results[index].detail, "sameInput=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "sameRunAudit=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=large-multiply-cpu-toom-combo-handoff-pocket") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpClue=toom33-combo-handoff-transition-pocket") != NULL);
+        CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+        CHECK(strstr(report->results[index].detail, "replacementReady=false") != NULL);
       } else if (strcmp(report->results[index].operation, "mul-large-toom-cmb-tourn") == 0) {
         saw_mul_large_cpu_toom_cmb_tournament_probe = 1;
         CHECK(report->results[index].sample_count == 4);
@@ -9126,6 +9244,15 @@ static void test_benchmarks(void) {
   CHECK(saw_mul_large_cpu_toom_cmb_hand_point52163_probe);
   CHECK(saw_mul_large_cpu_toom_cmb_hand_point65536_probe);
   CHECK(saw_mul_large_cpu_toom_cmb_hand_probe);
+  CHECK(saw_mul_large_cpu_toom_cmb_handoff_pocket_point_probe);
+  CHECK(saw_mul_large_cpu_toom_cmb_handoff_pocket_point10007_probe);
+  CHECK(saw_mul_large_cpu_toom_cmb_handoff_pocket_point10733_probe);
+  CHECK(saw_mul_large_cpu_toom_cmb_handoff_pocket_point11717_probe);
+  CHECK(saw_mul_large_cpu_toom_cmb_handoff_pocket_point12553_probe);
+  CHECK(saw_mul_large_cpu_toom_cmb_handoff_pocket_point13649_probe);
+  CHECK(saw_mul_large_cpu_toom_cmb_handoff_pocket_point14831_probe);
+  CHECK(saw_mul_large_cpu_toom_cmb_handoff_pocket_point16384_probe);
+  CHECK(saw_mul_large_cpu_toom_cmb_handoff_pocket_probe);
   CHECK(saw_mul_large_cpu_toom_cmb_tournament_point_probe);
   CHECK(saw_mul_large_cpu_toom_cmb_tournament_point24103_probe);
   CHECK(saw_mul_large_cpu_toom_cmb_tournament_point32768_probe);
@@ -9735,6 +9862,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "mul-large-toom-cmb-hand") != NULL);
   CHECK(strstr(json, "large-multiply-cpu-toom-combo-handoff32768") != NULL);
   CHECK(strstr(json, "full-workspace-combo-handoff-l48d3-ge32768") != NULL);
+  CHECK(strstr(json, "mul-large-toom-cmb-hpocket-pt") != NULL);
+  CHECK(strstr(json, "mul-large-toom-cmb-hpocket") != NULL);
+  CHECK(strstr(json, "large-multiply-cpu-toom-combo-handoff-pocket") != NULL);
+  CHECK(strstr(json, "full-workspace-combo-handoff-pocket-ge10007") != NULL);
   CHECK(strstr(json, "mul-large-toom-cmb-tourn-pt") != NULL);
   CHECK(strstr(json, "mul-large-toom-cmb-tourn") != NULL);
   CHECK(strstr(json, "large-multiply-cpu-toom-combo-upper-tournament") != NULL);
@@ -10049,6 +10180,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "mul-large-toom-cmb-hand") != NULL);
   CHECK(strstr(tsv, "large-multiply-cpu-toom-combo-handoff32768") != NULL);
   CHECK(strstr(tsv, "full-workspace-combo-handoff-l48d3-ge32768") != NULL);
+  CHECK(strstr(tsv, "mul-large-toom-cmb-hpocket-pt") != NULL);
+  CHECK(strstr(tsv, "mul-large-toom-cmb-hpocket") != NULL);
+  CHECK(strstr(tsv, "large-multiply-cpu-toom-combo-handoff-pocket") != NULL);
+  CHECK(strstr(tsv, "full-workspace-combo-handoff-pocket-ge10007") != NULL);
   CHECK(strstr(tsv, "mul-large-toom-cmb-tourn-pt") != NULL);
   CHECK(strstr(tsv, "mul-large-toom-cmb-tourn") != NULL);
   CHECK(strstr(tsv, "large-multiply-cpu-toom-combo-upper-tournament") != NULL);
@@ -10286,6 +10421,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_json, "mul-large-toom-cmb-hand") != NULL);
   CHECK(strstr(benchmark_json, "large-multiply-cpu-toom-combo-handoff32768") != NULL);
   CHECK(strstr(benchmark_json, "full-workspace-combo-handoff-l48d3-ge32768") != NULL);
+  CHECK(strstr(benchmark_json, "mul-large-toom-cmb-hpocket-pt") != NULL);
+  CHECK(strstr(benchmark_json, "mul-large-toom-cmb-hpocket") != NULL);
+  CHECK(strstr(benchmark_json, "large-multiply-cpu-toom-combo-handoff-pocket") != NULL);
+  CHECK(strstr(benchmark_json, "full-workspace-combo-handoff-pocket-ge10007") != NULL);
   CHECK(strstr(benchmark_json, "mul-large-toom-cmb-tourn-pt") != NULL);
   CHECK(strstr(benchmark_json, "mul-large-toom-cmb-tourn") != NULL);
   CHECK(strstr(benchmark_json, "large-multiply-cpu-toom-combo-upper-tournament") != NULL);
@@ -10652,6 +10791,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "mul-large-toom-cmb-hand-pt") != NULL);
   CHECK(strstr(benchmark_tsv, "large-multiply-cpu-toom-combo-handoff32768") != NULL);
   CHECK(strstr(benchmark_tsv, "full-workspace-combo-handoff-l48d3-ge32768") != NULL);
+  CHECK(strstr(benchmark_tsv, "mul-large-toom-cmb-hpocket-pt") != NULL);
+  CHECK(strstr(benchmark_tsv, "mul-large-toom-cmb-hpocket") != NULL);
+  CHECK(strstr(benchmark_tsv, "large-multiply-cpu-toom-combo-handoff-pocket") != NULL);
+  CHECK(strstr(benchmark_tsv, "full-workspace-combo-handoff-pocket-ge10007") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-large-toom-cmb-tourn-pt") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-large-toom-cmb-tourn") != NULL);
   CHECK(strstr(benchmark_tsv, "large-multiply-cpu-toom-combo-upper-tournament") != NULL);
@@ -10833,6 +10976,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "mul-large-toom-cmb-l48d3-full") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-large-toom-cmb-hand-pt") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-large-toom-cmb-hand") != NULL);
+  CHECK(strstr(benchmark_frontier, "mul-large-toom-cmb-hpocket-pt") != NULL);
+  CHECK(strstr(benchmark_frontier, "mul-large-toom-cmb-hpocket") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-large-toom-cmb-tourn-pt") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-large-toom-cmb-tourn") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-large-toom-cmb-ttourn-pt") != NULL);
@@ -11050,6 +11195,9 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_progress, "mul-large-toom-cmb-hand-pt") != NULL);
   CHECK(strstr(benchmark_progress, "mul-large-toom-cmb-hand") != NULL);
   CHECK(strstr(benchmark_progress, "full-workspace-combo-handoff-l48d3-ge32768") != NULL);
+  CHECK(strstr(benchmark_progress, "mul-large-toom-cmb-hpocket-pt") != NULL);
+  CHECK(strstr(benchmark_progress, "mul-large-toom-cmb-hpocket") != NULL);
+  CHECK(strstr(benchmark_progress, "full-workspace-combo-handoff-pocket-ge10007") != NULL);
   CHECK(strstr(benchmark_progress, "mul-large-toom-cmb-tourn-pt") != NULL);
   CHECK(strstr(benchmark_progress, "mul-large-toom-cmb-tourn") != NULL);
   CHECK(strstr(benchmark_progress, "full-workspace-combo-upper-tournament-ge24103") != NULL);
@@ -11201,6 +11349,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_progress_tsv, "mul-large-toom-cmb-hand") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "large-multiply-cpu-toom-combo-handoff32768") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "full-workspace-combo-handoff-l48d3-ge32768") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "mul-large-toom-cmb-hpocket-pt") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "mul-large-toom-cmb-hpocket") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "large-multiply-cpu-toom-combo-handoff-pocket") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "full-workspace-combo-handoff-pocket-ge10007") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "mul-large-toom-cmb-tourn-pt") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "mul-large-toom-cmb-tourn") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "large-multiply-cpu-toom-combo-upper-tournament") != NULL);

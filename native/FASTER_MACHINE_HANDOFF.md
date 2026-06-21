@@ -1376,6 +1376,46 @@ Decision: use this as a fast ladder scout for novelty. The handoff shape is
 the local winner, but only the `11717` measured point is a clean chunk in this
 run. Treat that as a piecemeal follow-up target, not a default-route candidate.
 
+### Handoff Pocket Scout
+
+Latest focused command:
+
+```powershell
+native/build-stack-v142/xray_cli.exe --bench-focus mul-combo-transition --bench-tsv
+```
+
+Artifact:
+`native-test-runs/20260621-065905-handoff-pocket/benchmark.tsv`
+
+This run adds `mul-large-toom-cmb-hpocket` plus
+`mul-large-toom-cmb-hpocket-pt` rows over seven transition sizes:
+`10007`, `10733`, `11717`, `12553`, `13649`, `14831`, and `16384`.
+It tests the handoff shape from the transition tournament more densely, with
+`l64d2` below `16384` and `l48d3` at `16384`. It remains diagnostic only:
+`noAutoRoute=1`, `replacementReady=false`, production multiply unchanged.
+
+| Row | Sizes | Current Max | GMP Max | Current/GMP Max | Worst Pair | Safe Sizes | Safe Chunk | Hash | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | --- | ---: | --- |
+| `mul-large-toom-cmb-hpocket` | `10007..16384` | `0.771` | `1.015` | `1.427` | `1.531` | `0/7` | none | `126/126` | observe only |
+
+Per-size signal:
+
+| Digits | Active Route | Candidate / Current | Candidate / GMP | Current / GMP | Worst Pair | GMP Stable | Status |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | --- |
+| `10007` | `l64d2` | `0.771` | `0.971` | `1.288` | `1.092` | `6/9` | backend-regression |
+| `10733` | `l64d2` | `0.729` | `1.015` | `1.373` | `1.531` | `3/9` | current-regression |
+| `11717` | `l64d2` | `0.721` | `0.946` | `1.335` | `1.001` | `8/9` | backend-regression |
+| `12553` | `l64d2` | `0.674` | `0.947` | `1.418` | `1.029` | `8/9` | backend-regression |
+| `13649` | `l64d2` | `0.707` | `0.928` | `1.348` | `1.002` | `8/9` | backend-regression |
+| `14831` | `l64d2` | `0.697` | `0.906` | `1.393` | `1.333` | `8/9` | backend-regression |
+| `16384` | `l48d3` | `0.743` | `0.994` | `1.427` | `1.406` | `5/9` | backend-regression |
+
+Decision: treat this as a fast negative scout. The handoff route beats current
+production multiply at every measured size and mostly beats GMP/MPIR by median,
+but it does not produce a strict contiguous safe chunk. Do not widen this route
+blindly; rerun with duplicate controls or repeated focused runs before spending
+full-suite CI time on this pocket again.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor
