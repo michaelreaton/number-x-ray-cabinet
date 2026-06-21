@@ -436,6 +436,8 @@ native\build\Release\xray_cli.exe --bench-min-digits 768 --bench-max-digits 1000
 native\build\Release\xray_cli.exe --bench-filter mul --bench-compare native\build-release\native-test-runs\<run>\benchmark.tsv native\build-ltcg\native-test-runs\<run>\benchmark.tsv
 native\build\Release\xray_cli.exe --bench-progress-tsv native\build\native-test-runs\<run>\benchmark.tsv
 native\build\Release\xray_cli.exe --bench-compare native\build-release\native-test-runs\<run>\benchmark.tsv native\build-ltcg\native-test-runs\<run>\benchmark.tsv
+native\build\Release\xray_native_tests.exe --only=runtime
+native\build\Release\xray_native_tests.exe --only=bigint --only=parser --only=ffi --only=solver --only=artifacts
 native\build\Release\xray_cli.exe --rsa260
 ```
 

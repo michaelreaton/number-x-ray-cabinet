@@ -9270,41 +9270,64 @@ static void test_benchmarks(void) {
   xray_workbench_report_clear(&workbench);
 }
 
-int main(void) {
-  test_parse_messy_input();
-  test_public_allocator_contract();
-  test_runtime_version_contract();
-  test_benchmark_tsv_comparison();
-  test_benchmark_progress_digest();
-  test_exact_expression_parser();
-  test_cpu_feature_detection();
-  test_scratch_bigint_oracle();
-  test_decimal_ffi_helpers();
-  test_scratch_bigint_oracle_sweep();
-  test_scratch_bigint_large_mul_oracle();
-  test_scratch_bigint_square_oracle();
-  test_scratch_bigint_sparse_zero_limb_oracle();
-  test_scratch_bigint_karatsuba_middle_signs();
-  test_scratch_bigint_mul_thresholds();
-  test_scratch_bigint_dense_leaf_probe_oracle();
-  test_scratch_bigint_karatsuba_view_probe_oracle();
-  test_scratch_bigint_karatsuba_workspace_probe_oracle();
-  test_scratch_bigint_karatsuba_sum_probe_oracle();
-  test_scratch_bigint_toom3_probe_oracle();
-  test_scratch_bigint_toom3_recursive_probe_oracle();
-  test_scratch_bigint_unroll4_probe_oracle();
-  test_scratch_bigint_toom3_minus_one_signs();
-  test_ambiguous_input_rejected();
-  test_factor_solver_exact();
-  test_factor_solver_unresolved_budget();
-  test_rho_and_prime_power();
-  test_stronger_factor_methods();
-  test_cyclotomic_known_values();
-  test_cyclotomic_scan_exact();
-  test_workspace_and_gnfs_artifacts();
-  test_report_json_ffi_helpers();
-  test_large_nonhit_does_not_false_solve();
-  test_benchmarks();
+static int should_run_native_test(int argc, char **argv, const char *name, const char *group) {
+  if (argc <= 1) return 1;
+  for (int index = 1; index < argc; ++index) {
+    const char *arg = argv[index];
+    if (strncmp(arg, "--only=", 7) == 0) arg += 7;
+    if (strcmp(arg, name) == 0 || (group && strcmp(arg, group) == 0)) return 1;
+  }
+  return 0;
+}
+
+#define RUN_NATIVE_TEST(name, group) \
+  do { \
+    if (should_run_native_test(argc, argv, #name, group)) { \
+      name(); \
+      ran_tests++; \
+    } \
+  } while (0)
+
+int main(int argc, char **argv) {
+  int ran_tests = 0;
+  RUN_NATIVE_TEST(test_parse_messy_input, "parser");
+  RUN_NATIVE_TEST(test_public_allocator_contract, "runtime");
+  RUN_NATIVE_TEST(test_runtime_version_contract, "runtime");
+  RUN_NATIVE_TEST(test_benchmark_tsv_comparison, "benchmark");
+  RUN_NATIVE_TEST(test_benchmark_progress_digest, "benchmark");
+  RUN_NATIVE_TEST(test_exact_expression_parser, "parser");
+  RUN_NATIVE_TEST(test_cpu_feature_detection, "runtime");
+  RUN_NATIVE_TEST(test_scratch_bigint_oracle, "bigint");
+  RUN_NATIVE_TEST(test_decimal_ffi_helpers, "ffi");
+  RUN_NATIVE_TEST(test_scratch_bigint_oracle_sweep, "bigint");
+  RUN_NATIVE_TEST(test_scratch_bigint_large_mul_oracle, "bigint");
+  RUN_NATIVE_TEST(test_scratch_bigint_square_oracle, "bigint");
+  RUN_NATIVE_TEST(test_scratch_bigint_sparse_zero_limb_oracle, "bigint");
+  RUN_NATIVE_TEST(test_scratch_bigint_karatsuba_middle_signs, "bigint");
+  RUN_NATIVE_TEST(test_scratch_bigint_mul_thresholds, "bigint");
+  RUN_NATIVE_TEST(test_scratch_bigint_dense_leaf_probe_oracle, "bigint");
+  RUN_NATIVE_TEST(test_scratch_bigint_karatsuba_view_probe_oracle, "bigint");
+  RUN_NATIVE_TEST(test_scratch_bigint_karatsuba_workspace_probe_oracle, "bigint");
+  RUN_NATIVE_TEST(test_scratch_bigint_karatsuba_sum_probe_oracle, "bigint");
+  RUN_NATIVE_TEST(test_scratch_bigint_toom3_probe_oracle, "bigint");
+  RUN_NATIVE_TEST(test_scratch_bigint_toom3_recursive_probe_oracle, "bigint");
+  RUN_NATIVE_TEST(test_scratch_bigint_unroll4_probe_oracle, "bigint");
+  RUN_NATIVE_TEST(test_scratch_bigint_toom3_minus_one_signs, "bigint");
+  RUN_NATIVE_TEST(test_ambiguous_input_rejected, "parser");
+  RUN_NATIVE_TEST(test_factor_solver_exact, "solver");
+  RUN_NATIVE_TEST(test_factor_solver_unresolved_budget, "solver");
+  RUN_NATIVE_TEST(test_rho_and_prime_power, "solver");
+  RUN_NATIVE_TEST(test_stronger_factor_methods, "solver");
+  RUN_NATIVE_TEST(test_cyclotomic_known_values, "solver");
+  RUN_NATIVE_TEST(test_cyclotomic_scan_exact, "solver");
+  RUN_NATIVE_TEST(test_workspace_and_gnfs_artifacts, "artifacts");
+  RUN_NATIVE_TEST(test_report_json_ffi_helpers, "ffi");
+  RUN_NATIVE_TEST(test_large_nonhit_does_not_false_solve, "solver");
+  RUN_NATIVE_TEST(test_benchmarks, "benchmark");
+  if (ran_tests == 0) {
+    fprintf(stderr, "no native tests matched filter\n");
+    return 2;
+  }
   puts("native xray tests passed");
   return 0;
 }
