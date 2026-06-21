@@ -157,6 +157,30 @@ not survive intersection (`runsWithSafeChunks=3/5`, repeat-stable none,
 now; do not spend the next implementation slice on unroll4 routing without a
 different lower-level idea.
 
+Preset smoke after adding `bench_focus_matrix.py --preset post-pocket-novelty`:
+
+`native-test-runs/20260621-111744-post-pocket-preset-r1/matrix.tsv`
+
+This one-repeat, `45` second timeout smoke validated the bounded preset path and
+reproduced the known decision shape. It is not promotion evidence, but it is a
+quick way to avoid launching an unbounded novelty sweep.
+
+Audit-ready rows from the smoke:
+
+| Focus | Operation | Chunk | Worst Pair Max | Decision |
+| --- | --- | --- | ---: | --- |
+| `mul-sparse` | `sparse-production-mul` | `4096-65536` | `0.176471` | sparse production evidence |
+| `mul-sparse` | `sparse-zero-mul` | `4096-65536` | `0.176471` | sparse diagnostic evidence |
+| `mul-sparse` | `sparse-production-pair-mul` | `4096-65536` | `1.000000` | sparse production evidence |
+| `mul-sparse` | `sparse-pair-mul` | `5639-65536` | `1.000000` | sparse diagnostic evidence |
+
+Dense/piecemeal clues remained recheck-only: `mul-large-cpu-toom-full-audit`
+showed a single-run `11717-24103` chunk but still had
+`maxWorstPairRatio=1.299887`; backend, Toom-4/5, div-transition, and handoff
+boundary rows either had no chunk or blocker-like statuses. Decision: keep the
+new preset as the first bounded smoke before spending time on deeper reruns,
+but do not change dense route priorities from this one-repeat artifact.
+
 ## 2026-06-21: Ranked Focus Matrix
 
 `bench_focus_matrix.py` now writes `matrix_ranked.tsv` beside the complete
