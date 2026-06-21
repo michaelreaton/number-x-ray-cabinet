@@ -1519,6 +1519,11 @@ Run these in order.
      --focus mul-toom5-smoke --focus mul-toom-div-transition --focus
      mul-combo-handoff-pocket` when you want one first-pass novelty matrix
      across several cheap focus families before choosing a deeper audit.
+     The latest two-repeat matrix artifact,
+     `native-test-runs/20260621-083300-novelty-matrix-repeat2/matrix.tsv`,
+     produced no repeat-stable safe chunks across those three focus families,
+     so do not spend the next implementation slice on the current Toom-5 smoke,
+     div2/div3 transition, or handoff-pocket routes.
    - Read `safeSizeChunks` and `longestSafeSizeChunk*` as contiguous measured
      benchmark points only. They are useful for piecemeal follow-up audits over
      promising pockets, but they do not prove every unmeasured digit between the
