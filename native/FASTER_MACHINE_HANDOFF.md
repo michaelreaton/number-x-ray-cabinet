@@ -1464,6 +1464,9 @@ Run these in order.
      benchmark points only. They are useful for piecemeal follow-up audits over
      promising pockets, but they do not prove every unmeasured digit between the
      endpoints is safe.
+   - Prefer `--bench-progress-tsv` for repeated focus runs because it exposes
+     `safeSizes`, `safeSizeChunks`, `longestSafeSizeChunk`, and
+     `longestSafeSizeChunkCount` as import columns.
 
 3. Increase samples only for promising rows.
    - Do not globally lengthen every benchmark.
