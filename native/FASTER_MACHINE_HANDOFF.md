@@ -1240,6 +1240,40 @@ combo reuse baseline at both tested sizes and worsens the `16384` GMP/MPIR
 gap. The next multiply slice should leave top-level Toom-5 handoff tuning and
 move to a different lower-level backend or multiplication structure.
 
+## 2026-06-20: Combo Reuse Transition GMP Duplicate-Control Audit
+
+Artifact:
+`native-test-runs/20260620-143501-c4b04caf`
+
+Validation: `native/build-codex-neg2-msvc142-nmake/xray_native_tests.exe`
+printed `native xray tests passed` with the Release MSVC 14.29 NMake build.
+
+This run adds `mul-large-toom-cmb-gmptrans`, a benchmark-only duplicate-control
+audit for the reusable combo map in the transition window. It covers the
+deterministic random spot `11717` and the power-of-two anchor `16384`, with
+current production multiply, primary `mpz_mul`, and duplicate `mpz_mul` in the
+same rotating run. Production multiply remains unchanged.
+
+Summary:
+
+| Row | Sizes | Candidate / GMP Max | Candidate / GMP Duplicate Max | Current / GMP Max | GMP Control Max | GMP Control Worst | Worst Pair Max | Safe Sizes | Hash Safe | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `mul-large-toom-cmb-gmptrans` | `11717,16384` | `0.924` | `0.908` | `1.401` | `1.025` | `1.073` | `1.080` | `2/2` | `36/36` | observe only |
+
+Per-size signal:
+
+| Digits | Candidate / GMP | Candidate / GMP Duplicate | Current / GMP | GMP Control | GMP Control Worst | Worst Pair | GMP Stable | Control Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `11717` | `0.924` | `0.903` | `1.347` | `1.025` | `1.073` | `1.073` | `9/9` | `9/9` | combo-gmp-control-clean |
+| `16384` | `0.906` | `0.908` | `1.401` | `0.991` | `1.058` | `1.080` | `9/9` | `9/9` | combo-gmp-control-clean |
+
+Decision: keep this as strong transition-window methodology evidence, not a
+production promotion. The same-run duplicate GMP/MPIR lane is stable, and the
+reusable combo map beats both GMP lanes plus current production at the random
+spot and anchor. That supports a later forced route audit for this transition
+pocket, but the broader upper-window GMP miss still blocks any default-route
+change.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor

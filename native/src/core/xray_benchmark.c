@@ -13311,8 +13311,12 @@ static void append_mul_combo_reuse_map_gmp_control_result(
   const char *sizes,
   const XrayMulFullWorkspaceDepthScoutPoint *points,
   size_t point_count,
-  size_t sample_count) {
-  if (!report || !policy || !points || point_count == 0) return;
+  size_t sample_count,
+  const char *operation,
+  const char *name_suffix,
+  const char *feature_gate,
+  const char *threshold_safety) {
+  if (!report || !policy || !points || point_count == 0 || !operation || !name_suffix || !feature_gate || !threshold_safety) return;
   size_t required_stable = policy_required_stable_samples(sample_count);
   size_t safe_size_count = 0;
   XraySafeSizeChunks safe_chunks;
@@ -13395,9 +13399,9 @@ static void append_mul_combo_reuse_map_gmp_control_result(
 
   XrayBenchmarkResult result;
   memset(&result, 0, sizeof(result));
-  snprintf(result.name, sizeof(result.name), "policy scout mul combo reuse map GMP duplicate control");
+  snprintf(result.name, sizeof(result.name), "policy scout mul combo reuse map GMP duplicate control %s", name_suffix);
   snprintf(result.category, sizeof(result.category), "policy-gate");
-  snprintf(result.operation, sizeof(result.operation), "mul-large-toom-cmb-gmpctrl");
+  snprintf(result.operation, sizeof(result.operation), "%s", operation);
   result.digits = points[point_count - 1U].digits;
   result.scratch_us = candidate_us ? candidate_us : 1;
   result.gmp_us = gmp_us ? gmp_us : 1;
@@ -13421,7 +13425,8 @@ static void append_mul_combo_reuse_map_gmp_control_result(
   result.passed = parity && hash_gate;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=mul-large-toom-cmb-gmpctrl policy=%s sizes=%s sizeCount=%zu minDigits=%zu routePolicy=reuse-l64d2-l48d4-l48d3 cut24103=leaf48depth4 cut52163=leaf48depth3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu safeSizeChunks=%s longestSafeSizeChunk=%s longestSafeSizeChunkCount=%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom-combo-gmp-control gmpClue=mpz-mul-duplicate-control forcedCandidate=yes thresholdSafety=upper-window candidate=full-ws-combo-reuse-map-l64d2-l48d4-l48d3 currentBaseline=current-scratch-mul baseline=mpz_mul-duplicate oracle=mpz_mul-primary gmpControlSafety=%s candGmpMax=%.3f candGmpDuplicateMax=%.3f currentGmpMax=%.3f gmpControlRatioMax=%.3f gmpControlWorstMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
+    "op=%s policy=%s sizes=%s sizeCount=%zu minDigits=%zu routePolicy=reuse-l64d2-l48d4-l48d3 cut24103=leaf48depth4 cut52163=leaf48depth3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu safeSizeChunks=%s longestSafeSizeChunk=%s longestSafeSizeChunkCount=%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=%s gmpClue=mpz-mul-duplicate-control forcedCandidate=yes thresholdSafety=%s candidate=full-ws-combo-reuse-map-l64d2-l48d4-l48d3 currentBaseline=current-scratch-mul baseline=mpz_mul-duplicate oracle=mpz_mul-primary gmpControlSafety=%s candGmpMax=%.3f candGmpDuplicateMax=%.3f currentGmpMax=%.3f gmpControlRatioMax=%.3f gmpControlWorstMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
+    operation,
     policy,
     sizes ? sizes : "unknown",
     point_count,
@@ -13440,6 +13445,8 @@ static void append_mul_combo_reuse_map_gmp_control_result(
     hash_gate ? "matched" : "blocked",
     parity ? "matched" : "blocked",
     result.adoption,
+    feature_gate,
+    threshold_safety,
     (control_ratio_safe && control_worst_safe && control_stable_safe) ? "stable" : "noisy",
     max_candidate_gmp_ratio,
     max_candidate_gmp_duplicate_ratio,
@@ -13454,8 +13461,13 @@ static void append_mul_combo_reuse_map_gmp_control_point_result(
   XrayBenchmarkReport *report,
   const char *policy,
   const XrayMulFullWorkspaceDepthScoutPoint *point,
-  size_t sample_count) {
-  if (!report || !policy || !point) return;
+  size_t sample_count,
+  const char *operation,
+  const char *detail_op,
+  const char *parent,
+  const char *feature_gate,
+  const char *threshold_safety) {
+  if (!report || !policy || !point || !operation || !detail_op || !parent || !feature_gate || !threshold_safety) return;
   size_t required_stable = policy_required_stable_samples(sample_count);
   size_t expected_hash_count = sample_count * XRAY_MUL_OPERAND_FAMILIES;
   int hash_gate = point->hash_match_count == expected_hash_count;
@@ -13483,7 +13495,7 @@ static void append_mul_combo_reuse_map_gmp_control_point_result(
   memset(&result, 0, sizeof(result));
   snprintf(result.name, sizeof(result.name), "kernel large mul combo reuse GMP control point %zu digits", point->digits);
   snprintf(result.category, sizeof(result.category), "kernel-probe");
-  snprintf(result.operation, sizeof(result.operation), "mul-large-toom-cmb-gmpctrl-pt");
+  snprintf(result.operation, sizeof(result.operation), "%s", operation);
   result.digits = point->digits;
   result.scratch_us = point->candidate_us ? point->candidate_us : 1;
   result.gmp_us = point->gmp_us ? point->gmp_us : 1;
@@ -13507,7 +13519,9 @@ static void append_mul_combo_reuse_map_gmp_control_point_result(
   result.passed = point->parity && hash_gate;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=mul-cmb-gmp-control-point parent=cmb-gmp-control policy=%s sizeRole=%s routePolicy=reuse-l64d2-l48d4-l48d3 activeCandidate=%s leafThreshold=%zu depthLimit=%zu cut24103=leaf48depth4 cut52163=leaf48depth3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu stablePairs=%zu/%zu stableGmp=%zu/%zu stableCurrent=%zu/%zu gmpControlStable=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom-combo-gmp-control gmpClue=mpz-mul-duplicate-control thresholdSafety=upper-window candidate=full-ws-combo-reuse-map-l64d2-l48d4-l48d3 currentBaseline=current-scratch-mul baseline=mpz_mul-duplicate oracle=mpz_mul-primary gmpControlSafety=%s candGmpRatio=%.3f candGmpDuplicateRatio=%.3f currentGmpRatio=%.3f gmpControlRatio=%.3f gmpControlWorst=%.3f worstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating sameInput=yes sameRunAudit=yes",
+    "op=%s parent=%s policy=%s sizeRole=%s routePolicy=reuse-l64d2-l48d4-l48d3 activeCandidate=%s leafThreshold=%zu depthLimit=%zu cut24103=leaf48depth4 cut52163=leaf48depth3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu stablePairs=%zu/%zu stableGmp=%zu/%zu stableCurrent=%zu/%zu gmpControlStable=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=%s gmpClue=mpz-mul-duplicate-control thresholdSafety=%s candidate=full-ws-combo-reuse-map-l64d2-l48d4-l48d3 currentBaseline=current-scratch-mul baseline=mpz_mul-duplicate oracle=mpz_mul-primary gmpControlSafety=%s candGmpRatio=%.3f candGmpDuplicateRatio=%.3f currentGmpRatio=%.3f gmpControlRatio=%.3f gmpControlWorst=%.3f worstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating sameInput=yes sameRunAudit=yes",
+    detail_op,
+    parent,
     policy,
     large_mul_campaign_size_role(point->digits),
     active_candidate,
@@ -13530,6 +13544,8 @@ static void append_mul_combo_reuse_map_gmp_control_point_result(
     hash_gate ? "matched" : "blocked",
     point->parity ? "matched" : "blocked",
     result.adoption,
+    feature_gate,
+    threshold_safety,
     control_safe ? "stable" : "noisy",
     point->candidate_gmp_ratio,
     point->candidate_baseline_ratio,
@@ -13545,8 +13561,17 @@ static void run_mul_combo_reuse_map_gmp_control_case(
   unsigned int seed,
   const char *policy,
   const size_t *sizes,
-  size_t size_count) {
-  if (!report || !policy || !sizes || size_count == 0 || size_count > XRAY_FORMAT_ROUTE_TOURNAMENT_MAX) return;
+  size_t size_count,
+  const char *point_operation,
+  const char *aggregate_operation,
+  const char *detail_op,
+  const char *parent,
+  const char *aggregate_name_suffix,
+  const char *feature_gate,
+  const char *threshold_safety) {
+  if (!report || !policy || !sizes || size_count == 0 || size_count > XRAY_FORMAT_ROUTE_TOURNAMENT_MAX ||
+      !point_operation || !aggregate_operation || !detail_op || !parent ||
+      !aggregate_name_suffix || !feature_gate || !threshold_safety) return;
   XrayMulFullWorkspaceDepthScoutPoint points[XRAY_FORMAT_ROUTE_TOURNAMENT_MAX];
   memset(points, 0, sizeof(points));
   char size_list[96] = {0};
@@ -13563,7 +13588,12 @@ static void run_mul_combo_reuse_map_gmp_control_case(
       report,
       policy,
       &points[index],
-      XRAY_BENCH_DEEP_SAMPLES);
+      XRAY_BENCH_DEEP_SAMPLES,
+      point_operation,
+      detail_op,
+      parent,
+      feature_gate,
+      threshold_safety);
   }
   append_mul_combo_reuse_map_gmp_control_result(
     report,
@@ -13571,7 +13601,11 @@ static void run_mul_combo_reuse_map_gmp_control_case(
     size_list,
     points,
     size_count,
-    XRAY_BENCH_DEEP_SAMPLES);
+    XRAY_BENCH_DEEP_SAMPLES,
+    aggregate_operation,
+    aggregate_name_suffix,
+    feature_gate,
+    threshold_safety);
 }
 
 static int run_mul_full_workspace_depth_scout_batch_step(
@@ -19584,6 +19618,7 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
   const size_t mul_full_workspace_upper_gate_digits[] = {24103, 32768, 52163, 65536};
   const size_t mul_full_workspace_full_window_digits[] = {4096, 5639, 8192, 11717, 16384, 24103, 32768, 52163, 65536};
   const size_t mul_full_workspace_best_map_control_digits[] = {24103, 32768};
+  const size_t mul_full_workspace_transition_control_digits[] = {11717, 16384};
   const size_t mul_full_workspace_toom5_smoke_digits[] = {5639, 8192};
   const size_t mul_full_workspace_toom5_handoff_smoke_digits[] = {11717, 16384};
   run_mul_full_workspace_deep_audit_case(
@@ -19868,7 +19903,27 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     1543U,
     "full-workspace-combo-reuse-gmp-control-upper-ge24103",
     mul_full_workspace_upper_gate_digits,
-    sizeof(mul_full_workspace_upper_gate_digits) / sizeof(mul_full_workspace_upper_gate_digits[0]));
+    sizeof(mul_full_workspace_upper_gate_digits) / sizeof(mul_full_workspace_upper_gate_digits[0]),
+    "mul-large-toom-cmb-gmpctrl-pt",
+    "mul-large-toom-cmb-gmpctrl",
+    "mul-cmb-gmp-control-point",
+    "cmb-gmp-control",
+    "upper",
+    "large-multiply-cpu-toom-combo-gmp-control",
+    "upper-window");
+  run_mul_combo_reuse_map_gmp_control_case(
+    report,
+    1549U,
+    "full-workspace-combo-reuse-gmp-control-transition-ge11717",
+    mul_full_workspace_transition_control_digits,
+    sizeof(mul_full_workspace_transition_control_digits) / sizeof(mul_full_workspace_transition_control_digits[0]),
+    "mul-large-toom-cmb-gmptrans-pt",
+    "mul-large-toom-cmb-gmptrans",
+    "mul-cmb-gmp-transition-point",
+    "cmb-gmp-transition-control",
+    "transition",
+    "large-multiply-cpu-toom-combo-gmp-control-transition",
+    "transition-window");
   run_mul_combo_reuse_neg2_map_audit_case(
     report,
     1553U,
@@ -20051,7 +20106,14 @@ static void run_mul_combo_focus_cases(XrayBenchmarkReport *report, const char *f
       1549U,
       "full-workspace-combo-reuse-gmp-control-transition-ge11717",
       mul_full_workspace_transition_control_digits,
-      sizeof(mul_full_workspace_transition_control_digits) / sizeof(mul_full_workspace_transition_control_digits[0]));
+      sizeof(mul_full_workspace_transition_control_digits) / sizeof(mul_full_workspace_transition_control_digits[0]),
+      "mul-large-toom-cmb-gmptrans-pt",
+      "mul-large-toom-cmb-gmptrans",
+      "mul-cmb-gmp-transition-point",
+      "cmb-gmp-transition-control",
+      "transition",
+      "large-multiply-cpu-toom-combo-gmp-control-transition",
+      "transition-window");
   }
 
   if (any_combo || benchmark_focus_eq(focus, "mul-combo-upper")) {
@@ -20094,7 +20156,14 @@ static void run_mul_combo_focus_cases(XrayBenchmarkReport *report, const char *f
       1543U,
       "full-workspace-combo-reuse-gmp-control-upper-ge24103",
       mul_full_workspace_upper_gate_digits,
-      sizeof(mul_full_workspace_upper_gate_digits) / sizeof(mul_full_workspace_upper_gate_digits[0]));
+      sizeof(mul_full_workspace_upper_gate_digits) / sizeof(mul_full_workspace_upper_gate_digits[0]),
+      "mul-large-toom-cmb-gmpctrl-pt",
+      "mul-large-toom-cmb-gmpctrl",
+      "mul-cmb-gmp-control-point",
+      "cmb-gmp-control",
+      "upper",
+      "large-multiply-cpu-toom-combo-gmp-control",
+      "upper-window");
   }
 }
 #endif
