@@ -63,6 +63,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Summarize every progress row instead of only aggregate policy-gate rows",
     )
+    parser.add_argument(
+        "--timeout-seconds",
+        type=float,
+        help="Optional per xray_cli invocation timeout; timed-out runs are recorded as summary rows",
+    )
     return parser.parse_args()
 
 
@@ -76,13 +81,81 @@ def default_out_dir(focus: str) -> Path:
     return Path("native-test-runs") / f"{stamp}-{safe_label(focus)}-repeat"
 
 
-def run_capture(args: list[str]) -> str:
-    completed = subprocess.run(args, text=True, capture_output=True, check=False)
+class CommandTimeout(Exception):
+    def __init__(self, command: list[str], timeout_seconds: float, stdout: str, stderr: str) -> None:
+        super().__init__(f"command timed out after {timeout_seconds:g}s: {' '.join(command)}")
+        self.command = command
+        self.timeout_seconds = timeout_seconds
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+def capture_text(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value)
+
+
+def run_capture(args: list[str], timeout_seconds: float | None = None) -> str:
+    try:
+        completed = subprocess.run(
+            args,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise CommandTimeout(
+            args,
+            timeout_seconds if timeout_seconds is not None else 0.0,
+            capture_text(error.stdout),
+            capture_text(error.stderr),
+        ) from error
     if completed.returncode != 0:
         sys.stderr.write(completed.stdout)
         sys.stderr.write(completed.stderr)
         raise SystemExit(completed.returncode)
     return completed.stdout
+
+
+def write_timeout_artifact(path: Path, error: CommandTimeout) -> None:
+    text = [
+        f"timeoutSeconds={error.timeout_seconds:g}",
+        "command=" + " ".join(error.command),
+        "",
+        "stdout:",
+        error.stdout,
+        "",
+        "stderr:",
+        error.stderr,
+    ]
+    path.write_text("\n".join(text), encoding="utf-8", newline="")
+
+
+def timeout_summary_row(
+    run_index: int,
+    operation: str,
+    timeout_artifact: Path,
+    progress_artifact: Path | None = None,
+) -> dict[str, str]:
+    return {
+        "run": str(run_index),
+        "operation": operation,
+        "status": "timeout",
+        "speedRatio": "",
+        "worstPairRatio": "",
+        "stablePairs": "",
+        "safeSizes": "",
+        "safeSizeChunks": "none",
+        "longestSafeSizeChunk": "none",
+        "longestSafeSizeChunkCount": "0",
+        "blockerReason": "focus-timeout",
+        "artifact": str(timeout_artifact),
+        "progressArtifact": str(progress_artifact) if progress_artifact else "",
+    }
 
 
 def progress_rows(progress_text: str) -> list[dict[str, str]]:
@@ -316,6 +389,10 @@ def run_self_test() -> int:
     assert by_operation["op-a"]["maxWorstPairRatio"] == "1.030000"
     assert by_operation["op-b"]["repeatStableSafeChunks"] == "none"
     assert by_operation["op-b"]["runsWithSafeChunks"] == "2"
+    timeout_row = timeout_summary_row(4, "op-timeout", Path("timeout.txt"))
+    assert timeout_row["status"] == "timeout"
+    assert timeout_row["safeSizeChunks"] == "none"
+    assert timeout_row["blockerReason"] == "focus-timeout"
     print("bench_focus_repeat self-test passed")
     return 0
 
@@ -328,6 +405,8 @@ def main() -> int:
         raise SystemExit("--cli and --focus are required unless --self-test is set")
     if args.runs < 1:
         raise SystemExit("--runs must be at least 1")
+    if args.timeout_seconds is not None and args.timeout_seconds <= 0:
+        raise SystemExit("--timeout-seconds must be greater than 0")
 
     cli = Path(args.cli)
     out_dir = Path(args.out) if args.out else default_out_dir(args.focus)
@@ -338,13 +417,28 @@ def main() -> int:
         artifact = out_dir / f"run{run_index:02d}.benchmark.tsv"
         progress_artifact = out_dir / f"run{run_index:02d}.progress.tsv"
 
-        bench_text = run_capture([str(cli), "--bench-focus", args.focus, "--bench-tsv"])
+        try:
+            bench_text = run_capture(
+                [str(cli), "--bench-focus", args.focus, "--bench-tsv"],
+                args.timeout_seconds,
+            )
+        except CommandTimeout as error:
+            timeout_artifact = out_dir / f"run{run_index:02d}.timeout.txt"
+            write_timeout_artifact(timeout_artifact, error)
+            summary.append(timeout_summary_row(run_index, f"{args.focus}:timeout", timeout_artifact))
+            continue
         artifact.write_text(bench_text, encoding="utf-8", newline="")
 
         progress_cmd = [str(cli), "--bench-progress-tsv", str(artifact)]
         if args.progress_filter:
             progress_cmd.extend(["--bench-filter", args.progress_filter])
-        progress_text = run_capture(progress_cmd)
+        try:
+            progress_text = run_capture(progress_cmd, args.timeout_seconds)
+        except CommandTimeout as error:
+            timeout_artifact = out_dir / f"run{run_index:02d}.progress.timeout.txt"
+            write_timeout_artifact(timeout_artifact, error)
+            summary.append(timeout_summary_row(run_index, f"{args.focus}:progress-timeout", timeout_artifact, artifact))
+            continue
         progress_artifact.write_text(progress_text, encoding="utf-8", newline="")
 
         rows = rows_to_summarize(progress_rows(progress_text), args.keep_all_progress_rows)
