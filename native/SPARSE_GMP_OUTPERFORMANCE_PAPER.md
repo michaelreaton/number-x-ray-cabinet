@@ -218,8 +218,8 @@ Recommended local commands:
 ```powershell
 $env:PATH = "C:\vcpkg\installed\x64-windows\bin;$env:PATH"
 cmake --build native\build-stack-v142 --config Release
-python native\tools\bench_focus_repeat.py --cli native\build-stack-v142\Release\xray_cli.exe --focus mul-sparse --runs 2 --out native-test-runs\<stamp>-sparse-repeat2
-python native\tools\bench_focus_matrix.py --cli native\build-stack-v142\Release\xray_cli.exe --runs 2 --timeout-seconds 90 --out native-test-runs\<stamp>-novelty-matrix --focus mul-full-audit-pocket --focus mul-backend-gap --focus mul-toom4-top --focus mul-toom5-smoke --focus mul-toom-div-transition --focus mul-combo-handoff-boundary --focus mul-sparse
+python native\tools\bench_focus_matrix.py --cli native\build-stack-v142\Release\xray_cli.exe --runs 2 --preset sparse-paper --out native-test-runs\<stamp>-sparse-repeat2
+python native\tools\bench_focus_matrix.py --cli native\build-stack-v142\Release\xray_cli.exe --runs 2 --preset post-pocket-novelty --out native-test-runs\<stamp>-novelty-matrix
 ```
 
 Artifacts to preserve:
