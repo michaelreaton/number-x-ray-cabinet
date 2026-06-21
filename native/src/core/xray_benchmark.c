@@ -20595,6 +20595,8 @@ static void run_mul_combo_focus_cases(XrayBenchmarkReport *report, const char *f
   const size_t mul_full_workspace_transition_tournament_digits[] = {11717, 16384, 24103};
   const size_t mul_full_workspace_handoff_pocket_digits[] = {10007, 10733, 11717, 12553, 13649, 14831, 16384};
   int any_combo = benchmark_focus_any_mul_combo(focus);
+  int transition_bundle = any_combo || benchmark_focus_eq(focus, "mul-combo-transition");
+  int handoff_pocket_focus = benchmark_focus_eq(focus, "mul-combo-handoff-pocket");
 
   if (any_combo || benchmark_focus_eq(focus, "mul-combo-lower")) {
     run_mul_full_workspace_depth_scout_case(
@@ -20612,7 +20614,7 @@ static void run_mul_combo_focus_cases(XrayBenchmarkReport *report, const char *f
       sizeof(mul_full_workspace_lower_gate_digits) / sizeof(mul_full_workspace_lower_gate_digits[0]));
   }
 
-  if (any_combo || benchmark_focus_eq(focus, "mul-combo-transition")) {
+  if (transition_bundle) {
     run_mul_combo_reuse_map_audit_case(
       report,
       1523U,
@@ -20641,6 +20643,9 @@ static void run_mul_combo_focus_cases(XrayBenchmarkReport *report, const char *f
       16384,
       mul_full_workspace_transition_tournament_digits,
       sizeof(mul_full_workspace_transition_tournament_digits) / sizeof(mul_full_workspace_transition_tournament_digits[0]));
+  }
+
+  if (transition_bundle || handoff_pocket_focus) {
     run_mul_full_workspace_combo_handoff_audit_case(
       report,
       1547U,
@@ -20649,6 +20654,9 @@ static void run_mul_combo_focus_cases(XrayBenchmarkReport *report, const char *f
       16384,
       mul_full_workspace_handoff_pocket_digits,
       sizeof(mul_full_workspace_handoff_pocket_digits) / sizeof(mul_full_workspace_handoff_pocket_digits[0]));
+  }
+
+  if (transition_bundle) {
     run_mul_combo_reuse_map_gmp_control_case(
       report,
       1549U,

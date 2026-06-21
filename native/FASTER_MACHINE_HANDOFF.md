@@ -1451,6 +1451,9 @@ Run these in order.
      self-control, duplicate GMP/MPIR control rows for `11717` and `16384`,
      plus a `11717,16384,24103` transition tournament scout, so use it before
      launching a broader transition sweep.
+   - Use `mul-combo-handoff-pocket` when you only need the dense
+     `10007,10733,11717,12553,13649,14831,16384` handoff-pocket scout. It is
+     the cheaper first check before rerunning the full transition bundle.
    - Treat focus output as triage only: keep the raw TSV, but do not promote or
      publish a route until the full parity, route-audit, worst-pair, and
      stable-pair gates pass.
