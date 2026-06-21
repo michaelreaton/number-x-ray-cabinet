@@ -1113,7 +1113,7 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
   ComparePair run_failed[8] = {0};
   ComparePair warmup_review[8] = {0};
   ComparePair setup_context[8] = {0};
-  ComparePair large_mul_campaign[216] = {0};
+  ComparePair large_mul_campaign[256] = {0};
   size_t completed_count = 0;
   size_t open_count = 0;
   size_t baseline_count = 0;
@@ -1184,6 +1184,8 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
         compare_streq(row->operation, "mul-large-toom-cmb-map-ctrl") ||
         compare_streq(row->operation, "mul-large-toom-cmb-reuse-map-pt") ||
         compare_streq(row->operation, "mul-large-toom-cmb-reuse-map") ||
+        compare_streq(row->operation, "mul-large-toom-cmb-gmpctrl-pt") ||
+        compare_streq(row->operation, "mul-large-toom-cmb-gmpctrl") ||
         compare_streq(row->operation, "mul-large-toom-cmb-ripdiv-pt") ||
         compare_streq(row->operation, "mul-large-toom-cmb-ripdiv") ||
         compare_streq(row->operation, "mul-large-toom-cmb-l48d4-point") ||

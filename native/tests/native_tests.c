@@ -2734,6 +2734,12 @@ static void test_benchmarks(void) {
   int saw_mul_large_cpu_toom_cmb_reuse_map_point52163_probe = 0;
   int saw_mul_large_cpu_toom_cmb_reuse_map_point65536_probe = 0;
   int saw_mul_large_cpu_toom_cmb_reuse_map_probe = 0;
+  int saw_mul_large_cpu_toom_cmb_gmp_control_point_probe = 0;
+  int saw_mul_large_cpu_toom_cmb_gmp_control_point24103_probe = 0;
+  int saw_mul_large_cpu_toom_cmb_gmp_control_point32768_probe = 0;
+  int saw_mul_large_cpu_toom_cmb_gmp_control_point52163_probe = 0;
+  int saw_mul_large_cpu_toom_cmb_gmp_control_point65536_probe = 0;
+  int saw_mul_large_cpu_toom_cmb_gmp_control_probe = 0;
   int saw_mul_large_cpu_toom_cmb_reuse_ipdiv_map_point_probe = 0;
   int saw_mul_large_cpu_toom_cmb_reuse_ipdiv_map_point4096_probe = 0;
   int saw_mul_large_cpu_toom_cmb_reuse_ipdiv_map_point5639_probe = 0;
@@ -2942,6 +2948,8 @@ static void test_benchmarks(void) {
       CHECK(report->results[index].speed_ratio > 0.0);
       if (strcmp(report->results[index].operation, "mul-large-toom-cmb-map-ctrl-pt") == 0) {
         CHECK(report->results[index].max_allowed_speed_ratio == 1.10);
+      } else if (strcmp(report->results[index].operation, "mul-large-toom-cmb-gmpctrl-pt") == 0) {
+        CHECK(report->results[index].max_allowed_speed_ratio == 1.0);
       } else {
         CHECK(report->results[index].max_allowed_speed_ratio == 0.98);
       }
@@ -2963,6 +2971,7 @@ static void test_benchmarks(void) {
           strcmp(report->results[index].operation, "mul-large-toom-cmb-tourn-pt") == 0 ||
           strcmp(report->results[index].operation, "mul-large-toom-cmb-reuse-pt") == 0 ||
           strcmp(report->results[index].operation, "mul-large-toom-cmb-reuse-map-pt") == 0 ||
+          strcmp(report->results[index].operation, "mul-large-toom-cmb-gmpctrl-pt") == 0 ||
           strcmp(report->results[index].operation, "mul-large-toom-cmb-ripdiv-pt") == 0 ||
           strcmp(report->results[index].operation, "mul-large-toom-cmb-map-pt") == 0 ||
           strcmp(report->results[index].operation, "mul-large-toom-cmb-map-ctrl-pt") == 0 ||
@@ -4722,6 +4731,66 @@ static void test_benchmarks(void) {
             report->results[index].digits == 8192 ||
             report->results[index].digits == 16384 ||
             report->results[index].digits == 32768 ||
+            report->results[index].digits == 65536) {
+          CHECK(strstr(report->results[index].detail, "sizeRole=power2-anchor") != NULL);
+        } else {
+          CHECK(strstr(report->results[index].detail, "sizeRole=deterministic-random-spot") != NULL);
+        }
+      }
+      if (strcmp(report->results[index].operation, "mul-large-toom-cmb-gmpctrl-pt") == 0) {
+        saw_mul_large_cpu_toom_cmb_gmp_control_point_probe = 1;
+        if (report->results[index].digits == 24103) saw_mul_large_cpu_toom_cmb_gmp_control_point24103_probe = 1;
+        else if (report->results[index].digits == 32768) saw_mul_large_cpu_toom_cmb_gmp_control_point32768_probe = 1;
+        else if (report->results[index].digits == 52163) saw_mul_large_cpu_toom_cmb_gmp_control_point52163_probe = 1;
+        else if (report->results[index].digits == 65536) saw_mul_large_cpu_toom_cmb_gmp_control_point65536_probe = 1;
+        else CHECK(0);
+        CHECK(report->results[index].parity_verified);
+        CHECK(!report->results[index].replacement_ready);
+        CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+        CHECK(report->results[index].sample_count == 9);
+        CHECK(strstr(report->results[index].detail, "op=mul-cmb-gmp-control-point") != NULL);
+        CHECK(strstr(report->results[index].detail, "parent=cmb-gmp-control") != NULL);
+        CHECK(strstr(report->results[index].detail, "policy=full-workspace-combo-reuse-gmp-control-upper-ge24103") != NULL);
+        CHECK(strstr(report->results[index].detail, "routePolicy=reuse-l64d2-l48d4-l48d3") != NULL);
+        CHECK(strstr(report->results[index].detail, "cut24103=leaf48depth4") != NULL);
+        CHECK(strstr(report->results[index].detail, "cut52163=leaf48depth3") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+        CHECK(strstr(report->results[index].detail, "samples=9") != NULL);
+        CHECK(strstr(report->results[index].detail, "requiredStablePairs=8/9") != NULL);
+        CHECK(strstr(report->results[index].detail, "stableGmp=") != NULL);
+        CHECK(strstr(report->results[index].detail, "stableCurrent=") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpControlStable=") != NULL);
+        CHECK(strstr(report->results[index].detail, "hashSafe=18/18") != NULL);
+        CHECK(strstr(report->results[index].detail, "hashGate=matched") != NULL);
+        CHECK(strstr(report->results[index].detail, "parity=matched") != NULL);
+        CHECK(strstr(report->results[index].detail, "thresholdSafety=upper-window") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=full-ws-combo-reuse-map-l64d2-l48d4-l48d3") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=mpz_mul-duplicate") != NULL);
+        CHECK(strstr(report->results[index].detail, "oracle=mpz_mul-primary") != NULL);
+        CHECK(strstr(report->results[index].detail, "currentBaseline=current-scratch-mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpControlSafety=") != NULL);
+        CHECK(strstr(report->results[index].detail, "candGmpRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "candGmpDuplicateRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "currentGmpRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpControlRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpControlWorst=") != NULL);
+        CHECK(strstr(report->results[index].detail, "worstPairRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
+        CHECK(strstr(report->results[index].detail, "timingMode=rotating") != NULL);
+        CHECK(strstr(report->results[index].detail, "sameInput=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "sameRunAudit=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=large-multiply-cpu-toom-combo-gmp-control") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpClue=mpz-mul-duplicate-control") != NULL);
+        CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+        CHECK(strstr(report->results[index].detail, "replacementReady=false") != NULL);
+        if (report->results[index].digits < 52163) {
+          CHECK(strstr(report->results[index].detail, "activeCandidate=full-ws-combo-l48d4") != NULL);
+          CHECK(strstr(report->results[index].detail, "depthLimit=4") != NULL);
+        } else {
+          CHECK(strstr(report->results[index].detail, "activeCandidate=full-ws-combo-l48d3") != NULL);
+          CHECK(strstr(report->results[index].detail, "depthLimit=3") != NULL);
+        }
+        if (report->results[index].digits == 32768 ||
             report->results[index].digits == 65536) {
           CHECK(strstr(report->results[index].detail, "sizeRole=power2-anchor") != NULL);
         } else {
@@ -7218,6 +7287,48 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "gmpClue=toom33-combo-reuse-map-full-window") != NULL);
         CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
         CHECK(strstr(report->results[index].detail, "replacementReady=false") != NULL);
+      } else if (strcmp(report->results[index].operation, "mul-large-toom-cmb-gmpctrl") == 0) {
+        saw_mul_large_cpu_toom_cmb_gmp_control_probe = 1;
+        CHECK(report->results[index].sample_count == 4);
+        CHECK(report->results[index].digits == 65536);
+        CHECK(!report->results[index].replacement_ready);
+        CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+        CHECK(strstr(report->results[index].detail, "op=mul-large-toom-cmb-gmpctrl") != NULL);
+        CHECK(strstr(report->results[index].detail, "policy=full-workspace-combo-reuse-gmp-control-upper-ge24103") != NULL);
+        CHECK(strstr(report->results[index].detail, "sizes=24103,32768,52163,65536") != NULL);
+        CHECK(strstr(report->results[index].detail, "sizeCount=4") != NULL);
+        CHECK(strstr(report->results[index].detail, "minDigits=24103") != NULL);
+        CHECK(strstr(report->results[index].detail, "routePolicy=reuse-l64d2-l48d4-l48d3") != NULL);
+        CHECK(strstr(report->results[index].detail, "cut24103=leaf48depth4") != NULL);
+        CHECK(strstr(report->results[index].detail, "cut52163=leaf48depth3") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+        CHECK(strstr(report->results[index].detail, "samples=9") != NULL);
+        CHECK(strstr(report->results[index].detail, "requiredStablePairs=8/9") != NULL);
+        CHECK(strstr(report->results[index].detail, "safeSizes=") != NULL);
+        CHECK(strstr(report->results[index].detail, "hashSafe=72/72") != NULL);
+        CHECK(strstr(report->results[index].detail, "hashGate=matched") != NULL);
+        CHECK(strstr(report->results[index].detail, "parity=matched") != NULL);
+        CHECK(strstr(report->results[index].detail, "forcedCandidate=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "thresholdSafety=upper-window") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=full-ws-combo-reuse-map-l64d2-l48d4-l48d3") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=mpz_mul-duplicate") != NULL);
+        CHECK(strstr(report->results[index].detail, "oracle=mpz_mul-primary") != NULL);
+        CHECK(strstr(report->results[index].detail, "currentBaseline=current-scratch-mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpControlSafety=") != NULL);
+        CHECK(strstr(report->results[index].detail, "candGmpMax=") != NULL);
+        CHECK(strstr(report->results[index].detail, "candGmpDuplicateMax=") != NULL);
+        CHECK(strstr(report->results[index].detail, "currentGmpMax=") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpControlRatioMax=") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpControlWorstMax=") != NULL);
+        CHECK(strstr(report->results[index].detail, "maxWorstPairRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
+        CHECK(strstr(report->results[index].detail, "timingMode=rotating-batch") != NULL);
+        CHECK(strstr(report->results[index].detail, "sameInput=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "sameRunAudit=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=large-multiply-cpu-toom-combo-gmp-control") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpClue=mpz-mul-duplicate-control") != NULL);
+        CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+        CHECK(strstr(report->results[index].detail, "replacementReady=false") != NULL);
       } else if (strcmp(report->results[index].operation, "mul-large-toom-cmb-ripdiv") == 0) {
         saw_mul_large_cpu_toom_cmb_reuse_ipdiv_map_probe = 1;
         CHECK(report->results[index].sample_count == 9);
@@ -8247,6 +8358,12 @@ static void test_benchmarks(void) {
   CHECK(saw_mul_large_cpu_toom_cmb_reuse_map_point52163_probe);
   CHECK(saw_mul_large_cpu_toom_cmb_reuse_map_point65536_probe);
   CHECK(saw_mul_large_cpu_toom_cmb_reuse_map_probe);
+  CHECK(saw_mul_large_cpu_toom_cmb_gmp_control_point_probe);
+  CHECK(saw_mul_large_cpu_toom_cmb_gmp_control_point24103_probe);
+  CHECK(saw_mul_large_cpu_toom_cmb_gmp_control_point32768_probe);
+  CHECK(saw_mul_large_cpu_toom_cmb_gmp_control_point52163_probe);
+  CHECK(saw_mul_large_cpu_toom_cmb_gmp_control_point65536_probe);
+  CHECK(saw_mul_large_cpu_toom_cmb_gmp_control_probe);
   CHECK(saw_mul_large_cpu_toom_cmb_reuse_ipdiv_map_point_probe);
   CHECK(saw_mul_large_cpu_toom_cmb_reuse_ipdiv_map_point4096_probe);
   CHECK(saw_mul_large_cpu_toom_cmb_reuse_ipdiv_map_point5639_probe);
@@ -8796,6 +8913,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "mul-large-toom-cmb-reuse-map") != NULL);
   CHECK(strstr(json, "large-multiply-cpu-toom-combo-reuse-map") != NULL);
   CHECK(strstr(json, "full-workspace-combo-reuse-map-ge4096") != NULL);
+  CHECK(strstr(json, "mul-large-toom-cmb-gmpctrl-pt") != NULL);
+  CHECK(strstr(json, "mul-large-toom-cmb-gmpctrl") != NULL);
+  CHECK(strstr(json, "large-multiply-cpu-toom-combo-gmp-control") != NULL);
+  CHECK(strstr(json, "full-workspace-combo-reuse-gmp-control-upper-ge24103") != NULL);
   CHECK(strstr(json, "mul-large-toom-cmb-ripdiv-pt") != NULL);
   CHECK(strstr(json, "mul-large-toom-cmb-ripdiv") != NULL);
   CHECK(strstr(json, "large-multiply-cpu-toom-combo-reuse-ipdiv-map") != NULL);
@@ -9078,6 +9199,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "mul-large-toom-cmb-reuse-map") != NULL);
   CHECK(strstr(tsv, "large-multiply-cpu-toom-combo-reuse-map") != NULL);
   CHECK(strstr(tsv, "full-workspace-combo-reuse-map-ge4096") != NULL);
+  CHECK(strstr(tsv, "mul-large-toom-cmb-gmpctrl-pt") != NULL);
+  CHECK(strstr(tsv, "mul-large-toom-cmb-gmpctrl") != NULL);
+  CHECK(strstr(tsv, "large-multiply-cpu-toom-combo-gmp-control") != NULL);
+  CHECK(strstr(tsv, "full-workspace-combo-reuse-gmp-control-upper-ge24103") != NULL);
   CHECK(strstr(tsv, "mul-large-toom-cmb-ripdiv-pt") != NULL);
   CHECK(strstr(tsv, "mul-large-toom-cmb-ripdiv") != NULL);
   CHECK(strstr(tsv, "large-multiply-cpu-toom-combo-reuse-ipdiv-map") != NULL);
@@ -9283,6 +9408,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_json, "mul-large-toom-cmb-reuse-map") != NULL);
   CHECK(strstr(benchmark_json, "large-multiply-cpu-toom-combo-reuse-map") != NULL);
   CHECK(strstr(benchmark_json, "full-workspace-combo-reuse-map-ge4096") != NULL);
+  CHECK(strstr(benchmark_json, "mul-large-toom-cmb-gmpctrl-pt") != NULL);
+  CHECK(strstr(benchmark_json, "mul-large-toom-cmb-gmpctrl") != NULL);
+  CHECK(strstr(benchmark_json, "large-multiply-cpu-toom-combo-gmp-control") != NULL);
+  CHECK(strstr(benchmark_json, "full-workspace-combo-reuse-gmp-control-upper-ge24103") != NULL);
   CHECK(strstr(benchmark_json, "mul-large-toom-cmb-ripdiv-pt") != NULL);
   CHECK(strstr(benchmark_json, "mul-large-toom-cmb-ripdiv") != NULL);
   CHECK(strstr(benchmark_json, "large-multiply-cpu-toom-combo-reuse-ipdiv-map") != NULL);
@@ -9617,6 +9746,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "mul-large-toom-cmb-reuse-map") != NULL);
   CHECK(strstr(benchmark_tsv, "large-multiply-cpu-toom-combo-reuse-map") != NULL);
   CHECK(strstr(benchmark_tsv, "full-workspace-combo-reuse-map-ge4096") != NULL);
+  CHECK(strstr(benchmark_tsv, "mul-large-toom-cmb-gmpctrl-pt") != NULL);
+  CHECK(strstr(benchmark_tsv, "mul-large-toom-cmb-gmpctrl") != NULL);
+  CHECK(strstr(benchmark_tsv, "large-multiply-cpu-toom-combo-gmp-control") != NULL);
+  CHECK(strstr(benchmark_tsv, "full-workspace-combo-reuse-gmp-control-upper-ge24103") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-large-toom-cmb-ripdiv-pt") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-large-toom-cmb-ripdiv") != NULL);
   CHECK(strstr(benchmark_tsv, "large-multiply-cpu-toom-combo-reuse-ipdiv-map") != NULL);
@@ -9762,6 +9895,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "mul-large-toom-cmb-reuse") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-large-toom-cmb-reuse-map-pt") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-large-toom-cmb-reuse-map") != NULL);
+  CHECK(strstr(benchmark_frontier, "mul-large-toom-cmb-gmpctrl-pt") != NULL);
+  CHECK(strstr(benchmark_frontier, "mul-large-toom-cmb-gmpctrl") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-large-toom-cmb-ripdiv-pt") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-large-toom-cmb-ripdiv") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-large-toom-cmb-map-pt") != NULL);
@@ -9964,6 +10099,9 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_progress, "mul-large-toom-cmb-reuse") != NULL);
   CHECK(strstr(benchmark_progress, "mul-large-toom-cmb-reuse-map-pt") != NULL);
   CHECK(strstr(benchmark_progress, "mul-large-toom-cmb-reuse-map") != NULL);
+  CHECK(strstr(benchmark_progress, "mul-large-toom-cmb-gmpctrl-pt") != NULL);
+  CHECK(strstr(benchmark_progress, "mul-large-toom-cmb-gmpctrl") != NULL);
+  CHECK(strstr(benchmark_progress, "full-workspace-combo-reuse-gmp-control-upper-ge24103") != NULL);
   CHECK(strstr(benchmark_progress, "mul-large-toom-cmb-ripdiv-pt") != NULL);
   CHECK(strstr(benchmark_progress, "mul-large-toom-cmb-ripdiv") != NULL);
   CHECK(strstr(benchmark_progress, "full-workspace-combo-reuse-upper-ge24103") != NULL);
@@ -10092,6 +10230,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_progress_tsv, "mul-large-toom-cmb-reuse") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "mul-large-toom-cmb-reuse-map-pt") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "mul-large-toom-cmb-reuse-map") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "mul-large-toom-cmb-gmpctrl-pt") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "mul-large-toom-cmb-gmpctrl") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "large-multiply-cpu-toom-combo-gmp-control") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "full-workspace-combo-reuse-gmp-control-upper-ge24103") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "mul-large-toom-cmb-ripdiv-pt") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "mul-large-toom-cmb-ripdiv") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "large-multiply-cpu-toom-combo-reuse-ipdiv-map") != NULL);
