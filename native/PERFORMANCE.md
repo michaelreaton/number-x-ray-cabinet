@@ -4465,3 +4465,39 @@ structural median win over the same leaf/depth combo baseline, but the
 lower-window random spot and worst-pair gates block promotion. Production
 multiply remains unchanged; any future Toom-5 work needs a cheaper
 full-window audit before route-gate consideration.
+
+## 2026-06-20: Top-Level Toom-5 Leaf48 Handoff Smoke
+
+Local Release validation artifact `native-test-runs/20260620-134707-c4b04caf`
+adds `mul-large-toom5-top-handoff`, a benchmark-only smoke scout for the same
+top-level Toom-5 structure with a leaf48/depth2 point-product handoff. The
+candidate is `full-ws-toom5-top-reuse-l48d2`; the baseline is
+`full-ws-combo-reuse-l48d2`; current production multiply and `mpz_mul` remain in
+the same rotating run. The window uses deterministic random spot `11717` and
+power-of-two anchor `16384`.
+
+Observed aggregate:
+
+- Exact parity/hash passed:
+  `hashSafe=12/12`, `hashGate=matched`, `parity=matched`.
+- Leaf48 Toom-5 loses to the matching reusable combo baseline:
+  `candBaseMax=1.252`, with `stableBase=0/3` at both sizes.
+- It remains faster than current production multiply:
+  `candCurrentMax=0.795`.
+- It does not solve the GMP/MPIR gap:
+  `candGmpMax=1.156`.
+- Worst-pair safety is far outside the gate:
+  `maxWorstPairRatio=1.566`.
+
+Per-size point rows:
+
+| Digits | Toom-5 / Combo Reuse | Toom-5 / Current | Toom-5 / GMP | Combo / GMP | Current / GMP | Worst Pair | Stable vs Combo | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `11717` | `1.173` | `0.753` | `0.832` | `0.698` | `1.087` | `1.275` | `0/3` | `2/3` | toom5-combo-baseline-re |
+| `16384` | `1.252` | `0.795` | `1.156` | `0.875` | `1.335` | `1.566` | `0/3` | `1/3` | toom5-combo-baseline-re |
+
+Decision: reject the leaf48/depth2 Toom-5 handoff as a route candidate. It is
+exact, but the matching combo reuse baseline is substantially better and the
+high row is still slower than GMP/MPIR. Future multiply work should stop tuning
+top-level Toom-5 handoff in this form and move to lower-level backend structure
+or another multiplication family.

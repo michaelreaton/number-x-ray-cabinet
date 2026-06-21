@@ -1208,6 +1208,38 @@ window, but the random spot regresses against current production, the aggregate
 has `safeSizes=0/2`, and the worst-pair gate is not safe. If revisited, it
 needs a cheaper, broader route audit before any production-route discussion.
 
+## 2026-06-20: Top-Level Toom-5 Leaf48 Handoff Smoke
+
+Artifact:
+`native-test-runs/20260620-134707-c4b04caf`
+
+Validation: `native/build-codex-neg2-msvc142-nmake/xray_native_tests.exe`
+printed `native xray tests passed` with the Release MSVC 14.29 NMake build.
+
+This run adds `mul-large-toom5-top-handoff`, a second benchmark-only Toom-5
+smoke scout using a leaf48/depth2 handoff shape. The tiny window moves upward
+to deterministic random spot `11717` plus power-of-two anchor `16384`.
+Production multiply remains unchanged.
+
+Summary:
+
+| Row | Sizes | Toom-5 / Combo Reuse Max | Toom-5 / Current Max | Toom-5 / GMP Max | Combo / GMP Max | Current / GMP Max | Worst Pair Max | Safe Sizes | Hash Safe | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `mul-large-toom5-top-handoff` | `11717,16384` | `1.252` | `0.795` | `1.156` | `0.875` | `1.335` | `1.566` | `0/2` | `12/12` | observe only |
+
+Per-size signal:
+
+| Digits | Toom-5 / Combo Reuse | Toom-5 / Current | Toom-5 / GMP | Combo / GMP | Current / GMP | Worst Pair | Stable vs Combo | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `11717` | `1.173` | `0.753` | `0.832` | `0.698` | `1.087` | `1.275` | `0/3` | `2/3` | toom5-combo-baseline-re |
+| `16384` | `1.252` | `0.795` | `1.156` | `0.875` | `1.335` | `1.566` | `0/3` | `1/3` | toom5-combo-baseline-re |
+
+Decision: reject the leaf48/depth2 Toom-5 handoff shape as a promotion path.
+It is exact and faster than current production multiply, but it loses to the
+combo reuse baseline at both tested sizes and worsens the `16384` GMP/MPIR
+gap. The next multiply slice should leave top-level Toom-5 handoff tuning and
+move to a different lower-level backend or multiplication structure.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor

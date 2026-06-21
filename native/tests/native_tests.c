@@ -2828,6 +2828,10 @@ static void test_benchmarks(void) {
   int saw_mul_large_cpu_toom5_top_reuse_point5639_probe = 0;
   int saw_mul_large_cpu_toom5_top_reuse_point8192_probe = 0;
   int saw_mul_large_cpu_toom5_top_reuse_probe = 0;
+  int saw_mul_large_cpu_toom5_top_handoff_point_probe = 0;
+  int saw_mul_large_cpu_toom5_top_handoff_point11717_probe = 0;
+  int saw_mul_large_cpu_toom5_top_handoff_point16384_probe = 0;
+  int saw_mul_large_cpu_toom5_top_handoff_probe = 0;
   int saw_mul_large_cpu_toom_cmb_reuse_ipdiv_map_point_probe = 0;
   int saw_mul_large_cpu_toom_cmb_reuse_ipdiv_map_point4096_probe = 0;
   int saw_mul_large_cpu_toom_cmb_reuse_ipdiv_map_point5639_probe = 0;
@@ -3076,7 +3080,8 @@ static void test_benchmarks(void) {
           strcmp(report->results[index].operation, "mul-large-toom-cmb-lower-point") == 0 ||
           strcmp(report->results[index].operation, "mul-large-toom-cmb-route-point") == 0) {
         CHECK(report->results[index].sample_count == 9);
-      } else if (strcmp(report->results[index].operation, "mul-large-toom5-top-reuse-pt") == 0) {
+      } else if (strcmp(report->results[index].operation, "mul-large-toom5-top-reuse-pt") == 0 ||
+                 strcmp(report->results[index].operation, "mul-large-toom5-top-handoff-pt") == 0) {
         CHECK(report->results[index].sample_count == 3);
       } else {
         CHECK(report->results[index].sample_count == 5);
@@ -4992,6 +4997,56 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "replacementReady=false") != NULL);
         CHECK(strstr(report->results[index].detail, "activeCandidate=full-ws-toom5-top-reuse-l32d2") != NULL);
         if (report->results[index].digits == 8192) {
+          CHECK(strstr(report->results[index].detail, "sizeRole=power2-anchor") != NULL);
+        } else {
+          CHECK(strstr(report->results[index].detail, "sizeRole=deterministic-random-spot") != NULL);
+        }
+      }
+      if (strcmp(report->results[index].operation, "mul-large-toom5-top-handoff-pt") == 0) {
+        saw_mul_large_cpu_toom5_top_handoff_point_probe = 1;
+        if (report->results[index].digits == 11717) saw_mul_large_cpu_toom5_top_handoff_point11717_probe = 1;
+        else if (report->results[index].digits == 16384) saw_mul_large_cpu_toom5_top_handoff_point16384_probe = 1;
+        else CHECK(0);
+        CHECK(report->results[index].parity_verified);
+        CHECK(!report->results[index].replacement_ready);
+        CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+        CHECK(report->results[index].sample_count == 3);
+        CHECK(strstr(report->results[index].detail, "op=mul-toom5-top-handoff-point") != NULL);
+        CHECK(strstr(report->results[index].detail, "parent=toom5-top-handoff-vs-combo-reuse") != NULL);
+        CHECK(strstr(report->results[index].detail, "policy=full-workspace-toom5-top-reuse-handoff-smoke-ge11717") != NULL);
+        CHECK(strstr(report->results[index].detail, "routePolicy=toom5-top-reuse-l48d2-handoff-smoke") != NULL);
+        CHECK(strstr(report->results[index].detail, "leafThreshold=48") != NULL);
+        CHECK(strstr(report->results[index].detail, "depthLimit=2") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+        CHECK(strstr(report->results[index].detail, "samples=3") != NULL);
+        CHECK(strstr(report->results[index].detail, "requiredStablePairs=3/3") != NULL);
+        CHECK(strstr(report->results[index].detail, "stableBase=") != NULL);
+        CHECK(strstr(report->results[index].detail, "stableCurrent=") != NULL);
+        CHECK(strstr(report->results[index].detail, "stableGmp=") != NULL);
+        CHECK(strstr(report->results[index].detail, "hashSafe=6/6") != NULL);
+        CHECK(strstr(report->results[index].detail, "hashGate=matched") != NULL);
+        CHECK(strstr(report->results[index].detail, "parity=matched") != NULL);
+        CHECK(strstr(report->results[index].detail, "thresholdSafety=smoke-window") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=full-ws-toom5-top-reuse-l48d2") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=full-ws-combo-reuse-l48d2") != NULL);
+        CHECK(strstr(report->results[index].detail, "currentBaseline=current-scratch-mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "oracle=mpz_mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "candBaseRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "candCurrentRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "candGmpRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseGmpRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "currentGmpRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "worstPairRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
+        CHECK(strstr(report->results[index].detail, "timingMode=rotating") != NULL);
+        CHECK(strstr(report->results[index].detail, "sameInput=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "sameRunAudit=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=large-multiply-cpu-toom5-top-handoff") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpClue=toom5-top-leaf48-handoff") != NULL);
+        CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+        CHECK(strstr(report->results[index].detail, "replacementReady=false") != NULL);
+        CHECK(strstr(report->results[index].detail, "activeCandidate=full-ws-toom5-top-reuse-l48d2") != NULL);
+        if (report->results[index].digits == 16384) {
           CHECK(strstr(report->results[index].detail, "sizeRole=power2-anchor") != NULL);
         } else {
           CHECK(strstr(report->results[index].detail, "sizeRole=deterministic-random-spot") != NULL);
@@ -7612,6 +7667,47 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "gmpClue=toom5-top-nine-point-structure") != NULL);
         CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
         CHECK(strstr(report->results[index].detail, "replacementReady=false") != NULL);
+      } else if (strcmp(report->results[index].operation, "mul-large-toom5-top-handoff") == 0) {
+        saw_mul_large_cpu_toom5_top_handoff_probe = 1;
+        CHECK(report->results[index].sample_count == 2);
+        CHECK(report->results[index].digits == 16384);
+        CHECK(!report->results[index].replacement_ready);
+        CHECK(strcmp(report->results[index].adoption, "observe-only") == 0);
+        CHECK(strstr(report->results[index].detail, "op=mul-large-toom5-top-handoff") != NULL);
+        CHECK(strstr(report->results[index].detail, "policy=full-workspace-toom5-top-reuse-handoff-smoke-ge11717") != NULL);
+        CHECK(strstr(report->results[index].detail, "sizes=11717,16384") != NULL);
+        CHECK(strstr(report->results[index].detail, "sizeCount=2") != NULL);
+        CHECK(strstr(report->results[index].detail, "minDigits=11717") != NULL);
+        CHECK(strstr(report->results[index].detail, "routePolicy=toom5-top-reuse-l48d2-handoff-smoke") != NULL);
+        CHECK(strstr(report->results[index].detail, "leafThreshold=48") != NULL);
+        CHECK(strstr(report->results[index].detail, "depthLimit=2") != NULL);
+        CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+        CHECK(strstr(report->results[index].detail, "samples=3") != NULL);
+        CHECK(strstr(report->results[index].detail, "requiredStablePairs=3/3") != NULL);
+        CHECK(strstr(report->results[index].detail, "safeSizes=") != NULL);
+        CHECK(strstr(report->results[index].detail, "hashSafe=12/12") != NULL);
+        CHECK(strstr(report->results[index].detail, "hashGate=matched") != NULL);
+        CHECK(strstr(report->results[index].detail, "parity=matched") != NULL);
+        CHECK(strstr(report->results[index].detail, "forcedCandidate=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "thresholdSafety=smoke-window") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=full-ws-toom5-top-reuse-l48d2") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=full-ws-combo-reuse-l48d2") != NULL);
+        CHECK(strstr(report->results[index].detail, "currentBaseline=current-scratch-mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "oracle=mpz_mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "candBaseMax=") != NULL);
+        CHECK(strstr(report->results[index].detail, "candCurrentMax=") != NULL);
+        CHECK(strstr(report->results[index].detail, "candGmpMax=") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseGmpMax=") != NULL);
+        CHECK(strstr(report->results[index].detail, "currentGmpMax=") != NULL);
+        CHECK(strstr(report->results[index].detail, "maxWorstPairRatio=") != NULL);
+        CHECK(strstr(report->results[index].detail, "ratioMethod=paired-median") != NULL);
+        CHECK(strstr(report->results[index].detail, "timingMode=rotating-batch") != NULL);
+        CHECK(strstr(report->results[index].detail, "sameInput=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "sameRunAudit=yes") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=large-multiply-cpu-toom5-top-handoff") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpClue=toom5-top-leaf48-handoff") != NULL);
+        CHECK(strstr(report->results[index].detail, "noAutoRoute=1") != NULL);
+        CHECK(strstr(report->results[index].detail, "replacementReady=false") != NULL);
       } else if (strcmp(report->results[index].operation, "mul-large-toom-cmb-ripdiv") == 0) {
         saw_mul_large_cpu_toom_cmb_reuse_ipdiv_map_probe = 1;
         CHECK(report->results[index].sample_count == 9);
@@ -8657,6 +8753,10 @@ static void test_benchmarks(void) {
   CHECK(saw_mul_large_cpu_toom5_top_reuse_point5639_probe);
   CHECK(saw_mul_large_cpu_toom5_top_reuse_point8192_probe);
   CHECK(saw_mul_large_cpu_toom5_top_reuse_probe);
+  CHECK(saw_mul_large_cpu_toom5_top_handoff_point_probe);
+  CHECK(saw_mul_large_cpu_toom5_top_handoff_point11717_probe);
+  CHECK(saw_mul_large_cpu_toom5_top_handoff_point16384_probe);
+  CHECK(saw_mul_large_cpu_toom5_top_handoff_probe);
   CHECK(saw_mul_large_cpu_toom_cmb_reuse_ipdiv_map_point_probe);
   CHECK(saw_mul_large_cpu_toom_cmb_reuse_ipdiv_map_point4096_probe);
   CHECK(saw_mul_large_cpu_toom_cmb_reuse_ipdiv_map_point5639_probe);
@@ -9218,6 +9318,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(json, "mul-large-toom5-top-reuse") != NULL);
   CHECK(strstr(json, "large-multiply-cpu-toom5-top-reuse") != NULL);
   CHECK(strstr(json, "full-workspace-toom5-top-reuse-smoke-ge4096") != NULL);
+  CHECK(strstr(json, "mul-large-toom5-top-handoff-pt") != NULL);
+  CHECK(strstr(json, "mul-large-toom5-top-handoff") != NULL);
+  CHECK(strstr(json, "large-multiply-cpu-toom5-top-handoff") != NULL);
+  CHECK(strstr(json, "full-workspace-toom5-top-reuse-handoff-smoke-ge11717") != NULL);
   CHECK(strstr(json, "mul-large-toom-cmb-ripdiv-pt") != NULL);
   CHECK(strstr(json, "mul-large-toom-cmb-ripdiv") != NULL);
   CHECK(strstr(json, "large-multiply-cpu-toom-combo-reuse-ipdiv-map") != NULL);
@@ -9512,6 +9616,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(tsv, "mul-large-toom5-top-reuse") != NULL);
   CHECK(strstr(tsv, "large-multiply-cpu-toom5-top-reuse") != NULL);
   CHECK(strstr(tsv, "full-workspace-toom5-top-reuse-smoke-ge4096") != NULL);
+  CHECK(strstr(tsv, "mul-large-toom5-top-handoff-pt") != NULL);
+  CHECK(strstr(tsv, "mul-large-toom5-top-handoff") != NULL);
+  CHECK(strstr(tsv, "large-multiply-cpu-toom5-top-handoff") != NULL);
+  CHECK(strstr(tsv, "full-workspace-toom5-top-reuse-handoff-smoke-ge11717") != NULL);
   CHECK(strstr(tsv, "mul-large-toom-cmb-ripdiv-pt") != NULL);
   CHECK(strstr(tsv, "mul-large-toom-cmb-ripdiv") != NULL);
   CHECK(strstr(tsv, "large-multiply-cpu-toom-combo-reuse-ipdiv-map") != NULL);
@@ -9729,6 +9837,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_json, "mul-large-toom5-top-reuse") != NULL);
   CHECK(strstr(benchmark_json, "large-multiply-cpu-toom5-top-reuse") != NULL);
   CHECK(strstr(benchmark_json, "full-workspace-toom5-top-reuse-smoke-ge4096") != NULL);
+  CHECK(strstr(benchmark_json, "mul-large-toom5-top-handoff-pt") != NULL);
+  CHECK(strstr(benchmark_json, "mul-large-toom5-top-handoff") != NULL);
+  CHECK(strstr(benchmark_json, "large-multiply-cpu-toom5-top-handoff") != NULL);
+  CHECK(strstr(benchmark_json, "full-workspace-toom5-top-reuse-handoff-smoke-ge11717") != NULL);
   CHECK(strstr(benchmark_json, "mul-large-toom-cmb-ripdiv-pt") != NULL);
   CHECK(strstr(benchmark_json, "mul-large-toom-cmb-ripdiv") != NULL);
   CHECK(strstr(benchmark_json, "large-multiply-cpu-toom-combo-reuse-ipdiv-map") != NULL);
@@ -10075,6 +10187,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "mul-large-toom5-top-reuse") != NULL);
   CHECK(strstr(benchmark_tsv, "large-multiply-cpu-toom5-top-reuse") != NULL);
   CHECK(strstr(benchmark_tsv, "full-workspace-toom5-top-reuse-smoke-ge4096") != NULL);
+  CHECK(strstr(benchmark_tsv, "mul-large-toom5-top-handoff-pt") != NULL);
+  CHECK(strstr(benchmark_tsv, "mul-large-toom5-top-handoff") != NULL);
+  CHECK(strstr(benchmark_tsv, "large-multiply-cpu-toom5-top-handoff") != NULL);
+  CHECK(strstr(benchmark_tsv, "full-workspace-toom5-top-reuse-handoff-smoke-ge11717") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-large-toom-cmb-ripdiv-pt") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-large-toom-cmb-ripdiv") != NULL);
   CHECK(strstr(benchmark_tsv, "large-multiply-cpu-toom-combo-reuse-ipdiv-map") != NULL);
@@ -10226,6 +10342,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "mul-large-toom-cmb-neg2") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-large-toom5-top-reuse-pt") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-large-toom5-top-reuse") != NULL);
+  CHECK(strstr(benchmark_frontier, "mul-large-toom5-top-handoff-pt") != NULL);
+  CHECK(strstr(benchmark_frontier, "mul-large-toom5-top-handoff") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-large-toom-cmb-ripdiv-pt") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-large-toom-cmb-ripdiv") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-large-toom-cmb-map-pt") != NULL);
@@ -10437,6 +10555,9 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_progress, "mul-large-toom5-top-reuse-pt") != NULL);
   CHECK(strstr(benchmark_progress, "mul-large-toom5-top-reuse") != NULL);
   CHECK(strstr(benchmark_progress, "full-workspace-toom5-top-reuse-smoke-ge4096") != NULL);
+  CHECK(strstr(benchmark_progress, "mul-large-toom5-top-handoff-pt") != NULL);
+  CHECK(strstr(benchmark_progress, "mul-large-toom5-top-handoff") != NULL);
+  CHECK(strstr(benchmark_progress, "full-workspace-toom5-top-reuse-handoff-smoke-ge11717") != NULL);
   CHECK(strstr(benchmark_progress, "mul-large-toom-cmb-ripdiv-pt") != NULL);
   CHECK(strstr(benchmark_progress, "mul-large-toom-cmb-ripdiv") != NULL);
   CHECK(strstr(benchmark_progress, "full-workspace-combo-reuse-upper-ge24103") != NULL);
@@ -10577,6 +10698,10 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_progress_tsv, "mul-large-toom5-top-reuse") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "large-multiply-cpu-toom5-top-reuse") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "full-workspace-toom5-top-reuse-smoke-ge4096") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "mul-large-toom5-top-handoff-pt") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "mul-large-toom5-top-handoff") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "large-multiply-cpu-toom5-top-handoff") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "full-workspace-toom5-top-reuse-handoff-smoke-ge11717") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "mul-large-toom-cmb-ripdiv-pt") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "mul-large-toom-cmb-ripdiv") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "large-multiply-cpu-toom-combo-reuse-ipdiv-map") != NULL);
