@@ -30,6 +30,26 @@ MATRIX_FIELDS = [
     "repeatStableSummary",
 ]
 
+FOCUS_PRESETS = {
+    "post-pocket-novelty": [
+        "mul-full-audit-pocket",
+        "mul-backend-gap",
+        "mul-toom4-top",
+        "mul-toom5-smoke",
+        "mul-toom-div-transition",
+        "mul-combo-handoff-boundary",
+        "mul-sparse",
+    ],
+    "sparse-paper": [
+        "mul-sparse",
+    ],
+}
+
+PRESET_TIMEOUT_SECONDS = {
+    "post-pocket-novelty": 60.0,
+    "sparse-paper": 45.0,
+}
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -41,6 +61,13 @@ def parse_args() -> argparse.Namespace:
         action="append",
         default=[],
         help="Focus label to run. Repeat this flag for each focus.",
+    )
+    parser.add_argument(
+        "--preset",
+        action="append",
+        choices=sorted(FOCUS_PRESETS),
+        default=[],
+        help="Named focus bundle. Repeatable; explicit --focus labels are appended after presets.",
     )
     parser.add_argument("--runs", type=int, default=3, help="Repeats per focus")
     parser.add_argument("--out", help="Output directory for per-focus artifacts and matrix.tsv")
@@ -69,6 +96,28 @@ def parse_args() -> argparse.Namespace:
 def safe_label(text: str) -> str:
     label = re.sub(r"[^A-Za-z0-9_.-]+", "-", text.strip())
     return label.strip("-") or "focus"
+
+
+def expand_focuses(presets: list[str], focuses: list[str]) -> list[str]:
+    expanded: list[str] = []
+    seen: set[str] = set()
+    for preset in presets:
+        for focus in FOCUS_PRESETS[preset]:
+            if focus not in seen:
+                expanded.append(focus)
+                seen.add(focus)
+    for focus in focuses:
+        if focus not in seen:
+            expanded.append(focus)
+            seen.add(focus)
+    return expanded
+
+
+def effective_timeout_seconds(presets: list[str], requested: float | None) -> float | None:
+    if requested is not None:
+        return requested
+    defaults = [PRESET_TIMEOUT_SECONDS[preset] for preset in presets if preset in PRESET_TIMEOUT_SECONDS]
+    return min(defaults) if defaults else None
 
 
 def default_out_dir() -> Path:
@@ -249,6 +298,16 @@ def run_focus_repeat(
 
 
 def run_self_test() -> int:
+    assert expand_focuses(["sparse-paper"], []) == ["mul-sparse"]
+    assert expand_focuses(["sparse-paper"], ["mul-sparse", "mul-backend-gap"]) == [
+        "mul-sparse",
+        "mul-backend-gap",
+    ]
+    assert expand_focuses(["post-pocket-novelty"], ["mul-sparse"]) == FOCUS_PRESETS["post-pocket-novelty"]
+    assert effective_timeout_seconds(["sparse-paper"], None) == 45.0
+    assert effective_timeout_seconds(["post-pocket-novelty"], None) == 60.0
+    assert effective_timeout_seconds(["post-pocket-novelty"], 12.0) == 12.0
+
     with tempfile.TemporaryDirectory() as tmp:
         focus_out = Path(tmp) / "focus-a"
         focus_out.mkdir()
@@ -366,11 +425,13 @@ def main() -> int:
     args = parse_args()
     if args.self_test:
         return run_self_test()
-    if not args.cli or not args.focus:
-        raise SystemExit("--cli and at least one --focus are required unless --self-test is set")
+    focuses = expand_focuses(args.preset, args.focus)
+    timeout_seconds = effective_timeout_seconds(args.preset, args.timeout_seconds)
+    if not args.cli or not focuses:
+        raise SystemExit("--cli and at least one --focus or --preset are required unless --self-test is set")
     if args.runs < 1:
         raise SystemExit("--runs must be at least 1")
-    if args.timeout_seconds is not None and args.timeout_seconds <= 0:
+    if timeout_seconds is not None and timeout_seconds <= 0:
         raise SystemExit("--timeout-seconds must be greater than 0")
 
     script_dir = Path(__file__).resolve().parent
@@ -380,7 +441,7 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     matrix: list[dict[str, str]] = []
-    for focus in args.focus:
+    for focus in focuses:
         focus_out = run_focus_repeat(
             repeat_script,
             cli,
@@ -389,7 +450,7 @@ def main() -> int:
             out_dir,
             args.progress_filter,
             args.keep_all_progress_rows,
-            args.timeout_seconds,
+            timeout_seconds,
         )
         matrix.extend(matrix_rows_for_focus(focus, focus_out))
 
@@ -402,6 +463,10 @@ def main() -> int:
     audit_candidates_path = out_dir / "matrix_audit_candidates.tsv"
     write_matrix(audit_candidates_path, audit_candidates)
     print(f"runs={args.runs}")
+    if args.preset:
+        print(f"presets={','.join(args.preset)}")
+    if timeout_seconds is not None:
+        print(f"timeoutSeconds={timeout_seconds:g}")
     print(f"out={out_dir}")
     print(f"matrix={matrix_path}")
     print(f"rankedMatrix={ranked_path}")

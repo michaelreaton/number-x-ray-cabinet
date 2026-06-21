@@ -458,6 +458,8 @@ native\build\Release\xray_cli.exe --bench-focus mul-large --bench-frontier
 native\build\Release\xray_cli.exe --bench-focus mul-full-audit-pocket --bench-frontier
 native\build\Release\xray_cli.exe --bench-focus mul-sparse --bench-frontier
 python native\tools\bench_focus_repeat.py --cli native\build\Release\xray_cli.exe --focus mul-combo-handoff-pocket --runs 3
+python native\tools\bench_focus_matrix.py --cli native\build\Release\xray_cli.exe --runs 2 --preset post-pocket-novelty
+python native\tools\bench_focus_matrix.py --cli native\build\Release\xray_cli.exe --runs 2 --preset sparse-paper
 python native\tools\bench_focus_matrix.py --cli native\build\Release\xray_cli.exe --runs 3 --focus mul-backend-gap --focus mul-toom4-top --focus mul-toom5-smoke --focus mul-toom-div-transition --focus mul-combo-handoff-pocket
 python native\tools\bench_focus_matrix.py --cli native\build\Release\xray_cli.exe --runs 2 --timeout-seconds 90 --focus mul-backend-gap --focus mul-toom4-top
 native\build\Release\xray_cli.exe --bench-progress native\build\native-test-runs\<run>\benchmark.tsv
@@ -528,6 +530,11 @@ upper-window topology evidence instead of another broad recursive scout. Use
 `native/tools/bench_focus_matrix.py` to run several focus labels in one sweep
 and write a top-level `matrix.tsv` that compares
 repeat-stable chunks and their largest contiguous spans across route families.
+Use `--preset post-pocket-novelty` for the current bounded cheap novelty bundle
+(`mul-full-audit-pocket`, backend, Toom-4/5, div-transition, handoff-boundary,
+and sparse). It supplies a `60` second per-invocation timeout unless you pass
+`--timeout-seconds` explicitly. Use `--preset sparse-paper` for the sparse
+paper lane only; it supplies a `45` second default timeout.
 The helper also writes `matrix_ranked.tsv`, a filtered view of repeat-stable
 candidates sorted by largest contiguous span, total span, safe-run count, and
 worst-pair ratio. `matrix_audit_candidates.tsv` narrows that list again to
