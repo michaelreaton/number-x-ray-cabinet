@@ -409,6 +409,11 @@ if(BUILD_TESTING)
     set_tests_properties(xray_cli_help PROPERTIES
       PASS_REGULAR_EXPRESSION "--bench-frontier"
     )
+    add_test(NAME xray_cli_help_focus_labels
+      COMMAND ${CMAKE_COMMAND}
+        -DXRAY_CLI=$<TARGET_FILE:xray_cli>
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/cli_focus_help_contract.cmake
+    )
   endif()
   if(XRAY_INSTALL)
     add_test(NAME xray_import_consumer
