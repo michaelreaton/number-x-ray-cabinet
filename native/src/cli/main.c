@@ -19,7 +19,8 @@ static void usage(const char *argv0) {
   fprintf(stderr, "                mul-toom-div, mul-toom4-top, mul-backend-gap,\n");
   fprintf(stderr, "                mul-full-audit-pocket, mul-combo-lower,\n");
   fprintf(stderr, "                mul-combo-transition, mul-combo-upper,\n");
-  fprintf(stderr, "                mul-combo-reuse, mul-combo-handoff-boundary,\n");
+  fprintf(stderr, "                mul-combo-reuse, mul-combo-handoff-pocket,\n");
+  fprintf(stderr, "                mul-combo-handoff-boundary,\n");
   fprintf(stderr, "                mul-sparse, mul-novelty\n");
 }
 
