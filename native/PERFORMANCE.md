@@ -4742,6 +4742,25 @@ repeat-stable chunks by focus and operation. Use it to choose the next deeper
 audit from cheap focus families; do not treat a matrix hit as promotion-ready
 without the normal parity, worst-pair, stable-pair, and route-audit gates.
 
+Local two-repeat novelty matrix artifact:
+`native-test-runs/20260621-083300-novelty-matrix-repeat2/matrix.tsv`
+
+| Focus | Operation | Runs With Safe Chunks | Repeat-Stable Chunk | Worst Pair Max | Status |
+| --- | --- | ---: | --- | ---: | --- |
+| `mul-toom5-smoke` | `mul-large-toom5-top-handoff` | `0/2` | none | `1.249` | reject |
+| `mul-toom5-smoke` | `mul-large-toom5-top-reuse` | `0/2` | none | `1.469` | reject |
+| `mul-toom-div-transition` | `mul-large-toom-div2-scout` | `0/2` | none | `1.774` | reject |
+| `mul-toom-div-transition` | `mul-large-toom-div3-scout` | `0/2` | none | `1.320` | reject |
+| `mul-toom-div-transition` | `mul-large-toom-div2-div3-scout` | `0/2` | none | `1.216` | reject |
+| `mul-combo-handoff-pocket` | `mul-large-toom-cmb-hpocket` | `1/2` | none | `1.422` | reject |
+
+Decision: do not spend the next implementation slice on Toom-5 smoke,
+div2/div3 transition arithmetic, or the current handoff-pocket route. The
+matrix produced no repeat-stable safe chunks, and the only single-run handoff
+safe chunk disappeared under intersection. Move novelty work toward a different
+route shape or a lower-level backend gap, then use the matrix helper again
+before any wider route audit.
+
 ## 2026-06-21: Toom Div Transition Focus
 
 Local Release validation artifact
