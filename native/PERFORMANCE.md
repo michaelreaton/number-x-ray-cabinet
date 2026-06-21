@@ -4746,3 +4746,20 @@ the next novelty route. They regress against the leaf64 baseline in this
 focused run and produce no safe measured sizes. Keep the new focus lane for
 cheap reruns, but move implementation novelty away from div2/div3 arithmetic
 unless a future CPU/build combination changes this result.
+
+## 2026-06-21: Toom-5 Smoke Focus
+
+Local Release validation artifact
+`native-test-runs/20260621-075205-mul-toom5-smoke-focus/benchmark.tsv`
+runs the existing Toom-5 top-level smoke rows only over `5639`, `8192`,
+`11717`, and `16384` via `--bench-focus mul-toom5-smoke`.
+
+| Row | Sizes | Candidate / Combo Baseline | Candidate / Current | Candidate / GMP | Worst Pair | Safe Sizes | Safe Chunk | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | --- | --- |
+| `mul-large-toom5-top-reuse` | `5639,8192` | `1.201` | `1.059` | `1.050` | `1.213` | `0/2` | none | reject |
+| `mul-large-toom5-top-handoff` | `11717,16384` | `1.110` | `0.773` | `1.013` | `1.171` | `0/2` | none | reject |
+
+Decision: keep `mul-toom5-smoke` as a cheap topology check, but do not widen
+Toom-5 top-level work next. The rows are exact (`hashSafe=12/12` per aggregate)
+and useful as a fast novelty filter, but both regress against their combo
+reuse baselines and produce no contiguous safe measured chunk.

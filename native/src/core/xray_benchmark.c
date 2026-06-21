@@ -20596,10 +20596,13 @@ static void run_mul_combo_focus_cases(XrayBenchmarkReport *report, const char *f
   const size_t mul_full_workspace_transition_control_digits[] = {11717, 16384};
   const size_t mul_full_workspace_transition_tournament_digits[] = {11717, 16384, 24103};
   const size_t mul_full_workspace_handoff_pocket_digits[] = {10007, 10733, 11717, 12553, 13649, 14831, 16384};
+  const size_t mul_full_workspace_toom5_smoke_digits[] = {5639, 8192};
+  const size_t mul_full_workspace_toom5_handoff_smoke_digits[] = {11717, 16384};
   int any_combo = benchmark_focus_any_mul_combo(focus);
   int transition_bundle = any_combo || benchmark_focus_eq(focus, "mul-combo-transition");
   int transition_controls_focus = benchmark_focus_eq(focus, "mul-combo-transition-controls");
   int handoff_pocket_focus = benchmark_focus_eq(focus, "mul-combo-handoff-pocket");
+  int toom5_smoke_focus = benchmark_focus_eq(focus, "mul-toom5-smoke");
 
   if (any_combo || benchmark_focus_eq(focus, "mul-combo-lower")) {
     run_mul_full_workspace_depth_scout_case(
@@ -20675,6 +20678,45 @@ static void run_mul_combo_focus_cases(XrayBenchmarkReport *report, const char *f
       2,
       mul_full_workspace_div_transition_digits,
       sizeof(mul_full_workspace_div_transition_digits) / sizeof(mul_full_workspace_div_transition_digits[0]));
+  }
+
+  if (toom5_smoke_focus || benchmark_focus_eq(focus, "mul-novelty")) {
+    run_mul_toom5_top_vs_combo_reuse_case(
+      report,
+      1567U,
+      "full-workspace-toom5-top-reuse-smoke-ge4096",
+      mul_full_workspace_toom5_smoke_digits,
+      sizeof(mul_full_workspace_toom5_smoke_digits) / sizeof(mul_full_workspace_toom5_smoke_digits[0]),
+      "mul-large-toom5-top-reuse-pt",
+      "mul-large-toom5-top-reuse",
+      "mul-toom5-top-reuse-point",
+      "toom5-top-vs-combo-reuse",
+      "top reuse vs combo reuse",
+      "toom5-top-reuse-l32d2-smoke",
+      "full-ws-toom5-top-reuse-l32d2",
+      "full-ws-combo-reuse-l32d2",
+      "large-multiply-cpu-toom5-top-reuse",
+      "toom5-top-nine-point-structure",
+      32U,
+      2U);
+    run_mul_toom5_top_vs_combo_reuse_case(
+      report,
+      1571U,
+      "full-workspace-toom5-top-reuse-handoff-smoke-ge11717",
+      mul_full_workspace_toom5_handoff_smoke_digits,
+      sizeof(mul_full_workspace_toom5_handoff_smoke_digits) / sizeof(mul_full_workspace_toom5_handoff_smoke_digits[0]),
+      "mul-large-toom5-top-handoff-pt",
+      "mul-large-toom5-top-handoff",
+      "mul-toom5-top-handoff-point",
+      "toom5-top-handoff-vs-combo-reuse",
+      "top handoff vs combo reuse",
+      "toom5-top-reuse-l48d2-handoff-smoke",
+      "full-ws-toom5-top-reuse-l48d2",
+      "full-ws-combo-reuse-l48d2",
+      "large-multiply-cpu-toom5-top-handoff",
+      "toom5-top-leaf48-handoff",
+      48U,
+      2U);
   }
 
   if (transition_bundle) {
