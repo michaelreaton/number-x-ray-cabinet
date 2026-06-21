@@ -4429,3 +4429,39 @@ safe-size gate against the reusable combo map and does not solve the GMP/MPIR
 backend gap. Future multiply work should use the same mixed-window methodology
 but move to a broader handoff or a different multiplication structure, not
 another small Toom-3 interpolation reshuffle.
+
+## 2026-06-20: Top-Level Toom-5 Smoke Scout
+
+Local Release validation artifact `native-test-runs/20260620-130732-c4b04caf`
+adds `mul-large-toom5-top-reuse`, a benchmark-only smoke scout for a top-level
+Toom-5 split. The candidate is `full-ws-toom5-top-reuse-l32d2`; the baseline is
+`full-ws-combo-reuse-l32d2`; current production multiply and `mpz_mul` remain in
+the same rotating run. The window is intentionally tiny, with the deterministic
+random spot `5639` and the power-of-two anchor `8192`, so this is structure
+evidence rather than a promotion audit.
+
+Observed aggregate:
+
+- Exact parity/hash passed:
+  `hashSafe=12/12`, `hashGate=matched`, `parity=matched`.
+- Toom-5 beats the reusable combo baseline on median in the smoke window:
+  `candBaseMax=0.767`.
+- It is not safe against current production across both sizes:
+  `candCurrentMax=1.031`, `safeSizes=0/2`.
+- It is close to GMP/MPIR but not a proven win:
+  `candGmpMax=0.980`, with only `2/3` GMP-stable pairs at `8192`.
+- Worst-pair safety remains blocked:
+  `maxWorstPairRatio=1.167`.
+
+Per-size point rows:
+
+| Digits | Toom-5 / Combo Reuse | Toom-5 / Current | Toom-5 / GMP | Combo / GMP | Current / GMP | Worst Pair | Stable vs Combo | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `5639` | `0.767` | `1.031` | `0.778` | `1.015` | `0.673` | `1.167` | `2/3` | `3/3` | toom5-combo-baseline-re |
+| `8192` | `0.447` | `0.898` | `0.980` | `2.601` | `1.091` | `1.163` | `3/3` | `2/3` | current-regression |
+
+Decision: keep top-level Toom-5 as observe-only evidence. It shows a real
+structural median win over the same leaf/depth combo baseline, but the
+lower-window random spot and worst-pair gates block promotion. Production
+multiply remains unchanged; any future Toom-5 work needs a cheaper
+full-window audit before route-gate consideration.

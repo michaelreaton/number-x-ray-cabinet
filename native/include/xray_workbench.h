@@ -804,6 +804,20 @@ XRAY_API int xray_bigint_mul_toom4_top_full_workspace_reuse_probe(XrayScratchBig
 XRAY_API int xray_bigint_mul_toom4_top_full_workspace_reuse_factored_div_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold, size_t depth_limit, XrayBigIntMulWorkspace *workspace);
 
 /**
+ * Multiply through a benchmark-only top-level Toom-5 scout while reusing
+ * caller-owned recursive Toom-3 and Karatsuba workspaces for point products.
+ *
+ * This diagnostic route evaluates at 0, +/-1, +/-2, +/-3, 4, and infinity,
+ * then interpolates back to the normal coefficient order. Production multiply
+ * remains unchanged, out may alias either input, and the lower point products
+ * keep the checked exact `/2` plus `/3` Toom-3 interpolation shortcuts.
+ * Returns 1 on success and 0 on allocation failure, unsupported platform,
+ * invalid workspace, unsupported operand shape, or failed exact-divisibility
+ * checks.
+ */
+XRAY_API int xray_bigint_mul_toom5_top_full_workspace_reuse_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold, size_t depth_limit, XrayBigIntMulWorkspace *workspace);
+
+/**
  * Multiply with the unroll4 basecase probe route.
  *
  * This is a benchmark/research probe. Returns 1 on success and 0 on allocation

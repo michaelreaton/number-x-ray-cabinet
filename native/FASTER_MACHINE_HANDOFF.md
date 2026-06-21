@@ -1175,6 +1175,39 @@ baseline, stability, worst-pair, and GMP/MPIR gates. The result usefully rules
 out a signed evaluation/interpolation reshuffle as the next fix for the
 backend gap.
 
+## 2026-06-20: Top-Level Toom-5 Smoke Scout
+
+Artifact:
+`native-test-runs/20260620-130732-c4b04caf`
+
+Validation: `native/build-codex-neg2-msvc142-nmake/xray_native_tests.exe`
+printed `native xray tests passed` with the Release MSVC 14.29 NMake build.
+
+This run adds `mul-large-toom5-top-reuse`, a benchmark-only smoke scout for a
+top-level Toom-5 split with reusable recursive Toom-3/Karatsuba point products.
+The tiny window deliberately includes the deterministic in-between spot `5639`
+and the power-of-two anchor `8192`. The route is diagnostic only:
+`noAutoRoute=1`, `replacementReady=false`, production multiply unchanged.
+
+Summary:
+
+| Row | Sizes | Toom-5 / Combo Reuse Max | Toom-5 / Current Max | Toom-5 / GMP Max | Combo / GMP Max | Current / GMP Max | Worst Pair Max | Safe Sizes | Hash Safe | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `mul-large-toom5-top-reuse` | `5639,8192` | `0.767` | `1.031` | `0.980` | `2.601` | `1.091` | `1.167` | `0/2` | `12/12` | observe only |
+
+Per-size signal:
+
+| Digits | Toom-5 / Combo Reuse | Toom-5 / Current | Toom-5 / GMP | Combo / GMP | Current / GMP | Worst Pair | Stable vs Combo | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `5639` | `0.767` | `1.031` | `0.778` | `1.015` | `0.673` | `1.167` | `2/3` | `3/3` | toom5-combo-baseline-re |
+| `8192` | `0.447` | `0.898` | `0.980` | `2.601` | `1.091` | `1.163` | `3/3` | `2/3` | current-regression |
+
+Decision: keep top-level Toom-5 as an exact diagnostic clue, not a promotion
+candidate. The shape beats the reusable combo baseline on median in this smoke
+window, but the random spot regresses against current production, the aggregate
+has `safeSizes=0/2`, and the worst-pair gate is not safe. If revisited, it
+needs a cheaper, broader route audit before any production-route discussion.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor

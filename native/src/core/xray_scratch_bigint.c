@@ -5059,6 +5059,240 @@ static int mul_toom4_top_full_workspace_probe_internal(
   }
   return ok;
 }
+
+static int eval_toom5_positive(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *part0,
+  const XrayScratchBigInt *part1,
+  const XrayScratchBigInt *part2,
+  const XrayScratchBigInt *part3,
+  const XrayScratchBigInt *part4,
+  uint64_t weight1,
+  uint64_t weight2,
+  uint64_t weight3,
+  uint64_t weight4) {
+  return set_u32(out, 0) &&
+    add_scaled_unsigned(out, part0, 1) &&
+    add_scaled_unsigned(out, part1, weight1) &&
+    add_scaled_unsigned(out, part2, weight2) &&
+    add_scaled_unsigned(out, part3, weight3) &&
+    add_scaled_unsigned(out, part4, weight4);
+}
+
+static int signed_set_toom5_eval(
+  XraySignedScratchBigInt *out,
+  const XrayScratchBigInt *part0,
+  const XrayScratchBigInt *part1,
+  const XrayScratchBigInt *part2,
+  const XrayScratchBigInt *part3,
+  const XrayScratchBigInt *part4,
+  int point) {
+  if (!out || !part0 || !part1 || !part2 || !part3 || !part4) return 0;
+  if (point == 0) return signed_set_unsigned(out, part0);
+  if (point > 0) {
+    uint64_t x = (uint64_t)point;
+    XrayScratchBigInt eval;
+    xray_bigint_init(&eval);
+    int ok = eval_toom5_positive(&eval, part0, part1, part2, part3, part4, x, x * x, x * x * x, x * x * x * x) &&
+      signed_set_unsigned(out, &eval);
+    xray_bigint_clear(&eval);
+    return ok;
+  }
+
+  uint64_t x = (uint64_t)(-point);
+  XrayScratchBigInt even;
+  XrayScratchBigInt odd;
+  xray_bigint_init(&even);
+  xray_bigint_init(&odd);
+  int ok = set_u32(&even, 0) &&
+    add_scaled_unsigned(&even, part0, 1) &&
+    add_scaled_unsigned(&even, part2, x * x) &&
+    add_scaled_unsigned(&even, part4, x * x * x * x) &&
+    set_u32(&odd, 0) &&
+    add_scaled_unsigned(&odd, part1, x) &&
+    add_scaled_unsigned(&odd, part3, x * x * x);
+  if (ok) {
+    int compare = xray_bigint_compare(&even, &odd);
+    if (compare == 0) {
+      ok = set_u32(&out->mag, 0);
+      out->sign = 0;
+    } else if (compare > 0) {
+      ok = xray_bigint_sub(&out->mag, &even, &odd);
+      out->sign = ok && out->mag.count ? 1 : 0;
+    } else {
+      ok = xray_bigint_sub(&out->mag, &odd, &even);
+      out->sign = ok && out->mag.count ? -1 : 0;
+    }
+  }
+  xray_bigint_clear(&even);
+  xray_bigint_clear(&odd);
+  return ok;
+}
+
+static int mul_toom5_top_full_workspace_reuse_probe_internal(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *left,
+  const XrayScratchBigInt *right,
+  size_t leaf_threshold,
+  size_t depth_limit,
+  unsigned int interp_flags,
+  XrayBigIntMulWorkspace *reuse_workspace) {
+  if (!out || !left || !right || !reuse_workspace) return 0;
+  if (reuse_workspace == (const XrayBigIntMulWorkspace *)out ||
+      reuse_workspace == (const XrayBigIntMulWorkspace *)left ||
+      reuse_workspace == (const XrayBigIntMulWorkspace *)right) {
+    return 0;
+  }
+  if (left->count == 0 || right->count == 0) return set_u32(out, 0);
+  size_t left_count = left->count;
+  size_t right_count = right->count;
+  size_t max_count = left_count > right_count ? left_count : right_count;
+  size_t min_count = left_count < right_count ? left_count : right_count;
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : 48U;
+  size_t active_depth = depth_limit >= 1U ? depth_limit : 1U;
+  if (max_count < active_threshold * 5U || min_count * 5U < max_count * 4U) {
+    return mul_toom3_full_workspace_reuse_probe_internal(out, left, right, active_threshold, active_depth, interp_flags, reuse_workspace);
+  }
+
+  size_t split = (max_count + 4U) / 5U;
+  XrayScratchBigInt a0, a1, a2, a3, a4;
+  XrayScratchBigInt b0, b1, b2, b3, b4;
+  view_bigint_slice(&a0, left, 0, split);
+  view_bigint_slice(&a1, left, split, split);
+  view_bigint_slice(&a2, left, split * 2U, split);
+  view_bigint_slice(&a3, left, split * 3U, split);
+  view_bigint_slice(&a4, left, split * 4U, left_count > split * 4U ? left_count - split * 4U : 0);
+  view_bigint_slice(&b0, right, 0, split);
+  view_bigint_slice(&b1, right, split, split);
+  view_bigint_slice(&b2, right, split * 2U, split);
+  view_bigint_slice(&b3, right, split * 3U, split);
+  view_bigint_slice(&b4, right, split * 4U, right_count > split * 4U ? right_count - split * 4U : 0);
+
+  enum { T5_0 = 0, T5_1, T5_M1, T5_2, T5_M2, T5_3, T5_M3, T5_4, T5_INF, T5_COUNT };
+  XraySignedScratchBigInt x[T5_COUNT];
+  XraySignedScratchBigInt y[T5_COUNT];
+  XraySignedScratchBigInt v[T5_COUNT];
+  XraySignedScratchBigInt adjusted[7];
+  XraySignedScratchBigInt coeff[9];
+  XraySignedScratchBigInt scaled, temp;
+  XrayScratchBigInt quotient;
+  for (size_t index = 0; index < T5_COUNT; ++index) {
+    signed_init(&x[index]);
+    signed_init(&y[index]);
+    signed_init(&v[index]);
+  }
+  for (size_t index = 0; index < 7U; ++index) signed_init(&adjusted[index]);
+  for (size_t index = 0; index < 9U; ++index) signed_init(&coeff[index]);
+  signed_init(&scaled);
+  signed_init(&temp);
+  xray_bigint_init(&quotient);
+
+  XrayToom3Workspace toom_workspace;
+  XrayKaratsubaWorkspace karatsuba_workspace;
+  toom_workspace.frames = (XrayToom3WorkspaceFrame *)reuse_workspace->toom3_frames;
+  toom_workspace.frame_count = reuse_workspace->toom3_frame_count;
+  karatsuba_workspace.frames = (XrayKaratsubaWorkspaceFrame *)reuse_workspace->karatsuba_frames;
+  karatsuba_workspace.frame_count = reuse_workspace->karatsuba_frame_count;
+
+  int ok = toom3_workspace_prepare(&toom_workspace, max_count, active_depth) &&
+    karatsuba_workspace_prepare(&karatsuba_workspace, max_count, active_threshold) &&
+    signed_set_toom5_eval(&x[T5_0], &a0, &a1, &a2, &a3, &a4, 0) &&
+    signed_set_toom5_eval(&x[T5_1], &a0, &a1, &a2, &a3, &a4, 1) &&
+    signed_set_toom5_eval(&x[T5_M1], &a0, &a1, &a2, &a3, &a4, -1) &&
+    signed_set_toom5_eval(&x[T5_2], &a0, &a1, &a2, &a3, &a4, 2) &&
+    signed_set_toom5_eval(&x[T5_M2], &a0, &a1, &a2, &a3, &a4, -2) &&
+    signed_set_toom5_eval(&x[T5_3], &a0, &a1, &a2, &a3, &a4, 3) &&
+    signed_set_toom5_eval(&x[T5_M3], &a0, &a1, &a2, &a3, &a4, -3) &&
+    signed_set_toom5_eval(&x[T5_4], &a0, &a1, &a2, &a3, &a4, 4) &&
+    signed_set_unsigned(&x[T5_INF], &a4) &&
+    signed_set_toom5_eval(&y[T5_0], &b0, &b1, &b2, &b3, &b4, 0) &&
+    signed_set_toom5_eval(&y[T5_1], &b0, &b1, &b2, &b3, &b4, 1) &&
+    signed_set_toom5_eval(&y[T5_M1], &b0, &b1, &b2, &b3, &b4, -1) &&
+    signed_set_toom5_eval(&y[T5_2], &b0, &b1, &b2, &b3, &b4, 2) &&
+    signed_set_toom5_eval(&y[T5_M2], &b0, &b1, &b2, &b3, &b4, -2) &&
+    signed_set_toom5_eval(&y[T5_3], &b0, &b1, &b2, &b3, &b4, 3) &&
+    signed_set_toom5_eval(&y[T5_M3], &b0, &b1, &b2, &b3, &b4, -3) &&
+    signed_set_toom5_eval(&y[T5_4], &b0, &b1, &b2, &b3, &b4, 4) &&
+    signed_set_unsigned(&y[T5_INF], &b4);
+  reuse_workspace->toom3_frames = toom_workspace.frames;
+  reuse_workspace->toom3_frame_count = toom_workspace.frame_count;
+  reuse_workspace->karatsuba_frames = karatsuba_workspace.frames;
+  reuse_workspace->karatsuba_frame_count = karatsuba_workspace.frame_count;
+
+  for (size_t index = 0; ok && index < T5_COUNT; ++index) {
+    if (x[index].sign == 0 || y[index].sign == 0) {
+      ok = set_u32(&v[index].mag, 0);
+      v[index].sign = 0;
+    } else {
+      ok = mul_toom3_workspace_recurse(
+        &v[index].mag,
+        &x[index].mag,
+        &y[index].mag,
+        active_threshold,
+        1,
+        active_depth,
+        &toom_workspace,
+        &karatsuba_workspace,
+        0,
+        interp_flags);
+      v[index].sign = ok && v[index].mag.count ? x[index].sign * y[index].sign : 0;
+    }
+  }
+
+  if (ok) {
+    const XraySignedScratchBigInt *terms[7] = {
+      &adjusted[0], &adjusted[1], &adjusted[2], &adjusted[3],
+      &adjusted[4], &adjusted[5], &adjusted[6]
+    };
+    static const int c1_coeffs[7] = {420, -252, -126, 42, 28, -4, -3};
+    static const int c2_coeffs[7] = {270, 270, -27, -27, 2, 2, 0};
+    static const int c3_coeffs[7] = {-440, 48, 267, -71, -64, 8, 7};
+    static const int c4_coeffs[7] = {-39, -39, 12, 12, -1, -1, 0};
+    static const int c5_coeffs[7] = {85, 27, -54, -2, 17, -1, -2};
+    static const int c6_coeffs[7] = {15, 15, -6, -6, 1, 1, 0};
+    static const int c7_coeffs[7] = {-35, -21, 21, 7, -7, -1, 1};
+    ok = signed_toom4_adjust_value(&adjusted[0], &v[T5_1], &v[T5_0], &v[T5_INF], 1U, &scaled, &temp) &&
+      signed_toom4_adjust_value(&adjusted[1], &v[T5_M1], &v[T5_0], &v[T5_INF], 1U, &scaled, &temp) &&
+      signed_toom4_adjust_value(&adjusted[2], &v[T5_2], &v[T5_0], &v[T5_INF], 256U, &scaled, &temp) &&
+      signed_toom4_adjust_value(&adjusted[3], &v[T5_M2], &v[T5_0], &v[T5_INF], 256U, &scaled, &temp) &&
+      signed_toom4_adjust_value(&adjusted[4], &v[T5_3], &v[T5_0], &v[T5_INF], 6561U, &scaled, &temp) &&
+      signed_toom4_adjust_value(&adjusted[5], &v[T5_M3], &v[T5_0], &v[T5_INF], 6561U, &scaled, &temp) &&
+      signed_toom4_adjust_value(&adjusted[6], &v[T5_4], &v[T5_0], &v[T5_INF], 65536U, &scaled, &temp) &&
+      signed_copy(&coeff[0], &v[T5_0]) &&
+      signed_linear_combination_divexact_workspace(&coeff[1], terms, c1_coeffs, 7U, 420U, &scaled, &temp, &quotient, interp_flags) &&
+      signed_linear_combination_divexact_workspace(&coeff[2], terms, c2_coeffs, 7U, 360U, &scaled, &temp, &quotient, interp_flags) &&
+      signed_linear_combination_divexact_workspace(&coeff[3], terms, c3_coeffs, 7U, 720U, &scaled, &temp, &quotient, interp_flags) &&
+      signed_linear_combination_divexact_workspace(&coeff[4], terms, c4_coeffs, 7U, 144U, &scaled, &temp, &quotient, interp_flags) &&
+      signed_linear_combination_divexact_workspace(&coeff[5], terms, c5_coeffs, 7U, 720U, &scaled, &temp, &quotient, interp_flags) &&
+      signed_linear_combination_divexact_workspace(&coeff[6], terms, c6_coeffs, 7U, 720U, &scaled, &temp, &quotient, interp_flags) &&
+      signed_linear_combination_divexact_workspace(&coeff[7], terms, c7_coeffs, 7U, 5040U, &scaled, &temp, &quotient, interp_flags) &&
+      signed_copy(&coeff[8], &v[T5_INF]);
+  }
+
+  if (ok) {
+    for (size_t index = 0; index < 9U; ++index) ok = ok && coeff[index].sign >= 0;
+  }
+  if (ok) {
+    out->count = 0;
+    ok = reserve_limbs(out, left_count + right_count + 10U);
+    for (size_t index = 0; ok && index < 9U; ++index) {
+      ok = add_shifted_inplace(out, &coeff[index].mag, split * index);
+    }
+    if (ok) normalize(out);
+  }
+
+  xray_bigint_clear(&quotient);
+  signed_clear(&scaled);
+  signed_clear(&temp);
+  for (size_t index = 0; index < 9U; ++index) signed_clear(&coeff[index]);
+  for (size_t index = 0; index < 7U; ++index) signed_clear(&adjusted[index]);
+  for (size_t index = 0; index < T5_COUNT; ++index) {
+    signed_clear(&x[index]);
+    signed_clear(&y[index]);
+    signed_clear(&v[index]);
+  }
+  return ok;
+}
 #endif
 
 static int mul_dispatch(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
@@ -5702,6 +5936,38 @@ int xray_bigint_mul_toom4_top_full_workspace_reuse_factored_div_probe(
     return ok;
   }
   return mul_toom4_top_full_workspace_probe_internal(out, left, right, active_threshold, active_depth, interp_flags, workspace);
+#else
+  (void)out;
+  (void)left;
+  (void)right;
+  (void)leaf_threshold;
+  (void)depth_limit;
+  (void)workspace;
+  return 0;
+#endif
+}
+
+int xray_bigint_mul_toom5_top_full_workspace_reuse_probe(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *left,
+  const XrayScratchBigInt *right,
+  size_t leaf_threshold,
+  size_t depth_limit,
+  XrayBigIntMulWorkspace *workspace) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (!out || !left || !right || !workspace) return 0;
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : 48U;
+  size_t active_depth = depth_limit >= 1U ? depth_limit : 1U;
+  unsigned int interp_flags = XRAY_TOOM3_INTERP_SHIFT_DIV2 | XRAY_TOOM3_INTERP_EXACT_DIV3;
+  if (out == left || out == right) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = mul_toom5_top_full_workspace_reuse_probe_internal(&temp, left, right, active_threshold, active_depth, interp_flags, workspace);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return mul_toom5_top_full_workspace_reuse_probe_internal(out, left, right, active_threshold, active_depth, interp_flags, workspace);
 #else
   (void)out;
   (void)left;
