@@ -964,6 +964,40 @@ slower than combo L48D3, `52163` regresses by 5.4 percent, and worst-pair
 safety peaks at 1.359. Exact parity/hash passed, so the algorithm is a clean
 diagnostic result, but not a route candidate.
 
+## 2026-06-20: Top-Level Toom-4 Workspace Reuse Scout
+
+Artifact: `native-test-runs/20260620-045841-c4b04caf`
+
+This run adds `mul-large-toom4-top-reuse`, a benchmark-only no-realloc variant
+of the top-level Toom-4 scout. It reuses caller-owned recursive Toom-3 and
+Karatsuba workspaces for point products and compares against the same Toom-4
+shape without reuse, current production multiply, and `mpz_mul` on identical
+operand fingerprints. The probe is diagnostic only: `noAutoRoute=1`,
+`replacementReady=false`, and production multiply is unchanged.
+
+Summary:
+
+| Row | Sizes | Candidate / Baseline Max | Candidate / Current Max | Candidate / GMP Max | Baseline / GMP Max | Current / GMP Max | Worst Pair Max | Safe Sizes | Hash Safe | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `mul-large-toom4-top-reuse` | `24103,32768,52163,65536` | `0.976` | `0.640` | `1.071` | `1.101` | `1.920` | `1.112` | `0/4` | `72/72` | observe only |
+
+Per-size signal:
+
+| Digits | Reuse / Non-Reuse Toom-4 | Reuse / Current | Reuse / GMP | Non-Reuse / GMP | Current / GMP | Worst Pair | Stable vs Non-Reuse | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `24103` | `0.976` | `0.630` | `0.954` | `0.978` | `1.513` | `1.013` | `5/9` | `8/9` | toom4-reuse-baseline-regression |
+| `32768` | `0.960` | `0.640` | `1.040` | `1.091` | `1.640` | `1.112` | `7/9` | `0/9` | toom4-reuse-baseline-regression |
+| `52163` | `0.958` | `0.580` | `1.043` | `1.086` | `1.796` | `1.052` | `9/9` | `0/9` | backend-regression |
+| `65536` | `0.970` | `0.552` | `1.071` | `1.101` | `1.920` | `1.105` | `5/9` | `3/9` | toom4-reuse-baseline-regression |
+
+Decision: keep the Toom-4 reuse path as a diagnostic result, not a promotion
+candidate. Workspace reuse is real and improves the same Toom-4 shape at every
+upper-window size, including the deterministic random spots, but the aggregate
+still has `safeSizes=0/4`: `24103` is too thin and worst-pair unsafe, `32768`
+and `65536` miss stable-pair gates, and the high end remains slower than
+GMP/MPIR. Allocation cost was part of the Toom-4 problem, but it was not the
+whole blocker.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor

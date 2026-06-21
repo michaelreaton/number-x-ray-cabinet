@@ -4190,3 +4190,41 @@ are decisive: `24103` is effectively flat-to-slower and `52163` regresses
 badly enough to fail the strict safe-size, stability, GMP/MPIR, and worst-pair
 gates. The result is useful evidence that broadening the top-level split alone
 is not enough.
+
+## 2026-06-20: Top-Level Toom-4 Workspace Reuse Scout
+
+Local Release validation artifact
+`native-test-runs/20260620-045841-c4b04caf` adds
+`mul-large-toom4-top-reuse`, a benchmark-only no-realloc variant of the
+top-level Toom-4 scout. The candidate reuses caller-owned recursive Toom-3 and
+Karatsuba workspaces for Toom-4 point products; the baseline is the same
+top-level Toom-4 shape without reuse; current production multiply and
+`mpz_mul` remain in the same timing run.
+
+Observed aggregate:
+
+- Exact parity/hash passed:
+  `hashSafe=72/72`, `hashGate=matched`, `parity=matched`.
+- Reuse improves the same top-level Toom-4 shape at every measured upper size:
+  `candBaseMax=0.976`.
+- It still fails the strict gate:
+  `safeSizes=0/4`, `maxWorstPairRatio=1.112`.
+- It remains faster than current production multiply:
+  `candCurrentMax=0.640`.
+- It is still not competitive with GMP/MPIR at the high end:
+  `candGmpMax=1.071`.
+
+Per-size point rows:
+
+| Digits | Reuse / Non-Reuse Toom-4 | Reuse / Current | Reuse / GMP | Non-Reuse / GMP | Current / GMP | Worst Pair | Stable vs Non-Reuse | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `24103` | `0.976` | `0.630` | `0.954` | `0.978` | `1.513` | `1.013` | `5/9` | `8/9` | toom4-reuse-baseline-regression |
+| `32768` | `0.960` | `0.640` | `1.040` | `1.091` | `1.640` | `1.112` | `7/9` | `0/9` | toom4-reuse-baseline-regression |
+| `52163` | `0.958` | `0.580` | `1.043` | `1.086` | `1.796` | `1.052` | `9/9` | `0/9` | backend-regression |
+| `65536` | `0.970` | `0.552` | `1.071` | `1.101` | `1.920` | `1.105` | `5/9` | `3/9` | toom4-reuse-baseline-regression |
+
+Decision: keep top-level Toom-4 workspace reuse as an opt-in diagnostic probe.
+The reuse win is real, including at deterministic random spots, but it does
+not clear stable-pair, worst-pair, safe-size, or GMP/MPIR gates. The next
+multiply step should change the arithmetic shape or handoff strategy rather
+than only shaving recursive point-product allocation.
