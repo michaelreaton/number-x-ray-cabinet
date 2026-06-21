@@ -1,6 +1,8 @@
 # Verified Pocket Wins Against GMP/MPIR In App-Shaped Bigint Multiply
 
-Draft status: internal paper draft. This is not a production promotion claim.
+Draft status: internal evidence notebook. A polished paper-shaped draft lives in
+[`GMP_MULTIPLY_PAPER.md`](GMP_MULTIPLY_PAPER.md). This is not a production
+promotion claim.
 
 ## Abstract
 
