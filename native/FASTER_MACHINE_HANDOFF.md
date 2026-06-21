@@ -37,13 +37,21 @@ Sparse remains the only broad audit-ready multiply lane. The matrix also found
 `maxWorstPairRatio=0.971908`, but the full `mul-unroll4-vs-scratch` route still
 did not inherit that safety (`8192` only, `maxWorstPairRatio=1.363171`).
 
-Next action: keep `mul-full-audit-pocket` as a cheap noise filter, keep sparse
-as the paper's broad app-shaped win, and treat `muladd-unroll4` as a primitive
-scheduling clue rather than a route. Move implementation novelty away from the
-rejected full-workspace audit, Toom-4/Toom-5, div-transition, and handoff
-boundary dense families. Keep the paper claim bounded: Number X-Ray has
-verified GMP/MPIR outperformance pockets, plus sparse app-shaped wins, but the
-dense full-window route is still blocked by worst-pair safety.
+Backend recheck:
+
+`native-test-runs/20260621-103933-backend-gap-repeat5/matrix.tsv`
+
+The five-repeat backend-only rerun produced no repeat-stable candidate rows.
+`muladd-unroll4` did not survive intersection (`3/5` runs with safe chunks,
+repeat-stable none, `maxWorstPairRatio=1.255976`).
+
+Next action: keep `mul-full-audit-pocket` as a cheap noise filter and keep
+sparse as the paper's broad app-shaped win. Move implementation novelty away
+from the rejected full-workspace audit, backend unroll4, Toom-4/Toom-5,
+div-transition, and handoff boundary dense families. Keep the paper claim
+bounded: Number X-Ray has verified GMP/MPIR outperformance pockets, plus sparse
+app-shaped wins, but the dense full-window route is still blocked by worst-pair
+safety.
 
 ## Current Baseline
 
