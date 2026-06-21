@@ -1031,6 +1031,40 @@ the gains are not strict-gate safe, `65536` is nearly flat, and worst-pair/GMP
 stability remains blocked. This suggests the reusable Toom-4 path needs a
 different arithmetic shape, not just a shallower inner Toom-3 handoff.
 
+## 2026-06-20: Top-Level Toom-4 Factored-Division Scout
+
+Artifact: `native-test-runs/20260620-063633-c4b04caf`
+
+This run adds `mul-large-toom4-top-fdiv`, a benchmark-only interpolation scout
+for the reusable top-level Toom-4 route. The candidate keeps `leaf48/depth3`
+recursive point products and replaces generic exact division by `24`, `60`, and
+`120` with factored exact division by powers of two, `3`, and `5`. The baseline
+is the prior reusable top-level Toom-4 route. It covers `24103`, `32768`,
+`52163`, and `65536`, preserving deterministic random spots between the
+power-of-two anchors. It remains diagnostic only: `noAutoRoute=1`,
+`replacementReady=false`, production multiply unchanged.
+
+Summary:
+
+| Row | Sizes | Candidate / Baseline Max | Candidate / Current Max | Candidate / GMP Max | Baseline / GMP Max | Current / GMP Max | Worst Pair Max | Safe Sizes | Hash Safe | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `mul-large-toom4-top-fdiv` | `24103,32768,52163,65536` | `1.017` | `0.661` | `1.094` | `1.110` | `1.986` | `1.162` | `0/4` | `72/72` | observe only |
+
+Per-size signal:
+
+| Digits | Factored Div / Reuse Toom-4 | Factored Div / Current | Factored Div / GMP | Reuse Toom-4 / GMP | Current / GMP | Worst Pair | Stable vs Reuse | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `24103` | `1.017` | `0.661` | `0.948` | `0.936` | `1.481` | `1.162` | `2/9` | `7/9` | toom4-fdiv-baseline-reg |
+| `32768` | `0.979` | `0.624` | `1.025` | `1.044` | `1.645` | `1.051` | `5/9` | `3/9` | toom4-fdiv-baseline-reg |
+| `52163` | `0.977` | `0.561` | `1.022` | `1.050` | `1.809` | `1.044` | `6/9` | `1/9` | toom4-fdiv-baseline-reg |
+| `65536` | `0.984` | `0.553` | `1.094` | `1.110` | `1.986` | `1.131` | `3/9` | `0/9` | toom4-fdiv-baseline-reg |
+
+Decision: reject factored exact division as a promotion direction. It is exact
+and faster than current production multiply, but it regresses the reusable
+Toom-4 baseline at `24103`, stays too thin at the high end, and does not fix
+GMP/MPIR, stable-pair, or worst-pair safety. The Toom-4 blocker is not generic
+small-divisor cost by itself.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor
@@ -1089,8 +1123,9 @@ Do not promote a bigint route unless all are true:
 
 The strongest current clue is now structural: reusable workspace removes a real
 amount of route overhead and beats current production multiply everywhere, but
-the high end still cannot consistently beat GMP/MPIR. Keep future scouts on the
-mixed window with deterministic in-between sizes, not only power-of-two
-anchors. The next multiply work should try a different arithmetic shape or
-handoff, then use the same exact parity, worst-pair, stable-pair, and same-run
-route gates before considering production routing.
+the high end still cannot consistently beat GMP/MPIR, and factored exact
+division did not move the strict gates. Keep future scouts on the mixed window
+with deterministic in-between sizes, not only power-of-two anchors. The next
+multiply work should try a different arithmetic shape below or beyond Toom-4,
+then use the same exact parity, worst-pair, stable-pair, and same-run route
+gates before considering production routing.

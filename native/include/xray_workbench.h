@@ -778,6 +778,18 @@ XRAY_API int xray_bigint_mul_toom4_top_full_workspace_probe(XrayScratchBigInt *o
 XRAY_API int xray_bigint_mul_toom4_top_full_workspace_reuse_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold, size_t depth_limit, XrayBigIntMulWorkspace *workspace);
 
 /**
+ * Multiply through the benchmark-only top-level Toom-4 scout while reusing
+ * recursive workspaces and factoring Toom-4 interpolation exact divisions.
+ *
+ * This diagnostic probe keeps production multiply unchanged and exists only to
+ * compare exact `/24`, `/60`, and `/120` interpolation division structure
+ * against the generic small-divisor Toom-4 scout. out may alias either input.
+ * Returns 1 on success and 0 on allocation failure, unsupported operand shape,
+ * invalid workspace, or failed exact-divisibility checks.
+ */
+XRAY_API int xray_bigint_mul_toom4_top_full_workspace_reuse_factored_div_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold, size_t depth_limit, XrayBigIntMulWorkspace *workspace);
+
+/**
  * Multiply with the unroll4 basecase probe route.
  *
  * This is a benchmark/research probe. Returns 1 on success and 0 on allocation
