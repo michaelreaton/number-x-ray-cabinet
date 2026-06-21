@@ -7431,6 +7431,9 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "samples=9") != NULL);
         CHECK(strstr(report->results[index].detail, "requiredStablePairs=8/9") != NULL);
         CHECK(strstr(report->results[index].detail, "safeSizes=") != NULL);
+        CHECK(strstr(report->results[index].detail, "safeSizeChunks=") != NULL);
+        CHECK(strstr(report->results[index].detail, "longestSafeSizeChunk=") != NULL);
+        CHECK(strstr(report->results[index].detail, "longestSafeSizeChunkCount=") != NULL);
         CHECK(strstr(report->results[index].detail, "hashSafe=108/108") != NULL);
         CHECK(strstr(report->results[index].detail, "hashGate=matched") != NULL);
         CHECK(strstr(report->results[index].detail, "parity=matched") != NULL);
@@ -7470,6 +7473,9 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "samples=9") != NULL);
         CHECK(strstr(report->results[index].detail, "requiredStablePairs=8/9") != NULL);
         CHECK(strstr(report->results[index].detail, "safeSizes=") != NULL);
+        CHECK(strstr(report->results[index].detail, "safeSizeChunks=") != NULL);
+        CHECK(strstr(report->results[index].detail, "longestSafeSizeChunk=") != NULL);
+        CHECK(strstr(report->results[index].detail, "longestSafeSizeChunkCount=") != NULL);
         CHECK(strstr(report->results[index].detail, "hashSafe=108/108") != NULL);
         CHECK(strstr(report->results[index].detail, "hashGate=matched") != NULL);
         CHECK(strstr(report->results[index].detail, "parity=matched") != NULL);
@@ -7509,6 +7515,9 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "samples=9") != NULL);
         CHECK(strstr(report->results[index].detail, "requiredStablePairs=8/9") != NULL);
         CHECK(strstr(report->results[index].detail, "safeSizes=") != NULL);
+        CHECK(strstr(report->results[index].detail, "safeSizeChunks=") != NULL);
+        CHECK(strstr(report->results[index].detail, "longestSafeSizeChunk=") != NULL);
+        CHECK(strstr(report->results[index].detail, "longestSafeSizeChunkCount=") != NULL);
         CHECK(strstr(report->results[index].detail, "hashSafe=108/108") != NULL);
         CHECK(strstr(report->results[index].detail, "hashGate=matched") != NULL);
         CHECK(strstr(report->results[index].detail, "parity=matched") != NULL);
