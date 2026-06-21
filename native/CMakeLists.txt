@@ -180,6 +180,41 @@ if(XRAY_GMP_LIBRARY_BASENAME_LOWER MATCHES "mpir")
   set(XRAY_GMP_BACKEND_NAME "MPIR")
 endif()
 
+set(XRAY_GMP_RUNTIME_DLLS "")
+if(WIN32)
+  foreach(_xray_runtime_dir IN ITEMS "${XRAY_GMP_RUNTIME_DIR_RELEASE}" "${XRAY_GMP_RUNTIME_DIR}")
+    if(_xray_runtime_dir AND EXISTS "${_xray_runtime_dir}")
+      file(GLOB _xray_runtime_dlls CONFIGURE_DEPENDS
+        "${_xray_runtime_dir}/${XRAY_GMP_LIBRARY_BASENAME}.dll"
+        "${_xray_runtime_dir}/${XRAY_GMP_LIBRARY_BASENAME}-*.dll"
+        "${_xray_runtime_dir}/${XRAY_GMP_LIBRARY_BASENAME_LOWER}.dll"
+        "${_xray_runtime_dir}/${XRAY_GMP_LIBRARY_BASENAME_LOWER}-*.dll"
+        "${_xray_runtime_dir}/gmp*.dll"
+        "${_xray_runtime_dir}/libgmp*.dll"
+        "${_xray_runtime_dir}/mpir*.dll"
+        "${_xray_runtime_dir}/libmpir*.dll"
+      )
+      list(APPEND XRAY_GMP_RUNTIME_DLLS ${_xray_runtime_dlls})
+    endif()
+  endforeach()
+  if(XRAY_GMP_RUNTIME_DLLS)
+    list(REMOVE_DUPLICATES XRAY_GMP_RUNTIME_DLLS)
+    message(STATUS "GMP/MPIR runtime DLLs: ${XRAY_GMP_RUNTIME_DLLS}")
+  else()
+    message(WARNING "GMP/MPIR runtime DLL was not found under ${XRAY_GMP_RUNTIME_DIR_RELEASE}; Windows executables may need PATH set manually.")
+  endif()
+endif()
+
+function(xray_copy_gmp_runtime_dlls target_name)
+  if(WIN32 AND XRAY_GMP_RUNTIME_DLLS)
+    add_custom_command(TARGET ${target_name} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different ${XRAY_GMP_RUNTIME_DLLS} $<TARGET_FILE_DIR:${target_name}>
+      COMMENT "Copying GMP/MPIR runtime DLLs for ${target_name}"
+      VERBATIM
+    )
+  endif()
+endfunction()
+
 set(XRAY_CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE 0)
 if(CMAKE_INTERPROCEDURAL_OPTIMIZATION OR CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE)
   set(XRAY_CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE 1)
@@ -248,6 +283,7 @@ if(XRAY_BUILD_SHARED)
     PUBLIC XRAY_SHARED=1
   )
   xray_configure_core_target(xray_core_shared)
+  xray_copy_gmp_runtime_dlls(xray_core_shared)
 endif()
 
 if(XRAY_INSTALL)
@@ -388,6 +424,7 @@ endif()
 if(XRAY_BUILD_CLI)
   add_executable(xray_cli src/cli/main.c)
   target_link_libraries(xray_cli PRIVATE xray_core)
+  xray_copy_gmp_runtime_dlls(xray_cli)
 endif()
 
 include(CTest)
@@ -400,6 +437,7 @@ if(BUILD_TESTING)
 
   add_executable(xray_native_tests tests/native_tests.c)
   target_link_libraries(xray_native_tests PRIVATE xray_core)
+  xray_copy_gmp_runtime_dlls(xray_native_tests)
   if(TARGET xray_core_shared)
     add_dependencies(xray_native_tests xray_core_shared)
   endif()
@@ -455,6 +493,7 @@ if(XRAY_BUILD_GTK)
     target_link_directories(xray_workbench PRIVATE ${GTK4_LIBRARY_DIRS})
     target_link_libraries(xray_workbench PRIVATE xray_core ${GTK4_LIBRARIES})
     target_compile_options(xray_workbench PRIVATE ${GTK4_CFLAGS_OTHER})
+    xray_copy_gmp_runtime_dlls(xray_workbench)
     if(WIN32 AND XRAY_GTK_COPY_RUNTIME_DLLS AND XRAY_GTK_ROOT)
       file(GLOB XRAY_GTK_RUNTIME_DLLS CONFIGURE_DEPENDS "${XRAY_GTK_ROOT}/bin/*.dll")
       if(XRAY_GTK_RUNTIME_DLLS)
