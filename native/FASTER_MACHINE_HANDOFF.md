@@ -1307,6 +1307,41 @@ beat the nonreuse combo baseline at every size, stable-pair counts are weak
 against that baseline, and worst-pair safety is too noisy. Keep the route audit
 as diagnostic evidence and look for a stronger backend or interpolation shape
 before any production default change.
+
+## Combo Reuse Transition Self-Control Audit
+
+Local focused run:
+
+- Command:
+  `native/build-stack-v142/xray_cli.exe --bench-focus mul-combo-transition --bench-tsv`
+- Artifact:
+  `native-test-runs/20260621-063109-transition-self-control/benchmark.tsv`
+
+This run adds `mul-large-toom-cmb-tctrl` plus per-size
+`mul-large-toom-cmb-tctrl-pt` rows for the transition pocket:
+`11717` and `16384`. Candidate and baseline are the same reusable combo map,
+measured through independent reusable workspaces, while current production
+multiply and `mpz_mul` remain in the same rotating run. It remains diagnostic
+only: `noAutoRoute=1`, `replacementReady=false`, production multiply
+unchanged.
+
+| Row | Sizes | Control Max | Control Worst | Current Max | GMP Max | Current/GMP Max | Safe Sizes | Safe Chunk | Hash | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: | --- |
+| `mul-large-toom-cmb-tctrl` | `11717,16384` | `0.997` | `1.140` | `0.676` | `0.925` | `1.378` | `1/2` | `11717` | `36/36` | observe only |
+
+Per-size signal:
+
+| Digits | Control Ratio | Control Worst | Candidate / Current | Candidate / GMP | Current / GMP | Control Stable | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `11717` | `0.982` | `1.018` | `0.635` | `0.879` | `1.378` | `9/9` | `9/9` | self-control-clean |
+| `16384` | `0.997` | `1.140` | `0.676` | `0.925` | `1.340` | `7/9` | `9/9` | duplicate-control-noise |
+
+Decision: use the row as a fast noise classifier before wider transition or
+promotion sweeps. The candidate still beats current production multiply and
+GMP/MPIR in this focused run, but the duplicate-route control is noisy at
+`16384`, so the transition pocket remains observe-only. The reported
+`safeSizeChunks=11717` is a single adjacent measured-point chunk in this run,
+not proof of every unmeasured size around `11717`.
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor
@@ -1338,6 +1373,9 @@ Run these in order.
    - Use narrower focus labels such as `mul-combo-lower`,
      `mul-combo-transition`, `mul-combo-upper`, and `mul-combo-reuse` when a
      candidate pocket is already known.
+   - `mul-combo-transition` now includes forced route, duplicate-route
+     self-control, and duplicate GMP/MPIR control rows for `11717` and
+     `16384`, so use it before launching a broader transition sweep.
    - Treat focus output as triage only: keep the raw TSV, but do not promote or
      publish a route until the full parity, route-audit, worst-pair, and
      stable-pair gates pass.
@@ -1382,9 +1420,12 @@ The strongest current clue is now structural: reusable workspace removes a real
 amount of route overhead and beats current production multiply everywhere, but
 the high end still cannot consistently beat GMP/MPIR, and factored exact
 division, top-level Toom-4-vs-combo reuse, and the Toom-3 neg2 arithmetic-shape
-scout did not move the strict gates. Keep future scouts on the mixed window
-with deterministic in-between sizes, not only power-of-two anchors. The next
-multiply work should try a broader handoff or a deeper multiplication structure
-below or beyond these Toom-3/Toom-4 reshuffles, then use the same exact parity,
-worst-pair, stable-pair, and same-run route gates before considering production
-routing.
+scout did not move the strict gates. Transition-pocket runs now have
+same-route self-control, and the first local self-control pass found noise at
+`16384`; use that row to avoid spending broader benchmark time on unstable
+pockets. Keep future scouts on the mixed window with deterministic in-between
+sizes, not only power-of-two anchors. The next multiply work should try a
+broader handoff or a deeper multiplication structure below or beyond these
+Toom-3/Toom-4 reshuffles, then use the same exact parity, worst-pair,
+stable-pair, same-run route, and self-control gates before considering
+production routing.
