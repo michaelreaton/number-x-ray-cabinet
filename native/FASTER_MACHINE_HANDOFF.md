@@ -931,6 +931,39 @@ The combined path beats current production multiply, but it does not beat the
 regular reusable map under the strict gate and still fails GMP/MPIR and
 worst-pair gates at the high end.
 
+## 2026-06-20: Top-Level Toom-4 Scout
+
+Artifact: `native-test-runs/20260620-040903-c4b04caf`
+
+This run adds `mul-large-toom4-top`, a benchmark-only top-level Toom-4 scout
+for the upper window. It splits each operand into four slices, evaluates at
+`0`, `1`, `-1`, `2`, `-2`, `3`, and infinity, and reuses the existing
+full-workspace Toom-3 combo route for point products. The probe is diagnostic
+only: `noAutoRoute=1`, `replacementReady=false`, and production multiply is
+unchanged.
+
+Summary:
+
+| Row | Sizes | Candidate / Baseline Max | Candidate / Current Max | Candidate / GMP Max | Baseline / GMP Max | Current / GMP Max | Worst Pair Max | Safe Sizes | Hash Safe | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `mul-large-toom4-top` | `24103,32768,52163,65536` | `1.054` | `0.665` | `1.141` | `1.176` | `1.884` | `1.359` | `0/4` | `72/72` | observe only |
+
+Per-size signal:
+
+| Digits | Toom-4 / Combo L48D3 | Toom-4 / Current | Toom-4 / GMP | Combo L48D3 / GMP | Current / GMP | Worst Pair | Stable vs Combo | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `24103` | `1.003` | `0.654` | `1.002` | `1.008` | `1.534` | `1.063` | `3/9` | `4/9` | combo-l48d3-regression |
+| `32768` | `0.985` | `0.665` | `1.061` | `1.077` | `1.611` | `1.137` | `4/9` | `0/9` | combo-l48d3-regression |
+| `52163` | `1.054` | `0.625` | `1.141` | `1.078` | `1.831` | `1.359` | `0/9` | `1/9` | combo-l48d3-regression |
+| `65536` | `0.954` | `0.595` | `1.125` | `1.176` | `1.884` | `1.156` | `8/9` | `0/9` | combo-l48d3-regression |
+
+Decision: reject top-level Toom-4 as a promotion direction for this window.
+It shows useful median wins at the power-of-two anchors, especially `65536`,
+but the deterministic random spots expose the real shape: `24103` is slightly
+slower than combo L48D3, `52163` regresses by 5.4 percent, and worst-pair
+safety peaks at 1.359. Exact parity/hash passed, so the algorithm is a clean
+diagnostic result, but not a route candidate.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor

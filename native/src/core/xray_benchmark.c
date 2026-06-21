@@ -37,6 +37,7 @@
 #define XRAY_BENCH_TOOM_INTERP_DIV2 1U
 #define XRAY_BENCH_TOOM_INTERP_DIV3 2U
 #define XRAY_BENCH_TOOM_INTERP_INPLACE_DIV 4U
+#define XRAY_BENCH_TOOM_INTERP_TOOM4_TOP 8U
 #define XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT 4U
 #define XRAY_MUL_COMBO_TOURNAMENT_LANE_COUNT (XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT + 2U)
 #define XRAY_MUL_COMBO_TOURNAMENT_CURRENT_LANE XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT
@@ -7345,6 +7346,26 @@ static void mul_full_workspace_depth_scout_labels(
   memset(labels, 0, sizeof(*labels));
   unsigned int combo_interp_flags = XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3;
   unsigned int inplace_combo_interp_flags = combo_interp_flags | XRAY_BENCH_TOOM_INTERP_INPLACE_DIV;
+  unsigned int toom4_top_combo_interp_flags = combo_interp_flags | XRAY_BENCH_TOOM_INTERP_TOOM4_TOP;
+  if (candidate_leaf_threshold == 48 &&
+      baseline_leaf_threshold == 48 &&
+      candidate_depth_limit == 3 &&
+      baseline_depth_limit == 3 &&
+      candidate_interp_flags == toom4_top_combo_interp_flags &&
+      baseline_interp_flags == combo_interp_flags) {
+    snprintf(labels->aggregate_operation, sizeof(labels->aggregate_operation), "mul-large-toom4-top");
+    snprintf(labels->point_operation, sizeof(labels->point_operation), "mul-large-toom4-top-pt");
+    snprintf(labels->point_detail_op, sizeof(labels->point_detail_op), "mul-toom4-top-point");
+    snprintf(labels->parent, sizeof(labels->parent), "toom4-top-scout");
+    snprintf(labels->candidate, sizeof(labels->candidate), "full-ws-toom4-top-l48d3");
+    snprintf(labels->baseline, sizeof(labels->baseline), "full-ws-combo-l48d3");
+    snprintf(labels->feature_gate, sizeof(labels->feature_gate), "large-multiply-cpu-toom4-top-scout");
+    snprintf(labels->gmp_clue, sizeof(labels->gmp_clue), "toom4-top-vs-toom33-upper");
+    snprintf(labels->baseline_status, sizeof(labels->baseline_status), "combo-l48d3-regression");
+    snprintf(labels->clean_status, sizeof(labels->clean_status), "toom4-top-clean");
+    snprintf(labels->threshold_safety, sizeof(labels->threshold_safety), "upper-window");
+    return;
+  }
   if (candidate_leaf_threshold == 48 &&
       baseline_leaf_threshold == 64 &&
       candidate_depth_limit == 3 &&
@@ -9766,6 +9787,14 @@ static int run_mul_full_workspace_candidate_probe(
   size_t depth_limit,
   unsigned int interp_flags) {
   unsigned int both = XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3;
+  if (interp_flags & XRAY_BENCH_TOOM_INTERP_TOOM4_TOP) {
+    return xray_bigint_mul_toom4_top_full_workspace_probe(
+      out,
+      left,
+      right,
+      leaf_threshold,
+      depth_limit);
+  }
   if ((interp_flags & both) == both) {
     if (interp_flags & XRAY_BENCH_TOOM_INTERP_INPLACE_DIV) {
       return xray_bigint_mul_toom3_unroll4_recursive_full_workspace_inplace_div2_div3_probe(
@@ -17305,6 +17334,19 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     3,
     4,
     XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3,
+    XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3,
+    mul_full_workspace_upper_gate_digits,
+    sizeof(mul_full_workspace_upper_gate_digits) / sizeof(mul_full_workspace_upper_gate_digits[0]));
+  run_mul_full_workspace_depth_scout_case(
+    report,
+    1391U,
+    "full-workspace-toom4-top-upper-ge24103",
+    24103,
+    48,
+    48,
+    3,
+    3,
+    XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3 | XRAY_BENCH_TOOM_INTERP_TOOM4_TOP,
     XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3,
     mul_full_workspace_upper_gate_digits,
     sizeof(mul_full_workspace_upper_gate_digits) / sizeof(mul_full_workspace_upper_gate_digits[0]));

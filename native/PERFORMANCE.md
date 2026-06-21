@@ -4152,3 +4152,41 @@ Decision: reject `ripdiv` as a promotion direction. It confirms that
 combining reusable workspaces with in-place interpolation still does not beat
 the regular reusable map under the strict gates, even though it remains faster
 than current production multiply.
+
+## 2026-06-20: Top-Level Toom-4 Scout
+
+Local Release validation artifact
+`native-test-runs/20260620-040903-c4b04caf` adds `mul-large-toom4-top`, a
+benchmark-only upper-window scout that tries one top-level Toom-4 split over
+the existing reusable Toom-3 combo point products. The candidate is
+`full-ws-toom4-top-l48d3`; the baseline is `full-ws-combo-l48d3`; current
+production multiply and `mpz_mul` remain in the same timing run.
+
+Observed aggregate:
+
+- Exact parity/hash passed:
+  `hashSafe=72/72`, `hashGate=matched`, `parity=matched`.
+- Top-level Toom-4 does not beat the combo baseline across the window:
+  `candBaseMax=1.054`, `safeSizes=0/4`.
+- It remains faster than current production multiply:
+  `candCurrentMax=0.665`.
+- It is slower than GMP/MPIR at every measured upper-window size:
+  `candGmpMax=1.141`.
+- Worst-pair safety is not close enough for promotion:
+  `maxWorstPairRatio=1.359`.
+
+Per-size point rows:
+
+| Digits | Toom-4 / Combo L48D3 | Toom-4 / Current | Toom-4 / GMP | Combo L48D3 / GMP | Current / GMP | Worst Pair | Stable vs Combo | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `24103` | `1.003` | `0.654` | `1.002` | `1.008` | `1.534` | `1.063` | `3/9` | `4/9` | combo-l48d3-regression |
+| `32768` | `0.985` | `0.665` | `1.061` | `1.077` | `1.611` | `1.137` | `4/9` | `0/9` | combo-l48d3-regression |
+| `52163` | `1.054` | `0.625` | `1.141` | `1.078` | `1.831` | `1.359` | `0/9` | `1/9` | combo-l48d3-regression |
+| `65536` | `0.954` | `0.595` | `1.125` | `1.176` | `1.884` | `1.156` | `8/9` | `0/9` | combo-l48d3-regression |
+
+Decision: reject top-level Toom-4 for promotion. The power-of-two anchors show
+some median improvement over combo L48D3, but the deterministic random spots
+are decisive: `24103` is effectively flat-to-slower and `52163` regresses
+badly enough to fail the strict safe-size, stability, GMP/MPIR, and worst-pair
+gates. The result is useful evidence that broadening the top-level split alone
+is not enough.
