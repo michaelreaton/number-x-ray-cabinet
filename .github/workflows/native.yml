@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "native/**"
+      - "!native/**/*.md"
       - ".github/workflows/native.yml"
   workflow_dispatch:
 
