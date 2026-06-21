@@ -113,6 +113,34 @@ next PR on promoting or widening the full-workspace audit pocket. The larger
 chunk is not repeat-stable under the cheaper isolated lane, and worst-pair
 safety remains well above the promotion gate.
 
+## 2026-06-21: Post-Pocket Novelty Matrix
+
+Local two-repeat artifact:
+`native-test-runs/20260621-103409-post-pocket-novelty-repeat2/matrix.tsv`
+
+This matrix reran the cheap post-pocket focus lanes:
+`mul-full-audit-pocket`, `mul-backend-gap`, `mul-toom4-top`,
+`mul-toom5-smoke`, `mul-toom-div-transition`,
+`mul-combo-handoff-boundary`, and `mul-sparse`.
+
+Audit-ready rows:
+
+| Focus | Operation | Repeat-Stable Chunk | Worst Pair Max | Decision |
+| --- | --- | --- | ---: | --- |
+| `mul-sparse` | `sparse-production-mul` | `4096-65536` | `0.230769` | keep sparse production evidence |
+| `mul-sparse` | `sparse-zero-mul` | `4096-65536` | `0.230769` | keep sparse diagnostic evidence |
+| `mul-sparse` | `sparse-production-pair-mul` | `4096-65536` | `1.000000` | keep sparse production evidence |
+| `mul-sparse` | `sparse-pair-mul` | `5639-65536` | `1.000000` | keep sparse diagnostic evidence |
+| `mul-backend-gap` | `muladd-unroll4` | `617-4933` | `0.971908` | primitive-only recheck clue |
+
+Dense route rows did not produce an audit-ready candidate. The two-repeat
+`mul-full-audit-pocket` row showed `11717,24103-32768`, but this conflicts with
+the stronger three-repeat pocket artifact above, where the same focus collapsed
+to `16384` and remained worst-pair unsafe. Treat the backend `muladd-unroll4`
+hit as a primitive scheduling clue only: `mul-unroll4-vs-scratch` still had
+only a single repeat-stable `8192` point and `maxWorstPairRatio=1.363171`, so
+it does not justify a full multiply route.
+
 ## 2026-06-21: Ranked Focus Matrix
 
 `bench_focus_matrix.py` now writes `matrix_ranked.tsv` beside the complete
