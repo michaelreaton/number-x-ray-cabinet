@@ -35,6 +35,35 @@ parity plus a stable same-run paired win.
 - Repeat-stable matrix hits should be triaged by contiguous span, not only by
   whether any safe point exists. Prefer larger `repeatStableLongestChunk*`
   spans for piecemeal follow-up, and keep single-size hits in the recheck lane.
+- For focus labels that emit point rows instead of policy-gate aggregates, the
+  repeat helper folds per-size rows into operation-level `safeSizeChunks` only
+  when each point has parity, all stable pairs, `speedRatio <= 1.0`, and
+  `worstPairRatio <= 1.0`. This keeps fast scouts visible without weakening the
+  promotion bar.
+
+## 2026-06-21: Sparse Multiply Focus
+
+`--bench-focus mul-sparse` exposes the existing sparse multiply probes without
+running the full ladder or changing production routing. It covers measured bit
+points `4096,5639,8192,11717,16384,24103,32768`, including non-power-of-two
+interior spots for chunk scoring.
+
+Local two-repeat artifact:
+`native-test-runs/20260621-095400-sparse-mul-repeat2/matrix.tsv`
+
+| Operation | Runs With Safe Chunks | Repeat-Stable Chunk | Worst Pair Max | Status | Decision |
+| --- | ---: | --- | ---: | --- | --- |
+| `sparse-production-mul` | `2/2` | `4096-32768` | `0.203390` | `replacement-ready` | keep as app-shaped GMP evidence |
+| `sparse-zero-mul` | `2/2` | `4096-32768` | `0.203390` | `candidate-faster` | audit-ready sparse probe |
+| `sparse-pair-mul` | `2/2` | `5639-32768` | `1.111111` | `candidate-faster` | recheck only |
+| `sparse-production-pair-mul` | `2/2` | `5639-32768` | `1.111111` | `parity,replacement-ready` | recheck only |
+| `sparse-forced-mul` | `1/2` | none | `14.000000` | `candidate-faster,current-best` | reject for now |
+
+Decision: use this lane for very fast app-shaped sparse novelty scouting and
+paper evidence about sparse workloads where Number X-Ray already beats `mpz_mul`
+in same-run paired measurements. Do not generalize it to dense multiply or to
+unmeasured bit points; any production promotion still needs the usual parity,
+stable-pair, worst-pair, route-audit, and product-build gates.
 
 ## 2026-06-21: Ranked Focus Matrix
 

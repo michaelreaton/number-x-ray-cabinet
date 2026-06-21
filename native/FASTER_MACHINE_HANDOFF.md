@@ -1570,6 +1570,15 @@ Run these in order.
      produced no repeat-stable chunks and an empty
      `matrix_audit_candidates.tsv`, so do not widen these low/mid handoff
      boundaries next on this build.
+   - Use `--bench-focus mul-sparse` as the fast sparse/app-shaped multiply lane
+     before spending more time on dense structural probes. The first two-repeat
+     artifact,
+     `native-test-runs/20260621-095400-sparse-mul-repeat2/matrix.tsv`, found
+     repeat-stable `4096-32768` measured-bit chunks for
+     `sparse-production-mul` and `sparse-zero-mul` with
+     `maxWorstPairRatio=0.203390`. Treat this as strong sparse-workload GMP
+     evidence and a piecemeal sparse probe lead, not a dense multiply promotion
+     claim.
    - On local Windows MPIR builds, set
      `$env:PATH = "C:\vcpkg\installed\x64-windows\bin;$env:PATH"` before
      invoking `xray_cli.exe` if the CLI exits silently with status 1.

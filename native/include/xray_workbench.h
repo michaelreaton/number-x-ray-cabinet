@@ -1464,7 +1464,8 @@ XRAY_API int xray_benchmark_run(XrayBenchmarkReport *report);
  * Supported focus names are implementation-defined diagnostic labels such as
  * "mul-large", "mul-combo-lower", "mul-combo-transition",
  * "mul-combo-handoff-boundary", "mul-combo-upper", "mul-combo-reuse", and
- * "mul-novelty".
+ * "mul-sparse". "mul-novelty" is a rotating bundle that may include several
+ * diagnostic focus families.
  */
 XRAY_API int xray_benchmark_run_focus(XrayBenchmarkReport *report, const char *focus);
 

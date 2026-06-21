@@ -20745,6 +20745,15 @@ static int benchmark_focus_any_mul_combo(const char *focus) {
     benchmark_focus_eq(focus, "mul-novelty");
 }
 
+static void run_sparse_mul_focus_cases(XrayBenchmarkReport *report) {
+  const size_t sparse_focus_bits[] = {4096, 5639, 8192, 11717, 16384, 24103, 32768};
+  for (size_t index = 0; index < sizeof(sparse_focus_bits) / sizeof(sparse_focus_bits[0]); ++index) {
+    run_sparse_zero_limb_probe_case(report, "mul", sparse_focus_bits[index]);
+    run_sparse_forced_mul_probe_case(report, sparse_focus_bits[index]);
+    run_sparse_pair_product_probe_case(report, sparse_focus_bits[index]);
+  }
+}
+
 static void run_mul_large_focus_cases(XrayBenchmarkReport *report) {
   const size_t dense_leaf_digits[] = {4096, 8192, 16384};
   for (size_t digit_index = 0; digit_index < sizeof(dense_leaf_digits) / sizeof(dense_leaf_digits[0]); ++digit_index) {
@@ -21108,6 +21117,9 @@ int xray_benchmark_run_focus_with_callback(
 
   if (benchmark_focus_eq(focus, "mul-large") || benchmark_focus_eq(focus, "mul-novelty")) {
     run_mul_large_focus_cases(report);
+  }
+  if (benchmark_focus_eq(focus, "mul-sparse") || benchmark_focus_eq(focus, "mul-novelty")) {
+    run_sparse_mul_focus_cases(report);
   }
 #if XRAY_HAS_MSVC_BMI2_ADX_INTRINSICS
   if (benchmark_focus_eq(focus, "mul-backend-gap")) {
