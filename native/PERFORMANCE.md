@@ -4814,6 +4814,35 @@ Decision: keep the focus label for cheap future CPU/build reruns, but do not
 spend the next novelty slice widening Toom-4 top routes. The only safe chunk
 was a single-run `24103` reuse blip that disappeared under repeat intersection.
 
+## 2026-06-21: Expanded Novelty Matrix
+
+Local two-repeat matrix artifact:
+`native-test-runs/20260621-092200-expanded-novelty-matrix-repeat2/matrix.tsv`
+
+This matrix combines the newly cheap backend-gap and Toom-4 focus lanes with
+the already rejected Toom-5, div-transition, and handoff-pocket focus lanes.
+It is a triage artifact, not a promotion audit.
+
+| Focus | Operation | Runs With Safe Chunks | Repeat-Stable Chunk | Worst Pair Max | Decision |
+| --- | --- | ---: | --- | ---: | --- |
+| `mul-backend-gap` | `mul-backend-gap-unroll4` | `2/2` | `4096` | `1.428469` | recheck-only |
+| `mul-toom4-top` | `mul-large-toom4-top-fdiv` | `0/2` | none | `1.190176` | reject |
+| `mul-toom4-top` | `mul-large-toom4-top-reuse` | `0/2` | none | `1.200124` | reject |
+| `mul-toom4-top` | `mul-large-toom4-top-vs-cmb` | `0/2` | none | `1.702552` | reject |
+| `mul-toom5-smoke` | `mul-large-toom5-top-handoff` | `0/2` | none | `1.245721` | reject |
+| `mul-toom5-smoke` | `mul-large-toom5-top-reuse` | `0/2` | none | `1.302975` | reject |
+| `mul-toom-div-transition` | `mul-large-toom-div2-scout` | `0/2` | none | `1.332914` | reject |
+| `mul-toom-div-transition` | `mul-large-toom-div3-scout` | `0/2` | none | `1.253848` | reject |
+| `mul-toom-div-transition` | `mul-large-toom-div2-div3-scout` | `0/2` | none | `1.258201` | reject |
+| `mul-combo-handoff-pocket` | `mul-large-toom-cmb-hpocket` | `0/2` | none | `1.332506` | reject |
+
+Decision: do not spend the next implementation slice on Toom-4, Toom-5,
+div-transition arithmetic, or the current handoff pocket. The `4096` backend
+hint is worth a future isolated recheck because this two-repeat matrix conflicts
+with the earlier three-repeat backend-gap artifact, where the same aggregate had
+`runsWithSafeChunks=0/3`. Treat it as noise until a dedicated `4096`-only
+control survives repeated runs.
+
 ## 2026-06-21: Toom Div Transition Focus
 
 Local Release validation artifact
