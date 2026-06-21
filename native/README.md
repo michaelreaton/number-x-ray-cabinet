@@ -451,6 +451,7 @@ native\build\Release\xray_cli.exe --bench-focus mul-combo-transition-controls --
 native\build\Release\xray_cli.exe --bench-focus mul-combo-handoff-pocket --bench-frontier
 native\build\Release\xray_cli.exe --bench-focus mul-combo-handoff-boundary --bench-frontier
 native\build\Release\xray_cli.exe --bench-focus mul-large --bench-frontier
+native\build\Release\xray_cli.exe --bench-focus mul-full-audit-pocket --bench-frontier
 native\build\Release\xray_cli.exe --bench-focus mul-sparse --bench-frontier
 python native\tools\bench_focus_repeat.py --cli native\build\Release\xray_cli.exe --focus mul-combo-handoff-pocket --runs 3
 python native\tools\bench_focus_matrix.py --cli native\build\Release\xray_cli.exe --runs 3 --focus mul-backend-gap --focus mul-toom4-top --focus mul-toom5-smoke --focus mul-toom-div-transition --focus mul-combo-handoff-pocket
@@ -476,13 +477,16 @@ a one-artifact digest of what is completed, still open, noisy, or excluded as
 control evidence. Use `--bench-focus FOCUS` for a local diagnostic scout that
 skips the full ladder and runs only the named family, such as `mul-novelty`,
 `mul-large`, `mul-toom5-smoke`, `mul-toom-div-transition`, `mul-toom-div`,
-`mul-toom4-top`, `mul-backend-gap`, `mul-combo-lower`, `mul-combo-transition`,
-`mul-combo-handoff-boundary`, `mul-combo-upper`, `mul-combo-reuse`, or
-`mul-sparse`. Use
+`mul-toom4-top`, `mul-backend-gap`, `mul-full-audit-pocket`,
+`mul-combo-lower`, `mul-combo-transition`, `mul-combo-handoff-boundary`,
+`mul-combo-upper`, `mul-combo-reuse`, or `mul-sparse`. Use
 `mul-large` when you need the full large multiply CPU campaign over
 `4096,5639,8192,11717,16384,24103,32768,52163,65536`; focused dense leaf and
 Karatsuba split-view baseline rows also run at `32768` and `65536` there so the
 upper anchors can be reproduced without launching the full ladder. Use
+`mul-full-audit-pocket` when you only need the full-workspace Toom audit row
+against current multiply and `mpz_mul` over `5639,8192,11717,16384,24103,32768`;
+it is meant for fast contiguous-chunk rechecks and keeps `noAutoRoute=1`. Use
 `mul-toom5-smoke` when you only
 need the existing Toom-5 top-level smoke rows over `5639,8192,11717,16384`
 without the full benchmark ladder. Use `mul-toom-div-transition` when you only

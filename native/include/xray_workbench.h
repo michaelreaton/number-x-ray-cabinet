@@ -1462,10 +1462,10 @@ XRAY_API int xray_benchmark_run(XrayBenchmarkReport *report);
  * This is intended for local novelty scouting, not promotion evidence. The
  * default benchmark ladder is unchanged; callers must opt in with a focus name.
  * Supported focus names are implementation-defined diagnostic labels such as
- * "mul-large", "mul-combo-lower", "mul-combo-transition",
- * "mul-combo-handoff-boundary", "mul-combo-upper", "mul-combo-reuse", and
- * "mul-sparse". "mul-novelty" is a rotating bundle that may include several
- * diagnostic focus families.
+ * "mul-large", "mul-full-audit-pocket", "mul-combo-lower",
+ * "mul-combo-transition", "mul-combo-handoff-boundary", "mul-combo-upper",
+ * "mul-combo-reuse", and "mul-sparse". "mul-novelty" is a rotating bundle
+ * that may include several diagnostic focus families.
  */
 XRAY_API int xray_benchmark_run_focus(XrayBenchmarkReport *report, const char *focus);
 

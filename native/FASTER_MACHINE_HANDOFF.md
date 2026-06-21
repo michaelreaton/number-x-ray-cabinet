@@ -18,10 +18,21 @@ repeat-stable safe chunk. The useful piecemeal signal was
 `mul-large-cpu-toom-full-audit` with repeat-stable chunk `8192-24103`,
 inclusive span `15912`, and `maxWorstPairRatio=1.371459`.
 
-Next action: treat `8192-24103` as a dense piecemeal audit/recheck target, not
-as a production route. Keep the paper claim bounded: Number X-Ray has verified
-GMP/MPIR outperformance pockets, plus sparse app-shaped wins, but the dense
-full-window route is still blocked by worst-pair safety.
+Follow-up pocket recheck:
+
+`native-test-runs/20260621-102952-full-audit-pocket-repeat3/matrix.tsv`
+
+The narrowed `mul-full-audit-pocket` focus reran only
+`mul-large-cpu-toom-full-audit` over `5639,8192,11717,16384,24103,32768`. The
+three-repeat intersection collapsed to single point `16384`, with
+`maxWorstPairRatio=1.615254`, so the earlier `8192-24103` hint is not a route
+audit candidate.
+
+Next action: keep `mul-full-audit-pocket` as a cheap noise filter and move
+implementation novelty away from this full-workspace audit route. Keep the
+paper claim bounded: Number X-Ray has verified GMP/MPIR outperformance pockets,
+plus sparse app-shaped wins, but the dense full-window route is still blocked
+by worst-pair safety.
 
 ## Current Baseline
 

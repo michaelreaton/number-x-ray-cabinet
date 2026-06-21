@@ -90,6 +90,29 @@ intersection from `8192` through `24103`, but its worst-pair max still blocks
 promotion. Treat it as a piecemeal route-audit target, not as proof that the
 full `4096` through `65536` dense window is solved.
 
+## 2026-06-21: Full Audit Pocket Focus
+
+`--bench-focus mul-full-audit-pocket` is a narrowed recheck lane for the
+full-workspace Toom audit clue from the larger `mul-large` focus. It runs only
+`mul-large-cpu-toom-full-audit`, comparing the full-workspace candidate against
+current production multiply and `mpz_mul` on the same operands. It covers
+`5639,8192,11717,16384,24103,32768`, which is the previous repeat-stable
+`8192-24103` hint plus adjacent guard points.
+
+Local three-repeat artifact:
+`native-test-runs/20260621-102952-full-audit-pocket-repeat3/matrix.tsv`
+
+| Operation | Runs With Safe Chunks | Repeat-Stable Chunk | Longest Span | Worst Pair Max | Decision |
+| --- | ---: | --- | ---: | ---: | --- |
+| `mul-large-cpu-toom-full-audit` | `3/3` | `16384` | `1` | `1.615254` | reject route audit |
+
+Per-run safe chunks were `11717-24103`, `8192,16384-24103`, and
+`11717-16384`; their intersection collapsed to the single measured point
+`16384`. Decision: keep this focus as a fast noise filter, but do not spend the
+next PR on promoting or widening the full-workspace audit pocket. The larger
+chunk is not repeat-stable under the cheaper isolated lane, and worst-pair
+safety remains well above the promotion gate.
+
 ## 2026-06-21: Ranked Focus Matrix
 
 `bench_focus_matrix.py` now writes `matrix_ranked.tsv` beside the complete

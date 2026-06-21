@@ -164,11 +164,20 @@ Key repeat-stable results:
 | `mul-large-cpu-campaign` | none | `2.410811` | no full-window route candidate |
 | `mul-large-cpu-toom-full-audit` | `8192-24103` | `1.371459` | piecemeal chunk to recheck, not promotable |
 
+Follow-up pocket recheck:
+
+`native-test-runs/20260621-102952-full-audit-pocket-repeat3/matrix.tsv`
+
+| Operation | Repeat-Stable Chunk | Worst Pair Max | Interpretation |
+| --- | --- | ---: | --- |
+| `mul-large-cpu-toom-full-audit` | `16384` | `1.615254` | earlier chunk collapsed under isolated repeat |
+
 This is the current best example of why the paper should track contiguous safe
 size chunks. A route can be scientifically useful over a measured chunk even
-when it is not ready for a default route. The next paper revision should keep
-this as a separate dense follow-up signal: it narrows the search for a
-piecemeal audit but does not strengthen the global GMP claim.
+when it is not ready for a default route, and it can also lose that chunk under
+a better-focused repeat. The next paper revision should keep this as a separate
+dense follow-up signal: it narrows the search away from this route and does not
+strengthen the global GMP claim.
 
 ## Control Evidence: Transition GMP Duplicate
 
