@@ -46,6 +46,23 @@ Decision: use `matrix_ranked.tsv` as the first triage artifact for fast novelty
 selection, then inspect `matrix.tsv` and raw per-focus summaries before opening
 a deeper route audit.
 
+## 2026-06-21: Ranked Novelty Matrix Smoke
+
+Local two-repeat timeout-guarded artifact:
+`native-test-runs/20260621-095000-ranked-novelty-matrix-repeat2/matrix_ranked.tsv`
+
+The ranked matrix covered `mul-backend-gap`, `mul-toom4-top`,
+`mul-toom5-smoke`, `mul-toom-div-transition`, and
+`mul-combo-handoff-pocket` with `--timeout-seconds 45`. The only repeat-stable
+ranked row was `mul-large-toom-cmb-hpocket` with
+`repeatStableSafeChunks=11717,14831`, `repeatStableLongestChunkSpan=1`, and
+`maxWorstPairRatio=2.269166`.
+
+Decision: no large contiguous safe chunk emerged. Keep the handoff-pocket signal
+as recheck-only/no-promotion evidence, and spend the next novelty slice on a
+new structure or a narrower route-control idea rather than widening the same
+handoff pocket.
+
 ## 2026-06-21: Repeat-Stable Chunk Span Reporting
 
 The repeat and matrix helpers now report the longest repeat-stable contiguous
