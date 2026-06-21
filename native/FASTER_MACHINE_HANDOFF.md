@@ -28,11 +28,22 @@ three-repeat intersection collapsed to single point `16384`, with
 `maxWorstPairRatio=1.615254`, so the earlier `8192-24103` hint is not a route
 audit candidate.
 
-Next action: keep `mul-full-audit-pocket` as a cheap noise filter and move
-implementation novelty away from this full-workspace audit route. Keep the
-paper claim bounded: Number X-Ray has verified GMP/MPIR outperformance pockets,
-plus sparse app-shaped wins, but the dense full-window route is still blocked
-by worst-pair safety.
+Post-pocket novelty matrix:
+
+`native-test-runs/20260621-103409-post-pocket-novelty-repeat2/matrix.tsv`
+
+Sparse remains the only broad audit-ready multiply lane. The matrix also found
+`muladd-unroll4` repeat-stable over `617-4933` with
+`maxWorstPairRatio=0.971908`, but the full `mul-unroll4-vs-scratch` route still
+did not inherit that safety (`8192` only, `maxWorstPairRatio=1.363171`).
+
+Next action: keep `mul-full-audit-pocket` as a cheap noise filter, keep sparse
+as the paper's broad app-shaped win, and treat `muladd-unroll4` as a primitive
+scheduling clue rather than a route. Move implementation novelty away from the
+rejected full-workspace audit, Toom-4/Toom-5, div-transition, and handoff
+boundary dense families. Keep the paper claim bounded: Number X-Ray has
+verified GMP/MPIR outperformance pockets, plus sparse app-shaped wins, but the
+dense full-window route is still blocked by worst-pair safety.
 
 ## Current Baseline
 
