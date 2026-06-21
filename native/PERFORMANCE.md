@@ -362,7 +362,7 @@ MFastFermat `0070fae` then made that lane importable by adding
 handoff shape with `benchmark_progress.tsv` and
 `xray_benchmark_progress_classification_tsv()`. External tools can now read
 `routeCandidate`, `routeCompleted`, `productGated`, `hasSetupContext`,
-`setupSeconds`, `warmupReview`, `lowerBound`, `runFailed`, `baseline`, `control`, and
+`setupSeconds`, `warmupReview`, `lowerBound`, `runFailed`, `baselineRow`, `control`, and
 `noisyControl` directly instead of scraping the human digest. The numeric setup
 column follows the latest MFast `SetupSeconds` lesson: explicit
 `SetupSeconds`/`setupSeconds` tags win, otherwise measured setup and warmup tags
@@ -4729,6 +4729,12 @@ the duplicate-GMP control never produced a safe transition chunk. Use the focus
 helper as a first-pass noise filter, then move novelty work toward a different
 route shape or lower-level Toom arithmetic instead of rerunning this exact
 handoff policy as if it were still promising.
+
+The helper now writes `repeat_stable_chunks.tsv` beside the per-run
+`summary.tsv`. That file groups rows by operation and intersects
+`safeSizeChunks` across all repeats, so a pocket that appears in only one noisy
+run is visibly different from a measured chunk that survives repeated focused
+scouts. This is reporting only; it does not relax route promotion gates.
 
 ## 2026-06-21: Toom Div Transition Focus
 

@@ -28,6 +28,18 @@ SUMMARY_FIELDS = [
     "progressArtifact",
 ]
 
+REPEAT_STABLE_FIELDS = [
+    "operation",
+    "runsSeen",
+    "runsWithSafeChunks",
+    "repeatStableSafeChunks",
+    "repeatStableChunkCount",
+    "statuses",
+    "minSpeedRatio",
+    "maxSpeedRatio",
+    "maxWorstPairRatio",
+]
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -107,26 +119,125 @@ def summarize_row(run_index: int, row: dict[str, str], artifact: Path, progress_
     }
 
 
-def write_summary(path: Path, rows: list[dict[str, str]]) -> None:
+def parse_float(text: str) -> float | None:
+    try:
+        return float(text)
+    except (TypeError, ValueError):
+        return None
+
+
+def parse_safe_chunk_ranges(text: str) -> list[tuple[int, int]]:
+    if not text or text == "none":
+        return []
+    ranges: list[tuple[int, int]] = []
+    for token in text.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        if "-" in token:
+            left, right = token.split("-", 1)
+        else:
+            left = right = token
+        try:
+            start = int(left)
+            end = int(right)
+        except ValueError:
+            continue
+        if start > end:
+            start, end = end, start
+        ranges.append((start, end))
+    return merge_ranges(ranges)
+
+
+def merge_ranges(ranges: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    if not ranges:
+        return []
+    merged: list[tuple[int, int]] = []
+    for start, end in sorted(ranges):
+        if not merged or start > merged[-1][1]:
+            merged.append((start, end))
+        else:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+    return merged
+
+
+def intersect_ranges(left: list[tuple[int, int]], right: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    intersection: list[tuple[int, int]] = []
+    left_index = 0
+    right_index = 0
+    while left_index < len(left) and right_index < len(right):
+        left_start, left_end = left[left_index]
+        right_start, right_end = right[right_index]
+        start = max(left_start, right_start)
+        end = min(left_end, right_end)
+        if start <= end:
+            intersection.append((start, end))
+        if left_end < right_end:
+            left_index += 1
+        else:
+            right_index += 1
+    return merge_ranges(intersection)
+
+
+def format_ranges(ranges: list[tuple[int, int]]) -> str:
+    if not ranges:
+        return "none"
+    return ",".join(str(start) if start == end else f"{start}-{end}" for start, end in ranges)
+
+
+def repeat_stable_rows(rows: list[dict[str, str]], total_runs: int) -> list[dict[str, str]]:
+    by_operation: dict[str, list[dict[str, str]]] = {}
+    for row in rows:
+        operation = row.get("operation", "")
+        if not operation:
+            continue
+        by_operation.setdefault(operation, []).append(row)
+
+    stable_rows: list[dict[str, str]] = []
+    for operation in sorted(by_operation):
+        op_rows = by_operation[operation]
+        runs_seen = {row.get("run", "") for row in op_rows if row.get("run", "")}
+        chunk_sets = [parse_safe_chunk_ranges(row.get("safeSizeChunks", "")) for row in op_rows]
+        runs_with_safe_chunks = {
+            row.get("run", "") for row, chunks in zip(op_rows, chunk_sets) if row.get("run", "") and chunks
+        }
+
+        repeat_chunks: list[tuple[int, int]] = []
+        if len(runs_seen) == total_runs and chunk_sets and all(chunk_sets):
+            repeat_chunks = chunk_sets[0]
+            for chunks in chunk_sets[1:]:
+                repeat_chunks = intersect_ranges(repeat_chunks, chunks)
+                if not repeat_chunks:
+                    break
+
+        speed_values = [value for value in (parse_float(row.get("speedRatio", "")) for row in op_rows) if value is not None]
+        worst_values = [value for value in (parse_float(row.get("worstPairRatio", "")) for row in op_rows) if value is not None]
+        statuses = sorted({row.get("status", "") for row in op_rows if row.get("status", "")})
+        stable_rows.append(
+            {
+                "operation": operation,
+                "runsSeen": str(len(runs_seen)),
+                "runsWithSafeChunks": str(len(runs_with_safe_chunks)),
+                "repeatStableSafeChunks": format_ranges(repeat_chunks),
+                "repeatStableChunkCount": str(len(repeat_chunks)),
+                "statuses": ",".join(statuses),
+                "minSpeedRatio": f"{min(speed_values):.6f}" if speed_values else "",
+                "maxSpeedRatio": f"{max(speed_values):.6f}" if speed_values else "",
+                "maxWorstPairRatio": f"{max(worst_values):.6f}" if worst_values else "",
+            }
+        )
+    return stable_rows
+
+
+def write_rows(path: Path, rows: list[dict[str, str]], fields: list[str]) -> None:
     with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=SUMMARY_FIELDS, delimiter="\t")
+        writer = csv.DictWriter(handle, fieldnames=fields, delimiter="\t")
         writer.writeheader()
         for row in rows:
             writer.writerow(row)
 
 
-def print_table(rows: list[dict[str, str]]) -> None:
-    display_fields = [
-        "run",
-        "operation",
-        "status",
-        "speedRatio",
-        "worstPairRatio",
-        "safeSizes",
-        "safeSizeChunks",
-        "longestSafeSizeChunk",
-        "blockerReason",
-    ]
+def print_table(rows: list[dict[str, str]], display_fields: list[str]) -> None:
     widths = {field: len(field) for field in display_fields}
     for row in rows:
         for field in display_fields:
@@ -170,13 +281,43 @@ def main() -> int:
             summary.append(summarize_row(run_index, row, artifact, progress_artifact))
 
     summary_path = out_dir / "summary.tsv"
-    write_summary(summary_path, summary)
+    write_rows(summary_path, summary, SUMMARY_FIELDS)
+    repeat_stable = repeat_stable_rows(summary, args.runs)
+    repeat_stable_path = out_dir / "repeat_stable_chunks.tsv"
+    write_rows(repeat_stable_path, repeat_stable, REPEAT_STABLE_FIELDS)
     print(f"focus={args.focus}")
     print(f"runs={args.runs}")
     print(f"out={out_dir}")
     print(f"summary={summary_path}")
+    print(f"repeatStableSummary={repeat_stable_path}")
     if summary:
-        print_table(summary)
+        print_table(
+            summary,
+            [
+                "run",
+                "operation",
+                "status",
+                "speedRatio",
+                "worstPairRatio",
+                "safeSizes",
+                "safeSizeChunks",
+                "longestSafeSizeChunk",
+                "blockerReason",
+            ],
+        )
+        print()
+        print("Repeat-stable safe chunks")
+        print_table(
+            repeat_stable,
+            [
+                "operation",
+                "runsSeen",
+                "runsWithSafeChunks",
+                "repeatStableSafeChunks",
+                "maxWorstPairRatio",
+                "statuses",
+            ],
+        )
     else:
         print("No progress rows matched the summary filter.")
     return 0
