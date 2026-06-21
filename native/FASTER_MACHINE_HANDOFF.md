@@ -1274,6 +1274,10 @@ Run these in order.
    - Treat focus output as triage only: keep the raw TSV, but do not promote or
      publish a route until the full parity, route-audit, worst-pair, and
      stable-pair gates pass.
+   - Read `safeSizeChunks` and `longestSafeSizeChunk*` as contiguous measured
+     benchmark points only. They are useful for piecemeal follow-up audits over
+     promising pockets, but they do not prove every unmeasured digit between the
+     endpoints is safe.
 
 3. Increase samples only for promising rows.
    - Do not globally lengthen every benchmark.
