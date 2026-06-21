@@ -5,6 +5,9 @@ on:
     branches:
       - master
       - main
+    paths-ignore:
+      - "native/**"
+      - ".github/workflows/native.yml"
   workflow_dispatch:
 
 permissions:
