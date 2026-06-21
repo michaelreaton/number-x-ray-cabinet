@@ -143,6 +143,42 @@ disappears. This is why the paper keeps both positive and negative chunks in
 view. Piecemeal is welcome, but only measured, repeatable, route-audited
 piecemeal wins should affect production behavior.
 
+## Sparse App-Shaped Workload Addendum
+
+A later sparse-focused scout adds a second, separate kind of GMP/MPIR
+outperformance evidence. This is not the same workload as the dense
+decimal-digit route above. It measures sparse app-shaped operands at bit-size
+points and asks whether Number X-Ray's sparse production path can avoid zero
+work that `mpz_mul` still has to account for.
+
+The sparse focus artifact is:
+
+`native-test-runs/20260621-095400-sparse-mul-repeat2/matrix.tsv`
+
+Focus:
+
+`mul-sparse`
+
+Measured bit points:
+
+`4096`, `5639`, `8192`, `11717`, `16384`, `24103`, `32768`
+
+Main sparse signal:
+
+| Operation | Repeat-Stable Chunk | Worst Pair Max | Status | Interpretation |
+| --- | --- | ---: | --- | --- |
+| `sparse-production-mul` | `4096-32768` | `0.203390` | `replacement-ready` | current sparse production route beats `mpz_mul` on this app-shaped sparse family |
+| `sparse-zero-mul` | `4096-32768` | `0.203390` | `candidate-faster` | diagnostic zero-limb sparse probe confirms the shape-specific win |
+| `sparse-pair-mul` | `5639-32768` | `1.111111` | `candidate-faster` | median-faster but worst-pair unsafe, recheck only |
+| `sparse-forced-mul` | none | `14.000000` | `candidate-faster,current-best` | reject for now |
+
+The sparse result is important for the paper's broader thesis: Number X-Ray can
+beat GMP/MPIR in bounded pockets when the workload shape is narrow and the
+benchmark keeps losses visible. It should not be merged into the dense
+`4096`-through-`16384` decimal-digit claim. The units, operand family, and route
+policy are different. It is honest evidence for sparse app-shaped multiply, not
+a global dense-multiply result.
+
 The full-window evidence artifact is:
 
 `native-test-runs/20260619-153624-c4b04caf/benchmark.tsv`
@@ -325,7 +361,10 @@ and still valuable: a specialized, benchmark-only, app-shaped multiply route can
 produce exact products and outperform GMP/MPIR in a measured lower/transition
 pocket from `4096` through `16384` planned decimal-digit points. The same
 campaign also shows where the route loses and why production routing must remain
-unchanged until the strict gates pass.
+unchanged until the strict gates pass. A later sparse scout adds a separate
+app-shaped win over `4096-32768` measured bit points for sparse zero-limb
+multiply, reinforcing the same methodological lesson without broadening the
+dense claim.
 
 That is the honest win: not a sweeping replacement claim, but a verified pocket
 of superiority with enough reporting discipline to make the result reproducible
