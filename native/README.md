@@ -14,6 +14,10 @@ For the next high-end CPU benchmark pass, see
 merged bigint evidence, exact validation commands, and promotion rules for
 route changes.
 
+For a paper-style explanation of the current GMP/MPIR outperformance evidence,
+see [`SPARSE_GMP_OUTPERFORMANCE_PAPER.md`](SPARSE_GMP_OUTPERFORMANCE_PAPER.md).
+It covers the proven sparse multiply lane and the dense multiply limits.
+
 ## Build
 
 Windows with vcpkg MPIR:
