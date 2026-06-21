@@ -66,6 +66,28 @@ as recheck-only/no-promotion evidence, and spend the next novelty slice on a
 new structure or a narrower route-control idea rather than widening the same
 handoff pocket.
 
+## 2026-06-21: Handoff Boundary Focus
+
+`--bench-focus mul-combo-handoff-boundary` adds two focused, observe-only
+handoff scouts without adding new production arithmetic. The low boundary
+switches from `full-ws-combo-l64d2` to `full-ws-combo-l48d3` at `11717` over
+`8192,11717,16384,24103`; the mid boundary switches at `24103` over
+`11717,16384,24103,32768`.
+
+Local two-repeat artifact:
+`native-test-runs/20260621-100800-handoff-boundary-repeat2/matrix.tsv`
+
+| Operation | Runs With Safe Chunks | Repeat-Stable Chunk | Worst Pair Max | Status | Decision |
+| --- | ---: | --- | ---: | --- | --- |
+| `mul-large-toom-cmb-hlow` | `0/2` | none | `1.419745` | `backend-regression` | reject |
+| `mul-large-toom-cmb-hmid` | `0/2` | none | `1.364919` | `backend-regression` | reject |
+
+Decision: keep this focus for cheap future CPU/build reruns, but do not spend
+the next implementation slice widening these low/mid handoff boundaries. The
+matching `matrix_audit_candidates.tsv` was empty. Promotion still requires the
+normal parity, worst-pair, stable-pair, same-run route-audit, and product-build
+gates.
+
 ## 2026-06-21: Repeat-Stable Chunk Span Reporting
 
 The repeat and matrix helpers now report the longest repeat-stable contiguous

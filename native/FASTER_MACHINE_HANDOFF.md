@@ -1562,6 +1562,14 @@ Run these in order.
      found only `mul-large-toom-cmb-hpocket` with single-point chunks
      `11717,14831`, longest span `1`, and worst-pair max `2.269166`; this is
      not a large contiguous piecemeal lead.
+   - Use `--bench-focus mul-combo-handoff-boundary` for the next cheap
+     structural scout. It tests earlier/later reusable combo handoff boundaries
+     at `11717` and `24103` over mixed deterministic windows without running
+     the full large-multiply ladder. The first two-repeat artifact,
+     `native-test-runs/20260621-100800-handoff-boundary-repeat2/matrix.tsv`,
+     produced no repeat-stable chunks and an empty
+     `matrix_audit_candidates.tsv`, so do not widen these low/mid handoff
+     boundaries next on this build.
    - On local Windows MPIR builds, set
      `$env:PATH = "C:\vcpkg\installed\x64-windows\bin;$env:PATH"` before
      invoking `xray_cli.exe` if the CLI exits silently with status 1.
