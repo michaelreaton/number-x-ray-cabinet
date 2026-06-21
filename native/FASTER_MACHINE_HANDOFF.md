@@ -1444,6 +1444,20 @@ three against the leaf64 baseline: `mul-large-toom-div2-scout` ratio `1.025`,
 Keep the focus for quick reruns, but do not spend the next novelty slice on
 div2/div3 arithmetic unless a future CPU/build changes the signal.
 
+### Toom-5 Smoke Focus
+
+Artifact:
+`native-test-runs/20260621-075205-mul-toom5-smoke-focus/benchmark.tsv`
+
+The `mul-toom5-smoke` focus runs only the existing Toom-5 top-level smoke rows
+over `5639`, `8192`, `11717`, and `16384`. This local run was exact but
+rejected both aggregates: `mul-large-toom5-top-reuse` had combo-baseline ratio
+`1.201`, GMP ratio `1.050`, worst pair `1.213`, and `safeSizes=0/2`;
+`mul-large-toom5-top-handoff` had combo-baseline ratio `1.110`, GMP ratio
+`1.013`, worst pair `1.171`, and `safeSizes=0/2`. Keep the focus label because
+it answers the Toom-5 topology question quickly, but do not widen Toom-5 top
+work unless a future CPU/build flips the smoke signal.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor
@@ -1472,6 +1486,10 @@ Run these in order.
    - Use `xray_cli.exe --bench-focus mul-novelty --bench-tsv` to cover the
      mixed `4096` through `65536` multiply window, including deterministic
      in-between sizes, without running unrelated benchmark families.
+   - Use `mul-toom5-smoke` when the next question is whether the existing
+     Toom-5 top-level smoke rows deserve more attention. It runs only
+     `5639,8192,11717,16384`, so it is a cheap topology check before any wider
+     Toom-5 work.
    - Use `mul-toom-div-transition` when the next question is lower-level Toom
      arithmetic in the transition window: it runs only the existing div2, div3,
      and div2+div3 scouts over `11717,16384,24103`. Use `mul-toom-div` for the
@@ -1538,8 +1556,9 @@ Do not promote a bigint route unless all are true:
 The strongest current clue is now structural: reusable workspace removes a real
 amount of route overhead and beats current production multiply everywhere, but
 the high end still cannot consistently beat GMP/MPIR, and factored exact
-division, top-level Toom-4-vs-combo reuse, and the Toom-3 neg2 arithmetic-shape
-scout did not move the strict gates. Transition-pocket runs now have
+division, top-level Toom-4-vs-combo reuse, Toom-5 top smoke, and the Toom-3
+neg2 arithmetic-shape scout did not move the strict gates. Transition-pocket
+runs now have
 same-route self-control, and the first local self-control pass found noise at
 `16384`; use that row to avoid spending broader benchmark time on unstable
 pockets. Keep future scouts on the mixed window with deterministic in-between

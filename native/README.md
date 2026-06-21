@@ -438,6 +438,7 @@ native\build\Release\xray_cli.exe --help
 native\build\Release\xray_cli.exe --bench 10403
 native\build\Release\xray_cli.exe --bench-frontier 10403
 native\build\Release\xray_cli.exe --bench-focus mul-novelty --bench-tsv
+native\build\Release\xray_cli.exe --bench-focus mul-toom5-smoke --bench-frontier
 native\build\Release\xray_cli.exe --bench-focus mul-toom-div-transition --bench-frontier
 native\build\Release\xray_cli.exe --bench-focus mul-toom-div --bench-frontier
 native\build\Release\xray_cli.exe --bench-focus mul-combo-lower --bench-frontier
@@ -461,11 +462,13 @@ frontier while still writing the full run artifacts. Use `--bench-progress` for
 a one-artifact digest of what is completed, still open, noisy, or excluded as
 control evidence. Use `--bench-focus FOCUS` for a local diagnostic scout that
 skips the full ladder and runs only the named family, such as `mul-novelty`,
-`mul-large`, `mul-toom-div-transition`, `mul-toom-div`, `mul-combo-lower`,
-`mul-combo-transition`, `mul-combo-upper`, or `mul-combo-reuse`. Use
-`mul-toom-div-transition` when you only need the existing div2/div3 Toom
-arithmetic scouts over `11717,16384,24103`, and `mul-toom-div` when you need
-the same scouts over the full active large-multiply window. Use
+`mul-large`, `mul-toom5-smoke`, `mul-toom-div-transition`, `mul-toom-div`,
+`mul-combo-lower`, `mul-combo-transition`, `mul-combo-upper`, or
+`mul-combo-reuse`. Use `mul-toom5-smoke` when you only need the existing
+Toom-5 top-level smoke rows over `5639,8192,11717,16384` without the full
+benchmark ladder. Use `mul-toom-div-transition` when you only need the existing
+div2/div3 Toom arithmetic scouts over `11717,16384,24103`, and `mul-toom-div`
+when you need the same scouts over the full active large-multiply window. Use
 `mul-combo-transition-controls` when you only need the
 duplicate-route and duplicate-GMP transition checks, and
 `mul-combo-handoff-pocket` when you only need the dense `10007` through `16384`
