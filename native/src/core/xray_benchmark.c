@@ -7397,6 +7397,25 @@ static void mul_full_workspace_depth_scout_labels(
     snprintf(labels->threshold_safety, sizeof(labels->threshold_safety), "upper-window");
     return;
   }
+  if (candidate_leaf_threshold == 64 &&
+      baseline_leaf_threshold == 48 &&
+      candidate_depth_limit == 3 &&
+      baseline_depth_limit == 4 &&
+      candidate_interp_flags == combo_interp_flags &&
+      baseline_interp_flags == combo_interp_flags) {
+    snprintf(labels->aggregate_operation, sizeof(labels->aggregate_operation), "mul-large-toom-cmb-l64d3-scout");
+    snprintf(labels->point_operation, sizeof(labels->point_operation), "mul-large-toom-cmb-l64d3-point");
+    snprintf(labels->point_detail_op, sizeof(labels->point_detail_op), "mul-cmb-l64d3-point");
+    snprintf(labels->parent, sizeof(labels->parent), "cmb-l64d3-scout");
+    snprintf(labels->candidate, sizeof(labels->candidate), "full-ws-combo-l64d3");
+    snprintf(labels->baseline, sizeof(labels->baseline), "full-ws-combo-l48d4");
+    snprintf(labels->feature_gate, sizeof(labels->feature_gate), "large-multiply-cpu-toom-combo-l64d3-scout");
+    snprintf(labels->gmp_clue, sizeof(labels->gmp_clue), "toom33-combo-leaf64-depth3-upper");
+    snprintf(labels->baseline_status, sizeof(labels->baseline_status), "combo-l48d4-regression");
+    snprintf(labels->clean_status, sizeof(labels->clean_status), "combo-l64d3-clean");
+    snprintf(labels->threshold_safety, sizeof(labels->threshold_safety), "upper-window");
+    return;
+  }
   if (candidate_leaf_threshold == 48 &&
       baseline_leaf_threshold == 48 &&
       candidate_depth_limit == 4 &&
@@ -16780,6 +16799,19 @@ static void run_kernel_probes(XrayBenchmarkReport *report) {
     4,
     4,
     XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3 | XRAY_BENCH_TOOM_INTERP_INPLACE_DIV,
+    XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3,
+    mul_full_workspace_upper_gate_digits,
+    sizeof(mul_full_workspace_upper_gate_digits) / sizeof(mul_full_workspace_upper_gate_digits[0]));
+  run_mul_full_workspace_depth_scout_case(
+    report,
+    1387U,
+    "full-workspace-combo-l64d3-upper-ge24103",
+    24103,
+    64,
+    48,
+    3,
+    4,
+    XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3,
     XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3,
     mul_full_workspace_upper_gate_digits,
     sizeof(mul_full_workspace_upper_gate_digits) / sizeof(mul_full_workspace_upper_gate_digits[0]));
