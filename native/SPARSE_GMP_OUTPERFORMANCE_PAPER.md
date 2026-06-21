@@ -106,6 +106,26 @@ Contiguous chunks in these reports mean contiguous over the measured campaign
 grid. The interior points reduce the risk of a power-of-two-only illusion, but
 they do not prove every intervening bit length without a separate route audit.
 
+## Threats To Validity
+
+This draft is intentionally conservative about what the current artifacts can
+prove:
+
+- The strongest table is from a local Windows MPIR-compatible build. A
+  non-Windows GMP rerun is still required before presenting the result as
+  cross-platform GMP evidence.
+- `4096-65536` means one contiguous chunk over the measured campaign grid:
+  `4096, 5639, 8192, 11717, 16384, 24103, 32768, 52163, 65536`. It is not a
+  proof that every unmeasured bit length in that interval is faster.
+- The benchmark compares Number X-Ray's scratch bigint route with the
+  GMP-compatible `mpz_mul` oracle on identical operand shapes. It is not an
+  end-to-end application throughput result.
+- Dense random control rows are control evidence only. They are meant to stop
+  the sparse result from being overgeneralized into a dense multiply claim.
+- Timing ratios are local machine evidence. The durable claim is the
+  shape-selective mechanism plus exact parity, paired samples, worst-pair
+  safety, stable-pair counts, and repeat-stable chunks.
+
 ## Results
 
 Primary sparse artifact:
@@ -222,11 +242,15 @@ route.
 Recommended local commands:
 
 ```powershell
-$env:PATH = "C:\vcpkg\installed\x64-windows\bin;$env:PATH"
 cmake --build native\build-stack-v142 --config Release
-python native\tools\bench_focus_matrix.py --cli native\build-stack-v142\Release\xray_cli.exe --runs 2 --preset sparse-paper --out native-test-runs\<stamp>-sparse-repeat2
-python native\tools\bench_focus_matrix.py --cli native\build-stack-v142\Release\xray_cli.exe --runs 2 --preset post-pocket-novelty --out native-test-runs\<stamp>-novelty-matrix
+$cli = "native\build-stack-v142\xray_cli.exe"
+python native\tools\bench_focus_matrix.py --cli $cli --runs 2 --preset sparse-paper --out native-test-runs\<stamp>-sparse-repeat2
+python native\tools\bench_focus_matrix.py --cli $cli --runs 2 --preset post-pocket-novelty --out native-test-runs\<stamp>-novelty-matrix
 ```
+
+CMake copies discovered GMP/MPIR runtime DLLs beside the Windows tools. If
+configuration prints a runtime DLL warning, set `PATH` manually or point CMake
+at the expected GMP/MPIR prefix before rerunning the commands.
 
 Artifacts to preserve:
 
