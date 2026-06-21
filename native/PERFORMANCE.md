@@ -4761,6 +4761,36 @@ safe chunk disappeared under intersection. Move novelty work toward a different
 route shape or a lower-level backend gap, then use the matrix helper again
 before any wider route audit.
 
+## 2026-06-21: Backend Gap Focus
+
+Local repeat artifact:
+`native-test-runs/20260621-090500-backend-gap-repeat3/repeat_stable_chunks.tsv`
+
+This pass adds and exercises `--bench-focus mul-backend-gap`, a cheap MSVC x64
+focus lane for the existing low-level multiply backend probes. It runs the
+muladd unroll4/unroll8 and BMI2/ADX primitive rows, then checks unroll4
+multiply against scratch and GMP/MPIR at
+`4096`, `5639`, `8192`, `11717`, and `16384` digits. The new aggregate row
+`mul-backend-gap-unroll4` reports `safeSizeChunks` so the same repeat-stable
+helper can classify backend pockets before a broader route audit.
+
+Three-repeat result:
+
+| Operation | Runs With Safe Chunks | Repeat-Stable Chunk | Worst Pair Max | Decision |
+| --- | ---: | --- | ---: | --- |
+| `mul-backend-gap-unroll4` | `0/3` | none | `1.676684` | reject |
+| `mul-unroll4-vs-gmp` | `0/3` | none | `1.676684` | reject |
+| `mul-unroll4-vs-scratch` | `0/3` | none | `1.229143` | reject |
+| `muladd-bmi2-adx` | `0/3` | none | `1.359695` | reject |
+| `muladd-unroll4` | `0/3` | none | `1.324864` | reject |
+| `muladd-unroll8` | `0/3` | none | `1.567086` | reject |
+
+Decision: keep `mul-backend-gap` as a quick first-pass scout, but do not spend
+the next novelty slice on the current unroll4/BMI2/ADX backend shape. The
+backend gap did not produce a repeat-stable measured chunk, so the next
+multiply novelty should look for a different route shape or a lower-level
+change not covered by the existing unroll4 addmul probes.
+
 ## 2026-06-21: Toom Div Transition Focus
 
 Local Release validation artifact
