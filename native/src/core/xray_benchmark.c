@@ -20589,6 +20589,8 @@ static void run_mul_large_focus_cases(XrayBenchmarkReport *report) {
 static void run_mul_combo_focus_cases(XrayBenchmarkReport *report, const char *focus) {
   const size_t mul_full_workspace_upper_gate_digits[] = {24103, 32768, 52163, 65536};
   const size_t mul_full_workspace_lower_gate_digits[] = {4096, 5639, 8192};
+  const size_t mul_full_workspace_deep_audit_digits[] = {11717, 16384, 24103, 32768, 52163, 65536};
+  const size_t mul_full_workspace_div_transition_digits[] = {11717, 16384, 24103};
   const size_t mul_full_workspace_full_window_digits[] = {4096, 5639, 8192, 11717, 16384, 24103, 32768, 52163, 65536};
   const size_t mul_full_workspace_best_map_control_digits[] = {24103, 32768};
   const size_t mul_full_workspace_transition_control_digits[] = {11717, 16384};
@@ -20613,6 +20615,66 @@ static void run_mul_combo_focus_cases(XrayBenchmarkReport *report, const char *f
       0,
       mul_full_workspace_lower_gate_digits,
       sizeof(mul_full_workspace_lower_gate_digits) / sizeof(mul_full_workspace_lower_gate_digits[0]));
+  }
+
+  if (benchmark_focus_eq(focus, "mul-toom-div")) {
+    run_mul_full_workspace_div2_scout_case(
+      report,
+      997U,
+      "full-workspace-div2-ge11717",
+      11717,
+      64,
+      2,
+      mul_full_workspace_deep_audit_digits,
+      sizeof(mul_full_workspace_deep_audit_digits) / sizeof(mul_full_workspace_deep_audit_digits[0]));
+    run_mul_full_workspace_div3_scout_case(
+      report,
+      1049U,
+      "full-workspace-div3-ge11717",
+      11717,
+      64,
+      2,
+      mul_full_workspace_deep_audit_digits,
+      sizeof(mul_full_workspace_deep_audit_digits) / sizeof(mul_full_workspace_deep_audit_digits[0]));
+    run_mul_full_workspace_div2_div3_scout_case(
+      report,
+      1093U,
+      "full-workspace-div2-div3-ge11717",
+      11717,
+      64,
+      2,
+      mul_full_workspace_deep_audit_digits,
+      sizeof(mul_full_workspace_deep_audit_digits) / sizeof(mul_full_workspace_deep_audit_digits[0]));
+  }
+
+  if (benchmark_focus_eq(focus, "mul-toom-div-transition")) {
+    run_mul_full_workspace_div2_scout_case(
+      report,
+      997U,
+      "full-workspace-div2-transition-ge11717",
+      11717,
+      64,
+      2,
+      mul_full_workspace_div_transition_digits,
+      sizeof(mul_full_workspace_div_transition_digits) / sizeof(mul_full_workspace_div_transition_digits[0]));
+    run_mul_full_workspace_div3_scout_case(
+      report,
+      1049U,
+      "full-workspace-div3-transition-ge11717",
+      11717,
+      64,
+      2,
+      mul_full_workspace_div_transition_digits,
+      sizeof(mul_full_workspace_div_transition_digits) / sizeof(mul_full_workspace_div_transition_digits[0]));
+    run_mul_full_workspace_div2_div3_scout_case(
+      report,
+      1093U,
+      "full-workspace-div2-div3-transition-ge11717",
+      11717,
+      64,
+      2,
+      mul_full_workspace_div_transition_digits,
+      sizeof(mul_full_workspace_div_transition_digits) / sizeof(mul_full_workspace_div_transition_digits[0]));
   }
 
   if (transition_bundle) {
