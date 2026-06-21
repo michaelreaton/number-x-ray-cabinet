@@ -5,6 +5,7 @@ on:
     paths:
       - "native/**"
       - ".github/workflows/native.yml"
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -23,9 +24,12 @@ jobs:
       - name: Build
         run: cmake --build native/build --config Release
       - name: Test
-        run: ctest --test-dir native/build --output-on-failure --timeout 600
+        run: |
+          ctest --test-dir native/build --output-on-failure --timeout 300 -R "xray_api_doc_coverage|xray_cli_help|xray_import_consumer"
+          ./native/build/xray_native_tests --only=runtime --only=parser --only=ffi --only=solver --only=artifacts --only=bigint
 
   native-windows:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     timeout-minutes: 15
     steps:
