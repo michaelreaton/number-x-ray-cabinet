@@ -494,14 +494,16 @@ and promotion gates before treating a route as replacement-ready. Use
 raw `benchmark.tsv` plus `benchmark_progress.tsv`, and print a compact safe
 chunk summary for repeated noise checks. The helper also writes
 `repeat_stable_chunks.tsv`, which intersects safe chunks by operation across
-all repeats so single-run pockets are easy to separate from repeat-stable
-piecemeal candidates. Include `mul-backend-gap` and `mul-toom4-top` in the
+all repeats and reports the longest repeat-stable chunk/span so single-run
+pockets are easy to separate from repeat-stable piecemeal candidates. Include
+`mul-backend-gap` and `mul-toom4-top` in the
 first matrix after the current Toom-5/div-transition/handoff routes have no
 repeat-stable chunk, so the next novelty choice starts from backend and
 upper-window topology evidence instead of another broad recursive scout. Use
 `native/tools/bench_focus_matrix.py` to run several focus labels in one sweep
 and write a top-level `matrix.tsv` that compares
-repeat-stable chunks across route families. Pass `--timeout-seconds N` to the
+repeat-stable chunks and their largest contiguous spans across route families.
+Pass `--timeout-seconds N` to the
 repeat or matrix helper when a focus is exploratory; timed-out `xray_cli`
 invocations write `runNN.timeout.txt` and a TSV summary row with
 `blockerReason=focus-timeout` instead of hanging the sweep. Use
