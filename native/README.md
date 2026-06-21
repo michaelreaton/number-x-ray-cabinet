@@ -314,6 +314,12 @@ mode expose the same row classification with importable booleans such as
 `routeCandidate`, `routeCompleted`, `productGated`, `hasSetupContext`,
 `warmupReview`, `lowerBound`, `runFailed`, `baseline`, `control`, and
 `noisyControl`.
+For threshold and route-policy rows, the progress TSV also promotes
+`safeSizes`, `safeSizeChunks`, `longestSafeSizeChunk`, and
+`longestSafeSizeChunkCount` into columns so repeated focused artifacts can be
+compared without scraping the free-form detail text. These chunks are
+contiguous measured benchmark points, not proof of every unmeasured size inside
+the interval.
 It also includes `setupSeconds`, a measured setup/warmup duration in seconds
 when tags such as `setupUs`, `setupMs`, `warmup_s`, `WarmupSecondsMedian`, or
 `HelperWarmupSeconds` are present. An explicit `SetupSeconds` or

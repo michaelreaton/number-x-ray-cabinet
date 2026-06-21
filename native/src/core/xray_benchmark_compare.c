@@ -995,13 +995,13 @@ char *xray_benchmark_progress_classification_tsv(const char *tsv) {
   int ok = parse_compare_set(tsv, &set, "benchmark");
 
   cb_append(&buffer,
-    "category\tname\toperation\tdigits\tdisplay\tprimaryLane\trouteCandidate\trouteCompleted\trouteOpen\tproductGated\thasSetupContext\tsetupSeconds\twarmupReview\tlowerBound\trunFailed\tattemptedRuns\tcompletedRuns\tsafetyRejected\tbaseline\tcontrol\tnoisyControl\tpromotionReady\tstatus\tadoption\tspeedRatio\tworstPairRatio\tstableSampleCount\tsampleCount\tdetail\tbuildConfig\tipo\tcompiler\tcompilerVersion\tdigitBand\tworkloadShape\tpolicy\tcandidate\tactiveCandidate\tbaseline\tfeatureGate\tgmpClue\tcontrolSafety\tthresholdSafety\thashGate\tblockerReason\n");
+    "category\tname\toperation\tdigits\tdisplay\tprimaryLane\trouteCandidate\trouteCompleted\trouteOpen\tproductGated\thasSetupContext\tsetupSeconds\twarmupReview\tlowerBound\trunFailed\tattemptedRuns\tcompletedRuns\tsafetyRejected\tbaseline\tcontrol\tnoisyControl\tpromotionReady\tstatus\tadoption\tspeedRatio\tworstPairRatio\tstableSampleCount\tsampleCount\tdetail\tbuildConfig\tipo\tcompiler\tcompilerVersion\tdigitBand\tworkloadShape\tpolicy\tcandidate\tactiveCandidate\tbaseline\tfeatureGate\tgmpClue\tcontrolSafety\tthresholdSafety\thashGate\tsafeSizes\tsafeSizeChunks\tlongestSafeSizeChunk\tlongestSafeSizeChunkCount\tblockerReason\n");
   if (!ok) {
     cb_append(&buffer, "error\t");
     append_progress_tsv_field(&buffer, set.error);
     cb_append(&buffer, "\t\t0\terror\tinvalid\tfalse\tfalse\tfalse\tfalse\tfalse\t0.000000\tfalse\tfalse\tfalse\t0\t0\tfalse\tfalse\tfalse\tfalse\tfalse\tparse-error\t\t0.000000\t0.000000\t0\t0\t");
     append_progress_tsv_field(&buffer, set.error);
-    for (size_t field = 0; field < 15U; ++field) cb_append(&buffer, "\t");
+    for (size_t field = 0; field < 19U; ++field) cb_append(&buffer, "\t");
     cb_append(&buffer, "parse-error");
     cb_append(&buffer, "\n");
     return cb_take(&buffer);
@@ -1082,6 +1082,14 @@ char *xray_benchmark_progress_classification_tsv(const char *tsv) {
     append_detail_value_or_empty(&buffer, row, "thresholdSafety");
     cb_append(&buffer, "\t");
     append_detail_value_or_empty(&buffer, row, "hashGate");
+    cb_append(&buffer, "\t");
+    append_detail_value_or_empty(&buffer, row, "safeSizes");
+    cb_append(&buffer, "\t");
+    append_detail_value_or_empty(&buffer, row, "safeSizeChunks");
+    cb_append(&buffer, "\t");
+    append_detail_value_or_empty(&buffer, row, "longestSafeSizeChunk");
+    cb_append(&buffer, "\t");
+    append_detail_value_or_empty(&buffer, row, "longestSafeSizeChunkCount");
     cb_append(&buffer, "\t");
     append_progress_tsv_field(&buffer, compare_row_blocker_reason(row));
     cb_append(&buffer, "\n");
