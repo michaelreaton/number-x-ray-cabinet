@@ -449,6 +449,7 @@ native\build\Release\xray_cli.exe --bench-focus mul-combo-lower --bench-frontier
 native\build\Release\xray_cli.exe --bench-focus mul-combo-transition --bench-frontier
 native\build\Release\xray_cli.exe --bench-focus mul-combo-transition-controls --bench-frontier
 native\build\Release\xray_cli.exe --bench-focus mul-combo-handoff-pocket --bench-frontier
+native\build\Release\xray_cli.exe --bench-focus mul-combo-handoff-boundary --bench-frontier
 python native\tools\bench_focus_repeat.py --cli native\build\Release\xray_cli.exe --focus mul-combo-handoff-pocket --runs 3
 python native\tools\bench_focus_matrix.py --cli native\build\Release\xray_cli.exe --runs 3 --focus mul-backend-gap --focus mul-toom4-top --focus mul-toom5-smoke --focus mul-toom-div-transition --focus mul-combo-handoff-pocket
 python native\tools\bench_focus_matrix.py --cli native\build\Release\xray_cli.exe --runs 2 --timeout-seconds 90 --focus mul-backend-gap --focus mul-toom4-top
@@ -474,7 +475,8 @@ control evidence. Use `--bench-focus FOCUS` for a local diagnostic scout that
 skips the full ladder and runs only the named family, such as `mul-novelty`,
 `mul-large`, `mul-toom5-smoke`, `mul-toom-div-transition`, `mul-toom-div`,
 `mul-toom4-top`, `mul-backend-gap`, `mul-combo-lower`, `mul-combo-transition`,
-`mul-combo-upper`, or `mul-combo-reuse`. Use `mul-toom5-smoke` when you only
+`mul-combo-handoff-boundary`, `mul-combo-upper`, or `mul-combo-reuse`. Use
+`mul-toom5-smoke` when you only
 need the existing Toom-5 top-level smoke rows over `5639,8192,11717,16384`
 without the full benchmark ladder. Use `mul-toom-div-transition` when you only
 need the existing div2/div3 Toom arithmetic scouts over `11717,16384,24103`,

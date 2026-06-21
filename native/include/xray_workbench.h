@@ -1463,7 +1463,8 @@ XRAY_API int xray_benchmark_run(XrayBenchmarkReport *report);
  * default benchmark ladder is unchanged; callers must opt in with a focus name.
  * Supported focus names are implementation-defined diagnostic labels such as
  * "mul-large", "mul-combo-lower", "mul-combo-transition",
- * "mul-combo-upper", "mul-combo-reuse", and "mul-novelty".
+ * "mul-combo-handoff-boundary", "mul-combo-upper", "mul-combo-reuse", and
+ * "mul-novelty".
  */
 XRAY_API int xray_benchmark_run_focus(XrayBenchmarkReport *report, const char *focus);
 

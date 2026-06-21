@@ -8447,6 +8447,32 @@ static const XrayMulComboHandoffLabels mul_combo_handoff_pocket_labels = {
   "combo-handoff-pocket-clean"
 };
 
+static const XrayMulComboHandoffLabels mul_combo_handoff_low_labels = {
+  "policy audit mul combo low handoff",
+  "mul-large-toom-cmb-hlow",
+  "kernel large mul combo low handoff point",
+  "mul-large-toom-cmb-hlow-pt",
+  "mul-cmb-handoff-low-point",
+  "cmb-handoff-low-audit",
+  "large-multiply-cpu-toom-combo-handoff11717",
+  "toom33-combo-l64d2-to-l48d3-low-handoff",
+  "handoff-boundary",
+  "combo-handoff-low-clean"
+};
+
+static const XrayMulComboHandoffLabels mul_combo_handoff_mid_labels = {
+  "policy audit mul combo mid handoff",
+  "mul-large-toom-cmb-hmid",
+  "kernel large mul combo mid handoff point",
+  "mul-large-toom-cmb-hmid-pt",
+  "mul-cmb-handoff-mid-point",
+  "cmb-handoff-mid-audit",
+  "large-multiply-cpu-toom-combo-handoff24103",
+  "toom33-combo-l64d2-to-l48d3-mid-handoff",
+  "handoff-boundary",
+  "combo-handoff-mid-clean"
+};
+
 static size_t mul_full_workspace_combo_handoff_leaf(size_t digits, size_t handoff_digits) {
   return mul_full_workspace_combo_handoff_uses_upper(digits, handoff_digits) ? 48U : 64U;
 }
@@ -20742,6 +20768,8 @@ static void run_mul_combo_focus_cases(XrayBenchmarkReport *report, const char *f
   const size_t mul_full_workspace_transition_control_digits[] = {11717, 16384};
   const size_t mul_full_workspace_transition_tournament_digits[] = {11717, 16384, 24103};
   const size_t mul_full_workspace_handoff_pocket_digits[] = {10007, 10733, 11717, 12553, 13649, 14831, 16384};
+  const size_t mul_full_workspace_handoff_low_digits[] = {8192, 11717, 16384, 24103};
+  const size_t mul_full_workspace_handoff_mid_digits[] = {11717, 16384, 24103, 32768};
   const size_t mul_full_workspace_toom4_smoke_digits[] = {24103, 32768};
   const size_t mul_full_workspace_toom5_smoke_digits[] = {5639, 8192};
   const size_t mul_full_workspace_toom5_handoff_smoke_digits[] = {11717, 16384};
@@ -20749,6 +20777,7 @@ static void run_mul_combo_focus_cases(XrayBenchmarkReport *report, const char *f
   int transition_bundle = any_combo || benchmark_focus_eq(focus, "mul-combo-transition");
   int transition_controls_focus = benchmark_focus_eq(focus, "mul-combo-transition-controls");
   int handoff_pocket_focus = benchmark_focus_eq(focus, "mul-combo-handoff-pocket");
+  int handoff_boundary_focus = benchmark_focus_eq(focus, "mul-combo-handoff-boundary");
   int toom5_smoke_focus = benchmark_focus_eq(focus, "mul-toom5-smoke");
   int toom4_top_focus = benchmark_focus_eq(focus, "mul-toom4-top");
 
@@ -20913,6 +20942,25 @@ static void run_mul_combo_focus_cases(XrayBenchmarkReport *report, const char *f
       16384,
       mul_full_workspace_handoff_pocket_digits,
       sizeof(mul_full_workspace_handoff_pocket_digits) / sizeof(mul_full_workspace_handoff_pocket_digits[0]));
+  }
+
+  if (handoff_boundary_focus) {
+    run_mul_full_workspace_combo_handoff_audit_case(
+      report,
+      1553U,
+      &mul_combo_handoff_low_labels,
+      "full-workspace-combo-handoff-low-ge8192",
+      11717,
+      mul_full_workspace_handoff_low_digits,
+      sizeof(mul_full_workspace_handoff_low_digits) / sizeof(mul_full_workspace_handoff_low_digits[0]));
+    run_mul_full_workspace_combo_handoff_audit_case(
+      report,
+      1559U,
+      &mul_combo_handoff_mid_labels,
+      "full-workspace-combo-handoff-mid-ge11717",
+      24103,
+      mul_full_workspace_handoff_mid_digits,
+      sizeof(mul_full_workspace_handoff_mid_digits) / sizeof(mul_full_workspace_handoff_mid_digits[0]));
   }
 
   if (transition_bundle || transition_controls_focus) {
