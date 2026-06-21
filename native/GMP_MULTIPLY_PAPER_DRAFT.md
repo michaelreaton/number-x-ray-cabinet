@@ -1,6 +1,6 @@
 # Verified Pocket Wins Against GMP/MPIR In App-Shaped Bigint Multiply
 
-Draft status: internal paper outline. This is not a production promotion claim.
+Draft status: internal paper draft. This is not a production promotion claim.
 
 ## Abstract
 
@@ -47,6 +47,32 @@ method for making small wins useful without turning them into broad claims:
 measure powers of two plus deterministic in-between sizes, require exact product
 parity, compare routes in the same run, keep worst-pair safety visible, and keep
 production routing unchanged until the full policy window passes.
+
+## Mechanism: How The Pocket Win Happens
+
+The measured win is not magic and it is not a claim that Number X-Ray has a
+better general-purpose bigint engine than GMP. The candidate route wins where
+the application shape is narrow enough for local specialization:
+
+- The benchmark uses balanced decimal-digit operands from deterministic operand
+  families, matching the multiply shapes Number X-Ray needs to inspect and
+  report.
+- The candidate route keeps scratch bigint arithmetic in 64-bit limbs and uses
+  a depth-limited Toom-3 shape above the large-multiply handoff instead of
+  treating every size as a generic dense multiply.
+- Split views and reusable recursive workspaces reduce copy and allocation
+  costs that were visible in earlier Karatsuba and Toom probes.
+- The route is allowed to be piecemeal. It can be judged at measured chunks
+  such as `4096 -> 5639 -> 8192 -> 11717 -> 16384` without pretending the
+  higher `24103 -> 65536` window is solved.
+- The harness compares the candidate to current production multiply and
+  GMP/MPIR in the same rotating run, so the reported win is not a best-case
+  candidate time divided by a stale GMP time from another run.
+
+This is the technical story the paper should defend: Number X-Ray can beat
+GMP/MPIR in bounded, app-shaped multiply pockets by narrowing the route,
+removing avoidable internal overhead, and refusing to generalize beyond the
+measured safe chunk.
 
 ## Benchmark Method
 
@@ -109,6 +135,12 @@ Read this as a lower/transition measured chunk, not a global replacement. The
 candidate is faster than GMP/MPIR by paired median at the first five measured
 sizes, and it is faster than current production multiply at every measured size,
 but it loses to GMP/MPIR in the upper half of the campaign.
+
+The strongest positive result is therefore a contiguous measured evidence unit,
+not a continuous mathematical interval. The row supports the statement "this
+route beat GMP/MPIR at these five adjacent planned measurement points." It does
+not support the statement "this route beats GMP/MPIR for every decimal digit
+length from `4096` through `16384`."
 
 ## Control Evidence: Transition GMP Duplicate
 
