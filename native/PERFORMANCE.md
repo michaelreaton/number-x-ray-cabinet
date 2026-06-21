@@ -36,6 +36,16 @@ parity plus a stable same-run paired win.
   whether any safe point exists. Prefer larger `repeatStableLongestChunk*`
   spans for piecemeal follow-up, and keep single-size hits in the recheck lane.
 
+## 2026-06-21: Ranked Focus Matrix
+
+`bench_focus_matrix.py` now writes `matrix_ranked.tsv` beside the complete
+`matrix.tsv`. The ranked view keeps only repeat-stable candidates and sorts by
+largest contiguous span, total span, safe-run count, and worst-pair ratio.
+
+Decision: use `matrix_ranked.tsv` as the first triage artifact for fast novelty
+selection, then inspect `matrix.tsv` and raw per-focus summaries before opening
+a deeper route audit.
+
 ## 2026-06-21: Repeat-Stable Chunk Span Reporting
 
 The repeat and matrix helpers now report the longest repeat-stable contiguous
@@ -4777,6 +4787,8 @@ For broader novelty triage, `bench_focus_matrix.py` wraps several
 repeat-stable chunks by focus and operation. Use it to choose the next deeper
 audit from cheap focus families; do not treat a matrix hit as promotion-ready
 without the normal parity, worst-pair, stable-pair, and route-audit gates.
+The companion `matrix_ranked.tsv` keeps only repeat-stable candidates and sorts
+larger contiguous spans first.
 
 Local two-repeat novelty matrix artifact:
 `native-test-runs/20260621-083300-novelty-matrix-repeat2/matrix.tsv`

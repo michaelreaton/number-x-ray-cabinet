@@ -503,6 +503,9 @@ upper-window topology evidence instead of another broad recursive scout. Use
 `native/tools/bench_focus_matrix.py` to run several focus labels in one sweep
 and write a top-level `matrix.tsv` that compares
 repeat-stable chunks and their largest contiguous spans across route families.
+The helper also writes `matrix_ranked.tsv`, a filtered view of repeat-stable
+candidates sorted by largest contiguous span, total span, safe-run count, and
+worst-pair ratio.
 Pass `--timeout-seconds N` to the
 repeat or matrix helper when a focus is exploratory; timed-out `xray_cli`
 invocations write `runNN.timeout.txt` and a TSV summary row with
