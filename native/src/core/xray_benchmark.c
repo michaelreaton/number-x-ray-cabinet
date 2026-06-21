@@ -20596,6 +20596,7 @@ static void run_mul_combo_focus_cases(XrayBenchmarkReport *report, const char *f
   const size_t mul_full_workspace_handoff_pocket_digits[] = {10007, 10733, 11717, 12553, 13649, 14831, 16384};
   int any_combo = benchmark_focus_any_mul_combo(focus);
   int transition_bundle = any_combo || benchmark_focus_eq(focus, "mul-combo-transition");
+  int transition_controls_focus = benchmark_focus_eq(focus, "mul-combo-transition-controls");
   int handoff_pocket_focus = benchmark_focus_eq(focus, "mul-combo-handoff-pocket");
 
   if (any_combo || benchmark_focus_eq(focus, "mul-combo-lower")) {
@@ -20629,12 +20630,18 @@ static void run_mul_combo_focus_cases(XrayBenchmarkReport *report, const char *f
       "large-multiply-cpu-toom-combo-reuse-map-transition",
       "toom33-combo-reuse-map-transition-window",
       "transition-window");
+  }
+
+  if (transition_bundle || transition_controls_focus) {
     run_mul_combo_reuse_map_self_control_case(
       report,
       1537U,
       "full-workspace-combo-reuse-self-control-transition-ge11717",
       mul_full_workspace_transition_control_digits,
       sizeof(mul_full_workspace_transition_control_digits) / sizeof(mul_full_workspace_transition_control_digits[0]));
+  }
+
+  if (transition_bundle) {
     run_mul_combo_tournament_case(
       report,
       1541U,
@@ -20656,7 +20663,7 @@ static void run_mul_combo_focus_cases(XrayBenchmarkReport *report, const char *f
       sizeof(mul_full_workspace_handoff_pocket_digits) / sizeof(mul_full_workspace_handoff_pocket_digits[0]));
   }
 
-  if (transition_bundle) {
+  if (transition_bundle || transition_controls_focus) {
     run_mul_combo_reuse_map_gmp_control_case(
       report,
       1549U,

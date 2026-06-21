@@ -1451,6 +1451,9 @@ Run these in order.
      self-control, duplicate GMP/MPIR control rows for `11717` and `16384`,
      plus a `11717,16384,24103` transition tournament scout, so use it before
      launching a broader transition sweep.
+   - Use `mul-combo-transition-controls` when you only need the duplicate-route
+     and duplicate-GMP transition checks before deciding whether a pocket is
+     stable enough to inspect more deeply.
    - Use `mul-combo-handoff-pocket` when you only need the dense
      `10007,10733,11717,12553,13649,14831,16384` handoff-pocket scout. It is
      the cheaper first check before rerunning the full transition bundle.
