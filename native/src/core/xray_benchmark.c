@@ -17441,6 +17441,110 @@ static void run_large_mul_cpu_campaign_case(XrayBenchmarkReport *report, size_t 
 }
 
 #if XRAY_HAS_MSVC_BMI2_ADX_INTRINSICS
+static void run_large_mul_cpu_toom_full_audit_only_case(XrayBenchmarkReport *report, size_t digits, size_t leaf_threshold) {
+  char *left_text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  char *right_text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  XrayScratchBigInt a[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt b[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt current_out[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt toom_full_workspace_out[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t ga[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gb[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gout[XRAY_MUL_OPERAND_FAMILIES];
+
+  unsigned int iterations = large_mul_campaign_iterations(digits);
+  const size_t toom_depth_limit = 2U;
+  int ok = 1;
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    xray_bigint_init(&a[family]);
+    xray_bigint_init(&b[family]);
+    xray_bigint_init(&current_out[family]);
+    xray_bigint_init(&toom_full_workspace_out[family]);
+    mpz_inits(ga[family], gb[family], gout[family], NULL);
+    left_text[family] = benchmark_decimal(digits, mul_operand_families[family].left_seed, mul_operand_families[family].left_high_lead);
+    right_text[family] = benchmark_decimal(digits, mul_operand_families[family].right_seed, mul_operand_families[family].right_high_lead);
+    ok = ok &&
+      left_text[family] &&
+      right_text[family] &&
+      xray_bigint_set_decimal(&a[family], left_text[family]) &&
+      xray_bigint_set_decimal(&b[family], right_text[family]) &&
+      mpz_set_str(ga[family], left_text[family], 10) == 0 &&
+      mpz_set_str(gb[family], right_text[family], 10) == 0;
+  }
+
+  unsigned long long current_samples[XRAY_BENCH_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_SAMPLES] = {0};
+  unsigned long long toom_full_workspace_samples[XRAY_BENCH_SAMPLES] = {0};
+  int parity = 1;
+  const unsigned int lane_count = 3U;
+  for (unsigned int sample = 0; ok && sample < XRAY_BENCH_SAMPLES; ++sample) {
+    for (unsigned int lane_offset = 0; ok && lane_offset < lane_count; ++lane_offset) {
+      unsigned int lane = (sample + lane_offset) % lane_count;
+      if (lane == 0U) {
+        unsigned long long current_started = xray_now_us();
+        for (unsigned int index = 0; ok && index < iterations; ++index) {
+          for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+            ok = xray_bigint_mul(&current_out[family], &a[family], &b[family]);
+          }
+        }
+        current_samples[sample] = xray_now_us() - current_started;
+      } else if (lane == 1U) {
+        unsigned long long gmp_started = xray_now_us();
+        for (unsigned int index = 0; index < iterations; ++index) {
+          for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+            mpz_mul(gout[family], ga[family], gb[family]);
+          }
+        }
+        gmp_samples[sample] = xray_now_us() - gmp_started;
+      } else {
+        unsigned long long toom_full_workspace_started = xray_now_us();
+        for (unsigned int index = 0; ok && index < iterations; ++index) {
+          for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+            ok = xray_bigint_mul_toom3_unroll4_recursive_full_workspace_probe(&toom_full_workspace_out[family], &a[family], &b[family], leaf_threshold, toom_depth_limit);
+          }
+        }
+        toom_full_workspace_samples[sample] = xray_now_us() - toom_full_workspace_started;
+      }
+    }
+
+    for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+      parity = parity &&
+        ok &&
+        xray_bigint_compare(&toom_full_workspace_out[family], &current_out[family]) == 0 &&
+        scratch_value_matches_mpz(&toom_full_workspace_out[family], gout[family]);
+    }
+  }
+
+  append_large_mul_cpu_toom_full_audit_result(
+    report,
+    digits,
+    large_mul_campaign_size_role(digits),
+    leaf_threshold,
+    toom_depth_limit,
+    XRAY_MUL_OPERAND_FAMILIES,
+    iterations,
+    parity,
+    median_samples(toom_full_workspace_samples, XRAY_BENCH_SAMPLES),
+    median_samples(current_samples, XRAY_BENCH_SAMPLES),
+    median_samples(gmp_samples, XRAY_BENCH_SAMPLES),
+    median_paired_ratio(toom_full_workspace_samples, current_samples, XRAY_BENCH_SAMPLES),
+    median_paired_ratio(toom_full_workspace_samples, gmp_samples, XRAY_BENCH_SAMPLES),
+    paired_ratio_wins(toom_full_workspace_samples, current_samples, XRAY_BENCH_SAMPLES, 0.98),
+    paired_ratio_wins(toom_full_workspace_samples, gmp_samples, XRAY_BENCH_SAMPLES, 1.0),
+    XRAY_BENCH_SAMPLES,
+    max_paired_ratio(toom_full_workspace_samples, current_samples, XRAY_BENCH_SAMPLES));
+
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    mpz_clears(ga[family], gb[family], gout[family], NULL);
+    xray_bigint_clear(&a[family]);
+    xray_bigint_clear(&b[family]);
+    xray_bigint_clear(&current_out[family]);
+    xray_bigint_clear(&toom_full_workspace_out[family]);
+    free(left_text[family]);
+    free(right_text[family]);
+  }
+}
+
 static void run_mul_unroll4_vs_gmp_probe_case_samples(
   XrayBenchmarkReport *report,
   size_t digits,
@@ -20771,6 +20875,13 @@ static void run_mul_large_focus_cases(XrayBenchmarkReport *report) {
 }
 
 #if XRAY_HAS_MSVC_BMI2_ADX_INTRINSICS
+static void run_mul_full_audit_pocket_focus_cases(XrayBenchmarkReport *report) {
+  const size_t pocket_digits[] = {5639, 8192, 11717, 16384, 24103, 32768};
+  for (size_t digit_index = 0; digit_index < sizeof(pocket_digits) / sizeof(pocket_digits[0]); ++digit_index) {
+    run_large_mul_cpu_toom_full_audit_only_case(report, pocket_digits[digit_index], 64);
+  }
+}
+
 static void run_mul_combo_focus_cases(XrayBenchmarkReport *report, const char *focus) {
   const size_t mul_full_workspace_upper_gate_digits[] = {24103, 32768, 52163, 65536};
   const size_t mul_full_workspace_lower_gate_digits[] = {4096, 5639, 8192};
@@ -21128,6 +21239,9 @@ int xray_benchmark_run_focus_with_callback(
 #if XRAY_HAS_MSVC_BMI2_ADX_INTRINSICS
   if (benchmark_focus_eq(focus, "mul-backend-gap")) {
     run_mul_backend_gap_focus_cases(report);
+  }
+  if (benchmark_focus_eq(focus, "mul-full-audit-pocket")) {
+    run_mul_full_audit_pocket_focus_cases(report);
   }
   run_mul_combo_focus_cases(report, focus);
 #else

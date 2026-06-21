@@ -205,6 +205,17 @@ dense leaf/view baseline probes and the full-window campaign produced no
 repeat-stable safe chunk. The chunk is useful as a future piecemeal audit
 target, but its `maxWorstPairRatio=1.371459` still blocks promotion.
 
+The follow-up pocket recheck artifact is:
+
+`native-test-runs/20260621-102952-full-audit-pocket-repeat3/matrix.tsv`
+
+That cheaper focus reran only the full-workspace audit row across the suspected
+pocket plus neighbors. The repeat-stable intersection collapsed to the single
+measured point `16384`, and the worst-pair max rose to `1.615254`. This is
+negative evidence, and it is valuable: the paper should describe the earlier
+`8192-24103` chunk as a tempting clue that failed isolated repeat recheck, not
+as a dense route claim.
+
 ## Main Result
 
 Operation:
@@ -314,7 +325,9 @@ The newest focused `mul-large` repeat reinforces that point. It found a
 repeat-stable measured chunk for the full-workspace Toom audit row from `8192`
 through `24103`, but the worst-pair gate remained above `1.0`. The paper can
 therefore discuss the chunk as a research target and a good example of
-piecemeal evidence, not as a production-ready route.
+piecemeal evidence, not as a production-ready route. The subsequent
+`mul-full-audit-pocket` repeat made the claim narrower again: only `16384`
+survived the three-run intersection, and the row remained worst-pair unsafe.
 
 ## Negative Follow-Up Evidence
 
