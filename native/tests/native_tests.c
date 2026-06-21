@@ -11490,7 +11490,7 @@ static void test_benchmark_focus_api(void) {
   xray_benchmark_report_clear(&report);
 }
 
-static void set_sparse_visibility_row(
+static void set_benchmark_visibility_row(
   XrayBenchmarkResult *row,
   const char *category,
   const char *name,
@@ -11546,7 +11546,7 @@ static void test_sparse_benchmark_visibility_contract(void) {
   snprintf(report.lanes.oracle_only_detail, sizeof(report.lanes.oracle_only_detail),
     "sparse-zero-mul r=0.068");
 
-  set_sparse_visibility_row(
+  set_benchmark_visibility_row(
     &report.results[0],
     "scratch-vs-gmp",
     "scratch sparse-production-mul 4096-bit",
@@ -11563,7 +11563,7 @@ static void test_sparse_benchmark_visibility_contract(void) {
     5U,
     5U,
     1);
-  set_sparse_visibility_row(
+  set_benchmark_visibility_row(
     &report.results[1],
     "kernel-probe",
     "kernel sparse zero-limb mul 4096-bit",
@@ -11580,7 +11580,7 @@ static void test_sparse_benchmark_visibility_contract(void) {
     5U,
     5U,
     0);
-  set_sparse_visibility_row(
+  set_benchmark_visibility_row(
     &report.results[2],
     "scratch-vs-gmp",
     "scratch sparse-production-pair-mul 8192-bit",
@@ -11635,6 +11635,82 @@ static void test_sparse_benchmark_visibility_contract(void) {
   CHECK(strstr(progress_tsv, "4096-8192") != NULL);
   CHECK(strstr(progress_tsv, "baseline-row") != NULL);
   CHECK(strstr(progress_tsv, "no-auto-route") != NULL);
+
+  xray_free(progress_tsv);
+  xray_free(progress);
+  xray_free(frontier);
+  xray_free(tsv);
+  xray_free(json);
+  xray_benchmark_report_clear(&report);
+}
+
+static void test_full_audit_probe_visibility_contract(void) {
+  XrayBenchmarkReport report;
+  memset(&report, 0, sizeof(report));
+  xray_cpu_features_detect(&report.cpu);
+  report.results = (XrayBenchmarkResult *)calloc(1U, sizeof(XrayBenchmarkResult));
+  CHECK(report.results != NULL);
+  report.result_count = 1U;
+  report.passed_count = 1U;
+  report.oracle_only_count = 1U;
+  snprintf(report.lanes.oracle_only_detail, sizeof(report.lanes.oracle_only_detail),
+    "mul-large-cpu-toom-full-audit r=0.912");
+
+  set_benchmark_visibility_row(
+    &report.results[0],
+    "kernel-probe",
+    "kernel large mul CPU Toom full audit 5639 digits",
+    "mul-large-cpu-toom-full-audit",
+    "candidate-faster-probe",
+    "observe-only",
+    "op=mul-large-cpu-toom-full-audit digits=5639 sizeRole=deterministic-random-spot leafThreshold=64 depthLimit=2 operandFamilies=2 samples=5 iterations=32 stablePairs=3/5 gmpStablePairs=5/5 ratio=0.912 fullAuditCurrentRatio=0.912 fullAuditGmpRatio=0.803 worstPairRatio=1.272 ratioMethod=paired-median max=0.98 candidate=recursive-toom3+unroll4-full-workspace baseline=current-scratch-mul comparison=full-ws+current+mpz_mul oracle=mpz_mul featureGate=large-multiply-cpu-toom-full-audit gmpClue=toom33-recursive-current-route-audit noAutoRoute=1 replacementReady=false adoption=observe-only",
+    5639U,
+    6092U,
+    6676U,
+    0.911774,
+    0.98,
+    1.272422,
+    3U,
+    5U,
+    0);
+
+  char *json = xray_benchmark_report_json(&report);
+  char *tsv = xray_benchmark_report_tsv(&report);
+  char *frontier = xray_benchmark_frontier_text(&report);
+  CHECK(json != NULL);
+  CHECK(tsv != NULL);
+  CHECK(frontier != NULL);
+  CHECK(strstr(json, "mul-large-cpu-toom-full-audit") != NULL);
+  CHECK(strstr(json, "ratioMethod=paired-median") != NULL);
+  CHECK(strstr(json, "operandFamilies=2") != NULL);
+  CHECK(strstr(json, "oracle=mpz_mul") != NULL);
+  CHECK(strstr(json, "featureGate=large-multiply-cpu-toom-full-audit") != NULL);
+  CHECK(strstr(json, "gmpClue=toom33-recursive-current-route-audit") != NULL);
+  CHECK(strstr(json, "noAutoRoute=1") != NULL);
+  CHECK(strstr(json, "replacementReady=false") != NULL);
+  CHECK(strstr(tsv, "mul-large-cpu-toom-full-audit") != NULL);
+  CHECK(strstr(tsv, "ratioMethod=paired-median") != NULL);
+  CHECK(strstr(tsv, "noAutoRoute=1") != NULL);
+  CHECK(strstr(tsv, "replacementReady=false") != NULL);
+  CHECK(strstr(tsv, "candidate=recursive-toom3+unroll4-full-workspace") != NULL);
+  CHECK(strstr(frontier, "mul-large-cpu-toom-full-audit") != NULL);
+  CHECK(strstr(frontier, "leaf=64") != NULL);
+  CHECK(strstr(frontier, "depth=2") != NULL);
+  CHECK(strstr(frontier, "base=current-scratch-mul") != NULL);
+
+  char *progress = xray_benchmark_progress_tsv_text(tsv);
+  char *progress_tsv = xray_benchmark_progress_classification_tsv(tsv);
+  CHECK(progress != NULL);
+  CHECK(progress_tsv != NULL);
+  CHECK(strstr(progress, "mul-large-cpu-toom-full-audit") != NULL);
+  CHECK(strstr(progress, "blocked=no-auto-route") != NULL);
+  CHECK(strstr(progress_tsv, "mul-large-cpu-toom-full-audit") != NULL);
+  CHECK(strstr(progress_tsv, "dense-multiply") != NULL);
+  CHECK(strstr(progress_tsv, "large-multiply-cpu-toom-full-audit") != NULL);
+  CHECK(strstr(progress_tsv, "toom33-recursive-current-route-audit") != NULL);
+  CHECK(strstr(progress_tsv, "no-auto-route") != NULL);
+  CHECK(strstr(progress_tsv, "1.272422") != NULL);
+  CHECK(strstr(progress_tsv, "recursive-toom3+unroll4-full-workspace") != NULL);
 
   xray_free(progress_tsv);
   xray_free(progress);
@@ -11700,6 +11776,7 @@ int main(int argc, char **argv) {
   RUN_NATIVE_TEST(test_large_nonhit_does_not_false_solve, "solver");
   RUN_NATIVE_TEST(test_benchmark_focus_api, "benchmark");
   RUN_NATIVE_TEST(test_sparse_benchmark_visibility_contract, "artifacts");
+  RUN_NATIVE_TEST(test_full_audit_probe_visibility_contract, "artifacts");
   RUN_NATIVE_TEST(test_benchmarks, "benchmark");
   if (ran_tests == 0) {
     fprintf(stderr, "no native tests matched filter\n");
