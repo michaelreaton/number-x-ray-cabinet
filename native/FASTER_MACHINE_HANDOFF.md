@@ -1460,6 +1460,9 @@ Run these in order.
    - Treat focus output as triage only: keep the raw TSV, but do not promote or
      publish a route until the full parity, route-audit, worst-pair, and
      stable-pair gates pass.
+   - Use `python native/tools/bench_focus_repeat.py --cli <xray_cli> --focus
+     mul-combo-handoff-pocket --runs 3` to repeat a fast focus, save every raw
+     TSV/progress TSV artifact, and print the safe-chunk summary table.
    - Read `safeSizeChunks` and `longestSafeSizeChunk*` as contiguous measured
      benchmark points only. They are useful for piecemeal follow-up audits over
      promising pockets, but they do not prove every unmeasured digit between the

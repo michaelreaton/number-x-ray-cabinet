@@ -442,6 +442,7 @@ native\build\Release\xray_cli.exe --bench-focus mul-combo-lower --bench-frontier
 native\build\Release\xray_cli.exe --bench-focus mul-combo-transition --bench-frontier
 native\build\Release\xray_cli.exe --bench-focus mul-combo-transition-controls --bench-frontier
 native\build\Release\xray_cli.exe --bench-focus mul-combo-handoff-pocket --bench-frontier
+python native\tools\bench_focus_repeat.py --cli native\build\Release\xray_cli.exe --focus mul-combo-handoff-pocket --runs 3
 native\build\Release\xray_cli.exe --bench-progress native\build\native-test-runs\<run>\benchmark.tsv
 native\build\Release\xray_cli.exe --bench-min-digits 768 --bench-max-digits 1000 --bench-progress native\build\native-test-runs\<run>\benchmark.tsv
 native\build\Release\xray_cli.exe --bench-filter mul --bench-compare native\build-release\native-test-runs\<run>\benchmark.tsv native\build-ltcg\native-test-runs\<run>\benchmark.tsv
@@ -465,6 +466,9 @@ duplicate-route and duplicate-GMP transition checks, and
 transition handoff scout instead of the full transition bundle.
 Focus runs are for finding promising rows quickly; use the full benchmark ladder
 and promotion gates before treating a route as replacement-ready. Use
+`native/tools/bench_focus_repeat.py` to run a focus several times, preserve each
+raw `benchmark.tsv` plus `benchmark_progress.tsv`, and print a compact safe
+chunk summary for repeated noise checks. Use
 `--bench-progress-tsv` when another tool needs the same progress classification
 as a TSV table instead of prose. Use `--bench-compare`
 to review two benchmark TSV artifacts, such as Release versus `/GL`, and
