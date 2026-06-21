@@ -4691,3 +4691,39 @@ but the expanded transition pocket has no strict safe measured chunk in this
 run. Future novelty work should use duplicate controls or repeated focused runs
 before widening the window, because the same area can look attractive by median
 while still failing pair-level safety.
+
+## 2026-06-21: Focus Repeat Triage
+
+The `bench_focus_repeat.py` helper was used to rerun the two cheap transition
+focus lanes three times each and preserve raw TSV plus progress TSV artifacts:
+
+- Handoff pocket repeat:
+  `native-test-runs/20260621-072833-handoff-pocket-repeat3/summary.tsv`
+- Transition controls repeat:
+  `native-test-runs/20260621-072833-transition-controls-repeat3/summary.tsv`
+
+Handoff-pocket aggregate rows:
+
+| Run | Status | Candidate / Current | Worst Pair | Safe Sizes | Safe Chunk | Decision |
+| ---: | --- | ---: | ---: | ---: | --- | --- |
+| `1` | backend-regression | `0.770` | `1.620` | `0/7` | none | reject |
+| `2` | backend-regression | `0.702` | `1.823` | `1/7` | `14831` | single-point noise |
+| `3` | worst-pair-regression | `0.726` | `1.197` | `0/7` | none | reject |
+
+Transition-control aggregate rows:
+
+| Run | Row | Status | Worst Pair | Safe Sizes | Safe Chunk |
+| ---: | --- | --- | ---: | ---: | --- |
+| `1` | `mul-large-toom-cmb-tctrl` | duplicate-control-noise | `1.202` | `1/2` | `16384` |
+| `1` | `mul-large-toom-cmb-gmptrans` | gmp-control-noise | `1.663` | `0/2` | none |
+| `2` | `mul-large-toom-cmb-tctrl` | self-control-clean | `1.121` | `2/2` | `11717-16384` |
+| `2` | `mul-large-toom-cmb-gmptrans` | gmp-control-noise | `1.252` | `0/2` | none |
+| `3` | `mul-large-toom-cmb-tctrl` | duplicate-control-noise | `1.160` | `0/2` | none |
+| `3` | `mul-large-toom-cmb-gmptrans` | worst-pair-regression | `1.210` | `0/2` | none |
+
+Decision: do not spend the next implementation slice promoting or widening the
+current handoff pocket. The repeat run showed no repeat-stable safe chunk, and
+the duplicate-GMP control never produced a safe transition chunk. Use the focus
+helper as a first-pass noise filter, then move novelty work toward a different
+route shape or lower-level Toom arithmetic instead of rerunning this exact
+handoff policy as if it were still promising.

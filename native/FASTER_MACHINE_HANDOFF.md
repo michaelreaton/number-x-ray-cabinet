@@ -1416,6 +1416,21 @@ but it does not produce a strict contiguous safe chunk. Do not widen this route
 blindly; rerun with duplicate controls or repeated focused runs before spending
 full-suite CI time on this pocket again.
 
+### Focus Repeat Triage
+
+Latest repeat artifacts:
+
+- `native-test-runs/20260621-072833-handoff-pocket-repeat3/summary.tsv`
+- `native-test-runs/20260621-072833-transition-controls-repeat3/summary.tsv`
+
+The handoff-pocket helper run produced safe chunks `none`, `14831`, and `none`
+across three repeats. The transition-control helper run also stayed noisy:
+duplicate-route control reported `16384`, then `11717-16384`, then `none`,
+while the duplicate-GMP control reported `none` in every repeat. Decision: do
+not promote or widen this exact handoff pocket next. Use the helper to filter
+future pockets, and move the next novelty slice toward a different route shape
+or lower-level Toom arithmetic.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor
