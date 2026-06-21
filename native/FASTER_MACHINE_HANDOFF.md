@@ -805,6 +805,36 @@ stable-pair gates fail from `32768` upward and worst-pair safety peaks at
 `1.192`. Keep it observe-only and move toward arithmetic shape work instead of
 another workspace-only route promotion.
 
+## Combo Leaf32 Depth4 Upper Scout
+
+Artifact: `native-test-runs/20260620-021539-c4b04caf`
+
+This run adds `mul-large-toom-cmb-l32d4-scout`, a benchmark-only upper-window
+arithmetic-shape scout. It compares `full-ws-combo-l32d4` against
+`full-ws-combo-l48d4` on the same operand fingerprints at `24103`, `32768`,
+`52163`, and `65536`.
+
+Aggregate signal:
+
+| Row | Sizes | Candidate / L48D4 Max | Candidate / Current Max | Candidate / GMP Max | L48D4 / GMP Max | Current / GMP Max | Worst Pair | Safe Sizes | Hash Safe | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `mul-large-toom-cmb-l32d4-scout` | `24103,32768,52163,65536` | `1.098` | `0.693` | `1.188` | `1.167` | `1.900` | `1.228` | `0/4` | `72/72` | observe only |
+
+Per-size signal:
+
+| Digits | L32D4 / L48D4 | L32D4 / Current | L32D4 / GMP | L48D4 / GMP | Current / GMP | Worst Pair | Stable vs L48D4 | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `24103` | `0.976` | `0.651` | `0.979` | `1.001` | `1.508` | `1.014` | `5/9` | `8/9` | combo-l48d4-regression |
+| `32768` | `1.070` | `0.693` | `1.079` | `1.035` | `1.585` | `1.166` | `0/9` | `0/9` | combo-l48d4-regression |
+| `52163` | `1.098` | `0.645` | `1.146` | `1.052` | `1.776` | `1.165` | `0/9` | `0/9` | combo-l48d4-regression |
+| `65536` | `1.011` | `0.626` | `1.188` | `1.167` | `1.900` | `1.228` | `1/9` | `0/9` | combo-l48d4-regression |
+
+Decision: reject leaf32/depth4 for this campaign. It only nudges the `24103`
+random spot on median and regresses the larger rows against `l48d4`, with
+stable-pair and worst-pair failures throughout. The next shape scout should
+try a different handoff or interpolation/evaluation structure, not a smaller
+Toom leaf at the same depth.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor
