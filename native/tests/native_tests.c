@@ -11490,6 +11490,160 @@ static void test_benchmark_focus_api(void) {
   xray_benchmark_report_clear(&report);
 }
 
+static void set_sparse_visibility_row(
+  XrayBenchmarkResult *row,
+  const char *category,
+  const char *name,
+  const char *operation,
+  const char *status,
+  const char *adoption,
+  const char *detail,
+  size_t digits,
+  unsigned long long scratch_us,
+  unsigned long long gmp_us,
+  double speed_ratio,
+  double max_allowed_speed_ratio,
+  double worst_pair_ratio,
+  size_t stable_sample_count,
+  size_t sample_count,
+  int replacement_ready) {
+  CHECK(row != NULL);
+  memset(row, 0, sizeof(*row));
+  snprintf(row->category, sizeof(row->category), "%s", category);
+  snprintf(row->name, sizeof(row->name), "%s", name);
+  snprintf(row->operation, sizeof(row->operation), "%s", operation);
+  snprintf(row->status, sizeof(row->status), "%s", status);
+  snprintf(row->adoption, sizeof(row->adoption), "%s", adoption);
+  snprintf(row->detail, sizeof(row->detail), "%s", detail);
+  row->digits = digits;
+  row->scratch_us = scratch_us;
+  row->gmp_us = gmp_us;
+  row->speed_ratio = speed_ratio;
+  row->max_allowed_speed_ratio = max_allowed_speed_ratio;
+  row->worst_pair_ratio = worst_pair_ratio;
+  row->stable_sample_count = stable_sample_count;
+  row->sample_count = sample_count;
+  row->parity_verified = 1;
+  row->replacement_ready = replacement_ready;
+  row->elapsed_ms = 1;
+  row->passed = 1;
+}
+
+static void test_sparse_benchmark_visibility_contract(void) {
+  XrayBenchmarkReport report;
+  memset(&report, 0, sizeof(report));
+  xray_cpu_features_detect(&report.cpu);
+  report.results = (XrayBenchmarkResult *)calloc(3U, sizeof(XrayBenchmarkResult));
+  CHECK(report.results != NULL);
+  report.result_count = 3U;
+  report.passed_count = 3U;
+  report.scratch_count = 2U;
+  report.replacement_ready_count = 2U;
+  report.oracle_only_count = 1U;
+  report.lanes.promotion_ready_count = 2U;
+  snprintf(report.lanes.promotion_ready_detail, sizeof(report.lanes.promotion_ready_detail),
+    "sparse-production-mul d=1234; sparse-production-pair-mul d=2468");
+  snprintf(report.lanes.oracle_only_detail, sizeof(report.lanes.oracle_only_detail),
+    "sparse-zero-mul r=0.068");
+
+  set_sparse_visibility_row(
+    &report.results[0],
+    "scratch-vs-gmp",
+    "scratch sparse-production-mul 4096-bit",
+    "sparse-production-mul",
+    "replacement-ready",
+    "allowed",
+    "operation=sparse-production-mul bits=4096 digits=1234 operandFamilies=1 samples=5 stablePairs=5/5 scratchUs=68 gmpUs=1000 ratio=0.068 worstPairRatio=0.222 ratioMethod=paired-median maxAllowedRatio=1.0 candidate=current-scratch-sparse-mul-route baseline=mpz_mul-sparse-product featureGate=sparse-bigint-production-route gmpClue=skip-zero-limb-work sparseShape=2^n+1 safeSizes=4096,5639,8192 safeSizeChunks=4096-8192 longestSafeSizeChunk=4096-8192 longestSafeSizeChunkCount=3 noAutoRoute=0 adoption=allowed",
+    1234U,
+    68U,
+    1000U,
+    0.068,
+    1.0,
+    0.222,
+    5U,
+    5U,
+    1);
+  set_sparse_visibility_row(
+    &report.results[1],
+    "kernel-probe",
+    "kernel sparse zero-limb mul 4096-bit",
+    "sparse-zero-mul",
+    "candidate-faster",
+    "observe-only",
+    "op=sparse-zero-mul bits=4096 digits=1234 samples=5 stablePairs=5/5 scratchUs=68 gmpUs=1000 ratio=0.068 worstPairRatio=0.222 ratioMethod=paired-median max=0.98 candidate=zero-limb-row-skip baseline=mpz_mul-sparse-product featureGate=sparse-bigint-schoolbook gmpClue=skip-zero-limb-work sparseShape=2^n+1 safeSizes=4096,5639,8192 safeSizeChunks=4096-8192 longestSafeSizeChunk=4096-8192 longestSafeSizeChunkCount=3 noAutoRoute=1 adoption=observe-only",
+    1234U,
+    68U,
+    1000U,
+    0.068,
+    0.98,
+    0.222,
+    5U,
+    5U,
+    0);
+  set_sparse_visibility_row(
+    &report.results[2],
+    "scratch-vs-gmp",
+    "scratch sparse-production-pair-mul 8192-bit",
+    "sparse-production-pair-mul",
+    "replacement-ready",
+    "allowed",
+    "operation=sparse-production-pair-mul bits=8192 digits=2468 operandFamilies=1 samples=5 stablePairs=5/5 scratchUs=375 gmpUs=1000 ratio=0.375 worstPairRatio=0.875 ratioMethod=paired-median maxAllowedRatio=1.0 candidate=current-scratch-sparse-pair-product-route baseline=mpz_mul-sparse-product featureGate=sparse-bigint-production-route gmpClue=skip-zero-limb-work sparseShape=8-live-limbs safeSizes=4096,5639,8192 safeSizeChunks=4096-8192 longestSafeSizeChunk=4096-8192 longestSafeSizeChunkCount=3 noAutoRoute=0 adoption=allowed",
+    2468U,
+    375U,
+    1000U,
+    0.375,
+    1.0,
+    0.875,
+    5U,
+    5U,
+    1);
+
+  char *json = xray_benchmark_report_json(&report);
+  char *tsv = xray_benchmark_report_tsv(&report);
+  char *frontier = xray_benchmark_frontier_text(&report);
+  CHECK(json != NULL);
+  CHECK(tsv != NULL);
+  CHECK(frontier != NULL);
+  CHECK(strstr(json, "sparse-production-mul") != NULL);
+  CHECK(strstr(json, "sparse-zero-mul") != NULL);
+  CHECK(strstr(json, "sparse-production-pair-mul") != NULL);
+  CHECK(strstr(json, "sparse-bigint-production-route") != NULL);
+  CHECK(strstr(json, "ratioMethod=paired-median") != NULL);
+  CHECK(strstr(tsv, "sparse-production-mul") != NULL);
+  CHECK(strstr(tsv, "sparse-zero-mul") != NULL);
+  CHECK(strstr(tsv, "sparse-production-pair-mul") != NULL);
+  CHECK(strstr(tsv, "safeSizeChunks=4096-8192") != NULL);
+  CHECK(strstr(tsv, "noAutoRoute=0") != NULL);
+  CHECK(strstr(tsv, "noAutoRoute=1") != NULL);
+  CHECK(strstr(frontier, "sparse-production-mul") != NULL);
+  CHECK(strstr(frontier, "sparse-zero-mul") != NULL);
+  CHECK(strstr(frontier, "sparse-production-pair-mul") != NULL);
+
+  char *progress = xray_benchmark_progress_tsv_text(tsv);
+  char *progress_tsv = xray_benchmark_progress_classification_tsv(tsv);
+  CHECK(progress != NULL);
+  CHECK(progress_tsv != NULL);
+  CHECK(strstr(progress, "BENCHMARK PROGRESS DIGEST") != NULL);
+  CHECK(strstr(progress, "sparse-production-mul") != NULL);
+  CHECK(strstr(progress, "sparse-zero-mul") != NULL);
+  CHECK(strstr(progress, "sparse-production-pair-mul") != NULL);
+  CHECK(strstr(progress_tsv, "sparse-production-mul") != NULL);
+  CHECK(strstr(progress_tsv, "sparse-zero-mul") != NULL);
+  CHECK(strstr(progress_tsv, "sparse-production-pair-mul") != NULL);
+  CHECK(strstr(progress_tsv, "sparse-multiply") != NULL);
+  CHECK(strstr(progress_tsv, "safeSizeChunks") != NULL);
+  CHECK(strstr(progress_tsv, "4096-8192") != NULL);
+  CHECK(strstr(progress_tsv, "baseline-row") != NULL);
+  CHECK(strstr(progress_tsv, "no-auto-route") != NULL);
+
+  xray_free(progress_tsv);
+  xray_free(progress);
+  xray_free(frontier);
+  xray_free(tsv);
+  xray_free(json);
+  xray_benchmark_report_clear(&report);
+}
+
 static int should_run_native_test(int argc, char **argv, const char *name, const char *group) {
   if (argc <= 1) return 1;
   for (int index = 1; index < argc; ++index) {
@@ -11545,6 +11699,7 @@ int main(int argc, char **argv) {
   RUN_NATIVE_TEST(test_report_json_ffi_helpers, "ffi");
   RUN_NATIVE_TEST(test_large_nonhit_does_not_false_solve, "solver");
   RUN_NATIVE_TEST(test_benchmark_focus_api, "benchmark");
+  RUN_NATIVE_TEST(test_sparse_benchmark_visibility_contract, "artifacts");
   RUN_NATIVE_TEST(test_benchmarks, "benchmark");
   if (ran_tests == 0) {
     fprintf(stderr, "no native tests matched filter\n");
