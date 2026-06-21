@@ -281,10 +281,12 @@ labels next to the measured row, not in a prose-only note.
 Number X-Ray now appends machine-readable metadata to
 `benchmark_progress.tsv`: `digitBand`, `workloadShape`, `policy`, `candidate`,
 `activeCandidate`, `baseline`, `featureGate`, `gmpClue`, `controlSafety`,
-`thresholdSafety`, and `hashGate`. This is reporting only. It lets external
-tools group broad swatches by size band, route family, and safety gate before
-ranking contenders, while leaving all arithmetic and production routing
-unchanged.
+`thresholdSafety`, and `hashGate`. The progress boolean for current/default
+baseline rows is exported as `baselineRow` so the detail-derived `baseline`
+route label remains importable without duplicate TSV headers. This is reporting
+only. It lets external tools group broad swatches by size band, route family,
+and safety gate before ranking contenders, while leaving all arithmetic and
+production routing unchanged.
 
 ## 2026-06-17: Focused Benchmark Digit Windows
 

@@ -348,6 +348,7 @@ static void test_benchmark_progress_digest(void) {
   char *classification = xray_benchmark_progress_classification_tsv(tsv);
   CHECK(classification != NULL);
   CHECK(strstr(classification, "primaryLane\trouteCandidate\trouteCompleted\trouteOpen\tproductGated\thasSetupContext\tsetupSeconds\twarmupReview\tlowerBound\trunFailed\tattemptedRuns\tcompletedRuns") != NULL);
+  CHECK(strstr(classification, "safetyRejected\tbaselineRow\tcontrol\tnoisyControl\tpromotionReady") != NULL);
   CHECK(strstr(classification, "compilerVersion\tdigitBand\tworkloadShape\tpolicy\tcandidate\tactiveCandidate\tbaseline\tfeatureGate\tgmpClue\tcontrolSafety\tthresholdSafety\thashGate\tsafeSizes\tsafeSizeChunks\tlongestSafeSizeChunk\tlongestSafeSizeChunkCount\tblockerReason") != NULL);
   CHECK(strstr(classification, "format-policy-safety policy=preinv baseline=mpz_get_str featureGate=decimal-format-policy-divide-1e19-preinv candidate=decimal-divide-1e19-preinv\tcompleted\ttrue\ttrue\tfalse\tfalse\ttrue\t0.123456\tfalse\tfalse") != NULL);
   CHECK(strstr(classification, "0.123456\tfalse\tfalse\tfalse\t0\t0\tfalse\tfalse\tfalse\tfalse\ttrue\tpolicy-ready\tpromotion-ready\t0.800000") != NULL);

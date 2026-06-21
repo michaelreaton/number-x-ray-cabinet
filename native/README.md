@@ -361,7 +361,9 @@ route-completed progress totals.
 The matching `benchmark_progress.tsv` file appends import columns such as
 `digitBand`, `workloadShape`, `policy`, `candidate`, `featureGate`, `gmpClue`,
 and safety gates so external optimizer tools can group rows without scraping
-free-form detail text.
+free-form detail text. The progress boolean for current/default baseline rows
+is named `baselineRow`; the detail-derived route label keeps the shorter
+`baseline` name so common CSV importers see unique columns.
 
 Formatter policy probes also include explicit endpoint tournaments for the
 GMP-inspired base-`1e19` preinverse route. The `preinv10e19-window*` and
