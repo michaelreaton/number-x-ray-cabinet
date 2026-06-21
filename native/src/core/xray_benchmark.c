@@ -208,6 +208,75 @@ static int xray_no_worst_pair_regression(double worst_pair_ratio) {
   return worst_pair_ratio <= 0.0 || worst_pair_ratio <= 1.0;
 }
 
+typedef struct {
+  size_t current_start;
+  size_t current_end;
+  size_t current_count;
+  size_t longest_start;
+  size_t longest_end;
+  size_t longest_count;
+  char ranges[192];
+} XraySafeSizeChunks;
+
+static void xray_safe_size_chunks_init(XraySafeSizeChunks *chunks) {
+  if (!chunks) return;
+  memset(chunks, 0, sizeof(*chunks));
+  snprintf(chunks->ranges, sizeof(chunks->ranges), "none");
+}
+
+static void xray_safe_size_chunks_append_range(XraySafeSizeChunks *chunks, size_t start, size_t end, size_t count) {
+  if (!chunks || count == 0) return;
+  if (chunks->longest_count < count) {
+    chunks->longest_start = start;
+    chunks->longest_end = end;
+    chunks->longest_count = count;
+  }
+  size_t used = strcmp(chunks->ranges, "none") == 0 ? 0 : strlen(chunks->ranges);
+  if (used == 0) chunks->ranges[0] = '\0';
+  if (used + 1U >= sizeof(chunks->ranges)) return;
+  if (start == end) {
+    snprintf(chunks->ranges + used, sizeof(chunks->ranges) - used, "%s%zu", used ? "," : "", start);
+  } else {
+    snprintf(chunks->ranges + used, sizeof(chunks->ranges) - used, "%s%zu-%zu", used ? "," : "", start, end);
+  }
+}
+
+static void xray_safe_size_chunks_close_current(XraySafeSizeChunks *chunks) {
+  if (!chunks || chunks->current_count == 0) return;
+  xray_safe_size_chunks_append_range(chunks, chunks->current_start, chunks->current_end, chunks->current_count);
+  chunks->current_start = 0;
+  chunks->current_end = 0;
+  chunks->current_count = 0;
+}
+
+static void xray_safe_size_chunks_observe(XraySafeSizeChunks *chunks, size_t digits, int safe) {
+  if (!chunks) return;
+  if (!safe) {
+    xray_safe_size_chunks_close_current(chunks);
+    return;
+  }
+  if (chunks->current_count == 0) chunks->current_start = digits;
+  chunks->current_end = digits;
+  chunks->current_count++;
+}
+
+static void xray_safe_size_chunks_finish(XraySafeSizeChunks *chunks) {
+  if (!chunks) return;
+  xray_safe_size_chunks_close_current(chunks);
+  if (chunks->ranges[0] == '\0') snprintf(chunks->ranges, sizeof(chunks->ranges), "none");
+}
+
+static void xray_safe_size_chunks_longest_text(const XraySafeSizeChunks *chunks, char *out, size_t out_size) {
+  if (!out || out_size == 0) return;
+  if (!chunks || chunks->longest_count == 0) {
+    snprintf(out, out_size, "none");
+  } else if (chunks->longest_start == chunks->longest_end) {
+    snprintf(out, out_size, "%zu", chunks->longest_start);
+  } else {
+    snprintf(out, out_size, "%zu-%zu", chunks->longest_start, chunks->longest_end);
+  }
+}
+
 static int xray_benchmark_readiness_gate(
   double speed_ratio,
   double max_allowed_speed_ratio,
@@ -8061,6 +8130,8 @@ static void append_mul_full_workspace_deep_audit_result(
   const char *candidate_label = labels.candidate[0] ? labels.candidate : candidate;
   size_t required_stable = policy_required_stable_samples(sample_count);
   size_t safe_size_count = 0;
+  XraySafeSizeChunks safe_chunks;
+  xray_safe_size_chunks_init(&safe_chunks);
   size_t hash_match_count = 0;
   size_t expected_hash_count = point_count * sample_count * XRAY_MUL_OPERAND_FAMILIES;
   int parity = 1;
@@ -8105,13 +8176,18 @@ static void append_mul_full_workspace_deep_audit_result(
     worst_pair_safe = worst_pair_safe &&
       xray_no_worst_pair_regression(point->candidate_current_worst) &&
       xray_no_worst_pair_regression(point->candidate_gmp_worst);
-    if (point->parity &&
-        point->hash_match_count == point_expected_hash_count &&
-        point_current_safe &&
-        point_backend_safe) {
+    int point_safe = point->parity &&
+      point->hash_match_count == point_expected_hash_count &&
+      point_current_safe &&
+      point_backend_safe;
+    if (point_safe) {
       safe_size_count++;
     }
+    xray_safe_size_chunks_observe(&safe_chunks, point->digits, point_safe);
   }
+  xray_safe_size_chunks_finish(&safe_chunks);
+  char longest_safe_size_chunk[32];
+  xray_safe_size_chunks_longest_text(&safe_chunks, longest_safe_size_chunk, sizeof(longest_safe_size_chunk));
 
   XrayBenchmarkResult result;
   memset(&result, 0, sizeof(result));
@@ -8141,7 +8217,7 @@ static void append_mul_full_workspace_deep_audit_result(
   result.passed = parity && hash_gate;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=%s policy=%s sizes=%s sizeCount=%zu minDigits=%zu leafThreshold=%zu depthLimit=%zu operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s forcedCandidate=yes thresholdSafety=%s candidate=%s baseline=current-scratch-mul oracle=mpz_mul candCurrentMax=%.3f candGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes featureGate=%s gmpClue=%s noAutoRoute=1 replacementReady=false adoption=%s",
+    "op=%s policy=%s sizes=%s sizeCount=%zu minDigits=%zu leafThreshold=%zu depthLimit=%zu operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu safeSizeChunks=%s longestSafeSizeChunk=%s longestSafeSizeChunkCount=%zu hashSafe=%zu/%zu hashGate=%s parity=%s forcedCandidate=yes thresholdSafety=%s candidate=%s baseline=current-scratch-mul oracle=mpz_mul candCurrentMax=%.3f candGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes featureGate=%s gmpClue=%s noAutoRoute=1 replacementReady=false adoption=%s",
     labels.aggregate_operation,
     policy,
     sizes ? sizes : "unknown",
@@ -8155,6 +8231,9 @@ static void append_mul_full_workspace_deep_audit_result(
     sample_count,
     safe_size_count,
     point_count,
+    safe_chunks.ranges,
+    longest_safe_size_chunk,
+    safe_chunks.longest_count,
     hash_match_count,
     expected_hash_count,
     hash_gate ? "matched" : "blocked",
@@ -8339,6 +8418,8 @@ static void append_mul_full_workspace_combo_handoff_result(
   if (!report || !policy || !points || point_count == 0) return;
   size_t required_stable = policy_required_stable_samples(sample_count);
   size_t safe_size_count = 0;
+  XraySafeSizeChunks safe_chunks;
+  xray_safe_size_chunks_init(&safe_chunks);
   size_t hash_match_count = 0;
   size_t expected_hash_count = point_count * sample_count * XRAY_MUL_OPERAND_FAMILIES;
   int parity = 1;
@@ -8383,13 +8464,18 @@ static void append_mul_full_workspace_combo_handoff_result(
     worst_pair_safe = worst_pair_safe &&
       xray_no_worst_pair_regression(point->candidate_current_worst) &&
       xray_no_worst_pair_regression(point->candidate_gmp_worst);
-    if (point->parity &&
-        point->hash_match_count == point_expected_hash_count &&
-        point_current_safe &&
-        point_backend_safe) {
+    int point_safe = point->parity &&
+      point->hash_match_count == point_expected_hash_count &&
+      point_current_safe &&
+      point_backend_safe;
+    if (point_safe) {
       safe_size_count++;
     }
+    xray_safe_size_chunks_observe(&safe_chunks, point->digits, point_safe);
   }
+  xray_safe_size_chunks_finish(&safe_chunks);
+  char longest_safe_size_chunk[32];
+  xray_safe_size_chunks_longest_text(&safe_chunks, longest_safe_size_chunk, sizeof(longest_safe_size_chunk));
 
   XrayBenchmarkResult result;
   memset(&result, 0, sizeof(result));
@@ -8418,7 +8504,7 @@ static void append_mul_full_workspace_combo_handoff_result(
   result.passed = parity && hash_gate;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=mul-large-toom-cmb-hand policy=%s sizes=%s sizeCount=%zu minDigits=%zu handoffDigits=%zu lowerLeaf=64 upperLeaf=48 lowerDepth=2 upperDepth=3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom-combo-handoff32768 gmpClue=toom33-combo-l64d2-to-l48d3-handoff forcedCandidate=yes thresholdSafety=full-window candidate=full-ws-combo-handoff-l64d2-l48d3 activeCandidate=mixed-by-size lowerCandidate=full-ws-combo-l64d2 upperCandidate=full-ws-combo-l48d3 baseline=current-scratch-mul oracle=mpz_mul candCurrentMax=%.3f candGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
+    "op=mul-large-toom-cmb-hand policy=%s sizes=%s sizeCount=%zu minDigits=%zu handoffDigits=%zu lowerLeaf=64 upperLeaf=48 lowerDepth=2 upperDepth=3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu safeSizeChunks=%s longestSafeSizeChunk=%s longestSafeSizeChunkCount=%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom-combo-handoff32768 gmpClue=toom33-combo-l64d2-to-l48d3-handoff forcedCandidate=yes thresholdSafety=full-window candidate=full-ws-combo-handoff-l64d2-l48d3 activeCandidate=mixed-by-size lowerCandidate=full-ws-combo-l64d2 upperCandidate=full-ws-combo-l48d3 baseline=current-scratch-mul oracle=mpz_mul candCurrentMax=%.3f candGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
     policy,
     sizes ? sizes : "unknown",
     point_count,
@@ -8430,6 +8516,9 @@ static void append_mul_full_workspace_combo_handoff_result(
     sample_count,
     safe_size_count,
     point_count,
+    safe_chunks.ranges,
+    longest_safe_size_chunk,
+    safe_chunks.longest_count,
     hash_match_count,
     expected_hash_count,
     hash_gate ? "matched" : "blocked",
@@ -8590,6 +8679,8 @@ static void append_mul_full_workspace_combo_best_map_result(
   if (!report || !policy || !points || point_count == 0) return;
   size_t required_stable = policy_required_stable_samples(sample_count);
   size_t safe_size_count = 0;
+  XraySafeSizeChunks safe_chunks;
+  xray_safe_size_chunks_init(&safe_chunks);
   size_t hash_match_count = 0;
   size_t expected_hash_count = point_count * sample_count * XRAY_MUL_OPERAND_FAMILIES;
   int parity = 1;
@@ -8634,13 +8725,18 @@ static void append_mul_full_workspace_combo_best_map_result(
     worst_pair_safe = worst_pair_safe &&
       xray_no_worst_pair_regression(point->candidate_current_worst) &&
       xray_no_worst_pair_regression(point->candidate_gmp_worst);
-    if (point->parity &&
-        point->hash_match_count == point_expected_hash_count &&
-        point_current_safe &&
-        point_backend_safe) {
+    int point_safe = point->parity &&
+      point->hash_match_count == point_expected_hash_count &&
+      point_current_safe &&
+      point_backend_safe;
+    if (point_safe) {
       safe_size_count++;
     }
+    xray_safe_size_chunks_observe(&safe_chunks, point->digits, point_safe);
   }
+  xray_safe_size_chunks_finish(&safe_chunks);
+  char longest_safe_size_chunk[32];
+  xray_safe_size_chunks_longest_text(&safe_chunks, longest_safe_size_chunk, sizeof(longest_safe_size_chunk));
 
   XrayBenchmarkResult result;
   memset(&result, 0, sizeof(result));
@@ -8669,7 +8765,7 @@ static void append_mul_full_workspace_combo_best_map_result(
   result.passed = parity && hash_gate;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=mul-large-toom-cmb-map policy=%s sizes=%s sizeCount=%zu minDigits=%zu routePolicy=l64d2-l48d4-l48d3 cut24103=leaf48depth4 cut52163=leaf48depth3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom-combo-best-map gmpClue=toom33-combo-full-window-best-map forcedCandidate=yes thresholdSafety=full-window candidate=full-ws-combo-best-map-l64d2-l48d4-l48d3 activeCandidate=best-known-by-size lowerCandidate=full-ws-combo-l64d2 middleCandidate=full-ws-combo-l48d4 upperCandidate=full-ws-combo-l48d3 baseline=current-scratch-mul oracle=mpz_mul candCurrentMax=%.3f candGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
+    "op=mul-large-toom-cmb-map policy=%s sizes=%s sizeCount=%zu minDigits=%zu routePolicy=l64d2-l48d4-l48d3 cut24103=leaf48depth4 cut52163=leaf48depth3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu safeSizeChunks=%s longestSafeSizeChunk=%s longestSafeSizeChunkCount=%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom-combo-best-map gmpClue=toom33-combo-full-window-best-map forcedCandidate=yes thresholdSafety=full-window candidate=full-ws-combo-best-map-l64d2-l48d4-l48d3 activeCandidate=best-known-by-size lowerCandidate=full-ws-combo-l64d2 middleCandidate=full-ws-combo-l48d4 upperCandidate=full-ws-combo-l48d3 baseline=current-scratch-mul oracle=mpz_mul candCurrentMax=%.3f candGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
     policy,
     sizes ? sizes : "unknown",
     point_count,
@@ -8680,6 +8776,9 @@ static void append_mul_full_workspace_combo_best_map_result(
     sample_count,
     safe_size_count,
     point_count,
+    safe_chunks.ranges,
+    longest_safe_size_chunk,
+    safe_chunks.longest_count,
     hash_match_count,
     expected_hash_count,
     hash_gate ? "matched" : "blocked",
@@ -9039,6 +9138,8 @@ static void append_mul_combo_best_map_control_result(
   if (!report || !policy || !points || point_count == 0) return;
   size_t required_stable = policy_required_stable_samples(sample_count);
   size_t safe_size_count = 0;
+  XraySafeSizeChunks safe_chunks;
+  xray_safe_size_chunks_init(&safe_chunks);
   size_t hash_match_count = 0;
   size_t expected_hash_count = point_count * sample_count * XRAY_MUL_OPERAND_FAMILIES;
   int parity = 1;
@@ -9097,14 +9198,19 @@ static void append_mul_combo_best_map_control_result(
     worst_pair_safe = worst_pair_safe &&
       xray_no_worst_pair_regression(point->candidate_current_worst) &&
       xray_no_worst_pair_regression(point->candidate_gmp_worst);
-    if (point->parity &&
-        point->hash_match_count == point_expected_hash_count &&
-        point_control_safe &&
-        point_current_safe &&
-        point_backend_safe) {
+    int point_safe = point->parity &&
+      point->hash_match_count == point_expected_hash_count &&
+      point_control_safe &&
+      point_current_safe &&
+      point_backend_safe;
+    if (point_safe) {
       safe_size_count++;
     }
+    xray_safe_size_chunks_observe(&safe_chunks, point->digits, point_safe);
   }
+  xray_safe_size_chunks_finish(&safe_chunks);
+  char longest_safe_size_chunk[32];
+  xray_safe_size_chunks_longest_text(&safe_chunks, longest_safe_size_chunk, sizeof(longest_safe_size_chunk));
 
   XrayBenchmarkResult result;
   memset(&result, 0, sizeof(result));
@@ -9134,7 +9240,7 @@ static void append_mul_combo_best_map_control_result(
   result.passed = parity && hash_gate;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=mul-large-toom-cmb-map-ctrl policy=%s sizes=%s sizeCount=%zu focus=worst-pair-outliers routePolicy=l64d2-l48d4-l48d3 cut24103=leaf48depth4 cut52163=leaf48depth3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom-combo-best-map-control gmpClue=toom33-combo-duplicate-control forcedCandidate=yes thresholdSafety=full-window duplicateControl=best-map-self controlSafety=%s candidate=full-ws-combo-best-map-l64d2-l48d4-l48d3 baseline=full-ws-combo-best-map-duplicate oracle=mpz_mul controlRatioMax=%.3f controlWorstMax=%.3f candCurrentMax=%.3f candGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
+    "op=mul-large-toom-cmb-map-ctrl policy=%s sizes=%s sizeCount=%zu focus=worst-pair-outliers routePolicy=l64d2-l48d4-l48d3 cut24103=leaf48depth4 cut52163=leaf48depth3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu safeSizeChunks=%s longestSafeSizeChunk=%s longestSafeSizeChunkCount=%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom-combo-best-map-control gmpClue=toom33-combo-duplicate-control forcedCandidate=yes thresholdSafety=full-window duplicateControl=best-map-self controlSafety=%s candidate=full-ws-combo-best-map-l64d2-l48d4-l48d3 baseline=full-ws-combo-best-map-duplicate oracle=mpz_mul controlRatioMax=%.3f controlWorstMax=%.3f candCurrentMax=%.3f candGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
     policy,
     sizes ? sizes : "unknown",
     point_count,
@@ -9144,6 +9250,9 @@ static void append_mul_combo_best_map_control_result(
     sample_count,
     safe_size_count,
     point_count,
+    safe_chunks.ranges,
+    longest_safe_size_chunk,
+    safe_chunks.longest_count,
     hash_match_count,
     expected_hash_count,
     hash_gate ? "matched" : "blocked",
@@ -9624,6 +9733,8 @@ static void append_mul_combo_tournament_result(
   if (!report || !policy || !points || point_count == 0) return;
   size_t required_stable = policy_required_stable_samples(sample_count);
   size_t safe_size_count = 0;
+  XraySafeSizeChunks safe_chunks;
+  xray_safe_size_chunks_init(&safe_chunks);
   size_t hash_match_count = 0;
   size_t expected_hash_count = point_count * sample_count * XRAY_MUL_OPERAND_FAMILIES * XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT;
   int parity = 1;
@@ -9678,7 +9789,9 @@ static void append_mul_combo_tournament_result(
     worst_pair_safe = worst_pair_safe &&
       xray_no_worst_pair_regression(point->route_current_worst[winner]) &&
       xray_no_worst_pair_regression(point->route_gmp_worst[winner]);
-    if (point_parity && point_hash_gate && point_current_safe && point_backend_safe) safe_size_count++;
+    int point_safe = point_parity && point_hash_gate && point_current_safe && point_backend_safe;
+    if (point_safe) safe_size_count++;
+    xray_safe_size_chunks_observe(&safe_chunks, point->digits, point_safe);
 
     size_t used = strlen(winner_list);
     if (used < sizeof(winner_list)) {
@@ -9690,6 +9803,10 @@ static void append_mul_combo_tournament_result(
         mul_combo_tournament_routes[winner].candidate);
     }
   }
+
+  xray_safe_size_chunks_finish(&safe_chunks);
+  char longest_safe_size_chunk[32];
+  xray_safe_size_chunks_longest_text(&safe_chunks, longest_safe_size_chunk, sizeof(longest_safe_size_chunk));
 
   XrayBenchmarkResult result;
   memset(&result, 0, sizeof(result));
@@ -9718,7 +9835,7 @@ static void append_mul_combo_tournament_result(
   result.passed = parity && hash_gate;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=mul-large-toom-cmb-tourn policy=%s sizes=%s sizeCount=%zu minDigits=%zu handoffDigits=%zu routes=l64d2,l48d3,l48d4,hand32768 routesTested=%u winnerList=%s operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom-combo-upper-tournament gmpClue=toom33-combo-upper-same-input-tournament forcedCandidate=yes thresholdSafety=upper-window candidate=best-combo-upper-tournament activeCandidate=winner-by-size baseline=current-scratch-mul oracle=mpz_mul winnerCurrentMax=%.3f winnerGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunTournament=yes",
+    "op=mul-large-toom-cmb-tourn policy=%s sizes=%s sizeCount=%zu minDigits=%zu handoffDigits=%zu routes=l64d2,l48d3,l48d4,hand32768 routesTested=%u winnerList=%s operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu safeSizeChunks=%s longestSafeSizeChunk=%s longestSafeSizeChunkCount=%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom-combo-upper-tournament gmpClue=toom33-combo-upper-same-input-tournament forcedCandidate=yes thresholdSafety=upper-window candidate=best-combo-upper-tournament activeCandidate=winner-by-size baseline=current-scratch-mul oracle=mpz_mul winnerCurrentMax=%.3f winnerGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunTournament=yes",
     policy,
     sizes ? sizes : "unknown",
     point_count,
@@ -9732,6 +9849,9 @@ static void append_mul_combo_tournament_result(
     sample_count,
     safe_size_count,
     point_count,
+    safe_chunks.ranges,
+    longest_safe_size_chunk,
+    safe_chunks.longest_count,
     hash_match_count,
     expected_hash_count,
     hash_gate ? "matched" : "blocked",
@@ -10804,6 +10924,8 @@ static void append_mul_combo_reuse_scout_result(
   if (!report || !policy || !points || point_count == 0) return;
   size_t required_stable = policy_required_stable_samples(sample_count);
   size_t safe_size_count = 0;
+  XraySafeSizeChunks safe_chunks;
+  xray_safe_size_chunks_init(&safe_chunks);
   size_t hash_match_count = 0;
   size_t expected_hash_count = point_count * sample_count * XRAY_MUL_OPERAND_FAMILIES;
   int parity = 1;
@@ -10861,14 +10983,19 @@ static void append_mul_combo_reuse_scout_result(
       xray_no_worst_pair_regression(point->candidate_baseline_worst) &&
       xray_no_worst_pair_regression(point->candidate_current_worst) &&
       xray_no_worst_pair_regression(point->candidate_gmp_worst);
-    if (point->parity &&
-        point->hash_match_count == point_expected_hash_count &&
-        point_baseline_safe &&
-        point_current_safe &&
-        point_backend_safe) {
+    int point_safe = point->parity &&
+      point->hash_match_count == point_expected_hash_count &&
+      point_baseline_safe &&
+      point_current_safe &&
+      point_backend_safe;
+    if (point_safe) {
       safe_size_count++;
     }
+    xray_safe_size_chunks_observe(&safe_chunks, point->digits, point_safe);
   }
+  xray_safe_size_chunks_finish(&safe_chunks);
+  char longest_safe_size_chunk[32];
+  xray_safe_size_chunks_longest_text(&safe_chunks, longest_safe_size_chunk, sizeof(longest_safe_size_chunk));
 
   XrayBenchmarkResult result;
   memset(&result, 0, sizeof(result));
@@ -10898,7 +11025,7 @@ static void append_mul_combo_reuse_scout_result(
   result.passed = parity && hash_gate;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=mul-large-toom-cmb-reuse policy=%s sizes=%s sizeCount=%zu minDigits=%zu routePolicy=tournament-winner-l48d4-l48d3 leafThreshold=48 depths=4,4,3,3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom-combo-reuse-workspace gmpClue=toom33-combo-reusable-workspace forcedCandidate=yes thresholdSafety=upper-window candidate=full-ws-combo-reuse-winner baseline=full-ws-combo-nonreuse-winner oracle=mpz_mul candBaseMax=%.3f candCurrentMax=%.3f candGmpMax=%.3f baseGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
+    "op=mul-large-toom-cmb-reuse policy=%s sizes=%s sizeCount=%zu minDigits=%zu routePolicy=tournament-winner-l48d4-l48d3 leafThreshold=48 depths=4,4,3,3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu safeSizeChunks=%s longestSafeSizeChunk=%s longestSafeSizeChunkCount=%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom-combo-reuse-workspace gmpClue=toom33-combo-reusable-workspace forcedCandidate=yes thresholdSafety=upper-window candidate=full-ws-combo-reuse-winner baseline=full-ws-combo-nonreuse-winner oracle=mpz_mul candBaseMax=%.3f candCurrentMax=%.3f candGmpMax=%.3f baseGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
     policy,
     sizes ? sizes : "unknown",
     point_count,
@@ -10909,6 +11036,9 @@ static void append_mul_combo_reuse_scout_result(
     sample_count,
     safe_size_count,
     point_count,
+    safe_chunks.ranges,
+    longest_safe_size_chunk,
+    safe_chunks.longest_count,
     hash_match_count,
     expected_hash_count,
     hash_gate ? "matched" : "blocked",
@@ -11055,6 +11185,8 @@ static void append_mul_toom4_top_reuse_result(
   if (!report || !policy || !points || point_count == 0) return;
   size_t required_stable = policy_required_stable_samples(sample_count);
   size_t safe_size_count = 0;
+  XraySafeSizeChunks safe_chunks;
+  xray_safe_size_chunks_init(&safe_chunks);
   size_t hash_match_count = 0;
   size_t expected_hash_count = point_count * sample_count * XRAY_MUL_OPERAND_FAMILIES;
   int parity = 1;
@@ -11112,14 +11244,19 @@ static void append_mul_toom4_top_reuse_result(
       xray_no_worst_pair_regression(point->candidate_baseline_worst) &&
       xray_no_worst_pair_regression(point->candidate_current_worst) &&
       xray_no_worst_pair_regression(point->candidate_gmp_worst);
-    if (point->parity &&
-        point->hash_match_count == point_expected_hash_count &&
-        point_baseline_safe &&
-        point_current_safe &&
-        point_backend_safe) {
+    int point_safe = point->parity &&
+      point->hash_match_count == point_expected_hash_count &&
+      point_baseline_safe &&
+      point_current_safe &&
+      point_backend_safe;
+    if (point_safe) {
       safe_size_count++;
     }
+    xray_safe_size_chunks_observe(&safe_chunks, point->digits, point_safe);
   }
+  xray_safe_size_chunks_finish(&safe_chunks);
+  char longest_safe_size_chunk[32];
+  xray_safe_size_chunks_longest_text(&safe_chunks, longest_safe_size_chunk, sizeof(longest_safe_size_chunk));
 
   XrayBenchmarkResult result;
   memset(&result, 0, sizeof(result));
@@ -11149,7 +11286,7 @@ static void append_mul_toom4_top_reuse_result(
   result.passed = parity && hash_gate;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=mul-large-toom4-top-reuse policy=%s sizes=%s sizeCount=%zu minDigits=%zu routePolicy=toom4-top-reuse-l48d3 leafThreshold=48 depthLimit=3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom4-top-reuse gmpClue=toom4-top-recursive-workspace-reuse forcedCandidate=yes thresholdSafety=upper-window candidate=full-ws-toom4-top-reuse-l48d3 baseline=full-ws-toom4-top-nonreuse-l48d3 currentBaseline=current-scratch-mul oracle=mpz_mul candBaseMax=%.3f candCurrentMax=%.3f candGmpMax=%.3f baseGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
+    "op=mul-large-toom4-top-reuse policy=%s sizes=%s sizeCount=%zu minDigits=%zu routePolicy=toom4-top-reuse-l48d3 leafThreshold=48 depthLimit=3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu safeSizeChunks=%s longestSafeSizeChunk=%s longestSafeSizeChunkCount=%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom4-top-reuse gmpClue=toom4-top-recursive-workspace-reuse forcedCandidate=yes thresholdSafety=upper-window candidate=full-ws-toom4-top-reuse-l48d3 baseline=full-ws-toom4-top-nonreuse-l48d3 currentBaseline=current-scratch-mul oracle=mpz_mul candBaseMax=%.3f candCurrentMax=%.3f candGmpMax=%.3f baseGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
     policy,
     sizes ? sizes : "unknown",
     point_count,
@@ -11160,6 +11297,9 @@ static void append_mul_toom4_top_reuse_result(
     sample_count,
     safe_size_count,
     point_count,
+    safe_chunks.ranges,
+    longest_safe_size_chunk,
+    safe_chunks.longest_count,
     hash_match_count,
     expected_hash_count,
     hash_gate ? "matched" : "blocked",
@@ -11300,6 +11440,8 @@ static void append_mul_toom4_top_handoff_result(
   if (!report || !policy || !points || point_count == 0) return;
   size_t required_stable = policy_required_stable_samples(sample_count);
   size_t safe_size_count = 0;
+  XraySafeSizeChunks safe_chunks;
+  xray_safe_size_chunks_init(&safe_chunks);
   size_t hash_match_count = 0;
   size_t expected_hash_count = point_count * sample_count * XRAY_MUL_OPERAND_FAMILIES;
   int parity = 1;
@@ -11357,14 +11499,19 @@ static void append_mul_toom4_top_handoff_result(
       xray_no_worst_pair_regression(point->candidate_baseline_worst) &&
       xray_no_worst_pair_regression(point->candidate_current_worst) &&
       xray_no_worst_pair_regression(point->candidate_gmp_worst);
-    if (point->parity &&
-        point->hash_match_count == point_expected_hash_count &&
-        point_baseline_safe &&
-        point_current_safe &&
-        point_backend_safe) {
+    int point_safe = point->parity &&
+      point->hash_match_count == point_expected_hash_count &&
+      point_baseline_safe &&
+      point_current_safe &&
+      point_backend_safe;
+    if (point_safe) {
       safe_size_count++;
     }
+    xray_safe_size_chunks_observe(&safe_chunks, point->digits, point_safe);
   }
+  xray_safe_size_chunks_finish(&safe_chunks);
+  char longest_safe_size_chunk[32];
+  xray_safe_size_chunks_longest_text(&safe_chunks, longest_safe_size_chunk, sizeof(longest_safe_size_chunk));
 
   XrayBenchmarkResult result;
   memset(&result, 0, sizeof(result));
@@ -11394,7 +11541,7 @@ static void append_mul_toom4_top_handoff_result(
   result.passed = parity && hash_gate;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=mul-large-toom4-top-handoff policy=%s sizes=%s sizeCount=%zu minDigits=%zu routePolicy=toom4-top-inner-l64d2-vs-l48d3 candLeaf=64 candDepth=2 baseLeaf=48 baseDepth=3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom4-top-handoff gmpClue=toom4-top-inner-handoff-map forcedCandidate=yes thresholdSafety=upper-window candidate=full-ws-toom4-top-reuse-l64d2 baseline=full-ws-toom4-top-reuse-l48d3 currentBaseline=current-scratch-mul oracle=mpz_mul candBaseMax=%.3f candCurrentMax=%.3f candGmpMax=%.3f baseGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
+    "op=mul-large-toom4-top-handoff policy=%s sizes=%s sizeCount=%zu minDigits=%zu routePolicy=toom4-top-inner-l64d2-vs-l48d3 candLeaf=64 candDepth=2 baseLeaf=48 baseDepth=3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu safeSizeChunks=%s longestSafeSizeChunk=%s longestSafeSizeChunkCount=%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom4-top-handoff gmpClue=toom4-top-inner-handoff-map forcedCandidate=yes thresholdSafety=upper-window candidate=full-ws-toom4-top-reuse-l64d2 baseline=full-ws-toom4-top-reuse-l48d3 currentBaseline=current-scratch-mul oracle=mpz_mul candBaseMax=%.3f candCurrentMax=%.3f candGmpMax=%.3f baseGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
     policy,
     sizes ? sizes : "unknown",
     point_count,
@@ -11405,6 +11552,9 @@ static void append_mul_toom4_top_handoff_result(
     sample_count,
     safe_size_count,
     point_count,
+    safe_chunks.ranges,
+    longest_safe_size_chunk,
+    safe_chunks.longest_count,
     hash_match_count,
     expected_hash_count,
     hash_gate ? "matched" : "blocked",
@@ -11545,6 +11695,8 @@ static void append_mul_toom4_top_factored_div_result(
   if (!report || !policy || !points || point_count == 0) return;
   size_t required_stable = policy_required_stable_samples(sample_count);
   size_t safe_size_count = 0;
+  XraySafeSizeChunks safe_chunks;
+  xray_safe_size_chunks_init(&safe_chunks);
   size_t hash_match_count = 0;
   size_t expected_hash_count = point_count * sample_count * XRAY_MUL_OPERAND_FAMILIES;
   int parity = 1;
@@ -11602,14 +11754,19 @@ static void append_mul_toom4_top_factored_div_result(
       xray_no_worst_pair_regression(point->candidate_baseline_worst) &&
       xray_no_worst_pair_regression(point->candidate_current_worst) &&
       xray_no_worst_pair_regression(point->candidate_gmp_worst);
-    if (point->parity &&
-        point->hash_match_count == point_expected_hash_count &&
-        point_baseline_safe &&
-        point_current_safe &&
-        point_backend_safe) {
+    int point_safe = point->parity &&
+      point->hash_match_count == point_expected_hash_count &&
+      point_baseline_safe &&
+      point_current_safe &&
+      point_backend_safe;
+    if (point_safe) {
       safe_size_count++;
     }
+    xray_safe_size_chunks_observe(&safe_chunks, point->digits, point_safe);
   }
+  xray_safe_size_chunks_finish(&safe_chunks);
+  char longest_safe_size_chunk[32];
+  xray_safe_size_chunks_longest_text(&safe_chunks, longest_safe_size_chunk, sizeof(longest_safe_size_chunk));
 
   XrayBenchmarkResult result;
   memset(&result, 0, sizeof(result));
@@ -11639,7 +11796,7 @@ static void append_mul_toom4_top_factored_div_result(
   result.passed = parity && hash_gate;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=mul-large-toom4-top-fdiv policy=%s sizes=%s sizeCount=%zu minDigits=%zu routePolicy=toom4-top-factored-div-l48d3 leafThreshold=48 depthLimit=3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom4-top-factored-div gmpClue=toom4-top-factored-exact-div forcedCandidate=yes thresholdSafety=upper-window candidate=full-ws-toom4-top-reuse-factored-div-l48d3 baseline=full-ws-toom4-top-reuse-l48d3 currentBaseline=current-scratch-mul oracle=mpz_mul candBaseMax=%.3f candCurrentMax=%.3f candGmpMax=%.3f baseGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
+    "op=mul-large-toom4-top-fdiv policy=%s sizes=%s sizeCount=%zu minDigits=%zu routePolicy=toom4-top-factored-div-l48d3 leafThreshold=48 depthLimit=3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu safeSizeChunks=%s longestSafeSizeChunk=%s longestSafeSizeChunkCount=%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom4-top-factored-div gmpClue=toom4-top-factored-exact-div forcedCandidate=yes thresholdSafety=upper-window candidate=full-ws-toom4-top-reuse-factored-div-l48d3 baseline=full-ws-toom4-top-reuse-l48d3 currentBaseline=current-scratch-mul oracle=mpz_mul candBaseMax=%.3f candCurrentMax=%.3f candGmpMax=%.3f baseGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
     policy,
     sizes ? sizes : "unknown",
     point_count,
@@ -11650,6 +11807,9 @@ static void append_mul_toom4_top_factored_div_result(
     sample_count,
     safe_size_count,
     point_count,
+    safe_chunks.ranges,
+    longest_safe_size_chunk,
+    safe_chunks.longest_count,
     hash_match_count,
     expected_hash_count,
     hash_gate ? "matched" : "blocked",
@@ -11790,6 +11950,8 @@ static void append_mul_toom4_top_vs_combo_reuse_result(
   if (!report || !policy || !points || point_count == 0) return;
   size_t required_stable = policy_required_stable_samples(sample_count);
   size_t safe_size_count = 0;
+  XraySafeSizeChunks safe_chunks;
+  xray_safe_size_chunks_init(&safe_chunks);
   size_t hash_match_count = 0;
   size_t expected_hash_count = point_count * sample_count * XRAY_MUL_OPERAND_FAMILIES;
   int parity = 1;
@@ -11847,14 +12009,19 @@ static void append_mul_toom4_top_vs_combo_reuse_result(
       xray_no_worst_pair_regression(point->candidate_baseline_worst) &&
       xray_no_worst_pair_regression(point->candidate_current_worst) &&
       xray_no_worst_pair_regression(point->candidate_gmp_worst);
-    if (point->parity &&
-        point->hash_match_count == point_expected_hash_count &&
-        point_baseline_safe &&
-        point_current_safe &&
-        point_backend_safe) {
+    int point_safe = point->parity &&
+      point->hash_match_count == point_expected_hash_count &&
+      point_baseline_safe &&
+      point_current_safe &&
+      point_backend_safe;
+    if (point_safe) {
       safe_size_count++;
     }
+    xray_safe_size_chunks_observe(&safe_chunks, point->digits, point_safe);
   }
+  xray_safe_size_chunks_finish(&safe_chunks);
+  char longest_safe_size_chunk[32];
+  xray_safe_size_chunks_longest_text(&safe_chunks, longest_safe_size_chunk, sizeof(longest_safe_size_chunk));
 
   XrayBenchmarkResult result;
   memset(&result, 0, sizeof(result));
@@ -11884,7 +12051,7 @@ static void append_mul_toom4_top_vs_combo_reuse_result(
   result.passed = parity && hash_gate;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=mul-large-toom4-top-vs-cmb policy=%s sizes=%s sizeCount=%zu minDigits=%zu routePolicy=toom4-top-reuse-vs-combo-l48d3 leafThreshold=48 depthLimit=3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom4-top-vs-combo-reuse gmpClue=toom4-top-reuse-vs-combo-l48d3 forcedCandidate=yes thresholdSafety=upper-window candidate=full-ws-toom4-top-reuse-l48d3 baseline=full-ws-combo-reuse-l48d3 currentBaseline=current-scratch-mul oracle=mpz_mul candBaseMax=%.3f candCurrentMax=%.3f candGmpMax=%.3f baseGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
+    "op=mul-large-toom4-top-vs-cmb policy=%s sizes=%s sizeCount=%zu minDigits=%zu routePolicy=toom4-top-reuse-vs-combo-l48d3 leafThreshold=48 depthLimit=3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu safeSizeChunks=%s longestSafeSizeChunk=%s longestSafeSizeChunkCount=%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom4-top-vs-combo-reuse gmpClue=toom4-top-reuse-vs-combo-l48d3 forcedCandidate=yes thresholdSafety=upper-window candidate=full-ws-toom4-top-reuse-l48d3 baseline=full-ws-combo-reuse-l48d3 currentBaseline=current-scratch-mul oracle=mpz_mul candBaseMax=%.3f candCurrentMax=%.3f candGmpMax=%.3f baseGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
     policy,
     sizes ? sizes : "unknown",
     point_count,
@@ -11895,6 +12062,9 @@ static void append_mul_toom4_top_vs_combo_reuse_result(
     sample_count,
     safe_size_count,
     point_count,
+    safe_chunks.ranges,
+    longest_safe_size_chunk,
+    safe_chunks.longest_count,
     hash_match_count,
     expected_hash_count,
     hash_gate ? "matched" : "blocked",
@@ -12035,6 +12205,8 @@ static void append_mul_combo_reuse_map_result(
   if (!report || !policy || !points || point_count == 0) return;
   size_t required_stable = policy_required_stable_samples(sample_count);
   size_t safe_size_count = 0;
+  XraySafeSizeChunks safe_chunks;
+  xray_safe_size_chunks_init(&safe_chunks);
   size_t hash_match_count = 0;
   size_t expected_hash_count = point_count * sample_count * XRAY_MUL_OPERAND_FAMILIES;
   int parity = 1;
@@ -12092,14 +12264,19 @@ static void append_mul_combo_reuse_map_result(
       xray_no_worst_pair_regression(point->candidate_baseline_worst) &&
       xray_no_worst_pair_regression(point->candidate_current_worst) &&
       xray_no_worst_pair_regression(point->candidate_gmp_worst);
-    if (point->parity &&
-        point->hash_match_count == point_expected_hash_count &&
-        point_baseline_safe &&
-        point_current_safe &&
-        point_backend_safe) {
+    int point_safe = point->parity &&
+      point->hash_match_count == point_expected_hash_count &&
+      point_baseline_safe &&
+      point_current_safe &&
+      point_backend_safe;
+    if (point_safe) {
       safe_size_count++;
     }
+    xray_safe_size_chunks_observe(&safe_chunks, point->digits, point_safe);
   }
+  xray_safe_size_chunks_finish(&safe_chunks);
+  char longest_safe_size_chunk[32];
+  xray_safe_size_chunks_longest_text(&safe_chunks, longest_safe_size_chunk, sizeof(longest_safe_size_chunk));
 
   XrayBenchmarkResult result;
   memset(&result, 0, sizeof(result));
@@ -12129,7 +12306,7 @@ static void append_mul_combo_reuse_map_result(
   result.passed = parity && hash_gate;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=mul-large-toom-cmb-reuse-map policy=%s sizes=%s sizeCount=%zu minDigits=%zu routePolicy=reuse-l64d2-l48d4-l48d3 cut24103=leaf48depth4 cut52163=leaf48depth3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom-combo-reuse-map gmpClue=toom33-combo-reuse-map-full-window forcedCandidate=yes thresholdSafety=full-window candidate=full-ws-combo-reuse-map-l64d2-l48d4-l48d3 baseline=full-ws-combo-nonreuse-map currentBaseline=current-scratch-mul oracle=mpz_mul candBaseMax=%.3f candCurrentMax=%.3f candGmpMax=%.3f baseGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
+    "op=mul-large-toom-cmb-reuse-map policy=%s sizes=%s sizeCount=%zu minDigits=%zu routePolicy=reuse-l64d2-l48d4-l48d3 cut24103=leaf48depth4 cut52163=leaf48depth3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu safeSizeChunks=%s longestSafeSizeChunk=%s longestSafeSizeChunkCount=%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom-combo-reuse-map gmpClue=toom33-combo-reuse-map-full-window forcedCandidate=yes thresholdSafety=full-window candidate=full-ws-combo-reuse-map-l64d2-l48d4-l48d3 baseline=full-ws-combo-nonreuse-map currentBaseline=current-scratch-mul oracle=mpz_mul candBaseMax=%.3f candCurrentMax=%.3f candGmpMax=%.3f baseGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
     policy,
     sizes ? sizes : "unknown",
     point_count,
@@ -12140,6 +12317,9 @@ static void append_mul_combo_reuse_map_result(
     sample_count,
     safe_size_count,
     point_count,
+    safe_chunks.ranges,
+    longest_safe_size_chunk,
+    safe_chunks.longest_count,
     hash_match_count,
     expected_hash_count,
     hash_gate ? "matched" : "blocked",
@@ -12252,6 +12432,8 @@ static void append_mul_combo_reuse_neg2_map_result(
   if (!report || !policy || !points || point_count == 0) return;
   size_t required_stable = policy_required_stable_samples(sample_count);
   size_t safe_size_count = 0;
+  XraySafeSizeChunks safe_chunks;
+  xray_safe_size_chunks_init(&safe_chunks);
   size_t hash_match_count = 0;
   size_t expected_hash_count = point_count * sample_count * XRAY_MUL_OPERAND_FAMILIES;
   int parity = 1;
@@ -12309,14 +12491,19 @@ static void append_mul_combo_reuse_neg2_map_result(
       xray_no_worst_pair_regression(point->candidate_baseline_worst) &&
       xray_no_worst_pair_regression(point->candidate_current_worst) &&
       xray_no_worst_pair_regression(point->candidate_gmp_worst);
-    if (point->parity &&
-        point->hash_match_count == point_expected_hash_count &&
-        point_baseline_safe &&
-        point_current_safe &&
-        point_backend_safe) {
+    int point_safe = point->parity &&
+      point->hash_match_count == point_expected_hash_count &&
+      point_baseline_safe &&
+      point_current_safe &&
+      point_backend_safe;
+    if (point_safe) {
       safe_size_count++;
     }
+    xray_safe_size_chunks_observe(&safe_chunks, point->digits, point_safe);
   }
+  xray_safe_size_chunks_finish(&safe_chunks);
+  char longest_safe_size_chunk[32];
+  xray_safe_size_chunks_longest_text(&safe_chunks, longest_safe_size_chunk, sizeof(longest_safe_size_chunk));
 
   XrayBenchmarkResult result;
   memset(&result, 0, sizeof(result));
@@ -12346,7 +12533,7 @@ static void append_mul_combo_reuse_neg2_map_result(
   result.passed = parity && hash_gate;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=mul-large-toom-cmb-neg2 policy=%s sizes=%s sizeCount=%zu minDigits=%zu routePolicy=reuse-neg2-l64d2-l48d4-l48d3 cut24103=leaf48depth4 cut52163=leaf48depth3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom-combo-neg2 gmpClue=toom33-combo-neg2-eval forcedCandidate=yes thresholdSafety=upper-window candidate=full-ws-combo-reuse-neg2-l64d2-l48d4-l48d3 baseline=full-ws-combo-reuse-map-l64d2-l48d4-l48d3 currentBaseline=current-scratch-mul oracle=mpz_mul candBaseMax=%.3f candCurrentMax=%.3f candGmpMax=%.3f baseGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
+    "op=mul-large-toom-cmb-neg2 policy=%s sizes=%s sizeCount=%zu minDigits=%zu routePolicy=reuse-neg2-l64d2-l48d4-l48d3 cut24103=leaf48depth4 cut52163=leaf48depth3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu safeSizeChunks=%s longestSafeSizeChunk=%s longestSafeSizeChunkCount=%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom-combo-neg2 gmpClue=toom33-combo-neg2-eval forcedCandidate=yes thresholdSafety=upper-window candidate=full-ws-combo-reuse-neg2-l64d2-l48d4-l48d3 baseline=full-ws-combo-reuse-map-l64d2-l48d4-l48d3 currentBaseline=current-scratch-mul oracle=mpz_mul candBaseMax=%.3f candCurrentMax=%.3f candGmpMax=%.3f baseGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
     policy,
     sizes ? sizes : "unknown",
     point_count,
@@ -12357,6 +12544,9 @@ static void append_mul_combo_reuse_neg2_map_result(
     sample_count,
     safe_size_count,
     point_count,
+    safe_chunks.ranges,
+    longest_safe_size_chunk,
+    safe_chunks.longest_count,
     hash_match_count,
     expected_hash_count,
     hash_gate ? "matched" : "blocked",
@@ -12478,6 +12668,8 @@ static void append_mul_toom5_top_vs_combo_reuse_result(
   if (!report || !policy || !points || point_count == 0 || !operation || !name_suffix || !route_policy || !candidate || !baseline || !feature_gate || !gmp_clue) return;
   size_t required_stable = policy_required_stable_samples(sample_count);
   size_t safe_size_count = 0;
+  XraySafeSizeChunks safe_chunks;
+  xray_safe_size_chunks_init(&safe_chunks);
   size_t hash_match_count = 0;
   size_t expected_hash_count = point_count * sample_count * XRAY_MUL_OPERAND_FAMILIES;
   int parity = 1;
@@ -12535,14 +12727,19 @@ static void append_mul_toom5_top_vs_combo_reuse_result(
       xray_no_worst_pair_regression(point->candidate_baseline_worst) &&
       xray_no_worst_pair_regression(point->candidate_current_worst) &&
       xray_no_worst_pair_regression(point->candidate_gmp_worst);
-    if (point->parity &&
-        point->hash_match_count == point_expected_hash_count &&
-        point_baseline_safe &&
-        point_current_safe &&
-        point_backend_safe) {
+    int point_safe = point->parity &&
+      point->hash_match_count == point_expected_hash_count &&
+      point_baseline_safe &&
+      point_current_safe &&
+      point_backend_safe;
+    if (point_safe) {
       safe_size_count++;
     }
+    xray_safe_size_chunks_observe(&safe_chunks, point->digits, point_safe);
   }
+  xray_safe_size_chunks_finish(&safe_chunks);
+  char longest_safe_size_chunk[32];
+  xray_safe_size_chunks_longest_text(&safe_chunks, longest_safe_size_chunk, sizeof(longest_safe_size_chunk));
 
   XrayBenchmarkResult result;
   memset(&result, 0, sizeof(result));
@@ -12572,7 +12769,7 @@ static void append_mul_toom5_top_vs_combo_reuse_result(
   result.passed = parity && hash_gate;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=%s policy=%s sizes=%s sizeCount=%zu minDigits=%zu routePolicy=%s leafThreshold=%zu depthLimit=%zu operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=%s gmpClue=%s forcedCandidate=yes thresholdSafety=smoke-window candidate=%s baseline=%s currentBaseline=current-scratch-mul oracle=mpz_mul candBaseMax=%.3f candCurrentMax=%.3f candGmpMax=%.3f baseGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
+    "op=%s policy=%s sizes=%s sizeCount=%zu minDigits=%zu routePolicy=%s leafThreshold=%zu depthLimit=%zu operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu safeSizeChunks=%s longestSafeSizeChunk=%s longestSafeSizeChunkCount=%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=%s gmpClue=%s forcedCandidate=yes thresholdSafety=smoke-window candidate=%s baseline=%s currentBaseline=current-scratch-mul oracle=mpz_mul candBaseMax=%.3f candCurrentMax=%.3f candGmpMax=%.3f baseGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
     operation,
     policy,
     sizes ? sizes : "unknown",
@@ -12587,6 +12784,9 @@ static void append_mul_toom5_top_vs_combo_reuse_result(
     sample_count,
     safe_size_count,
     point_count,
+    safe_chunks.ranges,
+    longest_safe_size_chunk,
+    safe_chunks.longest_count,
     hash_match_count,
     expected_hash_count,
     hash_gate ? "matched" : "blocked",
@@ -12717,6 +12917,8 @@ static void append_mul_combo_reuse_ipdiv_map_result(
   if (!report || !policy || !points || point_count == 0) return;
   size_t required_stable = policy_required_stable_samples(sample_count);
   size_t safe_size_count = 0;
+  XraySafeSizeChunks safe_chunks;
+  xray_safe_size_chunks_init(&safe_chunks);
   size_t hash_match_count = 0;
   size_t expected_hash_count = point_count * sample_count * XRAY_MUL_OPERAND_FAMILIES;
   int parity = 1;
@@ -12774,14 +12976,19 @@ static void append_mul_combo_reuse_ipdiv_map_result(
       xray_no_worst_pair_regression(point->candidate_baseline_worst) &&
       xray_no_worst_pair_regression(point->candidate_current_worst) &&
       xray_no_worst_pair_regression(point->candidate_gmp_worst);
-    if (point->parity &&
-        point->hash_match_count == point_expected_hash_count &&
-        point_baseline_safe &&
-        point_current_safe &&
-        point_backend_safe) {
+    int point_safe = point->parity &&
+      point->hash_match_count == point_expected_hash_count &&
+      point_baseline_safe &&
+      point_current_safe &&
+      point_backend_safe;
+    if (point_safe) {
       safe_size_count++;
     }
+    xray_safe_size_chunks_observe(&safe_chunks, point->digits, point_safe);
   }
+  xray_safe_size_chunks_finish(&safe_chunks);
+  char longest_safe_size_chunk[32];
+  xray_safe_size_chunks_longest_text(&safe_chunks, longest_safe_size_chunk, sizeof(longest_safe_size_chunk));
 
   XrayBenchmarkResult result;
   memset(&result, 0, sizeof(result));
@@ -12811,7 +13018,7 @@ static void append_mul_combo_reuse_ipdiv_map_result(
   result.passed = parity && hash_gate;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=mul-large-toom-cmb-ripdiv policy=%s sizes=%s sizeCount=%zu minDigits=%zu routePolicy=reuse-ipdiv-l64d2-l48d4-l48d3 cut24103=leaf48depth4 cut52163=leaf48depth3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom-combo-reuse-ipdiv-map gmpClue=toom33-combo-reuse-inplace-full-window forcedCandidate=yes thresholdSafety=full-window candidate=full-ws-combo-reuse-ipdiv-map-l64d2-l48d4-l48d3 baseline=full-ws-combo-reuse-map-l64d2-l48d4-l48d3 currentBaseline=current-scratch-mul oracle=mpz_mul candBaseMax=%.3f candCurrentMax=%.3f candGmpMax=%.3f baseGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
+    "op=mul-large-toom-cmb-ripdiv policy=%s sizes=%s sizeCount=%zu minDigits=%zu routePolicy=reuse-ipdiv-l64d2-l48d4-l48d3 cut24103=leaf48depth4 cut52163=leaf48depth3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu safeSizeChunks=%s longestSafeSizeChunk=%s longestSafeSizeChunkCount=%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom-combo-reuse-ipdiv-map gmpClue=toom33-combo-reuse-inplace-full-window forcedCandidate=yes thresholdSafety=full-window candidate=full-ws-combo-reuse-ipdiv-map-l64d2-l48d4-l48d3 baseline=full-ws-combo-reuse-map-l64d2-l48d4-l48d3 currentBaseline=current-scratch-mul oracle=mpz_mul candBaseMax=%.3f candCurrentMax=%.3f candGmpMax=%.3f baseGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
     policy,
     sizes ? sizes : "unknown",
     point_count,
@@ -12822,6 +13029,9 @@ static void append_mul_combo_reuse_ipdiv_map_result(
     sample_count,
     safe_size_count,
     point_count,
+    safe_chunks.ranges,
+    longest_safe_size_chunk,
+    safe_chunks.longest_count,
     hash_match_count,
     expected_hash_count,
     hash_gate ? "matched" : "blocked",
@@ -13105,6 +13315,8 @@ static void append_mul_combo_reuse_map_gmp_control_result(
   if (!report || !policy || !points || point_count == 0) return;
   size_t required_stable = policy_required_stable_samples(sample_count);
   size_t safe_size_count = 0;
+  XraySafeSizeChunks safe_chunks;
+  xray_safe_size_chunks_init(&safe_chunks);
   size_t hash_match_count = 0;
   size_t expected_hash_count = point_count * sample_count * XRAY_MUL_OPERAND_FAMILIES;
   int parity = 1;
@@ -13167,14 +13379,19 @@ static void append_mul_combo_reuse_map_gmp_control_result(
       xray_no_worst_pair_regression(point->candidate_current_worst) &&
       xray_no_worst_pair_regression(point->candidate_gmp_worst) &&
       point->baseline_gmp_worst <= 1.25;
-    if (point->parity &&
-        point->hash_match_count == point_expected_hash_count &&
-        point_control_safe &&
-        point_current_safe &&
-        point_backend_safe) {
+    int point_safe = point->parity &&
+      point->hash_match_count == point_expected_hash_count &&
+      point_control_safe &&
+      point_current_safe &&
+      point_backend_safe;
+    if (point_safe) {
       safe_size_count++;
     }
+    xray_safe_size_chunks_observe(&safe_chunks, point->digits, point_safe);
   }
+  xray_safe_size_chunks_finish(&safe_chunks);
+  char longest_safe_size_chunk[32];
+  xray_safe_size_chunks_longest_text(&safe_chunks, longest_safe_size_chunk, sizeof(longest_safe_size_chunk));
 
   XrayBenchmarkResult result;
   memset(&result, 0, sizeof(result));
@@ -13204,7 +13421,7 @@ static void append_mul_combo_reuse_map_gmp_control_result(
   result.passed = parity && hash_gate;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=mul-large-toom-cmb-gmpctrl policy=%s sizes=%s sizeCount=%zu minDigits=%zu routePolicy=reuse-l64d2-l48d4-l48d3 cut24103=leaf48depth4 cut52163=leaf48depth3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom-combo-gmp-control gmpClue=mpz-mul-duplicate-control forcedCandidate=yes thresholdSafety=upper-window candidate=full-ws-combo-reuse-map-l64d2-l48d4-l48d3 currentBaseline=current-scratch-mul baseline=mpz_mul-duplicate oracle=mpz_mul-primary gmpControlSafety=%s candGmpMax=%.3f candGmpDuplicateMax=%.3f currentGmpMax=%.3f gmpControlRatioMax=%.3f gmpControlWorstMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
+    "op=mul-large-toom-cmb-gmpctrl policy=%s sizes=%s sizeCount=%zu minDigits=%zu routePolicy=reuse-l64d2-l48d4-l48d3 cut24103=leaf48depth4 cut52163=leaf48depth3 operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu safeSizeChunks=%s longestSafeSizeChunk=%s longestSafeSizeChunkCount=%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=large-multiply-cpu-toom-combo-gmp-control gmpClue=mpz-mul-duplicate-control forcedCandidate=yes thresholdSafety=upper-window candidate=full-ws-combo-reuse-map-l64d2-l48d4-l48d3 currentBaseline=current-scratch-mul baseline=mpz_mul-duplicate oracle=mpz_mul-primary gmpControlSafety=%s candGmpMax=%.3f candGmpDuplicateMax=%.3f currentGmpMax=%.3f gmpControlRatioMax=%.3f gmpControlWorstMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
     policy,
     sizes ? sizes : "unknown",
     point_count,
@@ -13215,6 +13432,9 @@ static void append_mul_combo_reuse_map_gmp_control_result(
     sample_count,
     safe_size_count,
     point_count,
+    safe_chunks.ranges,
+    longest_safe_size_chunk,
+    safe_chunks.longest_count,
     hash_match_count,
     expected_hash_count,
     hash_gate ? "matched" : "blocked",
@@ -13612,6 +13832,8 @@ static void append_mul_full_workspace_depth_scout_result(
     baseline_interp_flags);
   size_t required_stable = policy_required_stable_samples(sample_count);
   size_t safe_size_count = 0;
+  XraySafeSizeChunks safe_chunks;
+  xray_safe_size_chunks_init(&safe_chunks);
   size_t hash_match_count = 0;
   size_t expected_hash_count = point_count * sample_count * XRAY_MUL_OPERAND_FAMILIES;
   int parity = 1;
@@ -13669,14 +13891,19 @@ static void append_mul_full_workspace_depth_scout_result(
       xray_no_worst_pair_regression(point->candidate_baseline_worst) &&
       xray_no_worst_pair_regression(point->candidate_current_worst) &&
       xray_no_worst_pair_regression(point->candidate_gmp_worst);
-    if (point->parity &&
-        point->hash_match_count == point_expected_hash_count &&
-        point_baseline_safe &&
-        point_current_safe &&
-        point_backend_safe) {
+    int point_safe = point->parity &&
+      point->hash_match_count == point_expected_hash_count &&
+      point_baseline_safe &&
+      point_current_safe &&
+      point_backend_safe;
+    if (point_safe) {
       safe_size_count++;
     }
+    xray_safe_size_chunks_observe(&safe_chunks, point->digits, point_safe);
   }
+  xray_safe_size_chunks_finish(&safe_chunks);
+  char longest_safe_size_chunk[32];
+  xray_safe_size_chunks_longest_text(&safe_chunks, longest_safe_size_chunk, sizeof(longest_safe_size_chunk));
 
   XrayBenchmarkResult result;
   memset(&result, 0, sizeof(result));
@@ -13706,7 +13933,7 @@ static void append_mul_full_workspace_depth_scout_result(
   result.passed = parity && hash_gate;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=%s policy=%s sizes=%s sizeCount=%zu minDigits=%zu leafThreshold=%zu baseLeaf=%zu candLeaf=%zu baseDepth=%zu candDepth=%zu operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=%s gmpClue=%s forcedCandidate=yes thresholdSafety=%s candidate=%s baseline=%s oracle=mpz_mul candBaseMax=%.3f candCurrentMax=%.3f candGmpMax=%.3f baseGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
+    "op=%s policy=%s sizes=%s sizeCount=%zu minDigits=%zu leafThreshold=%zu baseLeaf=%zu candLeaf=%zu baseDepth=%zu candDepth=%zu operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu safeSizeChunks=%s longestSafeSizeChunk=%s longestSafeSizeChunkCount=%zu hashSafe=%zu/%zu hashGate=%s parity=%s adoption=%s replacementReady=false noAutoRoute=1 featureGate=%s gmpClue=%s forcedCandidate=yes thresholdSafety=%s candidate=%s baseline=%s oracle=mpz_mul candBaseMax=%.3f candCurrentMax=%.3f candGmpMax=%.3f baseGmpMax=%.3f currentGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch sameInput=yes sameRunAudit=yes",
     labels.aggregate_operation,
     policy,
     sizes ? sizes : "unknown",
@@ -13723,6 +13950,9 @@ static void append_mul_full_workspace_depth_scout_result(
     sample_count,
     safe_size_count,
     point_count,
+    safe_chunks.ranges,
+    longest_safe_size_chunk,
+    safe_chunks.longest_count,
     hash_match_count,
     expected_hash_count,
     hash_gate ? "matched" : "blocked",
