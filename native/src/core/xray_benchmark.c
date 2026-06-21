@@ -17537,6 +17537,122 @@ static void run_mul_unroll4_deep_vs_gmp_probe_case(XrayBenchmarkReport *report, 
     "mul-unroll4-deep-vs-gmp",
     "kernel mul unroll4 deep versus GMP");
 }
+
+static void append_mul_backend_gap_summary_result(
+  XrayBenchmarkReport *report,
+  size_t first_result_index,
+  const char *sizes_label,
+  size_t leaf_threshold) {
+  if (!report || first_result_index >= report->result_count) return;
+  size_t point_count = 0;
+  size_t safe_size_count = 0;
+  size_t point_sample_count = 0;
+  size_t required_stable = 0;
+  size_t last_digits = 0;
+  unsigned long long candidate_us = 0;
+  unsigned long long gmp_us = 0;
+  double max_ratio = 0.0;
+  double max_worst_pair_ratio = 0.0;
+  int parity = 1;
+  int ratio_safe = 1;
+  int stable_safe = 1;
+  int worst_pair_safe = 1;
+  XraySafeSizeChunks safe_chunks;
+  xray_safe_size_chunks_init(&safe_chunks);
+
+  for (size_t index = first_result_index; index < report->result_count; ++index) {
+    const XrayBenchmarkResult *row = &report->results[index];
+    if (strcmp(row->operation, "mul-unroll4-vs-gmp") != 0) continue;
+    size_t point_required = kernel_required_stable_samples(row->sample_count);
+    double limit = row->max_allowed_speed_ratio > 0.0 ? row->max_allowed_speed_ratio : 0.98;
+    int point_ratio_safe = row->speed_ratio > 0.0 && row->speed_ratio <= limit;
+    int point_stable_safe = row->stable_sample_count >= point_required;
+    int point_worst_safe = xray_no_worst_pair_regression(row->worst_pair_ratio);
+    int point_safe = row->parity_verified && point_ratio_safe && point_stable_safe && point_worst_safe;
+
+    point_count++;
+    last_digits = row->digits;
+    if (row->scratch_us > candidate_us) candidate_us = row->scratch_us;
+    if (row->gmp_us > gmp_us) gmp_us = row->gmp_us;
+    if (row->speed_ratio > max_ratio) max_ratio = row->speed_ratio;
+    if (row->worst_pair_ratio > max_worst_pair_ratio) max_worst_pair_ratio = row->worst_pair_ratio;
+    if (row->sample_count > point_sample_count) point_sample_count = row->sample_count;
+    if (point_required > required_stable) required_stable = point_required;
+    parity = parity && row->parity_verified;
+    ratio_safe = ratio_safe && point_ratio_safe;
+    stable_safe = stable_safe && point_stable_safe;
+    worst_pair_safe = worst_pair_safe && point_worst_safe;
+    if (point_safe) safe_size_count++;
+    xray_safe_size_chunks_observe(&safe_chunks, row->digits, point_safe);
+  }
+
+  if (point_count == 0) return;
+  xray_safe_size_chunks_finish(&safe_chunks);
+  char longest_safe_size_chunk[32];
+  xray_safe_size_chunks_longest_text(&safe_chunks, longest_safe_size_chunk, sizeof(longest_safe_size_chunk));
+
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "kernel mul backend gap unroll4 summary");
+  snprintf(result.category, sizeof(result.category), "kernel-probe");
+  snprintf(result.operation, sizeof(result.operation), "mul-backend-gap-unroll4");
+  result.digits = last_digits;
+  result.scratch_us = candidate_us ? candidate_us : 1;
+  result.gmp_us = gmp_us ? gmp_us : 1;
+  result.speed_ratio = max_ratio > 0.0 ? max_ratio : (double)result.scratch_us / (double)result.gmp_us;
+  result.max_allowed_speed_ratio = 0.98;
+  result.stable_sample_count = safe_size_count;
+  result.sample_count = point_count;
+  result.worst_pair_ratio = max_worst_pair_ratio;
+  result.parity_verified = parity;
+  result.replacement_ready = 0;
+  snprintf(result.adoption, sizeof(result.adoption), "%s", parity ? "observe-only" : "blocked-output-mismatch");
+  snprintf(result.status, sizeof(result.status), "%s",
+    !parity ? "mismatch" :
+    (!ratio_safe ? "backend-regression" :
+    (!worst_pair_safe ? "worst-pair-regression" :
+    (!stable_safe ? "needs-stability" :
+    (safe_size_count == point_count ? "backend-gap-clean" : "needs-stability")))));
+  result.passed = parity;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  snprintf(result.detail, sizeof(result.detail),
+    "op=mul-backend-gap-unroll4 policy=backend-gap-unroll4-vs-gmp sizes=%s sizeCount=%zu minDigits=4096 leafThreshold=%zu operandFamilies=%u samples=%zu requiredStablePairs=%zu/%zu safeSizes=%zu/%zu safeSizeChunks=%s longestSafeSizeChunk=%s longestSafeSizeChunkCount=%zu hashGate=not-applicable parity=%s thresholdSafety=focus-scout candidate=_umul128+_addcarry_u64-unroll4-full baseline=mpz_mul candGmpMax=%.3f maxWorstPairRatio=%.3f ratioMethod=paired-median timingMode=paired sameInput=yes sameRunAudit=yes featureGate=msvc-x64-backend-gap gmpClue=mpn-addmul-loop-scheduling noAutoRoute=1 replacementReady=false adoption=%s",
+    sizes_label ? sizes_label : "unknown",
+    point_count,
+    leaf_threshold,
+    (unsigned int)XRAY_MUL_OPERAND_FAMILIES,
+    point_sample_count,
+    required_stable,
+    point_sample_count,
+    safe_size_count,
+    point_count,
+    safe_chunks.ranges,
+    longest_safe_size_chunk,
+    safe_chunks.longest_count,
+    parity ? "matched" : "blocked",
+    max_ratio,
+    max_worst_pair_ratio,
+    result.adoption);
+  append_result(report, &result);
+}
+
+static void run_mul_backend_gap_focus_cases(XrayBenchmarkReport *report) {
+  const size_t backend_bits[] = {2048, 16384};
+  for (size_t index = 0; index < sizeof(backend_bits) / sizeof(backend_bits[0]); ++index) {
+    run_kernel_probe_muladd_unroll_case(report, backend_bits[index], 4U);
+    run_kernel_probe_muladd_unroll_case(report, backend_bits[index], 8U);
+    run_kernel_probe_muladd_bmi2_adx_case(report, backend_bits[index]);
+  }
+
+  const size_t backend_digits[] = {4096, 5639, 8192, 11717, 16384};
+  const char *backend_sizes = "4096,5639,8192,11717,16384";
+  size_t first_result_index = report ? report->result_count : 0;
+  for (size_t index = 0; index < sizeof(backend_digits) / sizeof(backend_digits[0]); ++index) {
+    run_mul_unroll4_vs_scratch_probe_case(report, backend_digits[index], 64);
+    run_mul_unroll4_vs_gmp_probe_case(report, backend_digits[index], 64);
+  }
+  append_mul_backend_gap_summary_result(report, first_result_index, backend_sizes, 64);
+}
 #endif
 
 static void run_scratch_mul_case(XrayBenchmarkReport *report, size_t digits) {
@@ -20923,6 +21039,9 @@ int xray_benchmark_run_focus_with_callback(
     run_mul_large_focus_cases(report);
   }
 #if XRAY_HAS_MSVC_BMI2_ADX_INTRINSICS
+  if (benchmark_focus_eq(focus, "mul-backend-gap")) {
+    run_mul_backend_gap_focus_cases(report);
+  }
   run_mul_combo_focus_cases(report, focus);
 #else
   (void)focus;

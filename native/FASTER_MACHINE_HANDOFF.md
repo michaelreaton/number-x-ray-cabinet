@@ -1494,6 +1494,12 @@ Run these in order.
      arithmetic in the transition window: it runs only the existing div2, div3,
      and div2+div3 scouts over `11717,16384,24103`. Use `mul-toom-div` for the
      same scouts over the full active window.
+   - Use `mul-backend-gap` on MSVC x64 when the next question is whether the
+     low-level unroll4 multiply-add backend itself has a safe measured chunk
+     before spending time on another recursive Toom route. It runs existing
+     muladd primitive rows plus unroll4 versus scratch/GMP rows at
+     `4096,5639,8192,11717,16384`, then emits `mul-backend-gap-unroll4` with
+     `safeSizeChunks` for repeat-matrix triage.
    - Use narrower focus labels such as `mul-combo-lower`,
      `mul-combo-transition`, `mul-combo-upper`, and `mul-combo-reuse` when a
      candidate pocket is already known.
@@ -1516,14 +1522,19 @@ Run these in order.
      helper also writes `repeat_stable_chunks.tsv`, an operation-level
      intersection of chunks that stayed safe in every repeat.
    - Use `python native/tools/bench_focus_matrix.py --cli <xray_cli> --runs 3
-     --focus mul-toom5-smoke --focus mul-toom-div-transition --focus
-     mul-combo-handoff-pocket` when you want one first-pass novelty matrix
-     across several cheap focus families before choosing a deeper audit.
+     --focus mul-backend-gap --focus mul-toom5-smoke --focus
+     mul-toom-div-transition --focus mul-combo-handoff-pocket` when you want
+     one first-pass novelty matrix across several cheap focus families before
+     choosing a deeper audit.
      The latest two-repeat matrix artifact,
      `native-test-runs/20260621-083300-novelty-matrix-repeat2/matrix.tsv`,
      produced no repeat-stable safe chunks across those three focus families,
      so do not spend the next implementation slice on the current Toom-5 smoke,
      div2/div3 transition, or handoff-pocket routes.
+     The follow-up `mul-backend-gap` repeat artifact,
+     `native-test-runs/20260621-090500-backend-gap-repeat3/repeat_stable_chunks.tsv`,
+     also produced no repeat-stable safe chunks, so the current unroll4/BMI2/ADX
+     backend probes are not the next novelty path on this build.
    - Read `safeSizeChunks` and `longestSafeSizeChunk*` as contiguous measured
      benchmark points only. They are useful for piecemeal follow-up audits over
      promising pockets, but they do not prove every unmeasured digit between the
