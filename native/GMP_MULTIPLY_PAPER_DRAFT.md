@@ -234,7 +234,7 @@ piecemeal adoption is welcome, but only measured safe chunks count.
 
 Recorded artifact path:
 
-`native-test-runs/20260621-095400-sparse-mul-repeat2/matrix.tsv`
+`native-test-runs/20260621-100500-sparse-upper-repeat2/matrix.tsv`
 
 Focus:
 
@@ -242,17 +242,20 @@ Focus:
 
 Measured bit points:
 
-`4096`, `5639`, `8192`, `11717`, `16384`, `24103`, `32768`
+`4096`, `5639`, `8192`, `11717`, `16384`, `24103`, `32768`, `52163`, `65536`
 
 Aggregate sparse signals:
 
-- `sparse-production-mul`: repeat-stable `4096-32768`,
-  `maxWorstPairRatio=0.203390`, `replacement-ready`
-- `sparse-zero-mul`: repeat-stable `4096-32768`,
-  `maxWorstPairRatio=0.203390`, `candidate-faster`
-- `sparse-pair-mul`: repeat-stable `5639-32768`, but
-  `maxWorstPairRatio=1.111111`, so recheck only
-- `sparse-forced-mul`: no repeat-stable chunk, reject for now
+- `sparse-production-mul`: repeat-stable `4096-65536`,
+  `maxWorstPairRatio=0.222222`, `replacement-ready`
+- `sparse-zero-mul`: repeat-stable `4096-65536`,
+  `maxWorstPairRatio=0.222222`, `candidate-faster`
+- `sparse-pair-mul`: repeat-stable `4096-65536`,
+  `maxWorstPairRatio=0.875000`, `candidate-faster`
+- `sparse-production-pair-mul`: repeat-stable `4096-65536`,
+  `maxWorstPairRatio=0.875000`, `replacement-ready`
+- `sparse-forced-mul`: repeat-stable `32768`, but
+  `maxWorstPairRatio=1.333333`, so recheck only
 
 Read this as a separate app-shaped sparse workload, not an extension of the
 dense decimal-digit route claim. It is strong evidence that Number X-Ray can

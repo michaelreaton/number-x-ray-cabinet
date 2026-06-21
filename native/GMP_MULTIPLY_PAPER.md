@@ -153,7 +153,7 @@ work that `mpz_mul` still has to account for.
 
 The sparse focus artifact is:
 
-`native-test-runs/20260621-095400-sparse-mul-repeat2/matrix.tsv`
+`native-test-runs/20260621-100500-sparse-upper-repeat2/matrix.tsv`
 
 Focus:
 
@@ -161,16 +161,17 @@ Focus:
 
 Measured bit points:
 
-`4096`, `5639`, `8192`, `11717`, `16384`, `24103`, `32768`
+`4096`, `5639`, `8192`, `11717`, `16384`, `24103`, `32768`, `52163`, `65536`
 
 Main sparse signal:
 
 | Operation | Repeat-Stable Chunk | Worst Pair Max | Status | Interpretation |
 | --- | --- | ---: | --- | --- |
-| `sparse-production-mul` | `4096-32768` | `0.203390` | `replacement-ready` | current sparse production route beats `mpz_mul` on this app-shaped sparse family |
-| `sparse-zero-mul` | `4096-32768` | `0.203390` | `candidate-faster` | diagnostic zero-limb sparse probe confirms the shape-specific win |
-| `sparse-pair-mul` | `5639-32768` | `1.111111` | `candidate-faster` | median-faster but worst-pair unsafe, recheck only |
-| `sparse-forced-mul` | none | `14.000000` | `candidate-faster,current-best` | reject for now |
+| `sparse-production-mul` | `4096-65536` | `0.222222` | `replacement-ready` | current sparse production route beats `mpz_mul` on this app-shaped sparse family |
+| `sparse-zero-mul` | `4096-65536` | `0.222222` | `candidate-faster` | diagnostic zero-limb sparse probe confirms the shape-specific win |
+| `sparse-pair-mul` | `4096-65536` | `0.875000` | `candidate-faster` | pair-product sparse probe is also repeat-stable in this run |
+| `sparse-production-pair-mul` | `4096-65536` | `0.875000` | `replacement-ready` | production pair-product sparse route beats `mpz_mul` on the measured family |
+| `sparse-forced-mul` | `32768` | `1.333333` | `candidate-faster,current-best` | single-point/recheck only |
 
 The sparse result is important for the paper's broader thesis: Number X-Ray can
 beat GMP/MPIR in bounded pockets when the workload shape is narrow and the
@@ -362,9 +363,9 @@ produce exact products and outperform GMP/MPIR in a measured lower/transition
 pocket from `4096` through `16384` planned decimal-digit points. The same
 campaign also shows where the route loses and why production routing must remain
 unchanged until the strict gates pass. A later sparse scout adds a separate
-app-shaped win over `4096-32768` measured bit points for sparse zero-limb
-multiply, reinforcing the same methodological lesson without broadening the
-dense claim.
+app-shaped win over `4096-65536` measured bit points for sparse zero-limb and
+pair-product multiply, reinforcing the same methodological lesson without
+broadening the dense claim.
 
 That is the honest win: not a sweeping replacement claim, but a verified pocket
 of superiority with enough reporting discipline to make the result reproducible
