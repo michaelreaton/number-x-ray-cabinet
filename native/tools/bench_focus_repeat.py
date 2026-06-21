@@ -64,7 +64,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--keep-all-progress-rows",
         action="store_true",
-        help="Summarize every progress row instead of only aggregate policy-gate rows",
+        help=(
+            "Write every progress row to summary.tsv; repeat_stable_chunks.tsv "
+            "still uses aggregate policy rows so safe chunks remain meaningful"
+        ),
     )
     parser.add_argument(
         "--timeout-seconds",
@@ -177,6 +180,14 @@ def rows_to_summarize(rows: list[dict[str, str]], keep_all: bool) -> list[dict[s
     if aggregate:
         return aggregate
     return aggregate_point_rows([row for row in rows if row.get("operation") and not row.get("operation", "").endswith("-pt")])
+
+
+def rows_for_summary_and_repeat(
+    rows: list[dict[str, str]], keep_all: bool
+) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    summary_rows = rows_to_summarize(rows, keep_all)
+    repeat_rows = rows_to_summarize(rows, False)
+    return summary_rows, repeat_rows
 
 
 def bool_field(row: dict[str, str], key: str) -> bool:
@@ -607,6 +618,23 @@ def run_self_test() -> int:
     assert point_rows[0]["longestSafeSizeChunkCount"] == "1"
     assert point_rows[0]["speedRatio"] == "0.200000"
     assert point_rows[0]["worstPairRatio"] == "1.100000"
+    summary_rows, repeat_rows = rows_for_summary_and_repeat(
+        [
+            {
+                "category": "policy-gate",
+                "operation": "sparse-production-mul",
+                "safeSizeChunks": "4096-8192",
+            },
+            {
+                "category": "kernel-probe",
+                "operation": "mul-dense-control",
+                "safeSizeChunks": "none",
+            },
+        ],
+        True,
+    )
+    assert [row["operation"] for row in summary_rows] == ["sparse-production-mul", "mul-dense-control"]
+    assert [row["operation"] for row in repeat_rows] == ["sparse-production-mul"]
     print("bench_focus_repeat self-test passed")
     return 0
 
@@ -627,6 +655,7 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     summary: list[dict[str, str]] = []
+    repeat_summary: list[dict[str, str]] = []
     for run_index in range(1, args.runs + 1):
         artifact = out_dir / f"run{run_index:02d}.benchmark.tsv"
         progress_artifact = out_dir / f"run{run_index:02d}.progress.tsv"
@@ -640,6 +669,7 @@ def main() -> int:
             timeout_artifact = out_dir / f"run{run_index:02d}.timeout.txt"
             write_timeout_artifact(timeout_artifact, error)
             summary.append(timeout_summary_row(run_index, f"{args.focus}:timeout", timeout_artifact))
+            repeat_summary.append(timeout_summary_row(run_index, f"{args.focus}:timeout", timeout_artifact))
             continue
         artifact.write_text(bench_text, encoding="utf-8", newline="")
 
@@ -652,16 +682,19 @@ def main() -> int:
             timeout_artifact = out_dir / f"run{run_index:02d}.progress.timeout.txt"
             write_timeout_artifact(timeout_artifact, error)
             summary.append(timeout_summary_row(run_index, f"{args.focus}:progress-timeout", timeout_artifact, artifact))
+            repeat_summary.append(timeout_summary_row(run_index, f"{args.focus}:progress-timeout", timeout_artifact, artifact))
             continue
         progress_artifact.write_text(progress_text, encoding="utf-8", newline="")
 
-        rows = rows_to_summarize(progress_rows(progress_text), args.keep_all_progress_rows)
+        rows, repeat_rows = rows_for_summary_and_repeat(progress_rows(progress_text), args.keep_all_progress_rows)
         for row in rows:
             summary.append(summarize_row(run_index, row, artifact, progress_artifact))
+        for row in repeat_rows:
+            repeat_summary.append(summarize_row(run_index, row, artifact, progress_artifact))
 
     summary_path = out_dir / "summary.tsv"
     write_rows(summary_path, summary, SUMMARY_FIELDS)
-    repeat_stable = repeat_stable_rows(summary, args.runs)
+    repeat_stable = repeat_stable_rows(repeat_summary, args.runs)
     repeat_stable_path = out_dir / "repeat_stable_chunks.tsv"
     write_rows(repeat_stable_path, repeat_stable, REPEAT_STABLE_FIELDS)
     print(f"focus={args.focus}")

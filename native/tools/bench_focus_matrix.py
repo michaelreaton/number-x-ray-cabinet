@@ -78,7 +78,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--keep-all-progress-rows",
         action="store_true",
-        help="Forwarded to bench_focus_repeat.py for detailed row summaries",
+        help="Forwarded to bench_focus_repeat.py for detailed summary rows while preserving aggregate safe-chunk repeats",
     )
     parser.add_argument(
         "--timeout-seconds",
