@@ -1065,6 +1065,40 @@ Toom-4 baseline at `24103`, stays too thin at the high end, and does not fix
 GMP/MPIR, stable-pair, or worst-pair safety. The Toom-4 blocker is not generic
 small-divisor cost by itself.
 
+## 2026-06-20: Top-Level Toom-4 Reuse Versus Combo Reuse Audit
+
+Artifact: `native-test-runs/20260620-072031-c4b04caf`
+
+This run adds `mul-large-toom4-top-vs-cmb`, a benchmark-only same-run audit
+that compares reusable top-level Toom-4 (`full-ws-toom4-top-reuse-l48d3`)
+against reusable Toom-3 combo (`full-ws-combo-reuse-l48d3`) on the upper mixed
+window: `24103`, `32768`, `52163`, and `65536`. It preserves deterministic
+random spots between the power-of-two anchors and keeps current production
+multiply plus `mpz_mul` in the same timing run. It remains diagnostic only:
+`noAutoRoute=1`, `replacementReady=false`, production multiply unchanged.
+
+Summary:
+
+| Row | Sizes | Candidate / Baseline Max | Candidate / Current Max | Candidate / GMP Max | Baseline / GMP Max | Current / GMP Max | Worst Pair Max | Safe Sizes | Hash Safe | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `mul-large-toom4-top-vs-cmb` | `24103,32768,52163,65536` | `1.036` | `0.606` | `1.115` | `1.131` | `2.124` | `1.279` | `0/4` | `72/72` | observe only |
+
+Per-size signal:
+
+| Digits | Toom-4 Reuse / Combo Reuse | Toom-4 Reuse / Current | Toom-4 Reuse / GMP | Combo Reuse / GMP | Current / GMP | Worst Pair | Stable vs Combo | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `24103` | `1.035` | `0.591` | `1.014` | `0.980` | `1.660` | `1.164` | `1/9` | `3/9` | toom4-combo-baseline-re |
+| `32768` | `1.036` | `0.606` | `0.984` | `0.985` | `1.647` | `1.246` | `1/9` | `5/9` | toom4-combo-baseline-re |
+| `52163` | `0.975` | `0.520` | `1.006` | `1.059` | `1.929` | `1.086` | `6/9` | `3/9` | toom4-combo-baseline-re |
+| `65536` | `1.012` | `0.537` | `1.115` | `1.131` | `2.124` | `1.279` | `4/9` | `1/9` | toom4-combo-baseline-re |
+
+Decision: reject reusable top-level Toom-4 as a broad upper-window promotion
+candidate against reusable combo. It is exact and still faster than current
+production multiply, but it loses to combo reuse at `24103`, `32768`, and
+`65536`, only wins the deterministic `52163` spot, and misses stable-pair,
+worst-pair, safe-size, and GMP/MPIR gates. Keep it as evidence that top-level
+Toom-4 is not the next default route shape.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor
@@ -1124,8 +1158,9 @@ Do not promote a bigint route unless all are true:
 The strongest current clue is now structural: reusable workspace removes a real
 amount of route overhead and beats current production multiply everywhere, but
 the high end still cannot consistently beat GMP/MPIR, and factored exact
-division did not move the strict gates. Keep future scouts on the mixed window
-with deterministic in-between sizes, not only power-of-two anchors. The next
-multiply work should try a different arithmetic shape below or beyond Toom-4,
-then use the same exact parity, worst-pair, stable-pair, and same-run route
-gates before considering production routing.
+division plus top-level Toom-4-vs-combo reuse audits did not move the strict
+gates. Keep future scouts on the mixed window with deterministic in-between
+sizes, not only power-of-two anchors. The next multiply work should try a
+different arithmetic shape below or beyond Toom-4, then use the same exact
+parity, worst-pair, stable-pair, and same-run route gates before considering
+production routing.

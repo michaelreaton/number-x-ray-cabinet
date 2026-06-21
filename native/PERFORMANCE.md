@@ -4305,3 +4305,44 @@ generic small-divisor division is not the remaining blocker: `24103` regresses
 against the reusable baseline, and the upper rows remain GMP/MPIR and
 worst-pair unsafe. Keep the row observe-only and move the next scout to a
 different multiplication structure or a broader handoff strategy.
+
+## 2026-06-20: Top-Level Toom-4 Reuse Versus Combo Reuse Audit
+
+Local Release validation artifact
+`native-test-runs/20260620-072031-c4b04caf` adds
+`mul-large-toom4-top-vs-cmb`, a benchmark-only same-run audit for reusable
+top-level Toom-4 against the reusable Toom-3 combo route. The candidate is
+`full-ws-toom4-top-reuse-l48d3`; the baseline is
+`full-ws-combo-reuse-l48d3`; current production multiply and `mpz_mul` remain
+in the same timing run.
+
+Observed aggregate:
+
+- Exact parity/hash passed:
+  `hashSafe=72/72`, `hashGate=matched`, `parity=matched`.
+- Reusable top-level Toom-4 does not beat reusable combo across the upper
+  window:
+  `candBaseMax=1.036`, `safeSizes=0/4`.
+- It remains faster than current production multiply:
+  `candCurrentMax=0.606`.
+- It is not competitive with GMP/MPIR at the high end:
+  `candGmpMax=1.115`.
+- Worst-pair safety remains blocked:
+  `maxWorstPairRatio=1.279`.
+
+Per-size point rows:
+
+| Digits | Toom-4 Reuse / Combo Reuse | Toom-4 Reuse / Current | Toom-4 Reuse / GMP | Combo Reuse / GMP | Current / GMP | Worst Pair | Stable vs Combo | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `24103` | `1.035` | `0.591` | `1.014` | `0.980` | `1.660` | `1.164` | `1/9` | `3/9` | toom4-combo-baseline-re |
+| `32768` | `1.036` | `0.606` | `0.984` | `0.985` | `1.647` | `1.246` | `1/9` | `5/9` | toom4-combo-baseline-re |
+| `52163` | `0.975` | `0.520` | `1.006` | `1.059` | `1.929` | `1.086` | `6/9` | `3/9` | toom4-combo-baseline-re |
+| `65536` | `1.012` | `0.537` | `1.115` | `1.131` | `2.124` | `1.279` | `4/9` | `1/9` | toom4-combo-baseline-re |
+
+Decision: keep reusable top-level Toom-4 as evidence, not a route candidate.
+It remains exact and faster than current production multiply, but reusable
+combo is still the stronger upper-window comparator in the strict gate:
+`24103`, `32768`, and `65536` regress against combo reuse, the lone `52163`
+median win is not stable enough, and GMP/MPIR plus worst-pair gates remain
+blocked. The next multiply branch should leave this Toom-4 line and try a
+different multiplication structure or a wider handoff strategy.
