@@ -123,6 +123,40 @@ def write_matrix(path: Path, rows: list[dict[str, str]]) -> None:
             writer.writerow(row)
 
 
+def parse_int(text: str) -> int:
+    try:
+        return int(text)
+    except (TypeError, ValueError):
+        return 0
+
+
+def parse_float(text: str) -> float:
+    try:
+        return float(text)
+    except (TypeError, ValueError):
+        return float("inf")
+
+
+def has_repeat_stable_chunk(row: dict[str, str]) -> bool:
+    chunks = row.get("repeatStableSafeChunks", "")
+    return bool(chunks and chunks != "none")
+
+
+def ranked_matrix_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    candidates = [row for row in rows if has_repeat_stable_chunk(row)]
+    return sorted(
+        candidates,
+        key=lambda row: (
+            -parse_int(row.get("repeatStableLongestChunkSpan", "")),
+            -parse_int(row.get("repeatStableTotalChunkSpan", "")),
+            -parse_int(row.get("runsWithSafeChunks", "")),
+            parse_float(row.get("maxWorstPairRatio", "")),
+            row.get("focus", ""),
+            row.get("operation", ""),
+        ),
+    )
+
+
 def print_matrix(rows: list[dict[str, str]]) -> None:
     display_fields = [
         "focus",
@@ -230,6 +264,38 @@ def run_self_test() -> int:
         assert rows[0]["operation"] == "op-a"
         assert rows[0]["repeatStableSafeChunks"] == "11717-16384"
         assert rows[0]["repeatStableLongestChunkSpan"] == "4668"
+        ranked = ranked_matrix_rows(
+            rows
+            + [
+                {
+                    "focus": "focus-b",
+                    "operation": "op-b",
+                    "runsSeen": "3",
+                    "runsWithSafeChunks": "3",
+                    "repeatStableSafeChunks": "11717",
+                    "repeatStableChunkCount": "1",
+                    "repeatStableLongestChunk": "11717",
+                    "repeatStableLongestChunkSpan": "1",
+                    "repeatStableTotalChunkSpan": "1",
+                    "maxWorstPairRatio": "1.000000",
+                    "statuses": "clean",
+                },
+                {
+                    "focus": "focus-c",
+                    "operation": "op-c",
+                    "runsSeen": "3",
+                    "runsWithSafeChunks": "0",
+                    "repeatStableSafeChunks": "none",
+                    "repeatStableChunkCount": "0",
+                    "repeatStableLongestChunk": "none",
+                    "repeatStableLongestChunkSpan": "0",
+                    "repeatStableTotalChunkSpan": "0",
+                    "maxWorstPairRatio": "0.900000",
+                    "statuses": "clean",
+                },
+            ]
+        )
+        assert [row["operation"] for row in ranked] == ["op-a", "op-b"]
         matrix_path = Path(tmp) / "matrix.tsv"
         write_matrix(matrix_path, rows)
         reread = read_tsv(matrix_path)
@@ -271,13 +337,23 @@ def main() -> int:
 
     matrix_path = out_dir / "matrix.tsv"
     write_matrix(matrix_path, matrix)
+    ranked = ranked_matrix_rows(matrix)
+    ranked_path = out_dir / "matrix_ranked.tsv"
+    write_matrix(ranked_path, ranked)
     print(f"runs={args.runs}")
     print(f"out={out_dir}")
     print(f"matrix={matrix_path}")
+    print(f"rankedMatrix={ranked_path}")
     if matrix:
         print_matrix(matrix)
     else:
         print("No repeat-stable rows were produced.")
+    print()
+    if ranked:
+        print("Ranked repeat-stable candidates")
+        print_matrix(ranked)
+    else:
+        print("No repeat-stable candidate rows.")
     return 0
 
 

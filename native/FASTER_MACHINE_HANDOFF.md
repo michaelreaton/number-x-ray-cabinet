@@ -1529,7 +1529,9 @@ Run these in order.
      --focus mul-backend-gap --focus mul-toom4-top --focus mul-toom5-smoke
      --focus mul-toom-div-transition --focus mul-combo-handoff-pocket` when you
      want one first-pass novelty matrix across several cheap focus families
-     before choosing a deeper audit.
+     before choosing a deeper audit. Read `matrix_ranked.tsv` first for
+     repeat-stable candidates sorted by largest contiguous span; keep
+     `matrix.tsv` as the complete evidence table.
      Add `--timeout-seconds N` when a focus is exploratory or recently changed;
      timed-out `xray_cli` invocations write `runNN.timeout.txt` and a summary
      row with `blockerReason=focus-timeout` instead of hanging the whole sweep.
