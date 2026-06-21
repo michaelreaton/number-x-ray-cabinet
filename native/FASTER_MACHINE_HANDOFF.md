@@ -768,6 +768,43 @@ sizes, while the same candidate still misses GMP/MPIR and stable-pair gates.
 Keep the route observe-only and move the next multiply work toward a deeper
 arithmetic-structure change.
 
+## Combo Reuse-Map Full-Window Audit
+
+Artifact: `native-test-runs/20260620-015720-c4b04caf`
+
+This run adds `mul-large-toom-cmb-reuse-map`, a benchmark-only full-window
+audit for the same mapped route but with reusable recursive Toom workspace
+temporaries. It keeps the full campaign window:
+`4096`, `5639`, `8192`, `11717`, `16384`, `24103`, `32768`, `52163`, and
+`65536`.
+
+Aggregate signal:
+
+| Row | Sizes | Reuse / Non-Reuse Max | Reuse / Current Max | Reuse / GMP Max | Non-Reuse / GMP Max | Current / GMP Max | Worst Pair | Safe Sizes | Hash Safe | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `mul-large-toom-cmb-reuse-map` | `4096..65536` | `0.996` | `0.829` | `1.132` | `1.128` | `1.878` | `1.192` | `0/9` | `162/162` | observe only |
+
+Per-size signal:
+
+| Digits | Active Candidate | Reuse / Non-Reuse | Reuse / Current | Reuse / GMP | Non-Reuse / GMP | Current / GMP | Worst Pair | GMP Stable | Status |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `4096` | `full-ws-combo-l64d2` | `0.875` | `0.807` | `0.752` | `0.847` | `0.907` | `1.091` | `9/9` | reuse-baseline-regression |
+| `5639` | `full-ws-combo-l64d2` | `0.949` | `0.829` | `0.737` | `0.790` | `0.889` | `1.001` | `9/9` | reuse-baseline-regression |
+| `8192` | `full-ws-combo-l64d2` | `0.979` | `0.817` | `0.855` | `0.879` | `1.048` | `1.025` | `9/9` | reuse-baseline-regression |
+| `11717` | `full-ws-combo-l64d2` | `0.938` | `0.673` | `0.880` | `0.942` | `1.315` | `0.997` | `9/9` | reuse-baseline-regression |
+| `16384` | `full-ws-combo-l64d2` | `0.996` | `0.689` | `0.928` | `0.940` | `1.340` | `1.008` | `9/9` | reuse-baseline-regression |
+| `24103` | `full-ws-combo-l48d4` | `0.967` | `0.629` | `0.956` | `0.985` | `1.517` | `0.989` | `9/9` | reuse-baseline-regression |
+| `32768` | `full-ws-combo-l48d4` | `0.976` | `0.639` | `1.014` | `1.030` | `1.585` | `1.020` | `2/9` | reuse-baseline-regression |
+| `52163` | `full-ws-combo-l48d3` | `0.965` | `0.576` | `1.017` | `1.050` | `1.763` | `1.030` | `1/9` | backend-regression |
+| `65536` | `full-ws-combo-l48d3` | `0.980` | `0.603` | `1.132` | `1.128` | `1.878` | `1.192` | `1/9` | reuse-baseline-regression |
+
+Decision: reusable workspace materially helps the mapped route and keeps exact
+parity/hash across the full random-spot window, but it still fails promotion.
+The route beats current production multiply everywhere, but GMP/MPIR and
+stable-pair gates fail from `32768` upward and worst-pair safety peaks at
+`1.192`. Keep it observe-only and move toward arithmetic shape work instead of
+another workspace-only route promotion.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor
@@ -824,12 +861,10 @@ Do not promote a bigint route unless all are true:
 
 ## Current Next Best Step
 
-The strongest current clue remains lower-level Toom interpolation/evaluation
-cost: the combined `/2` plus `/3` shortcut finally beats the leaf64 baseline on
-median across the active window, but it still misses GMP and stable-pair gates.
-Keep future scouts on the mixed window with deterministic in-between sizes, not
-only power-of-two anchors. If a candidate passes exact parity, worst-pair
-safety, and stable-pair gates across the full window, run a forced route audit
-against current production multiply. If the larger rows remain unstable, keep
-these probes opt-in and move to a broader interpolation/evaluation rewrite,
-GMP-facing backend improvement, or a different handoff design.
+The strongest current clue is now structural: reusable workspace removes a real
+amount of route overhead and beats current production multiply everywhere, but
+the high end still cannot consistently beat GMP/MPIR. Keep future scouts on the
+mixed window with deterministic in-between sizes, not only power-of-two
+anchors. The next multiply work should try a different arithmetic shape or
+handoff, then use the same exact parity, worst-pair, stable-pair, and same-run
+route gates before considering production routing.

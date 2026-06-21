@@ -3955,3 +3955,46 @@ Decision: the best-map outlier failure is not explained by duplicate-route
 measurement noise. Keep the route observe-only; the next multiply slice should
 change the arithmetic structure rather than rerun the same map as a promotion
 candidate.
+
+## 2026-06-20: Combo Reuse-Map Full-Window Audit
+
+Local Release validation artifact
+`native-test-runs/20260620-015720-c4b04caf` adds
+`mul-large-toom-cmb-reuse-map`, a benchmark-only full-window audit of the
+mapped combo route with reusable recursive Toom workspace temporaries. The row
+keeps `4096`, `5639`, `8192`, `11717`, `16384`, `24103`, `32768`, `52163`, and
+`65536` in one same-run audit, preserving every deterministic random spot.
+
+Observed aggregate:
+
+- Exact parity/hash:
+  `hashSafe=162/162`, `hashGate=matched`, `parity=matched`.
+- Reuse beats the same non-reuse route on median, but not by the strict route
+  gate:
+  `candBaseMax=0.996`.
+- It beats current production multiply at every measured size:
+  `candCurrentMax=0.829`.
+- It still does not clear GMP/MPIR:
+  `candGmpMax=1.132`, `safeSizes=0/9`.
+- Worst-pair safety remains blocked:
+  `maxWorstPairRatio=1.192`.
+
+Per-size point rows:
+
+| Digits | Active Candidate | Reuse / Non-Reuse | Reuse / Current | Reuse / GMP | Non-Reuse / GMP | Current / GMP | Worst Pair | GMP Stable | Status |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `4096` | `full-ws-combo-l64d2` | `0.875` | `0.807` | `0.752` | `0.847` | `0.907` | `1.091` | `9/9` | reuse-baseline-regression |
+| `5639` | `full-ws-combo-l64d2` | `0.949` | `0.829` | `0.737` | `0.790` | `0.889` | `1.001` | `9/9` | reuse-baseline-regression |
+| `8192` | `full-ws-combo-l64d2` | `0.979` | `0.817` | `0.855` | `0.879` | `1.048` | `1.025` | `9/9` | reuse-baseline-regression |
+| `11717` | `full-ws-combo-l64d2` | `0.938` | `0.673` | `0.880` | `0.942` | `1.315` | `0.997` | `9/9` | reuse-baseline-regression |
+| `16384` | `full-ws-combo-l64d2` | `0.996` | `0.689` | `0.928` | `0.940` | `1.340` | `1.008` | `9/9` | reuse-baseline-regression |
+| `24103` | `full-ws-combo-l48d4` | `0.967` | `0.629` | `0.956` | `0.985` | `1.517` | `0.989` | `9/9` | reuse-baseline-regression |
+| `32768` | `full-ws-combo-l48d4` | `0.976` | `0.639` | `1.014` | `1.030` | `1.585` | `1.020` | `2/9` | reuse-baseline-regression |
+| `52163` | `full-ws-combo-l48d3` | `0.965` | `0.576` | `1.017` | `1.050` | `1.763` | `1.030` | `1/9` | backend-regression |
+| `65536` | `full-ws-combo-l48d3` | `0.980` | `0.603` | `1.132` | `1.128` | `1.878` | `1.192` | `1/9` | reuse-baseline-regression |
+
+Decision: reusable workspace is useful implementation evidence, but not a
+production route. It beats current production multiply across the full window
+and beats GMP/MPIR through `24103`, but the GMP/stability gate fails from
+`32768` upward. Keep it observe-only and make the next PR an arithmetic-shape
+or handoff scout, not a workspace-only promotion attempt.
