@@ -1530,6 +1530,9 @@ Run these in order.
      --focus mul-toom-div-transition --focus mul-combo-handoff-pocket` when you
      want one first-pass novelty matrix across several cheap focus families
      before choosing a deeper audit.
+     Add `--timeout-seconds N` when a focus is exploratory or recently changed;
+     timed-out `xray_cli` invocations write `runNN.timeout.txt` and a summary
+     row with `blockerReason=focus-timeout` instead of hanging the whole sweep.
      The latest two-repeat matrix artifact,
      `native-test-runs/20260621-083300-novelty-matrix-repeat2/matrix.tsv`,
      produced no repeat-stable safe chunks across those three focus families,

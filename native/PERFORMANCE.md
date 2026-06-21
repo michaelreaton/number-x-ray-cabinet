@@ -28,6 +28,26 @@ parity plus a stable same-run paired win.
   Number X-Ray only as default-off, oracle-checked probes until local paired
   benchmarks show exact parity, adjacent-size safety, and product-like build
   confirmation.
+- Focus repeat and matrix helpers should use `--timeout-seconds` for exploratory
+  or newly wired focus labels. A timeout is evidence about throughput, not a
+  route result: it writes `runNN.timeout.txt`, reports
+  `blockerReason=focus-timeout`, and should be narrowed before deeper reruns.
+
+## 2026-06-21: Focus Timeout Guard
+
+The repeat and matrix helpers now accept `--timeout-seconds` so slow exploratory
+focus lanes cannot hang a novelty sweep indefinitely. A timed-out `xray_cli`
+invocation writes a `runNN.timeout.txt` artifact and emits a TSV summary row
+with `status=timeout`, `safeSizeChunks=none`, and
+`blockerReason=focus-timeout`.
+
+Local validation artifacts:
+
+- `native-test-runs/20260621-094000-focus-timeout-smoke/summary.tsv`
+- `native-test-runs/20260621-094100-focus-matrix-timeout-smoke/matrix.tsv`
+
+Decision: use timeout rows to narrow or split slow focus lanes before spending
+more benchmark time. Do not read a timeout row as arithmetic failure or success.
 
 ## 2026-06-18: Rejected Preinv-Qhat Formatter Route
 

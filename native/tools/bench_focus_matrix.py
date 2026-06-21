@@ -51,6 +51,11 @@ def parse_args() -> argparse.Namespace:
         help="Forwarded to bench_focus_repeat.py for detailed row summaries",
     )
     parser.add_argument(
+        "--timeout-seconds",
+        type=float,
+        help="Optional per xray_cli invocation timeout forwarded to bench_focus_repeat.py",
+    )
+    parser.add_argument(
         "--self-test",
         action="store_true",
         help="Run the matrix parser self-test without invoking xray_cli",
@@ -146,6 +151,7 @@ def run_focus_repeat(
     out_dir: Path,
     progress_filter: str | None,
     keep_all_progress_rows: bool,
+    timeout_seconds: float | None,
 ) -> Path:
     focus_out = out_dir / safe_label(focus)
     command = [
@@ -164,6 +170,8 @@ def run_focus_repeat(
         command.extend(["--progress-filter", progress_filter])
     if keep_all_progress_rows:
         command.append("--keep-all-progress-rows")
+    if timeout_seconds is not None:
+        command.extend(["--timeout-seconds", f"{timeout_seconds:g}"])
     run_checked(command)
     return focus_out
 
@@ -223,6 +231,8 @@ def main() -> int:
         raise SystemExit("--cli and at least one --focus are required unless --self-test is set")
     if args.runs < 1:
         raise SystemExit("--runs must be at least 1")
+    if args.timeout_seconds is not None and args.timeout_seconds <= 0:
+        raise SystemExit("--timeout-seconds must be greater than 0")
 
     script_dir = Path(__file__).resolve().parent
     repeat_script = script_dir / "bench_focus_repeat.py"
@@ -240,6 +250,7 @@ def main() -> int:
             out_dir,
             args.progress_filter,
             args.keep_all_progress_rows,
+            args.timeout_seconds,
         )
         matrix.extend(matrix_rows_for_focus(focus, focus_out))
 

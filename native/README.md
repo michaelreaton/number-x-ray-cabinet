@@ -451,6 +451,7 @@ native\build\Release\xray_cli.exe --bench-focus mul-combo-transition-controls --
 native\build\Release\xray_cli.exe --bench-focus mul-combo-handoff-pocket --bench-frontier
 python native\tools\bench_focus_repeat.py --cli native\build\Release\xray_cli.exe --focus mul-combo-handoff-pocket --runs 3
 python native\tools\bench_focus_matrix.py --cli native\build\Release\xray_cli.exe --runs 3 --focus mul-backend-gap --focus mul-toom4-top --focus mul-toom5-smoke --focus mul-toom-div-transition --focus mul-combo-handoff-pocket
+python native\tools\bench_focus_matrix.py --cli native\build\Release\xray_cli.exe --runs 2 --timeout-seconds 90 --focus mul-backend-gap --focus mul-toom4-top
 native\build\Release\xray_cli.exe --bench-progress native\build\native-test-runs\<run>\benchmark.tsv
 native\build\Release\xray_cli.exe --bench-min-digits 768 --bench-max-digits 1000 --bench-progress native\build\native-test-runs\<run>\benchmark.tsv
 native\build\Release\xray_cli.exe --bench-filter mul --bench-compare native\build-release\native-test-runs\<run>\benchmark.tsv native\build-ltcg\native-test-runs\<run>\benchmark.tsv
@@ -500,7 +501,10 @@ repeat-stable chunk, so the next novelty choice starts from backend and
 upper-window topology evidence instead of another broad recursive scout. Use
 `native/tools/bench_focus_matrix.py` to run several focus labels in one sweep
 and write a top-level `matrix.tsv` that compares
-repeat-stable chunks across route families. Use
+repeat-stable chunks across route families. Pass `--timeout-seconds N` to the
+repeat or matrix helper when a focus is exploratory; timed-out `xray_cli`
+invocations write `runNN.timeout.txt` and a TSV summary row with
+`blockerReason=focus-timeout` instead of hanging the sweep. Use
 `--bench-progress-tsv` when another tool needs the same progress classification
 as a TSV table instead of prose. Use `--bench-compare`
 to review two benchmark TSV artifacts, such as Release versus `/GL`, and
