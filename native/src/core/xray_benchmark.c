@@ -18429,6 +18429,157 @@ static void append_sparse_forced_mul_probe_result(
   append_result(report, &result);
 }
 
+static void append_sparse_dense_control_result(
+  XrayBenchmarkReport *report,
+  size_t bits,
+  size_t digits,
+  int parity,
+  unsigned long long scratch_us,
+  unsigned long long gmp_us,
+  double paired_ratio,
+  size_t stable_sample_count,
+  size_t sample_count,
+  double worst_pair_ratio) {
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "control dense random mul %zu-bit", bits);
+  snprintf(result.category, sizeof(result.category), "kernel-probe");
+  snprintf(result.operation, sizeof(result.operation), "mul-dense-control");
+  result.digits = digits;
+  result.scratch_us = scratch_us ? scratch_us : 1;
+  result.gmp_us = gmp_us ? gmp_us : 1;
+  result.speed_ratio = paired_ratio > 0.0 ? paired_ratio : (double)result.scratch_us / (double)result.gmp_us;
+  result.max_allowed_speed_ratio = 1.0;
+  result.stable_sample_count = stable_sample_count;
+  result.sample_count = sample_count;
+  result.worst_pair_ratio = worst_pair_ratio;
+  result.parity_verified = parity;
+  result.replacement_ready = 0;
+  snprintf(result.adoption, sizeof(result.adoption), "%s",
+    !parity ? "blocked-output-mismatch" : "control-only");
+  snprintf(result.status, sizeof(result.status), "%s",
+    !parity ? "mismatch" : "control-parity");
+  result.passed = parity;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  snprintf(result.detail, sizeof(result.detail),
+    "op=mul-dense-control bits=%zu digits=%zu operandFamilies=1 samples=%zu stablePairs=%zu/%zu scratchUs=%llu gmpUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median max=%.2f candidate=current-scratch-mul baseline=mpz_mul oracle=mpz_mul featureGate=sparse-bigint-dense-random-control gmpClue=dense-random-control sparseShape=dense-random controlSafety=paper-dense-control noAutoRoute=0 replacementReady=false adoption=%s",
+    bits,
+    digits,
+    sample_count,
+    stable_sample_count,
+    sample_count,
+    result.scratch_us,
+    result.gmp_us,
+    result.speed_ratio,
+    result.worst_pair_ratio,
+    result.max_allowed_speed_ratio,
+    result.adoption);
+  append_result(report, &result);
+}
+
+static uint64_t dense_control_mix(size_t bit, unsigned int seed) {
+  uint64_t value = (uint64_t)bit ^ ((uint64_t)seed * UINT64_C(0x9e3779b97f4a7c15));
+  value ^= value >> 30U;
+  value *= UINT64_C(0xbf58476d1ce4e5b9);
+  value ^= value >> 27U;
+  value *= UINT64_C(0x94d049bb133111eb);
+  value ^= value >> 31U;
+  return value;
+}
+
+static void set_dense_control_bits(mpz_t value, size_t bits, unsigned int seed) {
+  if (bits < 2U) bits = 2U;
+  mpz_set_ui(value, 0U);
+  mpz_setbit(value, 0U);
+  mpz_setbit(value, (mp_bitcnt_t)(bits - 1U));
+  for (size_t bit = 1U; bit + 1U < bits; ++bit) {
+    if ((dense_control_mix(bit, seed) & 7U) != 0U) {
+      mpz_setbit(value, (mp_bitcnt_t)bit);
+    }
+  }
+}
+
+static unsigned int sparse_dense_control_iterations(size_t bits) {
+  if (bits <= 4096U) return 8U;
+  if (bits <= 16384U) return 4U;
+  return 1U;
+}
+
+static void run_sparse_dense_control_case(XrayBenchmarkReport *report, size_t bits) {
+  const size_t sample_count = 3U;
+  const unsigned int iterations = sparse_dense_control_iterations(bits);
+  mpz_t left, right, expected;
+  mpz_inits(left, right, expected, NULL);
+  set_dense_control_bits(left, bits, 131U);
+  set_dense_control_bits(right, bits, 197U);
+  mpz_mul(expected, left, right);
+
+  char *left_text = mpz_get_str(NULL, 10, left);
+  char *right_text = mpz_get_str(NULL, 10, right);
+
+  XrayScratchBigInt scratch_left, scratch_right, scratch_out;
+  xray_bigint_init(&scratch_left);
+  xray_bigint_init(&scratch_right);
+  xray_bigint_init(&scratch_out);
+  int ok = left_text && right_text &&
+    xray_bigint_set_decimal(&scratch_left, left_text) &&
+    xray_bigint_set_decimal(&scratch_right, right_text);
+
+  unsigned long long scratch_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  for (size_t sample = 0; ok && sample < sample_count; ++sample) {
+    if ((sample % 2U) == 0U) {
+      unsigned long long scratch_started = xray_now_us();
+      for (unsigned int iteration = 0; ok && iteration < iterations; ++iteration) {
+        ok = xray_bigint_mul(&scratch_out, &scratch_left, &scratch_right);
+      }
+      scratch_samples[sample] = (xray_now_us() - scratch_started) / iterations;
+      if (scratch_samples[sample] == 0ULL) scratch_samples[sample] = 1ULL;
+
+      unsigned long long gmp_started = xray_now_us();
+      for (unsigned int iteration = 0; iteration < iterations; ++iteration) {
+        mpz_mul(expected, left, right);
+      }
+      gmp_samples[sample] = (xray_now_us() - gmp_started) / iterations;
+      if (gmp_samples[sample] == 0ULL) gmp_samples[sample] = 1ULL;
+    } else {
+      unsigned long long gmp_started = xray_now_us();
+      for (unsigned int iteration = 0; iteration < iterations; ++iteration) {
+        mpz_mul(expected, left, right);
+      }
+      gmp_samples[sample] = (xray_now_us() - gmp_started) / iterations;
+      if (gmp_samples[sample] == 0ULL) gmp_samples[sample] = 1ULL;
+
+      unsigned long long scratch_started = xray_now_us();
+      for (unsigned int iteration = 0; ok && iteration < iterations; ++iteration) {
+        ok = xray_bigint_mul(&scratch_out, &scratch_left, &scratch_right);
+      }
+      scratch_samples[sample] = (xray_now_us() - scratch_started) / iterations;
+      if (scratch_samples[sample] == 0ULL) scratch_samples[sample] = 1ULL;
+    }
+  }
+
+  int parity = ok && scratch_value_matches_mpz(&scratch_out, expected);
+  append_sparse_dense_control_result(
+    report,
+    bits,
+    left_text ? strlen(left_text) : 0,
+    parity,
+    median_samples(scratch_samples, sample_count),
+    median_samples(gmp_samples, sample_count),
+    median_paired_ratio(scratch_samples, gmp_samples, sample_count),
+    paired_ratio_wins(scratch_samples, gmp_samples, sample_count, 1.0),
+    sample_count,
+    max_paired_ratio(scratch_samples, gmp_samples, sample_count));
+
+  xray_bigint_clear(&scratch_left);
+  xray_bigint_clear(&scratch_right);
+  xray_bigint_clear(&scratch_out);
+  free(left_text);
+  free(right_text);
+  mpz_clears(left, right, expected, NULL);
+}
+
 static void set_sparse_pair_probe_bits(mpz_t value, const size_t *limb_indices, size_t count) {
   mpz_set_ui(value, 0U);
   for (size_t index = 0; index < count; ++index) {
@@ -19259,6 +19410,7 @@ static void run_scratch_bigint_gates(XrayBenchmarkReport *report) {
     run_sparse_forced_mul_probe_case(report, sparse_shape_bits[index]);
     run_sparse_pair_product_probe_case(report, sparse_shape_bits[index]);
   }
+  run_sparse_dense_control_case(report, 4096);
   const size_t frontier_scout_digits[] = {32768, 65536};
   for (size_t index = 0; index < sizeof(frontier_scout_digits) / sizeof(frontier_scout_digits[0]); ++index) {
     run_frontier_scout_case(report, "mul", frontier_scout_digits[index]);
@@ -20859,6 +21011,10 @@ static void run_sparse_mul_focus_cases(XrayBenchmarkReport *report) {
     run_sparse_zero_limb_probe_case(report, "mul", sparse_focus_bits[index]);
     run_sparse_forced_mul_probe_case(report, sparse_focus_bits[index]);
     run_sparse_pair_product_probe_case(report, sparse_focus_bits[index]);
+  }
+  const size_t dense_control_bits[] = {4096, 11717, 65536};
+  for (size_t index = 0; index < sizeof(dense_control_bits) / sizeof(dense_control_bits[0]); ++index) {
+    run_sparse_dense_control_case(report, dense_control_bits[index]);
   }
 }
 

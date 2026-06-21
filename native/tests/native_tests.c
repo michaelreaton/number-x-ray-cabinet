@@ -2964,6 +2964,7 @@ static void test_benchmarks(void) {
   int saw_mul_unroll4_vs_scratch_probe = 0;
   int saw_mul_unroll4_vs_gmp_probe = 0;
   int saw_mul_unroll4_deep_vs_gmp_probe = 0;
+  int saw_mul_dense_control_probe = 0;
   for (size_t index = 0; index < report->result_count; ++index) {
     char lane_brief[192];
     if (xray_benchmark_result_is_promotion_ready(&report->results[index])) {
@@ -3072,7 +3073,8 @@ static void test_benchmarks(void) {
       CHECK(report->results[index].speed_ratio > 0.0);
       if (strcmp(report->results[index].operation, "mul-large-toom-cmb-map-ctrl-pt") == 0) {
         CHECK(report->results[index].max_allowed_speed_ratio == 1.10);
-      } else if (strcmp(report->results[index].operation, "mul-large-toom-cmb-gmpctrl-pt") == 0 ||
+      } else if (strcmp(report->results[index].operation, "mul-dense-control") == 0 ||
+                 strcmp(report->results[index].operation, "mul-large-toom-cmb-gmpctrl-pt") == 0 ||
                  strcmp(report->results[index].operation, "mul-large-toom-cmb-gmptrans-pt") == 0) {
         CHECK(report->results[index].max_allowed_speed_ratio == 1.0);
       } else {
@@ -3117,7 +3119,8 @@ static void test_benchmarks(void) {
           strcmp(report->results[index].operation, "mul-large-toom-cmb-lower-point") == 0 ||
           strcmp(report->results[index].operation, "mul-large-toom-cmb-route-point") == 0) {
         CHECK(report->results[index].sample_count == 9);
-      } else if (strcmp(report->results[index].operation, "mul-large-toom5-top-reuse-pt") == 0 ||
+      } else if (strcmp(report->results[index].operation, "mul-dense-control") == 0 ||
+                 strcmp(report->results[index].operation, "mul-large-toom5-top-reuse-pt") == 0 ||
                  strcmp(report->results[index].operation, "mul-large-toom5-top-handoff-pt") == 0) {
         CHECK(report->results[index].sample_count == 3);
       } else {
@@ -3132,6 +3135,23 @@ static void test_benchmarks(void) {
       CHECK(strstr(report->results[index].detail, "adoption=") != NULL);
       if (strcmp(report->results[index].operation, "mul-threshold") == 0) {
         CHECK(strstr(report->results[index].detail, "operandFamilies=2") != NULL);
+      }
+      if (strcmp(report->results[index].operation, "mul-dense-control") == 0) {
+        saw_mul_dense_control_probe = 1;
+        CHECK(report->results[index].digits == 1234);
+        CHECK(report->results[index].parity_verified);
+        CHECK(!report->results[index].replacement_ready);
+        CHECK(strcmp(report->results[index].adoption, "control-only") == 0);
+        CHECK(strcmp(report->results[index].status, "control-parity") == 0);
+        CHECK(strstr(report->results[index].detail, "bits=4096") != NULL);
+        CHECK(strstr(report->results[index].detail, "candidate=current-scratch-mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "baseline=mpz_mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "oracle=mpz_mul") != NULL);
+        CHECK(strstr(report->results[index].detail, "featureGate=sparse-bigint-dense-random-control") != NULL);
+        CHECK(strstr(report->results[index].detail, "gmpClue=dense-random-control") != NULL);
+        CHECK(strstr(report->results[index].detail, "sparseShape=dense-random") != NULL);
+        CHECK(strstr(report->results[index].detail, "controlSafety=paper-dense-control") != NULL);
+        CHECK(strstr(report->results[index].detail, "replacementReady=false") != NULL);
       }
       if (strcmp(report->results[index].operation, "mul-threshold-tournament") == 0) {
         saw_mul_threshold_tournament_probe = 1;
@@ -9601,6 +9621,7 @@ static void test_benchmarks(void) {
   CHECK(saw_mul_unroll4_vs_scratch_probe);
   CHECK(saw_mul_unroll4_vs_gmp_probe);
   CHECK(saw_mul_unroll4_deep_vs_gmp_probe);
+  CHECK(saw_mul_dense_control_probe);
   if (report->cpu.bmi2 && report->cpu.adx) CHECK(saw_muladd_bmi2_adx_probe);
 #endif
   CHECK(kernel_rows >= 4);
@@ -10369,6 +10390,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_json, "\"productionRoutes\"") != NULL);
   CHECK(strstr(benchmark_json, "\"diagnosticProbeFamilies\"") != NULL);
   CHECK(strstr(benchmark_json, "\"decimal-parse-large\"") != NULL);
+  CHECK(strstr(benchmark_json, "mul-dense-control") != NULL);
   CHECK(strstr(benchmark_json, "\"karatsuba-workspace\"") != NULL);
   CHECK(strstr(benchmark_json, "\"toom3-split-view\"") != NULL);
   CHECK(strstr(benchmark_json, "\"toom3-workspace\"") != NULL);
@@ -10718,6 +10740,8 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_tsv, "mfastLesson=production-shape-gates") != NULL);
   CHECK(strstr(benchmark_tsv, "noAutoRoute=0") != NULL);
   CHECK(strstr(benchmark_tsv, "mfastFeedback=zero-scalar-row-addmul") != NULL);
+  CHECK(strstr(benchmark_tsv, "mul-dense-control") != NULL);
+  CHECK(strstr(benchmark_tsv, "controlSafety=paper-dense-control") != NULL);
   CHECK(strstr(benchmark_tsv, "mul-dense-leaf-vs-scan") != NULL);
   CHECK(strstr(benchmark_tsv, "dense-leaf-no-sparse-scan") != NULL);
   CHECK(strstr(benchmark_tsv, "dense-leaf-sparse-scan-audit") != NULL);
@@ -10953,6 +10977,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_frontier, "Worst") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-threshold thr=") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-threshold-tournament thr=") != NULL);
+  CHECK(strstr(benchmark_frontier, "mul-dense-control") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-dense-leaf-vs-scan") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-karatsuba-view-vs-copy") != NULL);
   CHECK(strstr(benchmark_frontier, "mul-large-cpu-campaign") != NULL);
@@ -11157,6 +11182,7 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_progress, "Fast-looking promotion blockers") != NULL);
   CHECK(strstr(benchmark_progress, "Open/noisy route rows observed") != NULL);
   CHECK(strstr(benchmark_progress, "Product-gated route rows observed") != NULL);
+  CHECK(strstr(benchmark_progress, "mul-dense-control") != NULL);
   CHECK(strstr(benchmark_progress, "Large multiply CPU campaign rows observed") != NULL);
   CHECK(strstr(benchmark_progress, "mul-large-cpu-campaign") != NULL);
   CHECK(strstr(benchmark_progress, "karatsuba-split-view-workspace") != NULL);
@@ -11465,6 +11491,9 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_progress_tsv, "full-workspace-combo-route-ge4096") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "active-window") != NULL);
 #endif
+  CHECK(strstr(benchmark_progress_tsv, "mul-dense-control") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "dense-multiply") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "control-row") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "format-route-tournament-detail") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "controlSafety=tournament-detail") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "\ttrue\tfalse\ttrue\ttrue\ttrue") != NULL);
@@ -11533,10 +11562,10 @@ static void test_sparse_benchmark_visibility_contract(void) {
   XrayBenchmarkReport report;
   memset(&report, 0, sizeof(report));
   xray_cpu_features_detect(&report.cpu);
-  report.results = (XrayBenchmarkResult *)calloc(3U, sizeof(XrayBenchmarkResult));
+  report.results = (XrayBenchmarkResult *)calloc(4U, sizeof(XrayBenchmarkResult));
   CHECK(report.results != NULL);
-  report.result_count = 3U;
-  report.passed_count = 3U;
+  report.result_count = 4U;
+  report.passed_count = 4U;
   report.scratch_count = 2U;
   report.replacement_ready_count = 2U;
   report.oracle_only_count = 1U;
@@ -11597,6 +11626,23 @@ static void test_sparse_benchmark_visibility_contract(void) {
     5U,
     5U,
     1);
+  set_benchmark_visibility_row(
+    &report.results[3],
+    "kernel-probe",
+    "control dense random mul 11717-bit",
+    "mul-dense-control",
+    "control-parity",
+    "control-only",
+    "op=mul-dense-control bits=11717 digits=3528 operandFamilies=1 samples=3 stablePairs=0/3 scratchUs=1500 gmpUs=1000 ratio=1.500 worstPairRatio=1.700 ratioMethod=paired-median max=1.00 candidate=current-scratch-mul baseline=mpz_mul oracle=mpz_mul featureGate=sparse-bigint-dense-random-control gmpClue=dense-random-control sparseShape=dense-random controlSafety=paper-dense-control noAutoRoute=0 replacementReady=false adoption=control-only",
+    3528U,
+    1500U,
+    1000U,
+    1.500,
+    1.0,
+    1.700,
+    0U,
+    3U,
+    0);
 
   char *json = xray_benchmark_report_json(&report);
   char *tsv = xray_benchmark_report_tsv(&report);
@@ -11607,17 +11653,21 @@ static void test_sparse_benchmark_visibility_contract(void) {
   CHECK(strstr(json, "sparse-production-mul") != NULL);
   CHECK(strstr(json, "sparse-zero-mul") != NULL);
   CHECK(strstr(json, "sparse-production-pair-mul") != NULL);
+  CHECK(strstr(json, "mul-dense-control") != NULL);
   CHECK(strstr(json, "sparse-bigint-production-route") != NULL);
+  CHECK(strstr(json, "sparse-bigint-dense-random-control") != NULL);
   CHECK(strstr(json, "ratioMethod=paired-median") != NULL);
   CHECK(strstr(tsv, "sparse-production-mul") != NULL);
   CHECK(strstr(tsv, "sparse-zero-mul") != NULL);
   CHECK(strstr(tsv, "sparse-production-pair-mul") != NULL);
+  CHECK(strstr(tsv, "mul-dense-control") != NULL);
   CHECK(strstr(tsv, "safeSizeChunks=4096-8192") != NULL);
   CHECK(strstr(tsv, "noAutoRoute=0") != NULL);
   CHECK(strstr(tsv, "noAutoRoute=1") != NULL);
   CHECK(strstr(frontier, "sparse-production-mul") != NULL);
   CHECK(strstr(frontier, "sparse-zero-mul") != NULL);
   CHECK(strstr(frontier, "sparse-production-pair-mul") != NULL);
+  CHECK(strstr(frontier, "mul-dense-control") != NULL);
 
   char *progress = xray_benchmark_progress_tsv_text(tsv);
   char *progress_tsv = xray_benchmark_progress_classification_tsv(tsv);
@@ -11627,12 +11677,16 @@ static void test_sparse_benchmark_visibility_contract(void) {
   CHECK(strstr(progress, "sparse-production-mul") != NULL);
   CHECK(strstr(progress, "sparse-zero-mul") != NULL);
   CHECK(strstr(progress, "sparse-production-pair-mul") != NULL);
+  CHECK(strstr(progress, "mul-dense-control") != NULL);
   CHECK(strstr(progress_tsv, "sparse-production-mul") != NULL);
   CHECK(strstr(progress_tsv, "sparse-zero-mul") != NULL);
   CHECK(strstr(progress_tsv, "sparse-production-pair-mul") != NULL);
+  CHECK(strstr(progress_tsv, "mul-dense-control") != NULL);
   CHECK(strstr(progress_tsv, "sparse-multiply") != NULL);
+  CHECK(strstr(progress_tsv, "dense-multiply") != NULL);
   CHECK(strstr(progress_tsv, "safeSizeChunks") != NULL);
   CHECK(strstr(progress_tsv, "4096-8192") != NULL);
+  CHECK(strstr(progress_tsv, "control-row") != NULL);
   CHECK(strstr(progress_tsv, "baseline-row") != NULL);
   CHECK(strstr(progress_tsv, "no-auto-route") != NULL);
 
