@@ -41,10 +41,13 @@ parity plus a stable same-run paired win.
 `bench_focus_matrix.py` now writes `matrix_ranked.tsv` beside the complete
 `matrix.tsv`. The ranked view keeps only repeat-stable candidates and sorts by
 largest contiguous span, total span, safe-run count, and worst-pair ratio.
+It also writes `matrix_audit_candidates.tsv`, which keeps only repeat-stable
+rows with no blocker-like status and `maxWorstPairRatio <= 1.0`.
 
 Decision: use `matrix_ranked.tsv` as the first triage artifact for fast novelty
-selection, then inspect `matrix.tsv` and raw per-focus summaries before opening
-a deeper route audit.
+selection, use `matrix_audit_candidates.tsv` to choose route-audit work, then
+inspect `matrix.tsv` and raw per-focus summaries before opening a deeper route
+audit.
 
 ## 2026-06-21: Ranked Novelty Matrix Smoke
 

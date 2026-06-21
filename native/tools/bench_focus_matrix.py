@@ -142,6 +142,32 @@ def has_repeat_stable_chunk(row: dict[str, str]) -> bool:
     return bool(chunks and chunks != "none")
 
 
+BLOCKED_STATUS_TOKENS = (
+    "baseline-faster",
+    "blocked",
+    "incomplete",
+    "lower-bound",
+    "mismatch",
+    "no-complete",
+    "no-margin",
+    "regression",
+    "timeout",
+)
+
+
+def has_blocked_status(row: dict[str, str]) -> bool:
+    statuses = row.get("statuses", "").lower()
+    return any(token in statuses for token in BLOCKED_STATUS_TOKENS)
+
+
+def is_audit_candidate(row: dict[str, str]) -> bool:
+    if not has_repeat_stable_chunk(row):
+        return False
+    if has_blocked_status(row):
+        return False
+    return parse_float(row.get("maxWorstPairRatio", "")) <= 1.0
+
+
 def ranked_matrix_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
     candidates = [row for row in rows if has_repeat_stable_chunk(row)]
     return sorted(
@@ -155,6 +181,10 @@ def ranked_matrix_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
             row.get("operation", ""),
         ),
     )
+
+
+def audit_candidate_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    return [row for row in ranked_matrix_rows(rows) if is_audit_candidate(row)]
 
 
 def print_matrix(rows: list[dict[str, str]]) -> None:
@@ -277,8 +307,8 @@ def run_self_test() -> int:
                     "repeatStableLongestChunk": "11717",
                     "repeatStableLongestChunkSpan": "1",
                     "repeatStableTotalChunkSpan": "1",
-                    "maxWorstPairRatio": "1.000000",
-                    "statuses": "clean",
+                    "maxWorstPairRatio": "1.100000",
+                    "statuses": "worst-pair-regression",
                 },
                 {
                     "focus": "focus-c",
@@ -293,9 +323,37 @@ def run_self_test() -> int:
                     "maxWorstPairRatio": "0.900000",
                     "statuses": "clean",
                 },
+                {
+                    "focus": "focus-d",
+                    "operation": "op-d",
+                    "runsSeen": "3",
+                    "runsWithSafeChunks": "3",
+                    "repeatStableSafeChunks": "20000-22000",
+                    "repeatStableChunkCount": "1",
+                    "repeatStableLongestChunk": "20000-22000",
+                    "repeatStableLongestChunkSpan": "2001",
+                    "repeatStableTotalChunkSpan": "2001",
+                    "maxWorstPairRatio": "0.990000",
+                    "statuses": "candidate-faster",
+                },
+                {
+                    "focus": "focus-e",
+                    "operation": "op-e",
+                    "runsSeen": "3",
+                    "runsWithSafeChunks": "3",
+                    "repeatStableSafeChunks": "24000-26000",
+                    "repeatStableChunkCount": "1",
+                    "repeatStableLongestChunk": "24000-26000",
+                    "repeatStableLongestChunkSpan": "2001",
+                    "repeatStableTotalChunkSpan": "2001",
+                    "maxWorstPairRatio": "0.980000",
+                    "statuses": "backend-regression",
+                },
             ]
         )
-        assert [row["operation"] for row in ranked] == ["op-a", "op-b"]
+        assert [row["operation"] for row in ranked] == ["op-a", "op-e", "op-d", "op-b"]
+        audit_ready = audit_candidate_rows(ranked)
+        assert [row["operation"] for row in audit_ready] == ["op-d"]
         matrix_path = Path(tmp) / "matrix.tsv"
         write_matrix(matrix_path, rows)
         reread = read_tsv(matrix_path)
@@ -340,10 +398,14 @@ def main() -> int:
     ranked = ranked_matrix_rows(matrix)
     ranked_path = out_dir / "matrix_ranked.tsv"
     write_matrix(ranked_path, ranked)
+    audit_candidates = audit_candidate_rows(matrix)
+    audit_candidates_path = out_dir / "matrix_audit_candidates.tsv"
+    write_matrix(audit_candidates_path, audit_candidates)
     print(f"runs={args.runs}")
     print(f"out={out_dir}")
     print(f"matrix={matrix_path}")
     print(f"rankedMatrix={ranked_path}")
+    print(f"auditCandidates={audit_candidates_path}")
     if matrix:
         print_matrix(matrix)
     else:
@@ -354,6 +416,12 @@ def main() -> int:
         print_matrix(ranked)
     else:
         print("No repeat-stable candidate rows.")
+    print()
+    if audit_candidates:
+        print("Audit-ready repeat-stable candidates")
+        print_matrix(audit_candidates)
+    else:
+        print("No audit-ready repeat-stable candidates.")
     return 0
 
 

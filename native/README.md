@@ -509,7 +509,8 @@ and write a top-level `matrix.tsv` that compares
 repeat-stable chunks and their largest contiguous spans across route families.
 The helper also writes `matrix_ranked.tsv`, a filtered view of repeat-stable
 candidates sorted by largest contiguous span, total span, safe-run count, and
-worst-pair ratio.
+worst-pair ratio. `matrix_audit_candidates.tsv` narrows that list again to
+repeat-stable rows with no blocker-like status and no worst-pair regression.
 Pass `--timeout-seconds N` to the
 repeat or matrix helper when a focus is exploratory; timed-out `xray_cli`
 invocations write `runNN.timeout.txt` and a TSV summary row with
