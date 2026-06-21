@@ -995,7 +995,7 @@ char *xray_benchmark_progress_classification_tsv(const char *tsv) {
   int ok = parse_compare_set(tsv, &set, "benchmark");
 
   cb_append(&buffer,
-    "category\tname\toperation\tdigits\tdisplay\tprimaryLane\trouteCandidate\trouteCompleted\trouteOpen\tproductGated\thasSetupContext\tsetupSeconds\twarmupReview\tlowerBound\trunFailed\tattemptedRuns\tcompletedRuns\tsafetyRejected\tbaseline\tcontrol\tnoisyControl\tpromotionReady\tstatus\tadoption\tspeedRatio\tworstPairRatio\tstableSampleCount\tsampleCount\tdetail\tbuildConfig\tipo\tcompiler\tcompilerVersion\tdigitBand\tworkloadShape\tpolicy\tcandidate\tactiveCandidate\tbaseline\tfeatureGate\tgmpClue\tcontrolSafety\tthresholdSafety\thashGate\tsafeSizes\tsafeSizeChunks\tlongestSafeSizeChunk\tlongestSafeSizeChunkCount\tblockerReason\n");
+    "category\tname\toperation\tdigits\tdisplay\tprimaryLane\trouteCandidate\trouteCompleted\trouteOpen\tproductGated\thasSetupContext\tsetupSeconds\twarmupReview\tlowerBound\trunFailed\tattemptedRuns\tcompletedRuns\tsafetyRejected\tbaselineRow\tcontrol\tnoisyControl\tpromotionReady\tstatus\tadoption\tspeedRatio\tworstPairRatio\tstableSampleCount\tsampleCount\tdetail\tbuildConfig\tipo\tcompiler\tcompilerVersion\tdigitBand\tworkloadShape\tpolicy\tcandidate\tactiveCandidate\tbaseline\tfeatureGate\tgmpClue\tcontrolSafety\tthresholdSafety\thashGate\tsafeSizes\tsafeSizeChunks\tlongestSafeSizeChunk\tlongestSafeSizeChunkCount\tblockerReason\n");
   if (!ok) {
     cb_append(&buffer, "error\t");
     append_progress_tsv_field(&buffer, set.error);
