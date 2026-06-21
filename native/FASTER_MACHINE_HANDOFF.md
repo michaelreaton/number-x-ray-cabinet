@@ -1547,6 +1547,9 @@ Run these in order.
      `native-test-runs/20260621-092200-expanded-novelty-matrix-repeat2/matrix.tsv`,
      left only a conflicting `4096` backend-gap hint; treat it as recheck-only
      because the earlier backend-gap three-repeat artifact found no safe chunks.
+     The five-repeat recheck,
+     `native-test-runs/20260621-093000-backend-gap-repeat5/repeat_stable_chunks.tsv`,
+     retired that hint: no backend-gap operation had a repeat-stable chunk.
    - Read `safeSizeChunks` and `longestSafeSizeChunk*` as contiguous measured
      benchmark points only. They are useful for piecemeal follow-up audits over
      promising pockets, but they do not prove every unmeasured digit between the
