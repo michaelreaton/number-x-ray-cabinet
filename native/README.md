@@ -543,7 +543,10 @@ Use `--preset post-pocket-novelty` for the current bounded cheap novelty bundle
 (`mul-full-audit-pocket`, backend, Toom-4/5, div-transition, handoff-boundary,
 and sparse). It supplies a `60` second per-invocation timeout unless you pass
 `--timeout-seconds` explicitly. Use `--preset sparse-paper` for the sparse
-paper lane only; it supplies a `45` second default timeout.
+paper lane only; it supplies a `45` second default timeout. The manual GitHub
+Actions workflow `Sparse Paper Benchmark` runs that sparse-paper lane on Linux
+GMP, keeps detailed progress rows, records runner/compiler/CPU metadata, and
+uploads the raw artifact without adding a required PR check.
 The helper also writes `matrix_ranked.tsv`, a filtered view of repeat-stable
 candidates sorted by largest contiguous span, total span, safe-run count, and
 worst-pair ratio. `matrix_audit_candidates.tsv` narrows that list again to
