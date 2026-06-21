@@ -287,7 +287,7 @@ static void test_benchmark_progress_digest(void) {
     "category\tname\toperation\tdigits\tstatus\tpassed\tparityVerified\treplacementReady\tadoption\tscratchUs\tgmpUs\tspeedRatio\tmaxAllowedSpeedRatio\tworstPairRatio\tstableSampleCount\tsampleCount\telapsedMs\tdetail\tbuildConfig\tipo\tcompiler\tcompilerVersion\n";
   const char *rows =
     "scratch-vs-gmp\tscratch parse 1000 digits\tparse\t1000\treplacement-ready\ttrue\ttrue\ttrue\tallowed\t10\t20\t0.500000\t1.000000\t0.700000\t5\t5\t1\tdetail\tRelease\tfalse\tMSVC\t1929\n"
-    "policy-gate\tpolicy gate format preinv 1000 digits\tformat-policy-safety\t1000\tpolicy-ready\ttrue\ttrue\ttrue\tpromotion-ready\t50\t60\t0.800000\t0.980000\t0.950000\t5\t5\t1\tpolicy=preinv candidate=decimal-divide-1e19-preinv activeCandidate=decimal-divide-1e19-preinv baseline=mpz_get_str featureGate=decimal-format-policy-divide-1e19-preinv gmpClue=mpn_get_str hashGate=matched SetupSeconds=0.123456 setupUs=42 setupSamples=5 setupPolicy=reported-not-scored WarmupSecondsMedian=0.000042\tRelease\tfalse\tMSVC\t1929\n"
+    "policy-gate\tpolicy gate format preinv 1000 digits\tformat-policy-safety\t1000\tpolicy-ready\ttrue\ttrue\ttrue\tpromotion-ready\t50\t60\t0.800000\t0.980000\t0.950000\t5\t5\t1\tpolicy=preinv candidate=decimal-divide-1e19-preinv activeCandidate=decimal-divide-1e19-preinv baseline=mpz_get_str featureGate=decimal-format-policy-divide-1e19-preinv gmpClue=mpn_get_str hashGate=matched safeSizeChunks=768-1000 longestSafeSizeChunk=768-1000 longestSafeSizeChunkCount=2 SetupSeconds=0.123456 setupUs=42 setupSamples=5 setupPolicy=reported-not-scored WarmupSecondsMedian=0.000042\tRelease\tfalse\tMSVC\t1929\n"
     "policy-gate\tpolicy gate format product-gated 960 digits\tformat-policy-deep-safety\t960\tpolicy-ready\ttrue\ttrue\ttrue\tpromotion-ready\t45\t60\t0.750000\t0.980000\t0.880000\t5\t5\t1\tpolicy=deep-preinv gate=960 candidate=decimal-divide-1e19-preinv activeCandidate=decimal-divide-1e19-preinv baseline=mpz_get_str featureGate=decimal-format-policy-divide-1e19-preinv gmpClue=product-codegen hashGate=matched forcedCandidate=yes thresholdSafety=forced-neighbor deepConfirmation=required noAutoRoute=1\tRelease\tfalse\tMSVC\t1929\n"
     "policy-probe\tpolicy mul current-default 1000 digits\tmul-policy\t1000\tpolicy-ready\ttrue\ttrue\ttrue\tpromotion-ready\t21\t42\t0.500000\t1.000000\t0.800000\t5\t5\t1\tpolicy=current-default candidate=current-scratch-mul baseline=mpz_mul\tRelease\tfalse\tMSVC\t1929\n"
     "scratch-vs-gmp\tscratch format 896 digits\tformat\t896\tparity\ttrue\ttrue\tfalse\toracle-only\t190\t100\t1.900000\t1.000000\t1.950000\t0\t5\t1\tdetail\tRelease\tfalse\tMSVC\t1929\n"
@@ -349,10 +349,11 @@ static void test_benchmark_progress_digest(void) {
   CHECK(classification != NULL);
   CHECK(strstr(classification, "primaryLane\trouteCandidate\trouteCompleted\trouteOpen\tproductGated\thasSetupContext\tsetupSeconds\twarmupReview\tlowerBound\trunFailed\tattemptedRuns\tcompletedRuns") != NULL);
   CHECK(strstr(classification, "safetyRejected\tbaselineRow\tcontrol\tnoisyControl\tpromotionReady") != NULL);
-  CHECK(strstr(classification, "compilerVersion\tdigitBand\tworkloadShape\tpolicy\tcandidate\tactiveCandidate\tbaseline\tfeatureGate\tgmpClue\tcontrolSafety\tthresholdSafety\thashGate\tsafeSizes\tsafeSizeChunks\tlongestSafeSizeChunk\tlongestSafeSizeChunkCount\tblockerReason") != NULL);
+  CHECK(strstr(classification, "compilerVersion\tdigitBand\tworkloadShape\tpolicy\tcandidate\tactiveCandidate\tbaseline\tfeatureGate\tgmpClue\tcontrolSafety\tthresholdSafety\thashGate\tsafeSizes\tsafeSizeChunks\tlongestSafeSizeChunk\tlongestSafeSizeChunkCount\tlongestSafeSizeChunkSpan\tsafeSizeChunkTotalSpan\tblockerReason") != NULL);
   CHECK(strstr(classification, "format-policy-safety policy=preinv baseline=mpz_get_str featureGate=decimal-format-policy-divide-1e19-preinv candidate=decimal-divide-1e19-preinv\tcompleted\ttrue\ttrue\tfalse\tfalse\ttrue\t0.123456\tfalse\tfalse") != NULL);
   CHECK(strstr(classification, "0.123456\tfalse\tfalse\tfalse\t0\t0\tfalse\tfalse\tfalse\tfalse\ttrue\tpolicy-ready\tpromotion-ready\t0.800000") != NULL);
   CHECK(strstr(classification, "MSVC\t1929\tmedium\tdecimal-format\tpreinv\tdecimal-divide-1e19-preinv\tdecimal-divide-1e19-preinv\tmpz_get_str\tdecimal-format-policy-divide-1e19-preinv\tmpn_get_str\t\t\tmatched") != NULL);
+  CHECK(strstr(classification, "matched\t\t768-1000\t768-1000\t2\t233\t233\t") != NULL);
   CHECK(strstr(classification, "format-policy-deep-safety policy=deep-preinv baseline=mpz_get_str featureGate=decimal-format-policy-divide-1e19-preinv candidate=decimal-divide-1e19-preinv\tproduct-gated\ttrue\tfalse\ttrue\ttrue\tfalse\t0.000000\tfalse\tfalse") != NULL);
   CHECK(strstr(classification, "MSVC\t1929\tmedium\tdecimal-format\tdeep-preinv\tdecimal-divide-1e19-preinv\tdecimal-divide-1e19-preinv\tmpz_get_str\tdecimal-format-policy-divide-1e19-preinv\tproduct-codegen\t\tforced-neighbor\tmatched") != NULL);
   CHECK(strstr(classification, "forced-neighbor-required") != NULL);
@@ -11317,11 +11318,13 @@ static void test_benchmarks(void) {
   CHECK(strstr(benchmark_progress, "controlsExcluded=") != NULL);
   CHECK(strstr(benchmark_progress, "product-gated rows") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "primaryLane\trouteCandidate\trouteCompleted\trouteOpen\tproductGated\thasSetupContext\tsetupSeconds\twarmupReview\tlowerBound\trunFailed\tattemptedRuns\tcompletedRuns") != NULL);
-  CHECK(strstr(benchmark_progress_tsv, "compilerVersion\tdigitBand\tworkloadShape\tpolicy\tcandidate\tactiveCandidate\tbaseline\tfeatureGate\tgmpClue\tcontrolSafety\tthresholdSafety\thashGate\tsafeSizes\tsafeSizeChunks\tlongestSafeSizeChunk\tlongestSafeSizeChunkCount\tblockerReason") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "compilerVersion\tdigitBand\tworkloadShape\tpolicy\tcandidate\tactiveCandidate\tbaseline\tfeatureGate\tgmpClue\tcontrolSafety\tthresholdSafety\thashGate\tsafeSizes\tsafeSizeChunks\tlongestSafeSizeChunk\tlongestSafeSizeChunkCount\tlongestSafeSizeChunkSpan\tsafeSizeChunkTotalSpan\tblockerReason") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "hasSetupContext") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "blockerReason") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "safeSizeChunks") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "longestSafeSizeChunk") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "longestSafeSizeChunkSpan") != NULL);
+  CHECK(strstr(benchmark_progress_tsv, "safeSizeChunkTotalSpan") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "setupSeconds") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "runFailed") != NULL);
   CHECK(strstr(benchmark_progress_tsv, "\tlarge\tdecimal-format\t") != NULL);
@@ -11686,6 +11689,7 @@ static void test_sparse_benchmark_visibility_contract(void) {
   CHECK(strstr(progress_tsv, "dense-multiply") != NULL);
   CHECK(strstr(progress_tsv, "safeSizeChunks") != NULL);
   CHECK(strstr(progress_tsv, "4096-8192") != NULL);
+  CHECK(strstr(progress_tsv, "\t4096-8192\t4096-8192\t3\t4097\t4097\t") != NULL);
   CHECK(strstr(progress_tsv, "control-row") != NULL);
   CHECK(strstr(progress_tsv, "baseline-row") != NULL);
   CHECK(strstr(progress_tsv, "no-auto-route") != NULL);

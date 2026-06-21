@@ -656,6 +656,49 @@ static void append_detail_value_or_empty(CompareBuffer *buffer, const CompareRow
   append_progress_tsv_field(buffer, value);
 }
 
+static size_t safe_chunk_token_span(const char *token, size_t length) {
+  if (!token || length == 0) return 0;
+  char copy[96];
+  if (length >= sizeof(copy)) length = sizeof(copy) - 1U;
+  memcpy(copy, token, length);
+  copy[length] = '\0';
+  char *dash = strchr(copy, '-');
+  char *endptr = NULL;
+  unsigned long long start = strtoull(copy, &endptr, 10);
+  if (endptr == copy) return 0;
+  unsigned long long end = start;
+  if (dash) {
+    char *right_end = NULL;
+    unsigned long long parsed_end = strtoull(dash + 1, &right_end, 10);
+    if (right_end != dash + 1) end = parsed_end;
+  }
+  if (end < start) {
+    unsigned long long swap = start;
+    start = end;
+    end = swap;
+  }
+  return (size_t)(end - start + 1ULL);
+}
+
+static size_t safe_chunk_total_span_text(const char *text) {
+  if (!text || !text[0] || compare_streq(text, "none")) return 0;
+  size_t total = 0;
+  const char *cursor = text;
+  while (*cursor) {
+    while (*cursor == ',' || *cursor == ' ') cursor++;
+    const char *start = cursor;
+    while (*cursor && *cursor != ',') cursor++;
+    total += safe_chunk_token_span(start, (size_t)(cursor - start));
+  }
+  return total;
+}
+
+static size_t compare_row_safe_chunk_span(const CompareRow *row, const char *key) {
+  char value[160] = {0};
+  if (!row || !key || !detail_value(row->detail, key, value, sizeof(value))) return 0;
+  return safe_chunk_total_span_text(value);
+}
+
 static int compare_row_is_noisy_control(const CompareRow *row) {
   if (!row) return 0;
   return compare_contains(row->status, "noisy-control") ||
@@ -995,13 +1038,13 @@ char *xray_benchmark_progress_classification_tsv(const char *tsv) {
   int ok = parse_compare_set(tsv, &set, "benchmark");
 
   cb_append(&buffer,
-    "category\tname\toperation\tdigits\tdisplay\tprimaryLane\trouteCandidate\trouteCompleted\trouteOpen\tproductGated\thasSetupContext\tsetupSeconds\twarmupReview\tlowerBound\trunFailed\tattemptedRuns\tcompletedRuns\tsafetyRejected\tbaselineRow\tcontrol\tnoisyControl\tpromotionReady\tstatus\tadoption\tspeedRatio\tworstPairRatio\tstableSampleCount\tsampleCount\tdetail\tbuildConfig\tipo\tcompiler\tcompilerVersion\tdigitBand\tworkloadShape\tpolicy\tcandidate\tactiveCandidate\tbaseline\tfeatureGate\tgmpClue\tcontrolSafety\tthresholdSafety\thashGate\tsafeSizes\tsafeSizeChunks\tlongestSafeSizeChunk\tlongestSafeSizeChunkCount\tblockerReason\n");
+    "category\tname\toperation\tdigits\tdisplay\tprimaryLane\trouteCandidate\trouteCompleted\trouteOpen\tproductGated\thasSetupContext\tsetupSeconds\twarmupReview\tlowerBound\trunFailed\tattemptedRuns\tcompletedRuns\tsafetyRejected\tbaselineRow\tcontrol\tnoisyControl\tpromotionReady\tstatus\tadoption\tspeedRatio\tworstPairRatio\tstableSampleCount\tsampleCount\tdetail\tbuildConfig\tipo\tcompiler\tcompilerVersion\tdigitBand\tworkloadShape\tpolicy\tcandidate\tactiveCandidate\tbaseline\tfeatureGate\tgmpClue\tcontrolSafety\tthresholdSafety\thashGate\tsafeSizes\tsafeSizeChunks\tlongestSafeSizeChunk\tlongestSafeSizeChunkCount\tlongestSafeSizeChunkSpan\tsafeSizeChunkTotalSpan\tblockerReason\n");
   if (!ok) {
     cb_append(&buffer, "error\t");
     append_progress_tsv_field(&buffer, set.error);
     cb_append(&buffer, "\t\t0\terror\tinvalid\tfalse\tfalse\tfalse\tfalse\tfalse\t0.000000\tfalse\tfalse\tfalse\t0\t0\tfalse\tfalse\tfalse\tfalse\tfalse\tparse-error\t\t0.000000\t0.000000\t0\t0\t");
     append_progress_tsv_field(&buffer, set.error);
-    for (size_t field = 0; field < 19U; ++field) cb_append(&buffer, "\t");
+    for (size_t field = 0; field < 21U; ++field) cb_append(&buffer, "\t");
     cb_append(&buffer, "parse-error");
     cb_append(&buffer, "\n");
     return cb_take(&buffer);
@@ -1090,6 +1133,10 @@ char *xray_benchmark_progress_classification_tsv(const char *tsv) {
     append_detail_value_or_empty(&buffer, row, "longestSafeSizeChunk");
     cb_append(&buffer, "\t");
     append_detail_value_or_empty(&buffer, row, "longestSafeSizeChunkCount");
+    cb_printf(&buffer,
+      "\t%zu\t%zu",
+      compare_row_safe_chunk_span(row, "longestSafeSizeChunk"),
+      compare_row_safe_chunk_span(row, "safeSizeChunks"));
     cb_append(&buffer, "\t");
     append_progress_tsv_field(&buffer, compare_row_blocker_reason(row));
     cb_append(&buffer, "\n");
