@@ -4736,6 +4736,12 @@ The helper now writes `repeat_stable_chunks.tsv` beside the per-run
 run is visibly different from a measured chunk that survives repeated focused
 scouts. This is reporting only; it does not relax route promotion gates.
 
+For broader novelty triage, `bench_focus_matrix.py` wraps several
+`bench_focus_repeat.py` runs and writes a top-level `matrix.tsv` with
+repeat-stable chunks by focus and operation. Use it to choose the next deeper
+audit from cheap focus families; do not treat a matrix hit as promotion-ready
+without the normal parity, worst-pair, stable-pair, and route-audit gates.
+
 ## 2026-06-21: Toom Div Transition Focus
 
 Local Release validation artifact
