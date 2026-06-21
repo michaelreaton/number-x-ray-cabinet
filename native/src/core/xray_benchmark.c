@@ -1449,6 +1449,10 @@ static unsigned int large_mul_campaign_iterations(size_t digits) {
   return perf_iterations("mul", digits);
 }
 
+static unsigned int large_mul_probe_iterations(size_t digits) {
+  return large_mul_campaign_iterations(digits);
+}
+
 static const char *large_mul_campaign_size_role(size_t digits) {
   return digits == 4096U ||
     digits == 8192U ||
@@ -16880,7 +16884,7 @@ static void run_mul_dense_leaf_vs_scan_probe_case(XrayBenchmarkReport *report, s
   XrayScratchBigInt candidate_out[XRAY_MUL_OPERAND_FAMILIES];
   XrayScratchBigInt baseline_out[XRAY_MUL_OPERAND_FAMILIES];
 
-  unsigned int iterations = perf_iterations("mul", digits);
+  unsigned int iterations = large_mul_probe_iterations(digits);
   int ok = 1;
   for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
     xray_bigint_init(&a[family]);
@@ -16970,7 +16974,7 @@ static void run_mul_karatsuba_view_vs_copy_probe_case(XrayBenchmarkReport *repor
   XrayScratchBigInt candidate_out[XRAY_MUL_OPERAND_FAMILIES];
   XrayScratchBigInt baseline_out[XRAY_MUL_OPERAND_FAMILIES];
 
-  unsigned int iterations = perf_iterations("mul", digits);
+  unsigned int iterations = large_mul_probe_iterations(digits);
   int ok = 1;
   for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
     xray_bigint_init(&a[family]);
@@ -20755,7 +20759,7 @@ static void run_sparse_mul_focus_cases(XrayBenchmarkReport *report) {
 }
 
 static void run_mul_large_focus_cases(XrayBenchmarkReport *report) {
-  const size_t dense_leaf_digits[] = {4096, 8192, 16384};
+  const size_t dense_leaf_digits[] = {4096, 8192, 16384, 32768, 65536};
   for (size_t digit_index = 0; digit_index < sizeof(dense_leaf_digits) / sizeof(dense_leaf_digits[0]); ++digit_index) {
     run_mul_dense_leaf_vs_scan_probe_case(report, dense_leaf_digits[digit_index], 64);
     run_mul_karatsuba_view_vs_copy_probe_case(report, dense_leaf_digits[digit_index], 64);
