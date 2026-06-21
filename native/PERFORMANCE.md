@@ -4727,3 +4727,22 @@ the duplicate-GMP control never produced a safe transition chunk. Use the focus
 helper as a first-pass noise filter, then move novelty work toward a different
 route shape or lower-level Toom arithmetic instead of rerunning this exact
 handoff policy as if it were still promising.
+
+## 2026-06-21: Toom Div Transition Focus
+
+Local Release validation artifact
+`native-test-runs/20260621-073742-mul-toom-div-transition-focus/benchmark.tsv`
+runs the existing div2, div3, and div2+div3 Toom arithmetic scouts only over
+the transition sizes `11717`, `16384`, and `24103`.
+
+| Row | Sizes | Candidate / Leaf64 | Worst Pair | Safe Sizes | Decision |
+| --- | --- | ---: | ---: | ---: | --- |
+| `mul-large-toom-div2-scout` | `11717,16384,24103` | `1.025` | `1.380` | `0/3` | reject |
+| `mul-large-toom-div3-scout` | `11717,16384,24103` | `1.010` | `1.213` | `0/3` | reject |
+| `mul-large-toom-div2-div3-scout` | `11717,16384,24103` | `1.000` | `2.145` | `0/3` | reject |
+
+Decision: the transition-window div shortcuts are exact but not promising as
+the next novelty route. They regress against the leaf64 baseline in this
+focused run and produce no safe measured sizes. Keep the new focus lane for
+cheap reruns, but move implementation novelty away from div2/div3 arithmetic
+unless a future CPU/build combination changes this result.

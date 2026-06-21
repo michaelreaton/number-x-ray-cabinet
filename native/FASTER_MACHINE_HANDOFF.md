@@ -1431,6 +1431,19 @@ not promote or widen this exact handoff pocket next. Use the helper to filter
 future pockets, and move the next novelty slice toward a different route shape
 or lower-level Toom arithmetic.
 
+### Toom Div Transition Focus
+
+Artifact:
+`native-test-runs/20260621-073742-mul-toom-div-transition-focus/benchmark.tsv`
+
+The `mul-toom-div-transition` focus runs only the existing div2, div3, and
+div2+div3 scouts over `11717`, `16384`, and `24103`. This local run rejected all
+three against the leaf64 baseline: `mul-large-toom-div2-scout` ratio `1.025`,
+`mul-large-toom-div3-scout` ratio `1.010`, and
+`mul-large-toom-div2-div3-scout` ratio `1.000`, with `safeSizes=0/3` for each.
+Keep the focus for quick reruns, but do not spend the next novelty slice on
+div2/div3 arithmetic unless a future CPU/build changes the signal.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor
@@ -1459,6 +1472,10 @@ Run these in order.
    - Use `xray_cli.exe --bench-focus mul-novelty --bench-tsv` to cover the
      mixed `4096` through `65536` multiply window, including deterministic
      in-between sizes, without running unrelated benchmark families.
+   - Use `mul-toom-div-transition` when the next question is lower-level Toom
+     arithmetic in the transition window: it runs only the existing div2, div3,
+     and div2+div3 scouts over `11717,16384,24103`. Use `mul-toom-div` for the
+     same scouts over the full active window.
    - Use narrower focus labels such as `mul-combo-lower`,
      `mul-combo-transition`, `mul-combo-upper`, and `mul-combo-reuse` when a
      candidate pocket is already known.

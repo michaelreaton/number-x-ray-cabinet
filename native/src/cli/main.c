@@ -15,7 +15,8 @@ static void usage(const char *argv0) {
   fprintf(stderr, "       %s [--bench-min-digits N] [--bench-max-digits N] [--bench-filter TEXT] --bench-progress artifact.tsv\n", argv0);
   fprintf(stderr, "       %s [--bench-min-digits N] [--bench-max-digits N] [--bench-filter TEXT] --bench-progress-tsv artifact.tsv\n", argv0);
   fprintf(stderr, "       %s [--bench-min-digits N] [--bench-max-digits N] [--bench-filter TEXT] --bench-compare left.tsv right.tsv\n", argv0);
-  fprintf(stderr, "Focus examples: mul-large, mul-combo-lower, mul-combo-transition, mul-combo-upper, mul-combo-reuse, mul-novelty\n");
+  fprintf(stderr, "Focus examples: mul-large, mul-toom-div-transition, mul-toom-div, mul-combo-lower,\n");
+  fprintf(stderr, "                mul-combo-transition, mul-combo-upper, mul-combo-reuse, mul-novelty\n");
 }
 
 static int parse_size_arg(const char *text, size_t *out) {
