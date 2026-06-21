@@ -45,10 +45,15 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Repeat --bench-focus runs and summarize benchmark_progress.tsv safe chunks."
     )
-    parser.add_argument("--cli", required=True, help="Path to xray_cli or xray_cli.exe")
-    parser.add_argument("--focus", required=True, help="Focus label, for example mul-combo-handoff-pocket")
+    parser.add_argument("--cli", help="Path to xray_cli or xray_cli.exe")
+    parser.add_argument("--focus", help="Focus label, for example mul-combo-handoff-pocket")
     parser.add_argument("--runs", type=int, default=3, help="Number of focused runs to execute")
     parser.add_argument("--out", help="Output directory for raw artifacts and summary.tsv")
+    parser.add_argument(
+        "--self-test",
+        action="store_true",
+        help="Run the helper's safe-chunk intersection self-test without invoking xray_cli",
+    )
     parser.add_argument(
         "--progress-filter",
         help="Optional text filter passed to --bench-progress-tsv before summarizing",
@@ -253,8 +258,74 @@ def print_table(rows: list[dict[str, str]], display_fields: list[str]) -> None:
         print(" | ".join(cell(field, row.get(field, "")) for field in display_fields))
 
 
+def run_self_test() -> int:
+    rows = [
+        {
+            "run": "1",
+            "operation": "op-a",
+            "safeSizeChunks": "11717-16384,24103",
+            "status": "clean",
+            "speedRatio": "0.900000",
+            "worstPairRatio": "1.010000",
+        },
+        {
+            "run": "2",
+            "operation": "op-a",
+            "safeSizeChunks": "11717-14831",
+            "status": "clean",
+            "speedRatio": "0.800000",
+            "worstPairRatio": "1.030000",
+        },
+        {
+            "run": "3",
+            "operation": "op-a",
+            "safeSizeChunks": "11717,16384",
+            "status": "clean",
+            "speedRatio": "0.700000",
+            "worstPairRatio": "1.020000",
+        },
+        {
+            "run": "1",
+            "operation": "op-b",
+            "safeSizeChunks": "14831",
+            "status": "noisy",
+            "speedRatio": "1.100000",
+            "worstPairRatio": "1.200000",
+        },
+        {
+            "run": "2",
+            "operation": "op-b",
+            "safeSizeChunks": "none",
+            "status": "noisy",
+            "speedRatio": "1.200000",
+            "worstPairRatio": "1.300000",
+        },
+        {
+            "run": "3",
+            "operation": "op-b",
+            "safeSizeChunks": "14831",
+            "status": "duplicate",
+            "speedRatio": "1.000000",
+            "worstPairRatio": "1.100000",
+        },
+    ]
+    stable = repeat_stable_rows(rows, 3)
+    by_operation = {row["operation"]: row for row in stable}
+    assert by_operation["op-a"]["repeatStableSafeChunks"] == "11717"
+    assert by_operation["op-a"]["runsWithSafeChunks"] == "3"
+    assert by_operation["op-a"]["maxWorstPairRatio"] == "1.030000"
+    assert by_operation["op-b"]["repeatStableSafeChunks"] == "none"
+    assert by_operation["op-b"]["runsWithSafeChunks"] == "2"
+    print("bench_focus_repeat self-test passed")
+    return 0
+
+
 def main() -> int:
     args = parse_args()
+    if args.self_test:
+        return run_self_test()
+    if not args.cli or not args.focus:
+        raise SystemExit("--cli and --focus are required unless --self-test is set")
     if args.runs < 1:
         raise SystemExit("--runs must be at least 1")
 

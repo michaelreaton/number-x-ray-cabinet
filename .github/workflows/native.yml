@@ -5,6 +5,7 @@ on:
     paths:
       - "native/**"
       - "!native/**/*.md"
+      - "!native/tools/**"
       - ".github/workflows/native.yml"
   workflow_dispatch:
 
