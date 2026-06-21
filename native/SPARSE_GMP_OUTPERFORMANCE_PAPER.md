@@ -83,6 +83,12 @@ The diagnostic rows are useful for explaining the mechanism. The production
 rows are the stronger evidence because they measure the route a product call
 actually takes for those shapes.
 
+The same `mul-sparse` focus also emits `mul-dense-control` at `4096`, `11717`,
+and `65536` bits. Those rows use deterministic dense bit patterns and compare
+the current production multiply route with `mpz_mul`. They are marked
+`controlSafety=paper-dense-control` and `replacementReady=false`; their purpose
+is to keep the sparse paper honest, not to claim dense-route superiority.
+
 ## Benchmark Method
 
 The benchmark policy is designed to avoid false wins:
@@ -243,11 +249,9 @@ package:
 
 - Rerun `mul-sparse` on at least one non-Windows GMP build and one Windows MPIR
   build.
-- Add a table that maps each bit point to its decimal digit count and raw
-  candidate/GMP timings.
-- Add one dense-random control family to show that the sparse route is shape
-  selective and does not claim dense superiority.
-- Add a tiny benchmark contract that fails if the sparse paper rows disappear
-  from TSV, JSON/frontier/progress text, or the GUI-visible benchmark table.
+- Add the dense-control rows to the per-size evidence table once a refreshed
+  sparse-paper artifact has been preserved.
+- Keep extending the benchmark visibility contract if new paper rows are added,
+  so TSV, JSON/frontier/progress text, and GUI-visible summaries stay aligned.
 - Keep tracking contiguous safe chunks, including interior points between
   powers of two, so piecemeal opportunities stay visible.
