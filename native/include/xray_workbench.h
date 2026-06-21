@@ -739,6 +739,20 @@ XRAY_API void xray_bigint_mul_workspace_clear(XrayBigIntMulWorkspace *workspace)
 XRAY_API int xray_bigint_mul_toom3_unroll4_recursive_full_workspace_reuse_div2_div3_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold, size_t depth_limit, XrayBigIntMulWorkspace *workspace);
 
 /**
+ * Multiply through the full-workspace recursive Toom-3 combo probe using
+ * caller-owned recursive workspaces and in-place exact interpolation division
+ * updates.
+ *
+ * This diagnostic probe is benchmark-only: production multiply remains
+ * unchanged, out may alias either input, and the route combines reusable
+ * recursion frames with the checked in-place exact `/2` plus `/3`
+ * interpolation shortcuts. Returns 1 on success and 0 on allocation failure,
+ * unsupported operand shape, invalid workspace, or failed exact-divisibility
+ * checks.
+ */
+XRAY_API int xray_bigint_mul_toom3_unroll4_recursive_full_workspace_reuse_inplace_div2_div3_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold, size_t depth_limit, XrayBigIntMulWorkspace *workspace);
+
+/**
  * Multiply with the unroll4 basecase probe route.
  *
  * This is a benchmark/research probe. Returns 1 on success and 0 on allocation

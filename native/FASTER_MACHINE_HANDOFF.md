@@ -896,6 +896,41 @@ the `24103` random spot and still misses the strict 0.98 baseline gate there;
 the larger rows regress against `l48d4`, fail GMP/MPIR, and fail stability.
 Future scouts should move away from simple leaf/depth reshaping.
 
+## 2026-06-20: Combo Reuse plus In-Place Interpolation Map
+
+Artifact: `native-test-runs/20260620-033959-c4b04caf`
+
+This run adds `mul-large-toom-cmb-ripdiv`, a benchmark-only full-window audit
+that combines reusable recursive workspaces with in-place exact interpolation
+division. It compares the combined route against the regular reusable map on
+identical operand fingerprints across `4096`, `5639`, `8192`, `11717`,
+`16384`, `24103`, `32768`, `52163`, and `65536`.
+
+Summary:
+
+| Row | Sizes | Candidate / Baseline Max | Candidate / Current Max | Candidate / GMP Max | Baseline / GMP Max | Current / GMP Max | Worst Pair Max | Safe Sizes | Hash Safe | Decision |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `mul-large-toom-cmb-ripdiv` | `4096..65536` | `1.017` | `0.842` | `1.158` | `1.158` | `1.967` | `1.297` | `0/9` | `162/162` | observe only |
+
+Per-size signal:
+
+| Digits | Reuse+IPDiv / Reuse | Reuse+IPDiv / Current | Reuse+IPDiv / GMP | Reuse / GMP | Current / GMP | Worst Pair | Stable vs Reuse | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `4096` | `1.004` | `0.830` | `0.763` | `0.755` | `0.913` | `1.065` | `4/9` | `9/9` | reuse-baseline-regression |
+| `5639` | `1.017` | `0.842` | `0.763` | `0.746` | `0.897` | `1.078` | `1/9` | `9/9` | reuse-baseline-regression |
+| `8192` | `1.004` | `0.811` | `0.860` | `0.856` | `1.061` | `1.034` | `1/9` | `9/9` | reuse-baseline-regression |
+| `11717` | `1.014` | `0.693` | `0.911` | `0.902` | `1.320` | `1.035` | `0/9` | `9/9` | reuse-baseline-regression |
+| `16384` | `0.993` | `0.682` | `0.922` | `0.929` | `1.351` | `1.018` | `3/9` | `9/9` | reuse-baseline-regression |
+| `24103` | `1.001` | `0.628` | `0.967` | `0.971` | `1.557` | `1.019` | `3/9` | `9/9` | reuse-baseline-regression |
+| `32768` | `0.983` | `0.625` | `1.008` | `1.022` | `1.622` | `1.092` | `4/9` | `2/9` | reuse-baseline-regression |
+| `52163` | `0.999` | `0.573` | `1.041` | `1.040` | `1.815` | `1.065` | `0/9` | `0/9` | reuse-baseline-regression |
+| `65536` | `0.999` | `0.591` | `1.158` | `1.158` | `1.967` | `1.297` | `2/9` | `0/9` | reuse-baseline-regression |
+
+Decision: reject reuse plus in-place interpolation as a promotion direction.
+The combined path beats current production multiply, but it does not beat the
+regular reusable map under the strict gate and still fails GMP/MPIR and
+worst-pair gates at the high end.
+
 ## Rebuild And Validate
 
 Use a fresh build folder on the faster machine so compiler and processor

@@ -4110,3 +4110,45 @@ Decision: reject `l64d3` as a route direction. It nearly helps at `24103`,
 but misses the baseline gate and regresses the larger rows against `l48d4` and
 GMP/MPIR. This is more evidence that simple leaf/depth reshaping is exhausted
 for the upper window.
+
+## 2026-06-20: Combo Reuse plus In-Place Interpolation Map
+
+Local Release validation artifact
+`native-test-runs/20260620-033959-c4b04caf` adds
+`mul-large-toom-cmb-ripdiv`, a benchmark-only full-window audit combining
+reusable recursive workspaces with in-place exact interpolation division. The
+candidate is `full-ws-combo-reuse-ipdiv-map-l64d2-l48d4-l48d3`; the baseline
+is the regular reusable map `full-ws-combo-reuse-map-l64d2-l48d4-l48d3`;
+current production multiply and `mpz_mul` remain in the same timing run.
+
+Observed aggregate:
+
+- Exact parity/hash:
+  `hashSafe=162/162`, `hashGate=matched`, `parity=matched`.
+- Reuse plus in-place interpolation does not beat the regular reusable map:
+  `candBaseMax=1.017`, `safeSizes=0/9`.
+- It still beats current production multiply:
+  `candCurrentMax=0.842`.
+- It is not competitive with GMP/MPIR at the high end:
+  `candGmpMax=1.158`.
+- Worst-pair safety remains blocked:
+  `maxWorstPairRatio=1.297`.
+
+Per-size point rows:
+
+| Digits | Reuse+IPDiv / Reuse | Reuse+IPDiv / Current | Reuse+IPDiv / GMP | Reuse / GMP | Current / GMP | Worst Pair | Stable vs Reuse | GMP Stable | Status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `4096` | `1.004` | `0.830` | `0.763` | `0.755` | `0.913` | `1.065` | `4/9` | `9/9` | reuse-baseline-regression |
+| `5639` | `1.017` | `0.842` | `0.763` | `0.746` | `0.897` | `1.078` | `1/9` | `9/9` | reuse-baseline-regression |
+| `8192` | `1.004` | `0.811` | `0.860` | `0.856` | `1.061` | `1.034` | `1/9` | `9/9` | reuse-baseline-regression |
+| `11717` | `1.014` | `0.693` | `0.911` | `0.902` | `1.320` | `1.035` | `0/9` | `9/9` | reuse-baseline-regression |
+| `16384` | `0.993` | `0.682` | `0.922` | `0.929` | `1.351` | `1.018` | `3/9` | `9/9` | reuse-baseline-regression |
+| `24103` | `1.001` | `0.628` | `0.967` | `0.971` | `1.557` | `1.019` | `3/9` | `9/9` | reuse-baseline-regression |
+| `32768` | `0.983` | `0.625` | `1.008` | `1.022` | `1.622` | `1.092` | `4/9` | `2/9` | reuse-baseline-regression |
+| `52163` | `0.999` | `0.573` | `1.041` | `1.040` | `1.815` | `1.065` | `0/9` | `0/9` | reuse-baseline-regression |
+| `65536` | `0.999` | `0.591` | `1.158` | `1.158` | `1.967` | `1.297` | `2/9` | `0/9` | reuse-baseline-regression |
+
+Decision: reject `ripdiv` as a promotion direction. It confirms that
+combining reusable workspaces with in-place interpolation still does not beat
+the regular reusable map under the strict gates, even though it remains faster
+than current production multiply.
