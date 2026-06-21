@@ -229,6 +229,28 @@ All dense-control rows were exact against `mpz_mul`, marked
 upper anchor losing to MPIR is useful negative evidence: the sparse paper can
 claim a shape-selective sparse win without implying dense-route superiority.
 
+Linux GMP cross-check artifact:
+
+[GitHub Actions run 27910603343](https://github.com/michaelreaton/number-x-ray-cabinet/actions/runs/27910603343)
+uploaded `native-test-runs/27910603343-linux-sparse-paper/matrix.tsv`.
+The runner was Ubuntu 24.04 on an AMD EPYC 9V74 virtual CPU, GCC `13.3.0`,
+Release build, IPO disabled, with `libgmp10`/`libgmp-dev`
+`2:6.3.0+dfsg-2ubuntu6.1`.
+
+| Operation | Runs With Safe Chunks | Repeat-Stable Chunk | Longest Span | Worst Pair Max | Status |
+| --- | ---: | --- | ---: | ---: | --- |
+| `sparse-production-mul` | `2/2` | `4096-65536` | `61441` | `0.190476` | `replacement-ready` |
+| `sparse-zero-mul` | `2/2` | `4096-65536` | `61441` | `0.190476` | `candidate-faster` |
+| `sparse-production-pair-mul` | `2/2` | `4096-5639,11717,24103-65536` | `41434` | `1.833333` | `replacement-ready/parity` |
+| `mul-dense-control` | `0/2` | none | `0` | `3.984733` | `control-parity` |
+
+The Linux dense-control rows are a useful stronger negative control than the
+Windows MPIR run: dense random multiply lost to GMP at all three control
+points, with median scratch/GMP ratios of `2.000`, `2.900-3.000`, and
+`3.885-3.907` at `4096`, `11717`, and `65536` bits. That keeps the portable
+claim narrow: the sparse app-shaped route beats GMP on the measured sparse
+window; dense random multiply does not.
+
 ## Dense Multiply Negative Results
 
 The sparse result should not be blurred into a generic "we beat GMP" claim.
@@ -307,10 +329,10 @@ backend version, and baseline backend library.
 The next evidence step is not a broader claim. It is a tighter sparse paper
 package:
 
-- Rerun `mul-sparse` on at least one non-Windows GMP build and one Windows MPIR
-  build. Use the manual `Sparse Paper Benchmark` workflow for the Linux GMP
-  artifact; the refreshed Windows MPIR-compatible dense-control artifact is now
-  preserved locally.
+- Preserve the completed Linux GMP artifact from run `27910603343` and refresh
+  it with a higher-repeat or physical-host run before external submission; the
+  refreshed Windows MPIR-compatible dense-control artifact is also preserved
+  locally.
 - Keep dense-control rows in the per-size evidence table whenever the sparse
   paper artifact is refreshed.
 - Keep extending the benchmark visibility contract if new paper rows are added,
