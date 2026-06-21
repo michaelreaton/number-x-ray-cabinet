@@ -1494,6 +1494,10 @@ Run these in order.
      arithmetic in the transition window: it runs only the existing div2, div3,
      and div2+div3 scouts over `11717,16384,24103`. Use `mul-toom-div` for the
      same scouts over the full active window.
+   - Use `mul-toom4-top` when the next question is upper-window topology rather
+     than backend primitives. It runs a quick Toom-4 smoke over `24103,32768`
+     using the existing reuse, factored-div, and vs-combo scouts, with aggregate
+     `safeSizeChunks` already visible in the rows.
    - Use `mul-backend-gap` on MSVC x64 when the next question is whether the
      low-level unroll4 multiply-add backend itself has a safe measured chunk
      before spending time on another recursive Toom route. It runs existing
@@ -1522,10 +1526,10 @@ Run these in order.
      helper also writes `repeat_stable_chunks.tsv`, an operation-level
      intersection of chunks that stayed safe in every repeat.
    - Use `python native/tools/bench_focus_matrix.py --cli <xray_cli> --runs 3
-     --focus mul-backend-gap --focus mul-toom5-smoke --focus
-     mul-toom-div-transition --focus mul-combo-handoff-pocket` when you want
-     one first-pass novelty matrix across several cheap focus families before
-     choosing a deeper audit.
+     --focus mul-backend-gap --focus mul-toom4-top --focus mul-toom5-smoke
+     --focus mul-toom-div-transition --focus mul-combo-handoff-pocket` when you
+     want one first-pass novelty matrix across several cheap focus families
+     before choosing a deeper audit.
      The latest two-repeat matrix artifact,
      `native-test-runs/20260621-083300-novelty-matrix-repeat2/matrix.tsv`,
      produced no repeat-stable safe chunks across those three focus families,
@@ -1535,6 +1539,10 @@ Run these in order.
      `native-test-runs/20260621-090500-backend-gap-repeat3/repeat_stable_chunks.tsv`,
      also produced no repeat-stable safe chunks, so the current unroll4/BMI2/ADX
      backend probes are not the next novelty path on this build.
+     The follow-up `mul-toom4-top` smoke artifact,
+     `native-test-runs/20260621-091800-toom4-top-repeat3/repeat_stable_chunks.tsv`,
+     also produced no repeat-stable safe chunks, so do not widen Toom-4 top
+     routes next unless a future CPU/build flips this smoke signal.
    - Read `safeSizeChunks` and `longestSafeSizeChunk*` as contiguous measured
      benchmark points only. They are useful for piecemeal follow-up audits over
      promising pockets, but they do not prove every unmeasured digit between the

@@ -443,13 +443,14 @@ native\build\Release\xray_cli.exe --bench-focus mul-novelty --bench-tsv
 native\build\Release\xray_cli.exe --bench-focus mul-toom5-smoke --bench-frontier
 native\build\Release\xray_cli.exe --bench-focus mul-toom-div-transition --bench-frontier
 native\build\Release\xray_cli.exe --bench-focus mul-toom-div --bench-frontier
+native\build\Release\xray_cli.exe --bench-focus mul-toom4-top --bench-frontier
 native\build\Release\xray_cli.exe --bench-focus mul-backend-gap --bench-frontier
 native\build\Release\xray_cli.exe --bench-focus mul-combo-lower --bench-frontier
 native\build\Release\xray_cli.exe --bench-focus mul-combo-transition --bench-frontier
 native\build\Release\xray_cli.exe --bench-focus mul-combo-transition-controls --bench-frontier
 native\build\Release\xray_cli.exe --bench-focus mul-combo-handoff-pocket --bench-frontier
 python native\tools\bench_focus_repeat.py --cli native\build\Release\xray_cli.exe --focus mul-combo-handoff-pocket --runs 3
-python native\tools\bench_focus_matrix.py --cli native\build\Release\xray_cli.exe --runs 3 --focus mul-backend-gap --focus mul-toom5-smoke --focus mul-toom-div-transition --focus mul-combo-handoff-pocket
+python native\tools\bench_focus_matrix.py --cli native\build\Release\xray_cli.exe --runs 3 --focus mul-backend-gap --focus mul-toom4-top --focus mul-toom5-smoke --focus mul-toom-div-transition --focus mul-combo-handoff-pocket
 native\build\Release\xray_cli.exe --bench-progress native\build\native-test-runs\<run>\benchmark.tsv
 native\build\Release\xray_cli.exe --bench-min-digits 768 --bench-max-digits 1000 --bench-progress native\build\native-test-runs\<run>\benchmark.tsv
 native\build\Release\xray_cli.exe --bench-filter mul --bench-compare native\build-release\native-test-runs\<run>\benchmark.tsv native\build-ltcg\native-test-runs\<run>\benchmark.tsv
@@ -467,13 +468,16 @@ a one-artifact digest of what is completed, still open, noisy, or excluded as
 control evidence. Use `--bench-focus FOCUS` for a local diagnostic scout that
 skips the full ladder and runs only the named family, such as `mul-novelty`,
 `mul-large`, `mul-toom5-smoke`, `mul-toom-div-transition`, `mul-toom-div`,
-`mul-backend-gap`, `mul-combo-lower`, `mul-combo-transition`,
+`mul-toom4-top`, `mul-backend-gap`, `mul-combo-lower`, `mul-combo-transition`,
 `mul-combo-upper`, or `mul-combo-reuse`. Use `mul-toom5-smoke` when you only
 need the existing Toom-5 top-level smoke rows over `5639,8192,11717,16384`
 without the full benchmark ladder. Use `mul-toom-div-transition` when you only
 need the existing div2/div3 Toom arithmetic scouts over `11717,16384,24103`,
-and `mul-toom-div`
-when you need the same scouts over the full active large-multiply window. Use
+and `mul-toom-div` when you need the same scouts over the full active
+large-multiply window. Use
+`mul-toom4-top` when you only need a quick upper-window top-level Toom-4 smoke
+over `24103,32768`; it runs the existing reuse, factored-div, and vs-combo
+scouts before any wider Toom-4 pass.
 `mul-backend-gap` on MSVC x64 when the next question is whether the low-level
 unroll4 multiply-add backend has a contiguous safe chunk before another Toom
 route is worth coding; it runs the existing muladd primitive rows plus unroll4
@@ -490,11 +494,12 @@ raw `benchmark.tsv` plus `benchmark_progress.tsv`, and print a compact safe
 chunk summary for repeated noise checks. The helper also writes
 `repeat_stable_chunks.tsv`, which intersects safe chunks by operation across
 all repeats so single-run pockets are easy to separate from repeat-stable
-piecemeal candidates. Include `mul-backend-gap` in the first matrix after the
-current Toom-5/div-transition/handoff routes have no repeat-stable chunk, so
-the next novelty choice starts from backend evidence instead of another broad
-recursive scout. Use `native/tools/bench_focus_matrix.py` to run several focus
-labels in one sweep and write a top-level `matrix.tsv` that compares
+piecemeal candidates. Include `mul-backend-gap` and `mul-toom4-top` in the
+first matrix after the current Toom-5/div-transition/handoff routes have no
+repeat-stable chunk, so the next novelty choice starts from backend and
+upper-window topology evidence instead of another broad recursive scout. Use
+`native/tools/bench_focus_matrix.py` to run several focus labels in one sweep
+and write a top-level `matrix.tsv` that compares
 repeat-stable chunks across route families. Use
 `--bench-progress-tsv` when another tool needs the same progress classification
 as a TSV table instead of prose. Use `--bench-compare`
