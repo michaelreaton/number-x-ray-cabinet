@@ -1280,7 +1280,11 @@ char *xray_benchmark_progress_tsv_text(const char *tsv) {
         compare_streq(row->operation, "mul-large-toom-cmb-lower-point") ||
         compare_streq(row->operation, "mul-large-toom-cmb-lower-scout") ||
         compare_streq(row->operation, "mul-large-toom-cmb-route-point") ||
-        compare_streq(row->operation, "mul-large-toom-cmb-route-audit")) {
+        compare_streq(row->operation, "mul-large-toom-cmb-route-audit") ||
+        compare_streq(row->operation, "mul-big-hill-pt") ||
+        compare_streq(row->operation, "mul-big-hill-smoke-pt") ||
+        compare_streq(row->operation, "mul-dense-65536-hill-gate-pt") ||
+        compare_streq(row->operation, "mul-dense-65536-hill-smoke-pt")) {
       large_mul_campaign_total++;
       insert_progress_row(
         large_mul_campaign,

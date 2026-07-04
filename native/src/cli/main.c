@@ -15,13 +15,13 @@ static void usage(const char *argv0) {
   fprintf(stderr, "       %s [--bench-min-digits N] [--bench-max-digits N] [--bench-filter TEXT] --bench-progress artifact.tsv\n", argv0);
   fprintf(stderr, "       %s [--bench-min-digits N] [--bench-max-digits N] [--bench-filter TEXT] --bench-progress-tsv artifact.tsv\n", argv0);
   fprintf(stderr, "       %s [--bench-min-digits N] [--bench-max-digits N] [--bench-filter TEXT] --bench-compare left.tsv right.tsv\n", argv0);
-  fprintf(stderr, "Focus examples: mul-large, mul-toom5-smoke, mul-toom-div-transition,\n");
-  fprintf(stderr, "                mul-toom-div, mul-toom4-top, mul-backend-gap,\n");
-  fprintf(stderr, "                mul-full-audit-pocket, mul-combo-lower,\n");
-  fprintf(stderr, "                mul-combo-transition, mul-combo-upper,\n");
-  fprintf(stderr, "                mul-combo-reuse, mul-combo-handoff-pocket,\n");
-  fprintf(stderr, "                mul-combo-handoff-boundary,\n");
-  fprintf(stderr, "                mul-sparse, mul-novelty\n");
+  fprintf(stderr, "Focus examples: gmp-gap-audit, format-current-gmp, mul-large,\n");
+  fprintf(stderr, "                mul-sparse, mul-backend-gap, mul-combo-transition,\n");
+  fprintf(stderr, "                mul-combo-upper, mul-combo-reuse, mul-big-hill,\n");
+  fprintf(stderr, "                mul-dense-65536-hill-gate,\n");
+  fprintf(stderr, "                square-4096-margin-gate,\n");
+  fprintf(stderr, "                dense-million-bit-floor-interleaved-gate,\n");
+  fprintf(stderr, "                square-ntt32-lowtailmap-final-gate, mul-novelty\n");
 }
 
 static int parse_size_arg(const char *text, size_t *out) {

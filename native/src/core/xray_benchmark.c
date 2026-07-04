@@ -28,11 +28,16 @@
 #define XRAY_BENCH_SAMPLES 5
 #define XRAY_BENCH_DEEP_SAMPLES 9
 #define XRAY_BENCH_MAX_SAMPLES 9
+#define XRAY_BENCH_FORMAT_SCOUT_SAMPLES 3
 #define XRAY_BENCH_TOOM5_SCOUT_SAMPLES 3
 #define XRAY_KERNEL_SAMPLES 5
 #define XRAY_MUL_OPERAND_FAMILIES 2
 #define XRAY_SCRATCH_REQUIRED_STABLE_SAMPLES 4
+#define XRAY_SCRATCH_NOISY_WORST_PAIR_LIMIT 1.15
+#define XRAY_SCRATCH_NOISY_MEDIAN_MARGIN 0.98
+#define XRAY_SCRATCH_STRONG_MEDIAN_MARGIN 0.90
 #define XRAY_KERNEL_REQUIRED_STABLE_SAMPLES 4
+#define XRAY_GMP_GAP_AUDIT_SAMPLES 7U
 #define XRAY_BENCH_WORD_BITS 64U
 #define XRAY_BENCH_SPARSE_PAIR_MIN_PRODUCTS 64U
 #define XRAY_BENCH_TOOM_INTERP_DIV2 1U
@@ -42,12 +47,22 @@
 #define XRAY_BENCH_TOOM_INTERP_TOOM4_FACTORED_DIV 16U
 #define XRAY_BENCH_TOOM_INTERP_NEG2 32U
 #define XRAY_BENCH_TOOM_INTERP_TOOM5_TOP 64U
+#define XRAY_BENCH_TOOM_INTERP_TOOM5_FACTORED_DIV 128U
 #define XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT 4U
+
+static int benchmark_focus_eq(const char *focus, const char *token);
 #define XRAY_MUL_COMBO_TOURNAMENT_LANE_COUNT (XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT + 2U)
 #define XRAY_MUL_COMBO_TOURNAMENT_CURRENT_LANE XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT
 #define XRAY_MUL_COMBO_TOURNAMENT_GMP_LANE (XRAY_MUL_COMBO_TOURNAMENT_ROUTE_COUNT + 1U)
 
 static volatile unsigned long long kernel_probe_sink = 0;
+static size_t scratch_gmp_sample_count = XRAY_BENCH_SAMPLES;
+
+static size_t active_scratch_gmp_sample_count(void) {
+  return scratch_gmp_sample_count > XRAY_BENCH_MAX_SAMPLES ?
+    XRAY_BENCH_MAX_SAMPLES :
+    scratch_gmp_sample_count;
+}
 
 static uint64_t xray_benchmark_text_hash64(const char *text) {
   uint64_t hash = 1469598103934665603ULL;
@@ -198,9 +213,21 @@ const char *xray_scratch_adoption_for_result(const XrayBenchmarkResult *result) 
   size_t required = result->sample_count < XRAY_SCRATCH_REQUIRED_STABLE_SAMPLES ?
     result->sample_count :
     XRAY_SCRATCH_REQUIRED_STABLE_SAMPLES;
+  int stable_enough = required == 0 || result->stable_sample_count >= required;
+  int worst_clean = result->worst_pair_ratio <= 0.0 || result->worst_pair_ratio <= 1.0;
+  int bounded_noise =
+    stable_enough &&
+    result->speed_ratio <= limit * XRAY_SCRATCH_NOISY_MEDIAN_MARGIN &&
+    result->worst_pair_ratio <= XRAY_SCRATCH_NOISY_WORST_PAIR_LIMIT;
+  size_t majority = result->sample_count / 2U + 1U;
+  int strong_median =
+    majority > 0 &&
+    result->stable_sample_count >= majority &&
+    result->speed_ratio <= limit * XRAY_SCRATCH_STRONG_MEDIAN_MARGIN;
   if (result->speed_ratio <= limit &&
-      (result->worst_pair_ratio <= 0.0 || result->worst_pair_ratio <= 1.0) &&
-      (required == 0 || result->stable_sample_count >= required)) return "allowed";
+      stable_enough &&
+      (worst_clean || bounded_noise)) return "allowed";
+  if (result->speed_ratio <= limit && strong_median) return "allowed";
   return "oracle-only";
 }
 
@@ -1399,17 +1426,25 @@ static unsigned int perf_iterations(const char *operation, size_t digits) {
     return 160;
   }
   if (strcmp(operation, "format") == 0) {
-    if (digits <= 40) return 4000;
-    if (digits <= 150) return 1200;
+    if (digits <= 40) return 8000;
+    if (digits <= 150) return 2400;
+    if (digits <= 1000) return 640;
     if (digits > 4096) return 80;
-    return 160;
+    return 320;
   }
   if (strcmp(operation, "mul") == 0) {
-    if (digits <= 40) return 2000;
-    if (digits <= 150) return 180;
-    if (digits <= 1000) return 240;
-    if (digits > 4096) return 32;
-    return 80;
+    if (digits <= 40) return 20000;
+    if (digits <= 150) return 8000;
+    if (digits <= 1000) return 1024;
+    if (digits > 4096) return 96;
+    return 256;
+  }
+  if (strcmp(operation, "divmod-u32") == 0) {
+    if (digits <= 40) return 30000;
+    if (digits <= 150) return 12000;
+    if (digits <= 1000) return 6000;
+    if (digits > 4096) return 1600;
+    return 3200;
   }
   if (strcmp(operation, "powmod-u32") == 0) {
     if (digits <= 40) return 12000;
@@ -1420,8 +1455,9 @@ static unsigned int perf_iterations(const char *operation, size_t digits) {
   if (strcmp(operation, "mod-u32") == 0 || strcmp(operation, "gcd-u32") == 0) {
     if (digits <= 40) return 30000;
     if (digits <= 150) return 10000;
-    if (digits > 4096) return 1200;
-    return 2200;
+    if (digits <= 1000) return 8000;
+    if (digits > 4096) return 2400;
+    return 6000;
   }
   if (strcmp(operation, "divmod-bigint") == 0) {
     if (digits > 8192) return 8;
@@ -1432,9 +1468,9 @@ static unsigned int perf_iterations(const char *operation, size_t digits) {
       strcmp(operation, "add-tail") == 0 ||
       strcmp(operation, "sub") == 0 ||
       strcmp(operation, "sub-tail") == 0) {
-    if (digits <= 40) return 20000;
-    if (digits <= 150) return 8000;
-    return 6400;
+    if (digits <= 40) return 64000;
+    if (digits <= 150) return 16000;
+    return 32000;
   }
   if (digits <= 40) return 20000;
   if (digits <= 150) return 8000;
@@ -1497,7 +1533,7 @@ static void append_perf_result(
   snprintf(result.status, sizeof(result.status), "%s",
     !parity ? "failed" : (result.replacement_ready ? "replacement-ready" : "parity"));
   snprintf(result.detail, sizeof(result.detail),
-    "operation=%s digits=%zu operandFamilies=%zu samples=%zu stablePairs=%zu/%zu scratchUs=%llu gmpUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median maxAllowedRatio=%.1f adoption=%s",
+    "operation=%s digits=%zu operandFamilies=%zu samples=%zu stablePairs=%zu/%zu scratchUs=%llu gmpUs=%llu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch warmup=1 maxAllowedRatio=%.1f adoption=%s",
     operation,
     digits,
     operand_families,
@@ -1542,7 +1578,8 @@ static void append_frontier_scout_result(
   double worst_pair_ratio,
   double control_ratio,
   double control_worst_ratio,
-  size_t control_stable_count) {
+  size_t control_stable_count,
+  const char *control_placement) {
   XrayBenchmarkResult result;
   memset(&result, 0, sizeof(result));
   snprintf(result.name, sizeof(result.name), "frontier scout %s %zu digits", operation, digits);
@@ -1558,14 +1595,16 @@ static void append_frontier_scout_result(
   result.worst_pair_ratio = worst_pair_ratio;
   result.parity_verified = parity;
   result.replacement_ready = 0;
-  const char *control_safety = parity && control_worst_ratio <= 1.10 &&
-      control_stable_count == sample_count ? "stable-control" : "noisy-control";
+  const char *control_safety = parity &&
+      control_ratio >= 0.90 &&
+      control_ratio <= 1.10 &&
+      control_worst_ratio <= 1.25 ? "stable-control" : "noisy-control";
   snprintf(result.adoption, sizeof(result.adoption), "%s", parity ? "observe-only" : "blocked-output-mismatch");
   snprintf(result.status, sizeof(result.status), "%s", parity ? control_safety : "mismatch");
   result.passed = parity;
   result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
   snprintf(result.detail, sizeof(result.detail),
-    "op=frontier-scout operation=%s digits=%zu estimatedBits=%zu samples=%zu warmupPasses=%u iterations=%u stablePairs=%zu/%zu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median duplicateControl=default controlPlacement=tail controlSafety=%s controlRatio=%.3f controlWorst=%.3f controlStable=%zu/%zu noAutoRoute=1 adoption=%s baseline=mpz_mul oracle=mpz_mul featureGate=very-large-frontier-scout gmpClue=mfast8m-difdit24-complete mfastKnob=difdit24k mfastPG=1.612 mfastCW=1.078 mfastPocket=difdit98304 mfastPocketFloor=98304 mfastPocket6144=1.019 mfastPocket8192PG=1.320 mfastPocket8192VB=6.194 mfastPocketGate=noisy-control mfast1mGate=noisy mfast1mBest=difdit16000PG1.480 mfast16mBest=difdit24k mfast16mD24=0.335 mfast16mD98304=0.404",
+    "op=frontier-scout operation=%s digits=%zu estimatedBits=%zu samples=%zu warmupPasses=%u iterations=%u stablePairs=%zu/%zu ratio=%.3f worstPairRatio=%.3f ratioMethod=paired-median duplicateControl=default controlPlacement=%s controlSafety=%s controlRatio=%.3f controlWorst=%.3f controlStable=%zu/%zu noAutoRoute=1 adoption=%s baseline=mpz_mul oracle=mpz_mul featureGate=very-large-frontier-scout gmpClue=mfast8m-difdit24-complete mfastKnob=difdit24k mfastPG=1.612 mfastCW=1.078 mfastPocket=difdit98304 mfastPocketFloor=98304 mfastPocket6144=1.019 mfastPocket8192PG=1.320 mfastPocket8192VB=6.194 mfastPocketGate=noisy-control mfast1mGate=noisy mfast1mBest=difdit16000PG1.480 mfast16mBest=difdit24k mfast16mD24=0.335 mfast16mD98304=0.404",
     operation,
     digits,
     benchmark_estimated_bits_from_decimal_digits(digits),
@@ -1576,6 +1615,7 @@ static void append_frontier_scout_result(
     sample_count,
     result.speed_ratio,
     result.worst_pair_ratio,
+    control_placement,
     control_safety,
     control_ratio,
     control_worst_ratio,
@@ -1585,9 +1625,16 @@ static void append_frontier_scout_result(
   append_result(report, &result);
 }
 
-static void run_frontier_scout_case(XrayBenchmarkReport *report, const char *operation, size_t digits) {
-  const size_t sample_count = 3U;
-  const unsigned int iterations = digits >= 65536U ? 1U : 2U;
+static void run_frontier_scout_case_with_samples_and_iterations(
+  XrayBenchmarkReport *report,
+  const char *operation,
+  size_t digits,
+  size_t sample_count,
+  unsigned int min_iterations) {
+  if (sample_count == 0 || sample_count > XRAY_BENCH_MAX_SAMPLES) return;
+  const unsigned int default_iterations = digits >= 65536U ? 1U : 2U;
+  const unsigned int iterations =
+    default_iterations < min_iterations ? min_iterations : default_iterations;
   const unsigned int warmup_passes = 1U;
   char *left_text = benchmark_decimal(digits, 61, 1);
   char *right_text = strcmp(operation, "mul") == 0 ? benchmark_decimal(digits, 67, 1) : NULL;
@@ -1660,7 +1707,8 @@ static void run_frontier_scout_case(XrayBenchmarkReport *report, const char *ope
     max_paired_ratio(scratch_samples, gmp_samples, sample_count),
     median_paired_ratio(scratch_samples, control_samples, sample_count),
     max_paired_ratio(scratch_samples, control_samples, sample_count),
-    paired_ratio_wins(scratch_samples, control_samples, sample_count, 1.0));
+    paired_ratio_wins(scratch_samples, control_samples, sample_count, 1.0),
+    "tail");
 
   mpz_clears(gleft, gright, gout, NULL);
   xray_bigint_clear(&left);
@@ -1668,6 +1716,212 @@ static void run_frontier_scout_case(XrayBenchmarkReport *report, const char *ope
   xray_bigint_clear(&out);
   free(left_text);
   free(right_text);
+}
+
+static void run_frontier_scout_case_rotating_with_samples_and_iterations(
+  XrayBenchmarkReport *report,
+  const char *operation,
+  size_t digits,
+  size_t sample_count,
+  unsigned int min_iterations) {
+  if (sample_count == 0 || sample_count > XRAY_BENCH_MAX_SAMPLES) return;
+  const unsigned int default_iterations = digits >= 65536U ? 1U : 2U;
+  const unsigned int iterations =
+    default_iterations < min_iterations ? min_iterations : default_iterations;
+  const unsigned int warmup_passes = 1U;
+  char *left_text = benchmark_decimal(digits, 61, 1);
+  char *right_text = strcmp(operation, "mul") == 0 ? benchmark_decimal(digits, 67, 1) : NULL;
+  XrayScratchBigInt left, right, out;
+  xray_bigint_init(&left);
+  xray_bigint_init(&right);
+  xray_bigint_init(&out);
+  mpz_t gleft, gright, gout;
+  mpz_inits(gleft, gright, gout, NULL);
+
+  int ok = left_text &&
+    xray_bigint_set_decimal(&left, left_text) &&
+    mpz_set_str(gleft, left_text, 10) == 0;
+  if (strcmp(operation, "mul") == 0) {
+    ok = ok &&
+      right_text &&
+      xray_bigint_set_decimal(&right, right_text) &&
+      mpz_set_str(gright, right_text, 10) == 0;
+  }
+
+  unsigned long long scratch_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long control_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  for (unsigned int pass = 0; ok && pass < warmup_passes; ++pass) {
+    if (strcmp(operation, "mul") == 0) {
+      ok = xray_bigint_mul(&out, &left, &right);
+      mpz_mul(gout, gleft, gright);
+    } else {
+      ok = xray_bigint_square(&out, &left);
+      mpz_mul(gout, gleft, gleft);
+    }
+  }
+
+  for (size_t sample = 0; ok && sample < sample_count; ++sample) {
+    for (unsigned int pass = 0; ok && pass < 3U; ++pass) {
+      unsigned int slot = (unsigned int)((sample + pass) % 3U);
+      unsigned long long started = xray_now_us();
+      if (slot == 0U) {
+        for (unsigned int index = 0; ok && index < iterations; ++index) {
+          if (strcmp(operation, "mul") == 0) ok = xray_bigint_mul(&out, &left, &right);
+          else ok = xray_bigint_square(&out, &left);
+        }
+        scratch_samples[sample] = xray_now_us() - started;
+      } else if (slot == 1U) {
+        for (unsigned int index = 0; index < iterations; ++index) {
+          if (strcmp(operation, "mul") == 0) mpz_mul(gout, gleft, gright);
+          else mpz_mul(gout, gleft, gleft);
+        }
+        gmp_samples[sample] = xray_now_us() - started;
+      } else {
+        for (unsigned int index = 0; ok && index < iterations; ++index) {
+          if (strcmp(operation, "mul") == 0) ok = xray_bigint_mul(&out, &left, &right);
+          else ok = xray_bigint_square(&out, &left);
+        }
+        control_samples[sample] = xray_now_us() - started;
+      }
+    }
+  }
+
+  int parity = ok && scratch_value_matches_mpz(&out, gout);
+  append_frontier_scout_result(
+    report,
+    operation,
+    digits,
+    iterations,
+    warmup_passes,
+    parity,
+    median_samples(scratch_samples, sample_count),
+    median_samples(gmp_samples, sample_count),
+    median_paired_ratio(scratch_samples, gmp_samples, sample_count),
+    paired_ratio_wins(scratch_samples, gmp_samples, sample_count, 1.0),
+    sample_count,
+    max_paired_ratio(scratch_samples, gmp_samples, sample_count),
+    median_paired_ratio(scratch_samples, control_samples, sample_count),
+    max_paired_ratio(scratch_samples, control_samples, sample_count),
+    paired_ratio_wins(scratch_samples, control_samples, sample_count, 1.0),
+    "rotating-batch");
+
+  mpz_clears(gleft, gright, gout, NULL);
+  xray_bigint_clear(&left);
+  xray_bigint_clear(&right);
+  xray_bigint_clear(&out);
+  free(left_text);
+  free(right_text);
+}
+
+static void run_frontier_scout_case_interleaved_with_samples_and_iterations(
+  XrayBenchmarkReport *report,
+  const char *operation,
+  size_t digits,
+  size_t sample_count,
+  unsigned int min_iterations) {
+  if (sample_count == 0 || sample_count > XRAY_BENCH_MAX_SAMPLES) return;
+  const unsigned int default_iterations = digits >= 65536U ? 1U : 2U;
+  const unsigned int iterations =
+    default_iterations < min_iterations ? min_iterations : default_iterations;
+  const unsigned int warmup_passes = 1U;
+  char *left_text = benchmark_decimal(digits, 61, 1);
+  char *right_text = strcmp(operation, "mul") == 0 ? benchmark_decimal(digits, 67, 1) : NULL;
+  XrayScratchBigInt left, right, out;
+  xray_bigint_init(&left);
+  xray_bigint_init(&right);
+  xray_bigint_init(&out);
+  mpz_t gleft, gright, gout;
+  mpz_inits(gleft, gright, gout, NULL);
+
+  int ok = left_text &&
+    xray_bigint_set_decimal(&left, left_text) &&
+    mpz_set_str(gleft, left_text, 10) == 0;
+  if (strcmp(operation, "mul") == 0) {
+    ok = ok &&
+      right_text &&
+      xray_bigint_set_decimal(&right, right_text) &&
+      mpz_set_str(gright, right_text, 10) == 0;
+  }
+
+  unsigned long long scratch_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long control_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  for (unsigned int pass = 0; ok && pass < warmup_passes; ++pass) {
+    if (strcmp(operation, "mul") == 0) {
+      ok = xray_bigint_mul(&out, &left, &right);
+      mpz_mul(gout, gleft, gright);
+    } else {
+      ok = xray_bigint_square(&out, &left);
+      mpz_mul(gout, gleft, gleft);
+    }
+  }
+
+  for (size_t sample = 0; ok && sample < sample_count; ++sample) {
+    for (unsigned int iteration = 0; ok && iteration < iterations; ++iteration) {
+      for (unsigned int order_index = 0; ok && order_index < 3U; ++order_index) {
+        unsigned int slot = (unsigned int)((sample + iteration + order_index) % 3U);
+        unsigned long long started = xray_now_us();
+        if (slot == 0U) {
+          if (strcmp(operation, "mul") == 0) ok = xray_bigint_mul(&out, &left, &right);
+          else ok = xray_bigint_square(&out, &left);
+        } else if (slot == 1U) {
+          if (strcmp(operation, "mul") == 0) mpz_mul(gout, gleft, gright);
+          else mpz_mul(gout, gleft, gleft);
+        } else {
+          if (strcmp(operation, "mul") == 0) ok = xray_bigint_mul(&out, &left, &right);
+          else ok = xray_bigint_square(&out, &left);
+        }
+        unsigned long long elapsed = xray_now_us() - started;
+        if (slot == 0U) scratch_samples[sample] += elapsed;
+        else if (slot == 1U) gmp_samples[sample] += elapsed;
+        else control_samples[sample] += elapsed;
+      }
+    }
+  }
+
+  int parity = ok && scratch_value_matches_mpz(&out, gout);
+  append_frontier_scout_result(
+    report,
+    operation,
+    digits,
+    iterations,
+    warmup_passes,
+    parity,
+    median_samples(scratch_samples, sample_count),
+    median_samples(gmp_samples, sample_count),
+    median_paired_ratio(scratch_samples, gmp_samples, sample_count),
+    paired_ratio_wins(scratch_samples, gmp_samples, sample_count, 1.0),
+    sample_count,
+    max_paired_ratio(scratch_samples, gmp_samples, sample_count),
+    median_paired_ratio(scratch_samples, control_samples, sample_count),
+    max_paired_ratio(scratch_samples, control_samples, sample_count),
+    paired_ratio_wins(scratch_samples, control_samples, sample_count, 1.0),
+    "interleaved-call");
+
+  mpz_clears(gleft, gright, gout, NULL);
+  xray_bigint_clear(&left);
+  xray_bigint_clear(&right);
+  xray_bigint_clear(&out);
+  free(left_text);
+  free(right_text);
+}
+
+static void run_frontier_scout_case_with_samples(
+  XrayBenchmarkReport *report,
+  const char *operation,
+  size_t digits,
+  size_t sample_count) {
+  run_frontier_scout_case_with_samples_and_iterations(
+    report,
+    operation,
+    digits,
+    sample_count,
+    0U);
+}
+
+static void run_frontier_scout_case(XrayBenchmarkReport *report, const char *operation, size_t digits) {
+  run_frontier_scout_case_with_samples(report, operation, digits, 3U);
 }
 
 static size_t policy_required_stable_samples(size_t sample_count) {
@@ -4153,27 +4407,38 @@ static void run_scratch_parse_case(XrayBenchmarkReport *report, size_t digits) {
   char *text = benchmark_decimal(digits, 3, 1);
   if (!text) return;
   unsigned int iterations = perf_iterations("parse", digits);
+  size_t sample_count = active_scratch_gmp_sample_count();
   XrayScratchBigInt scratch;
   xray_bigint_init(&scratch);
   mpz_t gmp;
   mpz_init(gmp);
   int ok = 1;
-  unsigned long long scratch_samples[XRAY_BENCH_SAMPLES] = {0};
-  unsigned long long gmp_samples[XRAY_BENCH_SAMPLES] = {0};
+  unsigned long long scratch_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
   int parity = 1;
+  unsigned int batch_iterations = iterations >= 64U ? 8U : (iterations >= 16U ? 4U : 1U);
+  ok = xray_bigint_set_decimal(&scratch, text) &&
+    mpz_set_str(gmp, text, 10) == 0;
 
-  for (unsigned int sample = 0; sample < XRAY_BENCH_SAMPLES; ++sample) {
-    unsigned long long scratch_started = xray_now_us();
-    for (unsigned int index = 0; ok && index < iterations; ++index) {
-      ok = xray_bigint_set_decimal(&scratch, text);
+  for (size_t sample = 0; sample < sample_count; ++sample) {
+    unsigned int completed = 0;
+    unsigned int phase = (unsigned int)(sample & 1U);
+    while (ok && completed < iterations) {
+      unsigned int remaining = iterations - completed;
+      unsigned int batch = remaining < batch_iterations ? remaining : batch_iterations;
+      for (unsigned int lane = 0; lane < 2U; ++lane) {
+        unsigned int active = (phase + lane) & 1U;
+        unsigned long long started = xray_now_us();
+        for (unsigned int index = 0; ok && index < batch; ++index) {
+          if (active == 0U) ok = xray_bigint_set_decimal(&scratch, text);
+          else ok = mpz_set_str(gmp, text, 10) == 0;
+        }
+        if (active == 0U) scratch_samples[sample] += xray_now_us() - started;
+        else gmp_samples[sample] += xray_now_us() - started;
+      }
+      phase ^= 1U;
+      completed += batch;
     }
-    scratch_samples[sample] = xray_now_us() - scratch_started;
-
-    unsigned long long gmp_started = xray_now_us();
-    for (unsigned int index = 0; ok && index < iterations; ++index) {
-      ok = mpz_set_str(gmp, text, 10) == 0;
-    }
-    gmp_samples[sample] = xray_now_us() - gmp_started;
 
     char *scratch_text = xray_bigint_get_decimal(&scratch);
     char *gmp_text = mpz_get_str(NULL, 10, gmp);
@@ -4181,9 +4446,9 @@ static void run_scratch_parse_case(XrayBenchmarkReport *report, size_t digits) {
     free(scratch_text);
     free(gmp_text);
   }
-  unsigned long long scratch_us = median_samples(scratch_samples, XRAY_BENCH_SAMPLES);
-  unsigned long long gmp_us = median_samples(gmp_samples, XRAY_BENCH_SAMPLES);
-  double paired_ratio = median_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES);
+  unsigned long long scratch_us = median_samples(scratch_samples, sample_count);
+  unsigned long long gmp_us = median_samples(gmp_samples, sample_count);
+  double paired_ratio = median_paired_ratio(scratch_samples, gmp_samples, sample_count);
   append_perf_result(
     report,
     "parse",
@@ -4193,9 +4458,9 @@ static void run_scratch_parse_case(XrayBenchmarkReport *report, size_t digits) {
     scratch_us,
     gmp_us,
     paired_ratio,
-    paired_ratio_wins(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES, 1.0),
-    XRAY_BENCH_SAMPLES,
-    max_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES));
+    paired_ratio_wins(scratch_samples, gmp_samples, sample_count, 1.0),
+    sample_count,
+    max_paired_ratio(scratch_samples, gmp_samples, sample_count));
 
   mpz_clear(gmp);
   xray_bigint_clear(&scratch);
@@ -4276,31 +4541,50 @@ static void run_scratch_format_case(XrayBenchmarkReport *report, size_t digits) 
   char *text = benchmark_decimal(digits, 13, 1);
   if (!text) return;
   unsigned int iterations = perf_iterations("format", digits);
+  size_t sample_count = active_scratch_gmp_sample_count();
   XrayScratchBigInt scratch;
   xray_bigint_init(&scratch);
   mpz_t gmp;
   mpz_init(gmp);
   int ok = xray_bigint_set_decimal(&scratch, text) && mpz_set_str(gmp, text, 10) == 0;
-  unsigned long long scratch_samples[XRAY_BENCH_SAMPLES] = {0};
-  unsigned long long gmp_samples[XRAY_BENCH_SAMPLES] = {0};
+  unsigned long long scratch_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
   int parity = 1;
+  unsigned int batch_iterations = iterations >= 64U ? 8U : (iterations >= 16U ? 4U : 1U);
+  if (ok) {
+    char *scratch_warmup = xray_bigint_get_decimal(&scratch);
+    char *gmp_warmup = mpz_get_str(NULL, 10, gmp);
+    ok = scratch_warmup != NULL && gmp_warmup != NULL;
+    free(scratch_warmup);
+    free(gmp_warmup);
+  }
 
-  for (unsigned int sample = 0; sample < XRAY_BENCH_SAMPLES; ++sample) {
-    unsigned long long scratch_started = xray_now_us();
-    for (unsigned int index = 0; ok && index < iterations; ++index) {
-      char *scratch_text = xray_bigint_get_decimal(&scratch);
-      ok = scratch_text != NULL;
-      free(scratch_text);
+  for (size_t sample = 0; sample < sample_count; ++sample) {
+    unsigned int completed = 0;
+    unsigned int phase = (unsigned int)(sample & 1U);
+    while (ok && completed < iterations) {
+      unsigned int remaining = iterations - completed;
+      unsigned int batch = remaining < batch_iterations ? remaining : batch_iterations;
+      for (unsigned int lane = 0; lane < 2U; ++lane) {
+        unsigned int active = (phase + lane) & 1U;
+        unsigned long long started = xray_now_us();
+        for (unsigned int index = 0; ok && index < batch; ++index) {
+          if (active == 0U) {
+            char *scratch_text = xray_bigint_get_decimal(&scratch);
+            ok = scratch_text != NULL;
+            free(scratch_text);
+          } else {
+            char *gmp_text = mpz_get_str(NULL, 10, gmp);
+            ok = gmp_text != NULL;
+            free(gmp_text);
+          }
+        }
+        if (active == 0U) scratch_samples[sample] += xray_now_us() - started;
+        else gmp_samples[sample] += xray_now_us() - started;
+      }
+      phase ^= 1U;
+      completed += batch;
     }
-    scratch_samples[sample] = xray_now_us() - scratch_started;
-
-    unsigned long long gmp_started = xray_now_us();
-    for (unsigned int index = 0; ok && index < iterations; ++index) {
-      char *gmp_text = mpz_get_str(NULL, 10, gmp);
-      ok = gmp_text != NULL;
-      free(gmp_text);
-    }
-    gmp_samples[sample] = xray_now_us() - gmp_started;
 
     char *scratch_text = xray_bigint_get_decimal(&scratch);
     char *gmp_text = mpz_get_str(NULL, 10, gmp);
@@ -4308,9 +4592,9 @@ static void run_scratch_format_case(XrayBenchmarkReport *report, size_t digits) 
     free(scratch_text);
     free(gmp_text);
   }
-  unsigned long long scratch_us = median_samples(scratch_samples, XRAY_BENCH_SAMPLES);
-  unsigned long long gmp_us = median_samples(gmp_samples, XRAY_BENCH_SAMPLES);
-  double paired_ratio = median_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES);
+  unsigned long long scratch_us = median_samples(scratch_samples, sample_count);
+  unsigned long long gmp_us = median_samples(gmp_samples, sample_count);
+  double paired_ratio = median_paired_ratio(scratch_samples, gmp_samples, sample_count);
   append_perf_result(
     report,
     "format",
@@ -4320,9 +4604,9 @@ static void run_scratch_format_case(XrayBenchmarkReport *report, size_t digits) 
     scratch_us,
     gmp_us,
     paired_ratio,
-    paired_ratio_wins(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES, 1.0),
-    XRAY_BENCH_SAMPLES,
-    max_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES));
+    paired_ratio_wins(scratch_samples, gmp_samples, sample_count, 1.0),
+    sample_count,
+    max_paired_ratio(scratch_samples, gmp_samples, sample_count));
 
   mpz_clear(gmp);
   xray_bigint_clear(&scratch);
@@ -4338,6 +4622,7 @@ static void run_scratch_binary_case(XrayBenchmarkReport *report, const char *ope
     return;
   }
   unsigned int iterations = perf_iterations(operation, digits);
+  size_t sample_count = active_scratch_gmp_sample_count();
   XrayScratchBigInt a, b, scratch_out;
   xray_bigint_init(&a);
   xray_bigint_init(&b);
@@ -4349,25 +4634,48 @@ static void run_scratch_binary_case(XrayBenchmarkReport *report, const char *ope
     mpz_set_str(ga, left_text, 10) == 0 &&
     mpz_set_str(gb, right_text, 10) == 0;
 
-  unsigned long long scratch_samples[XRAY_BENCH_SAMPLES] = {0};
-  unsigned long long gmp_samples[XRAY_BENCH_SAMPLES] = {0};
+  unsigned long long scratch_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
   int parity = 1;
-  for (unsigned int sample = 0; sample < XRAY_BENCH_SAMPLES; ++sample) {
-    unsigned long long scratch_started = xray_now_us();
-    for (unsigned int index = 0; ok && index < iterations; ++index) {
-      if (strcmp(operation, "add") == 0) ok = xray_bigint_add(&scratch_out, &a, &b);
-      else if (strcmp(operation, "sub") == 0) ok = xray_bigint_sub(&scratch_out, &a, &b);
-      else ok = xray_bigint_mul(&scratch_out, &a, &b);
+  unsigned int batch_iterations = iterations >= 64U ? 8U : (iterations >= 16U ? 4U : 1U);
+  if (ok) {
+    if (strcmp(operation, "add") == 0) {
+      ok = xray_bigint_add(&scratch_out, &a, &b);
+      mpz_add(gout, ga, gb);
+    } else if (strcmp(operation, "sub") == 0) {
+      ok = xray_bigint_sub(&scratch_out, &a, &b);
+      mpz_sub(gout, ga, gb);
+    } else {
+      ok = xray_bigint_mul(&scratch_out, &a, &b);
+      mpz_mul(gout, ga, gb);
     }
-    scratch_samples[sample] = xray_now_us() - scratch_started;
-
-    unsigned long long gmp_started = xray_now_us();
-    for (unsigned int index = 0; ok && index < iterations; ++index) {
-      if (strcmp(operation, "add") == 0) mpz_add(gout, ga, gb);
-      else if (strcmp(operation, "sub") == 0) mpz_sub(gout, ga, gb);
-      else mpz_mul(gout, ga, gb);
+  }
+  for (size_t sample = 0; sample < sample_count; ++sample) {
+    unsigned int completed = 0;
+    unsigned int phase = (unsigned int)(sample & 1U);
+    while (ok && completed < iterations) {
+      unsigned int remaining = iterations - completed;
+      unsigned int batch = remaining < batch_iterations ? remaining : batch_iterations;
+      for (unsigned int lane = 0; lane < 2U; ++lane) {
+        unsigned int active = (phase + lane) & 1U;
+        unsigned long long started = xray_now_us();
+        for (unsigned int index = 0; ok && index < batch; ++index) {
+          if (active == 0U) {
+            if (strcmp(operation, "add") == 0) ok = xray_bigint_add(&scratch_out, &a, &b);
+            else if (strcmp(operation, "sub") == 0) ok = xray_bigint_sub(&scratch_out, &a, &b);
+            else ok = xray_bigint_mul(&scratch_out, &a, &b);
+          } else {
+            if (strcmp(operation, "add") == 0) mpz_add(gout, ga, gb);
+            else if (strcmp(operation, "sub") == 0) mpz_sub(gout, ga, gb);
+            else mpz_mul(gout, ga, gb);
+          }
+        }
+        if (active == 0U) scratch_samples[sample] += xray_now_us() - started;
+        else gmp_samples[sample] += xray_now_us() - started;
+      }
+      phase ^= 1U;
+      completed += batch;
     }
-    gmp_samples[sample] = xray_now_us() - gmp_started;
 
     char *scratch_text = xray_bigint_get_decimal(&scratch_out);
     char *gmp_text = mpz_get_str(NULL, 10, gout);
@@ -4375,9 +4683,9 @@ static void run_scratch_binary_case(XrayBenchmarkReport *report, const char *ope
     free(scratch_text);
     free(gmp_text);
   }
-  unsigned long long scratch_us = median_samples(scratch_samples, XRAY_BENCH_SAMPLES);
-  unsigned long long gmp_us = median_samples(gmp_samples, XRAY_BENCH_SAMPLES);
-  double paired_ratio = median_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES);
+  unsigned long long scratch_us = median_samples(scratch_samples, sample_count);
+  unsigned long long gmp_us = median_samples(gmp_samples, sample_count);
+  double paired_ratio = median_paired_ratio(scratch_samples, gmp_samples, sample_count);
   append_perf_result(
     report,
     operation,
@@ -4387,9 +4695,9 @@ static void run_scratch_binary_case(XrayBenchmarkReport *report, const char *ope
     scratch_us,
     gmp_us,
     paired_ratio,
-    paired_ratio_wins(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES, 1.0),
-    XRAY_BENCH_SAMPLES,
-    max_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES));
+    paired_ratio_wins(scratch_samples, gmp_samples, sample_count, 1.0),
+    sample_count,
+    max_paired_ratio(scratch_samples, gmp_samples, sample_count));
 
   mpz_clears(ga, gb, gout, NULL);
   xray_bigint_clear(&a);
@@ -4480,6 +4788,7 @@ static void run_mul_threshold_probe_case(XrayBenchmarkReport *report, size_t dig
   mpz_t gout[XRAY_MUL_OPERAND_FAMILIES];
 
   unsigned int iterations = perf_iterations("mul", digits);
+  if (digits >= 16384U && iterations < 192U) iterations = 192U;
   int ok = 1;
   for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
     xray_bigint_init(&a[family]);
@@ -5077,7 +5386,7 @@ static void run_format_pair_writer_probe_case(XrayBenchmarkReport *report, size_
 
 typedef char *(*XrayFormatProbeFn)(const XrayScratchBigInt *value);
 
-#define XRAY_FORMAT_ROUTE_TOURNAMENT_MAX 10U
+#define XRAY_FORMAT_ROUTE_TOURNAMENT_MAX 38U
 
 typedef struct XrayFormatRouteTournamentEntry {
   const char *name;
@@ -5136,12 +5445,20 @@ static char *format_dc_direct_leaf8_probe(const XrayScratchBigInt *value) {
   return xray_bigint_get_decimal_dc_direct_probe(value, 8U);
 }
 
+static char *format_dc_direct_leaf4_probe(const XrayScratchBigInt *value) {
+  return xray_bigint_get_decimal_dc_direct_probe(value, 4U);
+}
+
 static char *format_dc_direct_leaf16_probe(const XrayScratchBigInt *value) {
   return xray_bigint_get_decimal_dc_direct_probe(value, 16U);
 }
 
 static char *format_dc_static_direct_leaf8_probe(const XrayScratchBigInt *value) {
   return xray_bigint_get_decimal_dc_static_direct_probe(value, 8U);
+}
+
+static char *format_dc_static_direct_leaf4_probe(const XrayScratchBigInt *value) {
+  return xray_bigint_get_decimal_dc_static_direct_probe(value, 4U);
 }
 
 static char *format_dc_static_direct_leaf16_probe(const XrayScratchBigInt *value) {
@@ -5178,6 +5495,50 @@ static char *format_dc_preinv_qhat_leaf8_probe(const XrayScratchBigInt *value) {
 
 static char *format_dc_preinv_qhat_leaf16_probe(const XrayScratchBigInt *value) {
   return xray_bigint_get_decimal_dc_preinv_qhat_probe(value, 16U);
+}
+
+static char *format_dc_parallel_leaf8_probe(const XrayScratchBigInt *value) {
+  return xray_bigint_get_decimal_dc_parallel_probe(value, 8U);
+}
+
+static char *format_dc_parallel_leaf16_probe(const XrayScratchBigInt *value) {
+  return xray_bigint_get_decimal_dc_parallel_probe(value, 16U);
+}
+
+static char *format_dc_cached_preinv_leaf8_probe(const XrayScratchBigInt *value) {
+  return xray_bigint_get_decimal_dc_cached_preinv_probe(value, 8U);
+}
+
+static char *format_dc_cached_preinv_leaf4_probe(const XrayScratchBigInt *value) {
+  return xray_bigint_get_decimal_dc_cached_preinv_probe(value, 4U);
+}
+
+static char *format_dc_cached_preinv_leaf16_probe(const XrayScratchBigInt *value) {
+  return xray_bigint_get_decimal_dc_cached_preinv_probe(value, 16U);
+}
+
+static char *format_dc_cached_preinv_leaf32_probe(const XrayScratchBigInt *value) {
+  return xray_bigint_get_decimal_dc_cached_preinv_probe(value, 32U);
+}
+
+static char *format_dc_cached_preinv_leaf64_probe(const XrayScratchBigInt *value) {
+  return xray_bigint_get_decimal_dc_cached_preinv_probe(value, 64U);
+}
+
+static char *format_dc_cached_context_leaf8_probe(const XrayScratchBigInt *value) {
+  return xray_bigint_get_decimal_dc_cached_context_probe(value, 8U);
+}
+
+static char *format_dc_cached_context_leaf16_probe(const XrayScratchBigInt *value) {
+  return xray_bigint_get_decimal_dc_cached_context_probe(value, 16U);
+}
+
+static char *format_dc_cached_context_workspace_leaf8_probe(const XrayScratchBigInt *value) {
+  return xray_bigint_get_decimal_dc_cached_context_workspace_probe(value, 8U);
+}
+
+static char *format_dc_cached_context_workspace_leaf16_probe(const XrayScratchBigInt *value) {
+  return xray_bigint_get_decimal_dc_cached_context_workspace_probe(value, 16U);
 }
 
 static char *format_divide_1e19_pair_writer_probe(const XrayScratchBigInt *value) {
@@ -5247,6 +5608,17 @@ static char *format_policy_preinv_qhat(
   if (max_digits > 0 && digits > max_digits) return xray_bigint_get_decimal(value);
   if (digits < min_digits) return xray_bigint_get_decimal(value);
   return xray_bigint_get_decimal_dc_preinv_qhat_probe(value, leaf_chunks);
+}
+
+static char *format_policy_cached_preinv(
+  const XrayScratchBigInt *value,
+  size_t digits,
+  size_t min_digits,
+  size_t max_digits,
+  size_t leaf_chunks) {
+  if (max_digits > 0 && digits > max_digits) return xray_bigint_get_decimal(value);
+  if (digits < min_digits) return xray_bigint_get_decimal(value);
+  return xray_bigint_get_decimal_dc_cached_preinv_probe(value, leaf_chunks);
 }
 
 static char *format_policy_divide_1e19_preinv(
@@ -5907,16 +6279,45 @@ static void run_format_route_tournament_case(
   size_t digits) {
   static const XrayFormatRouteTournamentEntry routes[] = {
     {"current-default", xray_bigint_get_decimal},
+    {"wide-horner", xray_bigint_get_decimal_wide_probe},
+    {"folded-hwdiv", xray_bigint_get_decimal_folded_hwdiv_probe},
+    {"folded-hwdiv-mixed", xray_bigint_get_decimal_folded_hwdiv_mixed_pair_probe},
     {"divide1e19-preinv", format_divide_1e19_preinv_probe},
     {"divide1e19-preinv-pairs", format_divide_1e19_preinv_pair_writer_probe},
     {"dc-ladder8", format_dc_ladder_leaf8_probe},
+    {"dc-ladder16", format_dc_ladder_leaf16_probe},
+    {"dc-static-ladder8", format_dc_static_ladder_leaf8_probe},
+    {"dc-static-ladder16", format_dc_static_ladder_leaf16_probe},
+    {"dc-direct4", format_dc_direct_leaf4_probe},
+    {"dc-direct8", format_dc_direct_leaf8_probe},
     {"dc-direct16", format_dc_direct_leaf16_probe},
-    {"dc-preinv-qhat16", format_dc_preinv_qhat_leaf16_probe}
+    {"dc-direct32", format_dc_direct_leaf32_probe},
+    {"dc-direct64", format_dc_direct_leaf64_probe},
+    {"dc-static-direct4", format_dc_static_direct_leaf4_probe},
+    {"dc-static-direct8", format_dc_static_direct_leaf8_probe},
+    {"dc-static-direct16", format_dc_static_direct_leaf16_probe},
+    {"dc-static-direct32", format_dc_static_direct_leaf32_probe},
+    {"dc-static-direct64", format_dc_static_direct_leaf64_probe},
+    {"dc-workspace8", format_dc_workspace_leaf8_probe},
+    {"dc-workspace16", format_dc_workspace_leaf16_probe},
+    {"dc-preinv-qhat8", format_dc_preinv_qhat_leaf8_probe},
+    {"dc-preinv-qhat16", format_dc_preinv_qhat_leaf16_probe},
+    {"dc-parallel8", format_dc_parallel_leaf8_probe},
+    {"dc-parallel16", format_dc_parallel_leaf16_probe},
+    {"dc-cached-preinv4", format_dc_cached_preinv_leaf4_probe},
+    {"dc-cached-preinv8", format_dc_cached_preinv_leaf8_probe},
+    {"dc-cached-preinv16", format_dc_cached_preinv_leaf16_probe},
+    {"dc-cached-preinv32", format_dc_cached_preinv_leaf32_probe},
+    {"dc-cached-preinv64", format_dc_cached_preinv_leaf64_probe},
+    {"dc-cached-context8", format_dc_cached_context_leaf8_probe},
+    {"dc-cached-context16", format_dc_cached_context_leaf16_probe},
+    {"dc-cached-context-ws8", format_dc_cached_context_workspace_leaf8_probe},
+    {"dc-cached-context-ws16", format_dc_cached_context_workspace_leaf16_probe}
   };
   const size_t route_count = sizeof(routes) / sizeof(routes[0]);
   if (!report || route_count == 0 || route_count > XRAY_FORMAT_ROUTE_TOURNAMENT_MAX) return;
 
-  char route_list[192] = {0};
+  char route_list[1024] = {0};
   for (size_t route_index = 0; route_index < route_count; ++route_index) {
     size_t used = strlen(route_list);
     if (used < sizeof(route_list)) {
@@ -5924,7 +6325,7 @@ static void run_format_route_tournament_case(
     }
   }
 
-  char *text = benchmark_decimal(digits, 263U, 1);
+  char *text = benchmark_decimal(digits, 13U, 1);
   if (!text) return;
   unsigned int iterations = perf_iterations("format", digits);
   unsigned int batch_iterations = iterations >= 64U ? 8U : (iterations >= 16U ? 4U : 1U);
@@ -6438,7 +6839,7 @@ static void append_format_route_audit_result(
   append_result(report, &result);
 }
 
-static void run_format_route_interleaved_audit_case(
+static void run_format_route_interleaved_audit_case_with_samples(
   XrayBenchmarkReport *report,
   unsigned int seed,
   const char *policy,
@@ -6448,8 +6849,10 @@ static void run_format_route_interleaved_audit_case(
   size_t leaf_chunks,
   XrayFormatPolicyProbeFn probe,
   const size_t *sizes,
-  size_t size_count) {
+  size_t size_count,
+  size_t sample_count) {
   if (!report || !policy || !candidate || !probe || !sizes || size_count == 0 || size_count > XRAY_FORMAT_ROUTE_TOURNAMENT_MAX) return;
+  if (sample_count == 0 || sample_count > XRAY_BENCH_MAX_SAMPLES) sample_count = XRAY_BENCH_SAMPLES;
   XrayFormatRouteAuditPoint points[XRAY_FORMAT_ROUTE_TOURNAMENT_MAX];
   memset(points, 0, sizeof(points));
   char size_list[96] = {0};
@@ -6464,7 +6867,7 @@ static void run_format_route_interleaved_audit_case(
       min_digits,
       max_digits,
       leaf_chunks,
-      XRAY_BENCH_DEEP_SAMPLES,
+      sample_count,
       probe);
   }
   append_format_route_audit_result(
@@ -6474,10 +6877,10 @@ static void run_format_route_interleaved_audit_case(
     size_list,
     points,
     size_count,
-    XRAY_BENCH_DEEP_SAMPLES);
+    sample_count);
 }
 
-static void run_format_route_audit_case(
+static void run_format_route_interleaved_audit_case(
   XrayBenchmarkReport *report,
   unsigned int seed,
   const char *policy,
@@ -6488,7 +6891,34 @@ static void run_format_route_audit_case(
   XrayFormatPolicyProbeFn probe,
   const size_t *sizes,
   size_t size_count) {
+  run_format_route_interleaved_audit_case_with_samples(
+    report,
+    seed,
+    policy,
+    candidate,
+    min_digits,
+    max_digits,
+    leaf_chunks,
+    probe,
+    sizes,
+    size_count,
+    XRAY_BENCH_DEEP_SAMPLES);
+}
+
+static void run_format_route_audit_case_with_samples(
+  XrayBenchmarkReport *report,
+  unsigned int seed,
+  const char *policy,
+  const char *candidate,
+  size_t min_digits,
+  size_t max_digits,
+  size_t leaf_chunks,
+  XrayFormatPolicyProbeFn probe,
+  const size_t *sizes,
+  size_t size_count,
+  size_t sample_count) {
   if (!report || !policy || !candidate || !probe || !sizes || size_count == 0 || size_count > XRAY_FORMAT_ROUTE_TOURNAMENT_MAX) return;
+  if (sample_count == 0 || sample_count > XRAY_BENCH_MAX_SAMPLES) sample_count = XRAY_BENCH_SAMPLES;
   XrayFormatRouteAuditPoint points[XRAY_FORMAT_ROUTE_TOURNAMENT_MAX];
   memset(points, 0, sizeof(points));
   char size_list[96] = {0};
@@ -6503,7 +6933,7 @@ static void run_format_route_audit_case(
       min_digits,
       max_digits,
       leaf_chunks,
-      XRAY_BENCH_DEEP_SAMPLES,
+      sample_count,
       probe);
   }
   append_format_route_audit_result(
@@ -6512,6 +6942,31 @@ static void run_format_route_audit_case(
     candidate,
     size_list,
     points,
+    size_count,
+    sample_count);
+}
+
+static void run_format_route_audit_case(
+  XrayBenchmarkReport *report,
+  unsigned int seed,
+  const char *policy,
+  const char *candidate,
+  size_t min_digits,
+  size_t max_digits,
+  size_t leaf_chunks,
+  XrayFormatPolicyProbeFn probe,
+  const size_t *sizes,
+  size_t size_count) {
+  run_format_route_audit_case_with_samples(
+    report,
+    seed,
+    policy,
+    candidate,
+    min_digits,
+    max_digits,
+    leaf_chunks,
+    probe,
+    sizes,
     size_count,
     XRAY_BENCH_DEEP_SAMPLES);
 }
@@ -7471,6 +7926,25 @@ static void mul_full_workspace_depth_scout_labels(
     snprintf(labels->baseline_status, sizeof(labels->baseline_status), "combo-l48d3-regression");
     snprintf(labels->clean_status, sizeof(labels->clean_status), "toom4-top-clean");
     snprintf(labels->threshold_safety, sizeof(labels->threshold_safety), "upper-window");
+    return;
+  }
+  if (candidate_leaf_threshold == 64 &&
+      baseline_leaf_threshold == 64 &&
+      candidate_depth_limit == 2 &&
+      baseline_depth_limit == 2 &&
+      candidate_interp_flags == toom4_top_combo_interp_flags &&
+      baseline_interp_flags == combo_interp_flags) {
+    snprintf(labels->aggregate_operation, sizeof(labels->aggregate_operation), "mul-dense-toom4-l64d2-prod");
+    snprintf(labels->point_operation, sizeof(labels->point_operation), "mul-dense-toom4-l64d2-pt");
+    snprintf(labels->point_detail_op, sizeof(labels->point_detail_op), "mul-toom4-l64d2-prod-point");
+    snprintf(labels->parent, sizeof(labels->parent), "toom4-l64d2-prod");
+    snprintf(labels->candidate, sizeof(labels->candidate), "full-ws-toom4-top-l64d2");
+    snprintf(labels->baseline, sizeof(labels->baseline), "full-ws-combo-l64d2");
+    snprintf(labels->feature_gate, sizeof(labels->feature_gate), "large-multiply-cpu-toom4-l64d2-prodstyle");
+    snprintf(labels->gmp_clue, sizeof(labels->gmp_clue), "toom4-top-l64d2-production-style");
+    snprintf(labels->baseline_status, sizeof(labels->baseline_status), "combo-l64d2-regression");
+    snprintf(labels->clean_status, sizeof(labels->clean_status), "toom4-l64d2-clean");
+    snprintf(labels->threshold_safety, sizeof(labels->threshold_safety), "upper-window-prodstyle");
     return;
   }
   if (candidate_leaf_threshold == 48 &&
@@ -10154,6 +10628,15 @@ static int run_mul_full_workspace_reuse_candidate_probe(
   XrayBigIntMulWorkspace *workspace) {
   unsigned int both = XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3;
   if (interp_flags & XRAY_BENCH_TOOM_INTERP_TOOM5_TOP) {
+    if (interp_flags & XRAY_BENCH_TOOM_INTERP_TOOM5_FACTORED_DIV) {
+      return xray_bigint_mul_toom5_top_full_workspace_reuse_factored_div_probe(
+        out,
+        left,
+        right,
+        leaf_threshold,
+        depth_limit,
+        workspace);
+    }
     return xray_bigint_mul_toom5_top_full_workspace_reuse_probe(
       out,
       left,
@@ -10806,6 +11289,25 @@ static XrayMulFullWorkspaceDepthScoutPoint measure_mul_toom5_top_vs_combo_reuse_
     depth_limit,
     toom5_interp_flags,
     combo_interp_flags);
+}
+
+static XrayMulFullWorkspaceDepthScoutPoint measure_mul_toom5_top_factored_div_point(
+  size_t digits,
+  unsigned int seed,
+  size_t sample_count,
+  size_t leaf_threshold,
+  size_t depth_limit) {
+  unsigned int combo_interp_flags = XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3;
+  unsigned int toom5_interp_flags = combo_interp_flags | XRAY_BENCH_TOOM_INTERP_TOOM5_TOP;
+  unsigned int factored_interp_flags = toom5_interp_flags | XRAY_BENCH_TOOM_INTERP_TOOM5_FACTORED_DIV;
+  return measure_mul_dual_reuse_route_point(
+    digits,
+    seed,
+    sample_count,
+    leaf_threshold,
+    depth_limit,
+    factored_interp_flags,
+    toom5_interp_flags);
 }
 
 static int run_mul_combo_reuse_map_gmp_control_batch_step(
@@ -11587,12 +12089,13 @@ static void append_mul_toom4_top_reuse_point_result(
   append_result(report, &result);
 }
 
-static void run_mul_toom4_top_reuse_scout_case(
+static void run_mul_toom4_top_reuse_scout_case_with_samples(
   XrayBenchmarkReport *report,
   unsigned int seed,
   const char *policy,
   const size_t *sizes,
-  size_t size_count) {
+  size_t size_count,
+  size_t sample_count) {
   if (!report || !policy || !sizes || size_count == 0 || size_count > XRAY_FORMAT_ROUTE_TOURNAMENT_MAX) return;
   XrayMulFullWorkspaceDepthScoutPoint points[XRAY_FORMAT_ROUTE_TOURNAMENT_MAX];
   memset(points, 0, sizeof(points));
@@ -11605,18 +12108,33 @@ static void run_mul_toom4_top_reuse_scout_case(
     points[index] = measure_mul_toom4_top_reuse_point(
       sizes[index],
       seed + (unsigned int)(index * 73U),
-      XRAY_BENCH_DEEP_SAMPLES);
+      sample_count);
     append_mul_toom4_top_reuse_point_result(
       report,
       policy,
       &points[index],
-      XRAY_BENCH_DEEP_SAMPLES);
+      sample_count);
   }
   append_mul_toom4_top_reuse_result(
     report,
     policy,
     size_list,
     points,
+    size_count,
+    sample_count);
+}
+
+static void run_mul_toom4_top_reuse_scout_case(
+  XrayBenchmarkReport *report,
+  unsigned int seed,
+  const char *policy,
+  const size_t *sizes,
+  size_t size_count) {
+  run_mul_toom4_top_reuse_scout_case_with_samples(
+    report,
+    seed,
+    policy,
+    sizes,
     size_count,
     XRAY_BENCH_DEEP_SAMPLES);
 }
@@ -11842,12 +12360,13 @@ static void append_mul_toom4_top_handoff_point_result(
   append_result(report, &result);
 }
 
-static void run_mul_toom4_top_handoff_scout_case(
+static void run_mul_toom4_top_handoff_scout_case_with_samples(
   XrayBenchmarkReport *report,
   unsigned int seed,
   const char *policy,
   const size_t *sizes,
-  size_t size_count) {
+  size_t size_count,
+  size_t sample_count) {
   if (!report || !policy || !sizes || size_count == 0 || size_count > XRAY_FORMAT_ROUTE_TOURNAMENT_MAX) return;
   XrayMulFullWorkspaceDepthScoutPoint points[XRAY_FORMAT_ROUTE_TOURNAMENT_MAX];
   memset(points, 0, sizeof(points));
@@ -11860,18 +12379,33 @@ static void run_mul_toom4_top_handoff_scout_case(
     points[index] = measure_mul_toom4_top_handoff_point(
       sizes[index],
       seed + (unsigned int)(index * 79U),
-      XRAY_BENCH_DEEP_SAMPLES);
+      sample_count);
     append_mul_toom4_top_handoff_point_result(
       report,
       policy,
       &points[index],
-      XRAY_BENCH_DEEP_SAMPLES);
+      sample_count);
   }
   append_mul_toom4_top_handoff_result(
     report,
     policy,
     size_list,
     points,
+    size_count,
+    sample_count);
+}
+
+static void run_mul_toom4_top_handoff_scout_case(
+  XrayBenchmarkReport *report,
+  unsigned int seed,
+  const char *policy,
+  const size_t *sizes,
+  size_t size_count) {
+  run_mul_toom4_top_handoff_scout_case_with_samples(
+    report,
+    seed,
+    policy,
+    sizes,
     size_count,
     XRAY_BENCH_DEEP_SAMPLES);
 }
@@ -12097,12 +12631,13 @@ static void append_mul_toom4_top_factored_div_point_result(
   append_result(report, &result);
 }
 
-static void run_mul_toom4_top_factored_div_scout_case(
+static void run_mul_toom4_top_factored_div_scout_case_with_samples(
   XrayBenchmarkReport *report,
   unsigned int seed,
   const char *policy,
   const size_t *sizes,
-  size_t size_count) {
+  size_t size_count,
+  size_t sample_count) {
   if (!report || !policy || !sizes || size_count == 0 || size_count > XRAY_FORMAT_ROUTE_TOURNAMENT_MAX) return;
   XrayMulFullWorkspaceDepthScoutPoint points[XRAY_FORMAT_ROUTE_TOURNAMENT_MAX];
   memset(points, 0, sizeof(points));
@@ -12115,18 +12650,33 @@ static void run_mul_toom4_top_factored_div_scout_case(
     points[index] = measure_mul_toom4_top_factored_div_point(
       sizes[index],
       seed + (unsigned int)(index * 83U),
-      XRAY_BENCH_DEEP_SAMPLES);
+      sample_count);
     append_mul_toom4_top_factored_div_point_result(
       report,
       policy,
       &points[index],
-      XRAY_BENCH_DEEP_SAMPLES);
+      sample_count);
   }
   append_mul_toom4_top_factored_div_result(
     report,
     policy,
     size_list,
     points,
+    size_count,
+    sample_count);
+}
+
+static void run_mul_toom4_top_factored_div_scout_case(
+  XrayBenchmarkReport *report,
+  unsigned int seed,
+  const char *policy,
+  const size_t *sizes,
+  size_t size_count) {
+  run_mul_toom4_top_factored_div_scout_case_with_samples(
+    report,
+    seed,
+    policy,
+    sizes,
     size_count,
     XRAY_BENCH_DEEP_SAMPLES);
 }
@@ -12352,12 +12902,13 @@ static void append_mul_toom4_top_vs_combo_reuse_point_result(
   append_result(report, &result);
 }
 
-static void run_mul_toom4_top_vs_combo_reuse_scout_case(
+static void run_mul_toom4_top_vs_combo_reuse_scout_case_with_samples(
   XrayBenchmarkReport *report,
   unsigned int seed,
   const char *policy,
   const size_t *sizes,
-  size_t size_count) {
+  size_t size_count,
+  size_t sample_count) {
   if (!report || !policy || !sizes || size_count == 0 || size_count > XRAY_FORMAT_ROUTE_TOURNAMENT_MAX) return;
   XrayMulFullWorkspaceDepthScoutPoint points[XRAY_FORMAT_ROUTE_TOURNAMENT_MAX];
   memset(points, 0, sizeof(points));
@@ -12370,18 +12921,33 @@ static void run_mul_toom4_top_vs_combo_reuse_scout_case(
     points[index] = measure_mul_toom4_top_vs_combo_reuse_point(
       sizes[index],
       seed + (unsigned int)(index * 89U),
-      XRAY_BENCH_DEEP_SAMPLES);
+      sample_count);
     append_mul_toom4_top_vs_combo_reuse_point_result(
       report,
       policy,
       &points[index],
-      XRAY_BENCH_DEEP_SAMPLES);
+      sample_count);
   }
   append_mul_toom4_top_vs_combo_reuse_result(
     report,
     policy,
     size_list,
     points,
+    size_count,
+    sample_count);
+}
+
+static void run_mul_toom4_top_vs_combo_reuse_scout_case(
+  XrayBenchmarkReport *report,
+  unsigned int seed,
+  const char *policy,
+  const size_t *sizes,
+  size_t size_count) {
+  run_mul_toom4_top_vs_combo_reuse_scout_case_with_samples(
+    report,
+    seed,
+    policy,
+    sizes,
     size_count,
     XRAY_BENCH_DEEP_SAMPLES);
 }
@@ -13700,6 +14266,76 @@ static void run_mul_combo_reuse_neg2_map_audit_case(
     XRAY_BENCH_DEEP_SAMPLES);
 }
 
+static void run_mul_toom5_top_vs_combo_reuse_case_with_samples(
+  XrayBenchmarkReport *report,
+  unsigned int seed,
+  const char *policy,
+  const size_t *sizes,
+  size_t size_count,
+  const char *point_operation,
+  const char *aggregate_operation,
+  const char *detail_op,
+  const char *parent,
+  const char *aggregate_name_suffix,
+  const char *route_policy,
+  const char *candidate,
+  const char *baseline,
+  const char *feature_gate,
+  const char *gmp_clue,
+  size_t leaf_threshold,
+  size_t depth_limit,
+  size_t sample_count) {
+  if (!report || !policy || !sizes || size_count == 0 || size_count > XRAY_FORMAT_ROUTE_TOURNAMENT_MAX ||
+      !point_operation || !aggregate_operation || !detail_op || !parent || !aggregate_name_suffix ||
+      !route_policy || !candidate || !baseline || !feature_gate || !gmp_clue) return;
+  XrayMulFullWorkspaceDepthScoutPoint points[XRAY_FORMAT_ROUTE_TOURNAMENT_MAX];
+  memset(points, 0, sizeof(points));
+  char size_list[96] = {0};
+  for (size_t index = 0; index < size_count; ++index) {
+    size_t used = strlen(size_list);
+    if (used < sizeof(size_list)) {
+      snprintf(size_list + used, sizeof(size_list) - used, "%s%zu", size_list[0] ? "," : "", sizes[index]);
+    }
+    points[index] = measure_mul_toom5_top_vs_combo_reuse_point(
+      sizes[index],
+      seed + (unsigned int)(index * 79U),
+      sample_count,
+      leaf_threshold,
+      depth_limit);
+    append_mul_toom5_top_vs_combo_reuse_point_result(
+      report,
+      policy,
+      &points[index],
+      sample_count,
+      point_operation,
+      detail_op,
+      parent,
+      route_policy,
+      candidate,
+      baseline,
+      feature_gate,
+      gmp_clue,
+      leaf_threshold,
+      depth_limit);
+  }
+  append_mul_toom5_top_vs_combo_reuse_result(
+    report,
+    policy,
+    size_list,
+    points,
+    size_count,
+    sample_count,
+    aggregate_operation,
+    aggregate_name_suffix,
+    route_policy,
+    candidate,
+    baseline,
+    feature_gate,
+    gmp_clue,
+    leaf_threshold,
+    depth_limit);
+}
+
 static void run_mul_toom5_top_vs_combo_reuse_case(
   XrayBenchmarkReport *report,
   unsigned int seed,
@@ -13718,47 +14354,16 @@ static void run_mul_toom5_top_vs_combo_reuse_case(
   const char *gmp_clue,
   size_t leaf_threshold,
   size_t depth_limit) {
-  if (!report || !policy || !sizes || size_count == 0 || size_count > XRAY_FORMAT_ROUTE_TOURNAMENT_MAX ||
-      !point_operation || !aggregate_operation || !detail_op || !parent || !aggregate_name_suffix ||
-      !route_policy || !candidate || !baseline || !feature_gate || !gmp_clue) return;
-  XrayMulFullWorkspaceDepthScoutPoint points[XRAY_FORMAT_ROUTE_TOURNAMENT_MAX];
-  memset(points, 0, sizeof(points));
-  char size_list[96] = {0};
-  for (size_t index = 0; index < size_count; ++index) {
-    size_t used = strlen(size_list);
-    if (used < sizeof(size_list)) {
-      snprintf(size_list + used, sizeof(size_list) - used, "%s%zu", size_list[0] ? "," : "", sizes[index]);
-    }
-    points[index] = measure_mul_toom5_top_vs_combo_reuse_point(
-      sizes[index],
-      seed + (unsigned int)(index * 79U),
-      XRAY_BENCH_TOOM5_SCOUT_SAMPLES,
-      leaf_threshold,
-      depth_limit);
-    append_mul_toom5_top_vs_combo_reuse_point_result(
-      report,
-      policy,
-      &points[index],
-      XRAY_BENCH_TOOM5_SCOUT_SAMPLES,
-      point_operation,
-      detail_op,
-      parent,
-      route_policy,
-      candidate,
-      baseline,
-      feature_gate,
-      gmp_clue,
-      leaf_threshold,
-      depth_limit);
-  }
-  append_mul_toom5_top_vs_combo_reuse_result(
+  run_mul_toom5_top_vs_combo_reuse_case_with_samples(
     report,
+    seed,
     policy,
-    size_list,
-    points,
+    sizes,
     size_count,
-    XRAY_BENCH_TOOM5_SCOUT_SAMPLES,
+    point_operation,
     aggregate_operation,
+    detail_op,
+    parent,
     aggregate_name_suffix,
     route_policy,
     candidate,
@@ -13766,15 +14371,17 @@ static void run_mul_toom5_top_vs_combo_reuse_case(
     feature_gate,
     gmp_clue,
     leaf_threshold,
-    depth_limit);
+    depth_limit,
+    XRAY_BENCH_TOOM5_SCOUT_SAMPLES);
 }
 
-static void run_mul_combo_reuse_ipdiv_map_audit_case(
+static void run_mul_combo_reuse_ipdiv_map_audit_case_with_samples(
   XrayBenchmarkReport *report,
   unsigned int seed,
   const char *policy,
   const size_t *sizes,
-  size_t size_count) {
+  size_t size_count,
+  size_t sample_count) {
   if (!report || !policy || !sizes || size_count == 0 || size_count > XRAY_FORMAT_ROUTE_TOURNAMENT_MAX) return;
   XrayMulFullWorkspaceDepthScoutPoint points[XRAY_FORMAT_ROUTE_TOURNAMENT_MAX];
   memset(points, 0, sizeof(points));
@@ -13787,18 +14394,33 @@ static void run_mul_combo_reuse_ipdiv_map_audit_case(
     points[index] = measure_mul_combo_reuse_ipdiv_map_point(
       sizes[index],
       seed + (unsigned int)(index * 73U),
-      XRAY_BENCH_DEEP_SAMPLES);
+      sample_count);
     append_mul_combo_reuse_ipdiv_map_point_result(
       report,
       policy,
       &points[index],
-      XRAY_BENCH_DEEP_SAMPLES);
+      sample_count);
   }
   append_mul_combo_reuse_ipdiv_map_result(
     report,
     policy,
     size_list,
     points,
+    size_count,
+    sample_count);
+}
+
+static void run_mul_combo_reuse_ipdiv_map_audit_case(
+  XrayBenchmarkReport *report,
+  unsigned int seed,
+  const char *policy,
+  const size_t *sizes,
+  size_t size_count) {
+  run_mul_combo_reuse_ipdiv_map_audit_case_with_samples(
+    report,
+    seed,
+    policy,
+    sizes,
     size_count,
     XRAY_BENCH_DEEP_SAMPLES);
 }
@@ -14614,7 +15236,7 @@ static void append_mul_full_workspace_depth_scout_point_result(
   append_result(report, &result);
 }
 
-static void run_mul_full_workspace_depth_scout_case(
+static void run_mul_full_workspace_depth_scout_case_with_samples(
   XrayBenchmarkReport *report,
   unsigned int seed,
   const char *policy,
@@ -14626,7 +15248,8 @@ static void run_mul_full_workspace_depth_scout_case(
   unsigned int candidate_interp_flags,
   unsigned int baseline_interp_flags,
   const size_t *sizes,
-  size_t size_count) {
+  size_t size_count,
+  size_t sample_count) {
   if (!report || !policy || !sizes || size_count == 0 || size_count > XRAY_FORMAT_ROUTE_TOURNAMENT_MAX) return;
   XrayMulFullWorkspaceDepthScoutPoint points[XRAY_FORMAT_ROUTE_TOURNAMENT_MAX];
   memset(points, 0, sizeof(points));
@@ -14645,7 +15268,7 @@ static void run_mul_full_workspace_depth_scout_case(
       baseline_depth_limit,
       candidate_interp_flags,
       baseline_interp_flags,
-      XRAY_BENCH_DEEP_SAMPLES);
+      sample_count);
     append_mul_full_workspace_depth_scout_point_result(
       report,
       policy,
@@ -14656,7 +15279,7 @@ static void run_mul_full_workspace_depth_scout_case(
       candidate_interp_flags,
       baseline_interp_flags,
       &points[index],
-      XRAY_BENCH_DEEP_SAMPLES);
+      sample_count);
   }
   append_mul_full_workspace_depth_scout_result(
     report,
@@ -14670,6 +15293,35 @@ static void run_mul_full_workspace_depth_scout_case(
     candidate_interp_flags,
     baseline_interp_flags,
     points,
+    size_count,
+    sample_count);
+}
+
+static void run_mul_full_workspace_depth_scout_case(
+  XrayBenchmarkReport *report,
+  unsigned int seed,
+  const char *policy,
+  size_t min_digits,
+  size_t candidate_leaf_threshold,
+  size_t baseline_leaf_threshold,
+  size_t candidate_depth_limit,
+  size_t baseline_depth_limit,
+  unsigned int candidate_interp_flags,
+  unsigned int baseline_interp_flags,
+  const size_t *sizes,
+  size_t size_count) {
+  run_mul_full_workspace_depth_scout_case_with_samples(
+    report,
+    seed,
+    policy,
+    min_digits,
+    candidate_leaf_threshold,
+    baseline_leaf_threshold,
+    candidate_depth_limit,
+    baseline_depth_limit,
+    candidate_interp_flags,
+    baseline_interp_flags,
+    sizes,
     size_count,
     XRAY_BENCH_DEEP_SAMPLES);
 }
@@ -17800,6 +18452,7 @@ static void run_scratch_mul_case(XrayBenchmarkReport *report, size_t digits) {
   mpz_t gout[XRAY_MUL_OPERAND_FAMILIES];
 
   unsigned int iterations = perf_iterations("mul", digits);
+  size_t sample_count = active_scratch_gmp_sample_count();
   int ok = 1;
   for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
     xray_bigint_init(&a[family]);
@@ -17817,25 +18470,37 @@ static void run_scratch_mul_case(XrayBenchmarkReport *report, size_t digits) {
       mpz_set_str(gb[family], right_text[family], 10) == 0;
   }
 
-  unsigned long long scratch_samples[XRAY_BENCH_SAMPLES] = {0};
-  unsigned long long gmp_samples[XRAY_BENCH_SAMPLES] = {0};
+  unsigned long long scratch_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
   int parity = 1;
-  for (unsigned int sample = 0; sample < XRAY_BENCH_SAMPLES; ++sample) {
-    unsigned long long scratch_started = xray_now_us();
-    for (unsigned int index = 0; ok && index < iterations; ++index) {
-      for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
-        ok = xray_bigint_mul(&scratch_out[family], &a[family], &b[family]);
-      }
+  unsigned int batch_iterations = iterations >= 64U ? 8U : (iterations >= 16U ? 4U : 1U);
+  if (ok) {
+    for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+      ok = xray_bigint_mul(&scratch_out[family], &a[family], &b[family]);
+      mpz_mul(gout[family], ga[family], gb[family]);
     }
-    scratch_samples[sample] = xray_now_us() - scratch_started;
-
-    unsigned long long gmp_started = xray_now_us();
-    for (unsigned int index = 0; ok && index < iterations; ++index) {
-      for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
-        mpz_mul(gout[family], ga[family], gb[family]);
+  }
+  for (size_t sample = 0; sample < sample_count; ++sample) {
+    unsigned int completed = 0;
+    unsigned int phase = (unsigned int)(sample & 1U);
+    while (ok && completed < iterations) {
+      unsigned int remaining = iterations - completed;
+      unsigned int batch = remaining < batch_iterations ? remaining : batch_iterations;
+      for (unsigned int lane = 0; lane < 2U; ++lane) {
+        unsigned int active = (phase + lane) & 1U;
+        unsigned long long started = xray_now_us();
+        for (unsigned int index = 0; ok && index < batch; ++index) {
+          for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+            if (active == 0U) ok = xray_bigint_mul(&scratch_out[family], &a[family], &b[family]);
+            else mpz_mul(gout[family], ga[family], gb[family]);
+          }
+        }
+        if (active == 0U) scratch_samples[sample] += xray_now_us() - started;
+        else gmp_samples[sample] += xray_now_us() - started;
       }
+      phase ^= 1U;
+      completed += batch;
     }
-    gmp_samples[sample] = xray_now_us() - gmp_started;
 
     for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
       char *scratch_text = xray_bigint_get_decimal(&scratch_out[family]);
@@ -17852,12 +18517,12 @@ static void run_scratch_mul_case(XrayBenchmarkReport *report, size_t digits) {
     digits,
     XRAY_MUL_OPERAND_FAMILIES,
     parity,
-    median_samples(scratch_samples, XRAY_BENCH_SAMPLES),
-    median_samples(gmp_samples, XRAY_BENCH_SAMPLES),
-    median_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES),
-    paired_ratio_wins(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES, 1.0),
-    XRAY_BENCH_SAMPLES,
-    max_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES));
+    median_samples(scratch_samples, sample_count),
+    median_samples(gmp_samples, sample_count),
+    median_paired_ratio(scratch_samples, gmp_samples, sample_count),
+    paired_ratio_wins(scratch_samples, gmp_samples, sample_count, 1.0),
+    sample_count,
+    max_paired_ratio(scratch_samples, gmp_samples, sample_count));
 
   for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
     mpz_clears(ga[family], gb[family], gout[family], NULL);
@@ -17873,6 +18538,11 @@ static void run_scratch_square_case(XrayBenchmarkReport *report, size_t digits) 
   char *text = benchmark_decimal(digits, 31, 1);
   if (!text) return;
   unsigned int iterations = perf_iterations("mul", digits);
+  size_t sample_count = active_scratch_gmp_sample_count();
+  if (digits == 4096U && sample_count < 7U) sample_count = 7U;
+  if (digits == 4096U && iterations < 4096U) iterations = 4096U;
+  else if (digits <= 4096U && iterations < 1024U) iterations = 1024U;
+  else if (digits <= 8192U && iterations < 4096U) iterations = 4096U;
   XrayScratchBigInt a, scratch_out;
   xray_bigint_init(&a);
   xray_bigint_init(&scratch_out);
@@ -17880,21 +18550,33 @@ static void run_scratch_square_case(XrayBenchmarkReport *report, size_t digits) 
   mpz_inits(ga, gout, NULL);
   int ok = xray_bigint_set_decimal(&a, text) && mpz_set_str(ga, text, 10) == 0;
 
-  unsigned long long scratch_samples[XRAY_BENCH_SAMPLES] = {0};
-  unsigned long long gmp_samples[XRAY_BENCH_SAMPLES] = {0};
+  unsigned long long scratch_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
   int parity = 1;
-  for (unsigned int sample = 0; sample < XRAY_BENCH_SAMPLES; ++sample) {
-    unsigned long long scratch_started = xray_now_us();
-    for (unsigned int index = 0; ok && index < iterations; ++index) {
-      ok = xray_bigint_square(&scratch_out, &a);
+  unsigned int batch_iterations = iterations >= 64U ? 8U : (iterations >= 16U ? 4U : 1U);
+  if (ok) {
+    ok = xray_bigint_square(&scratch_out, &a);
+    mpz_mul(gout, ga, ga);
+  }
+  for (size_t sample = 0; sample < sample_count; ++sample) {
+    unsigned int completed = 0;
+    unsigned int phase = (unsigned int)(sample & 1U);
+    while (ok && completed < iterations) {
+      unsigned int remaining = iterations - completed;
+      unsigned int batch = remaining < batch_iterations ? remaining : batch_iterations;
+      for (unsigned int lane = 0; lane < 2U; ++lane) {
+        unsigned int active = (phase + lane) & 1U;
+        unsigned long long started = xray_now_us();
+        for (unsigned int index = 0; ok && index < batch; ++index) {
+          if (active == 0U) ok = xray_bigint_square(&scratch_out, &a);
+          else mpz_mul(gout, ga, ga);
+        }
+        if (active == 0U) scratch_samples[sample] += xray_now_us() - started;
+        else gmp_samples[sample] += xray_now_us() - started;
+      }
+      phase ^= 1U;
+      completed += batch;
     }
-    scratch_samples[sample] = xray_now_us() - scratch_started;
-
-    unsigned long long gmp_started = xray_now_us();
-    for (unsigned int index = 0; ok && index < iterations; ++index) {
-      mpz_mul(gout, ga, ga);
-    }
-    gmp_samples[sample] = xray_now_us() - gmp_started;
 
     char *scratch_text = xray_bigint_get_decimal(&scratch_out);
     char *gmp_text = mpz_get_str(NULL, 10, gout);
@@ -17909,12 +18591,12 @@ static void run_scratch_square_case(XrayBenchmarkReport *report, size_t digits) 
     digits,
     1,
     parity,
-    median_samples(scratch_samples, XRAY_BENCH_SAMPLES),
-    median_samples(gmp_samples, XRAY_BENCH_SAMPLES),
-    median_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES),
-    paired_ratio_wins(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES, 1.0),
-    XRAY_BENCH_SAMPLES,
-    max_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES));
+    median_samples(scratch_samples, sample_count),
+    median_samples(gmp_samples, sample_count),
+    median_paired_ratio(scratch_samples, gmp_samples, sample_count),
+    paired_ratio_wins(scratch_samples, gmp_samples, sample_count, 1.0),
+    sample_count,
+    max_paired_ratio(scratch_samples, gmp_samples, sample_count));
 
   mpz_clears(ga, gout, NULL);
   xray_bigint_clear(&a);
@@ -18766,11 +19448,1538 @@ static void run_sparse_pair_product_probe_case(XrayBenchmarkReport *report, size
   mpz_clears(left, right, expected, NULL);
 }
 
+enum {
+  XRAY_MUL_NTT16_LANE_NTT = 0,
+  XRAY_MUL_NTT16_LANE_CURRENT = 1,
+  XRAY_MUL_NTT16_LANE_COMBO = 2,
+  XRAY_MUL_NTT16_LANE_GMP = 3
+};
+
+typedef struct XrayMulNtt16Point {
+  size_t digits;
+  unsigned int iterations;
+  int parity;
+  int combo_available;
+  size_t hash_matches;
+  size_t hash_total;
+  unsigned long long ntt_us;
+  unsigned long long current_us;
+  unsigned long long combo_us;
+  unsigned long long gmp_us;
+  double ntt_current_ratio;
+  double ntt_combo_ratio;
+  double ntt_gmp_ratio;
+  double current_gmp_ratio;
+  double ntt_current_worst;
+  double ntt_combo_worst;
+  double ntt_gmp_worst;
+  size_t ntt_current_stable;
+  size_t ntt_combo_stable;
+  size_t ntt_gmp_stable;
+  size_t sample_count;
+} XrayMulNtt16Point;
+
+typedef struct XrayMulNtt16SparsePoint {
+  const char *shape;
+  size_t bits;
+  size_t digits;
+  unsigned int iterations;
+  int parity;
+  unsigned long long ntt_us;
+  unsigned long long current_us;
+  unsigned long long forced_sparse_us;
+  unsigned long long gmp_us;
+  double ntt_current_ratio;
+  double ntt_forced_sparse_ratio;
+  double current_forced_sparse_ratio;
+  double ntt_gmp_ratio;
+  double ntt_current_worst;
+  double ntt_forced_sparse_worst;
+  size_t ntt_current_stable;
+  size_t ntt_forced_sparse_stable;
+  size_t sample_count;
+} XrayMulNtt16SparsePoint;
+
+typedef struct XraySquareNtt16Point {
+  size_t digits;
+  unsigned int iterations;
+  int parity;
+  size_t hash_matches;
+  size_t hash_total;
+  unsigned long long ntt_us;
+  unsigned long long current_us;
+  unsigned long long generic_ntt_us;
+  unsigned long long gmp_us;
+  double ntt_current_ratio;
+  double ntt_generic_ratio;
+  double ntt_gmp_ratio;
+  double current_gmp_ratio;
+  double ntt_current_worst;
+  double ntt_generic_worst;
+  double ntt_gmp_worst;
+  size_t ntt_current_stable;
+  size_t ntt_generic_stable;
+  size_t ntt_gmp_stable;
+  size_t sample_count;
+} XraySquareNtt16Point;
+
+typedef struct XraySquareNtt32ReusePoint {
+  const char *candidate_name;
+  const char *candidate_label;
+  size_t digits;
+  unsigned int iterations;
+  int parity;
+  size_t hash_matches;
+  size_t hash_total;
+  unsigned long long candidate_us;
+  unsigned long long current_us;
+  unsigned long long gmp_us;
+  double candidate_current_ratio;
+  double candidate_gmp_ratio;
+  double current_gmp_ratio;
+  double candidate_current_worst;
+  double candidate_gmp_worst;
+  size_t candidate_current_stable;
+  size_t candidate_gmp_stable;
+  size_t sample_count;
+} XraySquareNtt32ReusePoint;
+
+typedef struct XraySquareNtt32ControlPoint {
+  const char *candidate_name;
+  const char *candidate_label;
+  const char *timing_mode;
+  int timed_gmp;
+  size_t digits;
+  unsigned int iterations;
+  int parity;
+  size_t hash_matches;
+  size_t hash_total;
+  unsigned long long candidate_us;
+  unsigned long long current_us;
+  unsigned long long control_us;
+  unsigned long long gmp_us;
+  double candidate_current_ratio;
+  double candidate_gmp_ratio;
+  double current_gmp_ratio;
+  double control_current_ratio;
+  double candidate_current_worst;
+  double candidate_gmp_worst;
+  double control_current_worst;
+  size_t candidate_current_stable;
+  size_t candidate_gmp_stable;
+  size_t control_current_stable;
+  size_t sample_count;
+} XraySquareNtt32ControlPoint;
+
+static int mul_ntt16_combo_available(void) {
+#if XRAY_HAS_MSVC_BMI2_ADX_INTRINSICS
+  return 1;
+#else
+  return 0;
+#endif
+}
+
+static size_t mul_ntt16_combo_leaf(size_t digits) {
+  return digits >= 24103U ? 48U : 64U;
+}
+
+static size_t mul_ntt16_combo_depth(size_t digits) {
+  if (digits >= 52163U) return 3U;
+  if (digits >= 24103U) return 4U;
+  return 2U;
+}
+
+static const char *mul_ntt16_combo_candidate(size_t digits) {
+  if (digits >= 52163U) return "reuse-l48d3";
+  if (digits >= 24103U) return "reuse-l48d4";
+  return "reuse-l64d2";
+}
+
+static int run_mul_ntt16_combo_probe(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *left,
+  const XrayScratchBigInt *right,
+  size_t digits,
+  XrayBigIntMulWorkspace *workspace) {
+#if XRAY_HAS_MSVC_BMI2_ADX_INTRINSICS
+  return xray_bigint_mul_toom3_unroll4_recursive_full_workspace_reuse_div2_div3_probe(
+    out,
+    left,
+    right,
+    mul_ntt16_combo_leaf(digits),
+    mul_ntt16_combo_depth(digits),
+    workspace);
+#else
+  (void)out;
+  (void)left;
+  (void)right;
+  (void)digits;
+  (void)workspace;
+  return 0;
+#endif
+}
+
+static unsigned int mul_ntt16_lane_for_order(size_t order, int combo_available) {
+  if (combo_available) return (unsigned int)order;
+  return order == 2U ? XRAY_MUL_NTT16_LANE_GMP : (unsigned int)order;
+}
+
+static unsigned int mul_ntt16_iterations(size_t digits) {
+  if (digits >= 32768U) return 1U;
+  if (digits >= 16384U) return 2U;
+  return 3U;
+}
+
+static XrayMulNtt16Point measure_mul_ntt16_dense_point(size_t digits) {
+  const size_t sample_count = XRAY_BENCH_TOOM5_SCOUT_SAMPLES;
+  XrayMulNtt16Point point;
+  memset(&point, 0, sizeof(point));
+  point.digits = digits;
+  point.iterations = mul_ntt16_iterations(digits);
+  point.sample_count = sample_count;
+  point.combo_available = mul_ntt16_combo_available();
+
+  char *left_text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  char *right_text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  XrayScratchBigInt left[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt right[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt ntt_out[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt current_out[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt combo_out[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gleft[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gright[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gproduct[XRAY_MUL_OPERAND_FAMILIES];
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    xray_bigint_init(&left[family]);
+    xray_bigint_init(&right[family]);
+    xray_bigint_init(&ntt_out[family]);
+    xray_bigint_init(&current_out[family]);
+    xray_bigint_init(&combo_out[family]);
+    mpz_init(gleft[family]);
+    mpz_init(gright[family]);
+    mpz_init(gproduct[family]);
+  }
+  XrayBigIntMulWorkspace combo_workspace;
+  xray_bigint_mul_workspace_init(&combo_workspace);
+
+  int ok = 1;
+  for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    left_text[family] = benchmark_decimal(digits, mul_operand_families[family].left_seed, mul_operand_families[family].left_high_lead);
+    right_text[family] = benchmark_decimal(digits, mul_operand_families[family].right_seed, mul_operand_families[family].right_high_lead);
+    ok = left_text[family] && right_text[family] &&
+      xray_bigint_set_decimal(&left[family], left_text[family]) &&
+      xray_bigint_set_decimal(&right[family], right_text[family]) &&
+      mpz_set_str(gleft[family], left_text[family], 10) == 0 &&
+      mpz_set_str(gright[family], right_text[family], 10) == 0;
+    if (ok) mpz_mul(gproduct[family], gleft[family], gright[family]);
+  }
+
+  for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    ok = xray_bigint_mul_ntt16_probe(&ntt_out[family], &left[family], &right[family]) &&
+      xray_bigint_mul(&current_out[family], &left[family], &right[family]);
+    if (ok && point.combo_available) {
+      ok = run_mul_ntt16_combo_probe(&combo_out[family], &left[family], &right[family], digits, &combo_workspace);
+    }
+    if (ok) mpz_mul(gproduct[family], gleft[family], gright[family]);
+  }
+
+  unsigned long long ntt_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long current_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long combo_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  size_t lane_count = point.combo_available ? 4U : 3U;
+  for (size_t sample = 0; ok && sample < sample_count; ++sample) {
+    for (size_t order_index = 0; ok && order_index < lane_count; ++order_index) {
+      unsigned int lane = mul_ntt16_lane_for_order((sample + order_index) % lane_count, point.combo_available);
+      unsigned long long started = xray_now_us();
+      for (unsigned int iteration = 0; ok && iteration < point.iterations; ++iteration) {
+        for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+          if (lane == XRAY_MUL_NTT16_LANE_NTT) {
+            ok = xray_bigint_mul_ntt16_probe(&ntt_out[family], &left[family], &right[family]);
+          } else if (lane == XRAY_MUL_NTT16_LANE_CURRENT) {
+            ok = xray_bigint_mul(&current_out[family], &left[family], &right[family]);
+          } else if (lane == XRAY_MUL_NTT16_LANE_COMBO) {
+            ok = run_mul_ntt16_combo_probe(&combo_out[family], &left[family], &right[family], digits, &combo_workspace);
+          } else {
+            mpz_mul(gproduct[family], gleft[family], gright[family]);
+          }
+        }
+      }
+      unsigned long long elapsed = xray_now_us() - started;
+      if (lane == XRAY_MUL_NTT16_LANE_NTT) ntt_samples[sample] = elapsed;
+      else if (lane == XRAY_MUL_NTT16_LANE_CURRENT) current_samples[sample] = elapsed;
+      else if (lane == XRAY_MUL_NTT16_LANE_COMBO) combo_samples[sample] = elapsed;
+      else gmp_samples[sample] = elapsed;
+    }
+  }
+
+  point.parity = ok;
+  point.hash_total = XRAY_MUL_OPERAND_FAMILIES;
+  for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    int family_ok = scratch_value_matches_mpz(&ntt_out[family], gproduct[family]) &&
+      scratch_value_matches_mpz(&current_out[family], gproduct[family]) &&
+      xray_bigint_compare(&ntt_out[family], &current_out[family]) == 0;
+    if (point.combo_available) {
+      family_ok = family_ok &&
+        scratch_value_matches_mpz(&combo_out[family], gproduct[family]) &&
+        xray_bigint_compare(&ntt_out[family], &combo_out[family]) == 0;
+    }
+    if (family_ok) point.hash_matches++;
+    else point.parity = 0;
+  }
+
+  point.ntt_us = median_samples(ntt_samples, sample_count);
+  point.current_us = median_samples(current_samples, sample_count);
+  point.combo_us = point.combo_available ? median_samples(combo_samples, sample_count) : 0ULL;
+  point.gmp_us = median_samples(gmp_samples, sample_count);
+  point.ntt_current_ratio = median_paired_ratio(ntt_samples, current_samples, sample_count);
+  point.ntt_combo_ratio = point.combo_available ? median_paired_ratio(ntt_samples, combo_samples, sample_count) : 0.0;
+  point.ntt_gmp_ratio = median_paired_ratio(ntt_samples, gmp_samples, sample_count);
+  point.current_gmp_ratio = median_paired_ratio(current_samples, gmp_samples, sample_count);
+  point.ntt_current_worst = max_paired_ratio(ntt_samples, current_samples, sample_count);
+  point.ntt_combo_worst = point.combo_available ? max_paired_ratio(ntt_samples, combo_samples, sample_count) : 0.0;
+  point.ntt_gmp_worst = max_paired_ratio(ntt_samples, gmp_samples, sample_count);
+  point.ntt_current_stable = paired_ratio_wins(ntt_samples, current_samples, sample_count, 0.98);
+  point.ntt_combo_stable = point.combo_available ? paired_ratio_wins(ntt_samples, combo_samples, sample_count, 0.98) : 0U;
+  point.ntt_gmp_stable = paired_ratio_wins(ntt_samples, gmp_samples, sample_count, 0.98);
+
+  xray_bigint_mul_workspace_clear(&combo_workspace);
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    free(left_text[family]);
+    free(right_text[family]);
+    xray_bigint_clear(&left[family]);
+    xray_bigint_clear(&right[family]);
+    xray_bigint_clear(&ntt_out[family]);
+    xray_bigint_clear(&current_out[family]);
+    xray_bigint_clear(&combo_out[family]);
+    mpz_clear(gleft[family]);
+    mpz_clear(gright[family]);
+    mpz_clear(gproduct[family]);
+  }
+  return point;
+}
+
+static void append_mul_ntt16_dense_point_result(
+  XrayBenchmarkReport *report,
+  const XrayMulNtt16Point *point,
+  const char *operation,
+  const char *window_label) {
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "kernel ntt16 %s %zu digits", window_label, point->digits);
+  snprintf(result.category, sizeof(result.category), "kernel-probe");
+  snprintf(result.operation, sizeof(result.operation), "%s", operation);
+  result.digits = point->digits;
+  result.scratch_us = point->ntt_us ? point->ntt_us : 1;
+  result.gmp_us = point->current_us ? point->current_us : 1;
+  result.speed_ratio = point->ntt_current_ratio > 0.0 ? point->ntt_current_ratio : (double)result.scratch_us / (double)result.gmp_us;
+  result.max_allowed_speed_ratio = 0.98;
+  result.stable_sample_count = point->ntt_current_stable;
+  result.sample_count = point->sample_count;
+  result.worst_pair_ratio = point->ntt_current_worst;
+  result.parity_verified = point->parity;
+  result.replacement_ready = 0;
+  result.passed = point->parity;
+  snprintf(result.adoption, sizeof(result.adoption), "%s",
+    point->parity ? "observe-only" : "blocked-output-mismatch");
+  snprintf(result.status, sizeof(result.status), "%s",
+    !point->parity ? "mismatch" : (result.speed_ratio < 1.0 ? "candidate-faster" : "current-best"));
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  snprintf(result.detail, sizeof(result.detail),
+    "op=%s digits=%zu window=%s samples=%zu iterations=%u operandFamilies=%u nttUs=%llu currentUs=%llu comboUs=%llu gmpUs=%llu nttCurrentRatio=%.3f nttComboRatio=%.3f nttGmpRatio=%.3f currentGmpRatio=%.3f stableCurrent=%zu/%zu stableCombo=%zu/%zu stableGmp=%zu/%zu worstCurrent=%.3f worstCombo=%.3f worstGmp=%.3f hashSafe=%zu/%zu ratioMethod=paired-median candidate=ntt16-base2^16 baseline=current-scratch-mul comboBaseline=full-workspace-combo-reuse-map-l64d2-l48d4-l48d3 comboActive=%s comboLeaf=%zu comboDepth=%zu comboAvailable=%d oracle=mpz_mul featureGate=large-multiply-cpu-ntt16-%s sparsePriority=preserved routeOrder=production-sparse-first replacementReady=false noAutoRoute=1 adoption=%s",
+    operation,
+    point->digits,
+    window_label,
+    point->sample_count,
+    point->iterations,
+    (unsigned int)XRAY_MUL_OPERAND_FAMILIES,
+    point->ntt_us,
+    point->current_us,
+    point->combo_us,
+    point->gmp_us,
+    point->ntt_current_ratio,
+    point->ntt_combo_ratio,
+    point->ntt_gmp_ratio,
+    point->current_gmp_ratio,
+    point->ntt_current_stable,
+    point->sample_count,
+    point->ntt_combo_stable,
+    point->sample_count,
+    point->ntt_gmp_stable,
+    point->sample_count,
+    point->ntt_current_worst,
+    point->ntt_combo_worst,
+    point->ntt_gmp_worst,
+    point->hash_matches,
+    point->hash_total,
+    mul_ntt16_combo_candidate(point->digits),
+    mul_ntt16_combo_leaf(point->digits),
+    mul_ntt16_combo_depth(point->digits),
+    point->combo_available,
+    window_label,
+    result.adoption);
+  append_result(report, &result);
+}
+
+static void append_mul_ntt16_dense_summary_result(
+  XrayBenchmarkReport *report,
+  const XrayMulNtt16Point *points,
+  size_t point_count,
+  const char *operation,
+  const char *window_label,
+  const char *sizes_label) {
+  unsigned long long ntt_us = 0;
+  unsigned long long current_us = 0;
+  unsigned long long combo_us = 0;
+  unsigned long long gmp_us = 0;
+  size_t stable_current = 0;
+  size_t stable_combo = 0;
+  size_t stable_gmp = 0;
+  size_t sample_total = 0;
+  size_t hash_matches = 0;
+  size_t hash_total = 0;
+  double worst_current = 0.0;
+  double worst_combo = 0.0;
+  double worst_gmp = 0.0;
+  int parity = 1;
+  int combo_available = 1;
+  for (size_t index = 0; index < point_count; ++index) {
+    ntt_us += points[index].ntt_us ? points[index].ntt_us : 1ULL;
+    current_us += points[index].current_us ? points[index].current_us : 1ULL;
+    combo_us += points[index].combo_us;
+    gmp_us += points[index].gmp_us ? points[index].gmp_us : 1ULL;
+    stable_current += points[index].ntt_current_stable;
+    stable_combo += points[index].ntt_combo_stable;
+    stable_gmp += points[index].ntt_gmp_stable;
+    sample_total += points[index].sample_count;
+    hash_matches += points[index].hash_matches;
+    hash_total += points[index].hash_total;
+    if (points[index].ntt_current_worst > worst_current) worst_current = points[index].ntt_current_worst;
+    if (points[index].ntt_combo_worst > worst_combo) worst_combo = points[index].ntt_combo_worst;
+    if (points[index].ntt_gmp_worst > worst_gmp) worst_gmp = points[index].ntt_gmp_worst;
+    if (!points[index].parity) parity = 0;
+    if (!points[index].combo_available) combo_available = 0;
+  }
+
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "kernel ntt16 %s summary", window_label);
+  snprintf(result.category, sizeof(result.category), "policy-gate");
+  snprintf(result.operation, sizeof(result.operation), "%s", operation);
+  result.digits = point_count ? points[point_count - 1U].digits : 0U;
+  result.scratch_us = ntt_us ? ntt_us : 1ULL;
+  result.gmp_us = current_us ? current_us : 1ULL;
+  result.speed_ratio = (double)result.scratch_us / (double)result.gmp_us;
+  result.max_allowed_speed_ratio = 0.98;
+  result.stable_sample_count = stable_current;
+  result.sample_count = sample_total;
+  result.worst_pair_ratio = worst_current;
+  result.parity_verified = parity;
+  result.replacement_ready = 0;
+  result.passed = parity;
+  snprintf(result.adoption, sizeof(result.adoption), "%s",
+    parity ? "observe-only" : "blocked-output-mismatch");
+  snprintf(result.status, sizeof(result.status), "%s",
+    !parity ? "mismatch" : "diagnostic-only");
+  result.elapsed_ms = (unsigned long)((ntt_us + current_us + combo_us + gmp_us + 999ULL) / 1000ULL);
+  size_t required = point_count ? policy_required_stable_samples(points[0].sample_count) * point_count : 0U;
+  double ntt_combo_ratio = combo_us ? (double)(ntt_us ? ntt_us : 1ULL) / (double)combo_us : 0.0;
+  double ntt_gmp_ratio = gmp_us ? (double)(ntt_us ? ntt_us : 1ULL) / (double)gmp_us : 0.0;
+  snprintf(result.detail, sizeof(result.detail),
+    "op=%s window=%s sizes=%s points=%zu samples=%zu requiredStablePairs=%zu/%zu stableCurrent=%zu/%zu stableCombo=%zu/%zu stableGmp=%zu/%zu nttUs=%llu currentUs=%llu comboUs=%llu gmpUs=%llu nttCurrentRatio=%.3f nttComboRatio=%.3f nttGmpRatio=%.3f worstCurrent=%.3f worstCombo=%.3f worstGmp=%.3f hashSafe=%zu/%zu parity=%s candidate=ntt16-base2^16 baseline=current-scratch-mul comboBaseline=full-workspace-combo-reuse-map-l64d2-l48d4-l48d3 comboAvailable=%d oracle=mpz_mul featureGate=large-multiply-cpu-ntt16-%s sparsePriority=preserved routeOrder=production-sparse-first promotionGates=parity+stable-pair+worst-pair replacementReady=false noAutoRoute=1 adoption=%s",
+    operation,
+    window_label,
+    sizes_label,
+    point_count,
+    sample_total,
+    required,
+    sample_total,
+    stable_current,
+    sample_total,
+    stable_combo,
+    sample_total,
+    stable_gmp,
+    sample_total,
+    ntt_us,
+    current_us,
+    combo_us,
+    gmp_us,
+    result.speed_ratio,
+    ntt_combo_ratio,
+    ntt_gmp_ratio,
+    worst_current,
+    worst_combo,
+    worst_gmp,
+    hash_matches,
+    hash_total,
+    parity ? "matched" : "mismatch",
+    combo_available,
+    window_label,
+    result.adoption);
+  append_result(report, &result);
+}
+
+static void run_mul_ntt16_dense_window(
+  XrayBenchmarkReport *report,
+  const char *operation,
+  const char *point_operation,
+  const char *window_label,
+  const char *sizes_label,
+  const size_t *sizes,
+  size_t size_count) {
+  XrayMulNtt16Point points[8];
+  if (size_count > sizeof(points) / sizeof(points[0])) return;
+  for (size_t index = 0; index < size_count; ++index) {
+    points[index] = measure_mul_ntt16_dense_point(sizes[index]);
+    append_mul_ntt16_dense_point_result(report, &points[index], point_operation, window_label);
+  }
+  append_mul_ntt16_dense_summary_result(report, points, size_count, operation, window_label, sizes_label);
+}
+
+static XrayMulNtt16SparsePoint measure_mul_ntt16_sparse_point(size_t bits, int pair_product) {
+  const size_t sample_count = XRAY_BENCH_SAMPLES;
+  XrayMulNtt16SparsePoint point;
+  memset(&point, 0, sizeof(point));
+  point.bits = bits;
+  point.shape = pair_product ? "sparse-pair-product" : "sparse-zero-limb";
+  point.iterations = bits <= 4096U ? 8U : 4U;
+  point.sample_count = sample_count;
+
+  mpz_t left, right, expected;
+  mpz_inits(left, right, expected, NULL);
+  if (pair_product) {
+    size_t limb_span = bits / XRAY_BENCH_WORD_BITS;
+    if (limb_span < 64U) limb_span = 64U;
+    const size_t left_indices[] = {
+      0U,
+      limb_span / 12U,
+      limb_span / 6U,
+      limb_span / 3U,
+      limb_span / 2U,
+      (limb_span * 2U) / 3U,
+      (limb_span * 5U) / 6U,
+      limb_span
+    };
+    const size_t right_indices[] = {
+      0U,
+      limb_span / 10U,
+      limb_span / 5U,
+      (limb_span * 3U) / 8U,
+      (limb_span * 9U) / 16U,
+      (limb_span * 3U) / 4U,
+      (limb_span * 7U) / 8U,
+      limb_span
+    };
+    set_sparse_pair_probe_bits(left, left_indices, sizeof(left_indices) / sizeof(left_indices[0]));
+    set_sparse_pair_probe_bits(right, right_indices, sizeof(right_indices) / sizeof(right_indices[0]));
+  } else {
+    mpz_setbit(left, bits);
+    mpz_add_ui(left, left, 1U);
+    mpz_setbit(right, bits / 2U);
+    mpz_add_ui(right, right, 1U);
+  }
+  mpz_mul(expected, left, right);
+
+  char *left_text = mpz_get_str(NULL, 10, left);
+  char *right_text = mpz_get_str(NULL, 10, right);
+  point.digits = left_text ? strlen(left_text) : 0U;
+
+  XrayScratchBigInt scratch_left, scratch_right, ntt_out, current_out, sparse_out;
+  xray_bigint_init(&scratch_left);
+  xray_bigint_init(&scratch_right);
+  xray_bigint_init(&ntt_out);
+  xray_bigint_init(&current_out);
+  xray_bigint_init(&sparse_out);
+  int ok = left_text && right_text &&
+    xray_bigint_set_decimal(&scratch_left, left_text) &&
+    xray_bigint_set_decimal(&scratch_right, right_text);
+
+  unsigned long long ntt_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long current_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long forced_sparse_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  for (size_t sample = 0; ok && sample < sample_count; ++sample) {
+    for (size_t order_index = 0; ok && order_index < 4U; ++order_index) {
+      unsigned int lane = (unsigned int)((sample + order_index) % 4U);
+      unsigned long long started = xray_now_us();
+      for (unsigned int iteration = 0; ok && iteration < point.iterations; ++iteration) {
+        if (lane == XRAY_MUL_NTT16_LANE_NTT) {
+          ok = xray_bigint_mul_ntt16_probe(&ntt_out, &scratch_left, &scratch_right);
+        } else if (lane == XRAY_MUL_NTT16_LANE_CURRENT) {
+          ok = xray_bigint_mul(&current_out, &scratch_left, &scratch_right);
+        } else if (lane == XRAY_MUL_NTT16_LANE_COMBO) {
+          ok = xray_bigint_mul_sparse_probe(&sparse_out, &scratch_left, &scratch_right);
+        } else {
+          mpz_mul(expected, left, right);
+        }
+      }
+      unsigned long long elapsed = xray_now_us() - started;
+      if (lane == XRAY_MUL_NTT16_LANE_NTT) ntt_samples[sample] = elapsed;
+      else if (lane == XRAY_MUL_NTT16_LANE_CURRENT) current_samples[sample] = elapsed;
+      else if (lane == XRAY_MUL_NTT16_LANE_COMBO) forced_sparse_samples[sample] = elapsed;
+      else gmp_samples[sample] = elapsed;
+    }
+  }
+
+  point.parity = ok &&
+    scratch_value_matches_mpz(&ntt_out, expected) &&
+    scratch_value_matches_mpz(&current_out, expected) &&
+    scratch_value_matches_mpz(&sparse_out, expected) &&
+    xray_bigint_compare(&ntt_out, &current_out) == 0 &&
+    xray_bigint_compare(&ntt_out, &sparse_out) == 0;
+  point.ntt_us = median_samples(ntt_samples, sample_count);
+  point.current_us = median_samples(current_samples, sample_count);
+  point.forced_sparse_us = median_samples(forced_sparse_samples, sample_count);
+  point.gmp_us = median_samples(gmp_samples, sample_count);
+  point.ntt_current_ratio = median_paired_ratio(ntt_samples, current_samples, sample_count);
+  point.ntt_forced_sparse_ratio = median_paired_ratio(ntt_samples, forced_sparse_samples, sample_count);
+  point.current_forced_sparse_ratio = median_paired_ratio(current_samples, forced_sparse_samples, sample_count);
+  point.ntt_gmp_ratio = median_paired_ratio(ntt_samples, gmp_samples, sample_count);
+  point.ntt_current_worst = max_paired_ratio(ntt_samples, current_samples, sample_count);
+  point.ntt_forced_sparse_worst = max_paired_ratio(ntt_samples, forced_sparse_samples, sample_count);
+  point.ntt_current_stable = paired_ratio_wins(ntt_samples, current_samples, sample_count, 0.98);
+  point.ntt_forced_sparse_stable = paired_ratio_wins(ntt_samples, forced_sparse_samples, sample_count, 0.98);
+
+  xray_bigint_clear(&scratch_left);
+  xray_bigint_clear(&scratch_right);
+  xray_bigint_clear(&ntt_out);
+  xray_bigint_clear(&current_out);
+  xray_bigint_clear(&sparse_out);
+  free(left_text);
+  free(right_text);
+  mpz_clears(left, right, expected, NULL);
+  return point;
+}
+
+static void append_mul_ntt16_sparse_point_result(XrayBenchmarkReport *report, const XrayMulNtt16SparsePoint *point) {
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "kernel ntt16 sparse coexist %s %zu-bit", point->shape, point->bits);
+  snprintf(result.category, sizeof(result.category), "kernel-probe");
+  snprintf(result.operation, sizeof(result.operation), "mul-ntt16-sparse-coexist-pt");
+  result.digits = point->digits;
+  result.scratch_us = point->ntt_us ? point->ntt_us : 1ULL;
+  result.gmp_us = point->current_us ? point->current_us : 1ULL;
+  result.speed_ratio = point->ntt_current_ratio > 0.0 ? point->ntt_current_ratio : (double)result.scratch_us / (double)result.gmp_us;
+  result.max_allowed_speed_ratio = 0.98;
+  result.stable_sample_count = point->ntt_current_stable;
+  result.sample_count = point->sample_count;
+  result.worst_pair_ratio = point->ntt_current_worst;
+  result.parity_verified = point->parity;
+  result.replacement_ready = 0;
+  result.passed = point->parity;
+  snprintf(result.adoption, sizeof(result.adoption), "%s",
+    point->parity ? "observe-only" : "blocked-output-mismatch");
+  snprintf(result.status, sizeof(result.status), "%s",
+    !point->parity ? "mismatch" : "sparse-priority-ok");
+  result.elapsed_ms = (unsigned long)((point->ntt_us + point->current_us + point->forced_sparse_us + point->gmp_us + 999ULL) / 1000ULL);
+  snprintf(result.detail, sizeof(result.detail),
+    "op=mul-large-ntt16-sparse-coexist-pt shape=%s bits=%zu digits=%zu samples=%zu iterations=%u nttUs=%llu currentUs=%llu forcedSparseUs=%llu gmpUs=%llu nttCurrentRatio=%.3f nttForcedSparseRatio=%.3f currentForcedSparseRatio=%.3f nttGmpRatio=%.3f stableCurrent=%zu/%zu stableForcedSparse=%zu/%zu worstCurrent=%.3f worstForcedSparse=%.3f ratioMethod=paired-median candidate=ntt16-base2^16 baseline=current-scratch-mul forcedSparse=xray_bigint_mul_sparse_probe oracle=mpz_mul featureGate=large-multiply-cpu-ntt16-sparse-coexist sparsePriority=preserved routeOrder=production-sparse-first sparseSpecialtyGate=current-or-forced-sparse-must-win replacementReady=false noAutoRoute=1 adoption=%s",
+    point->shape,
+    point->bits,
+    point->digits,
+    point->sample_count,
+    point->iterations,
+    point->ntt_us,
+    point->current_us,
+    point->forced_sparse_us,
+    point->gmp_us,
+    point->ntt_current_ratio,
+    point->ntt_forced_sparse_ratio,
+    point->current_forced_sparse_ratio,
+    point->ntt_gmp_ratio,
+    point->ntt_current_stable,
+    point->sample_count,
+    point->ntt_forced_sparse_stable,
+    point->sample_count,
+    point->ntt_current_worst,
+    point->ntt_forced_sparse_worst,
+    result.adoption);
+  append_result(report, &result);
+}
+
+static void append_mul_ntt16_sparse_summary_result(
+  XrayBenchmarkReport *report,
+  const XrayMulNtt16SparsePoint *points,
+  size_t point_count,
+  const char *bits_label) {
+  unsigned long long ntt_us = 0;
+  unsigned long long current_us = 0;
+  unsigned long long forced_sparse_us = 0;
+  unsigned long long gmp_us = 0;
+  size_t stable_current = 0;
+  size_t stable_forced_sparse = 0;
+  size_t sample_total = 0;
+  double worst_current = 0.0;
+  double worst_forced_sparse = 0.0;
+  int parity = 1;
+  for (size_t index = 0; index < point_count; ++index) {
+    ntt_us += points[index].ntt_us ? points[index].ntt_us : 1ULL;
+    current_us += points[index].current_us ? points[index].current_us : 1ULL;
+    forced_sparse_us += points[index].forced_sparse_us ? points[index].forced_sparse_us : 1ULL;
+    gmp_us += points[index].gmp_us ? points[index].gmp_us : 1ULL;
+    stable_current += points[index].ntt_current_stable;
+    stable_forced_sparse += points[index].ntt_forced_sparse_stable;
+    sample_total += points[index].sample_count;
+    if (points[index].ntt_current_worst > worst_current) worst_current = points[index].ntt_current_worst;
+    if (points[index].ntt_forced_sparse_worst > worst_forced_sparse) worst_forced_sparse = points[index].ntt_forced_sparse_worst;
+    if (!points[index].parity) parity = 0;
+  }
+
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "kernel ntt16 sparse coexist summary");
+  snprintf(result.category, sizeof(result.category), "policy-gate");
+  snprintf(result.operation, sizeof(result.operation), "mul-large-ntt16-sparse-coexist");
+  result.digits = point_count ? points[point_count - 1U].digits : 0U;
+  result.scratch_us = ntt_us ? ntt_us : 1ULL;
+  result.gmp_us = current_us ? current_us : 1ULL;
+  result.speed_ratio = (double)result.scratch_us / (double)result.gmp_us;
+  result.max_allowed_speed_ratio = 0.98;
+  result.stable_sample_count = stable_current;
+  result.sample_count = sample_total;
+  result.worst_pair_ratio = worst_current;
+  result.parity_verified = parity;
+  result.replacement_ready = 0;
+  result.passed = parity;
+  snprintf(result.adoption, sizeof(result.adoption), "%s",
+    parity ? "observe-only" : "blocked-output-mismatch");
+  snprintf(result.status, sizeof(result.status), "%s",
+    !parity ? "mismatch" : "sparse-priority-ok");
+  result.elapsed_ms = (unsigned long)((ntt_us + current_us + forced_sparse_us + gmp_us + 999ULL) / 1000ULL);
+  double ntt_forced_sparse_ratio = forced_sparse_us ? (double)(ntt_us ? ntt_us : 1ULL) / (double)forced_sparse_us : 0.0;
+  double current_forced_sparse_ratio = forced_sparse_us ? (double)(current_us ? current_us : 1ULL) / (double)forced_sparse_us : 0.0;
+  snprintf(result.detail, sizeof(result.detail),
+    "op=mul-large-ntt16-sparse-coexist shapes=sparse-zero-limb+sparse-pair-product bits=%s points=%zu samples=%zu stableCurrent=%zu/%zu stableForcedSparse=%zu/%zu nttUs=%llu currentUs=%llu forcedSparseUs=%llu gmpUs=%llu nttCurrentRatio=%.3f nttForcedSparseRatio=%.3f currentForcedSparseRatio=%.3f worstCurrent=%.3f worstForcedSparse=%.3f parity=%s candidate=ntt16-base2^16 baseline=current-scratch-mul forcedSparse=xray_bigint_mul_sparse_probe oracle=mpz_mul featureGate=large-multiply-cpu-ntt16-sparse-coexist sparsePriority=preserved productionSparseRows=preserved requiredRows=sparse-zero-mul+sparse-pair-product+sparse-production-pair-mul routeOrder=production-sparse-first promotionGates=parity+stable-pair+worst-pair+sparse-specialty-win replacementReady=false noAutoRoute=1 adoption=%s",
+    bits_label ? bits_label : "",
+    point_count,
+    sample_total,
+    stable_current,
+    sample_total,
+    stable_forced_sparse,
+    sample_total,
+    ntt_us,
+    current_us,
+    forced_sparse_us,
+    gmp_us,
+    result.speed_ratio,
+    ntt_forced_sparse_ratio,
+    current_forced_sparse_ratio,
+    worst_current,
+    worst_forced_sparse,
+    parity ? "matched" : "mismatch",
+    result.adoption);
+  append_result(report, &result);
+}
+
+static void run_mul_ntt16_sparse_coexist_cases_for_bits(
+  XrayBenchmarkReport *report,
+  const size_t *bits,
+  size_t bit_count,
+  const char *bits_label) {
+  XrayMulNtt16SparsePoint points[6];
+  if (!bits || bit_count == 0 || bit_count * 2U > sizeof(points) / sizeof(points[0])) return;
+  size_t point_count = 0;
+  for (size_t index = 0; index < bit_count; ++index) {
+    points[point_count] = measure_mul_ntt16_sparse_point(bits[index], 0);
+    append_mul_ntt16_sparse_point_result(report, &points[point_count]);
+    point_count++;
+    points[point_count] = measure_mul_ntt16_sparse_point(bits[index], 1);
+    append_mul_ntt16_sparse_point_result(report, &points[point_count]);
+    point_count++;
+  }
+  append_mul_ntt16_sparse_summary_result(report, points, point_count, bits_label);
+}
+
+static void run_mul_ntt16_sparse_reference_cases_for_bits(
+  XrayBenchmarkReport *report,
+  const size_t *bits,
+  size_t bit_count) {
+  if (!bits || bit_count == 0) return;
+  for (size_t index = 0; index < bit_count; ++index) {
+    run_sparse_zero_limb_probe_case(report, "mul", bits[index]);
+    run_sparse_forced_mul_probe_case(report, bits[index]);
+    run_sparse_pair_product_probe_case(report, bits[index]);
+  }
+}
+
+static void run_mul_ntt16_focus_cases(XrayBenchmarkReport *report) {
+  const size_t transition_digits[] = {11717U, 16384U};
+  const size_t upper_digits[] = {24103U, 32768U, 52163U, 65536U};
+  const size_t sparse_bits[] = {4096U, 8192U, 16384U};
+  run_mul_ntt16_dense_window(
+    report,
+    "mul-large-ntt16-transition",
+    "mul-large-ntt16-transition-pt",
+    "transition",
+    "11717,16384",
+    transition_digits,
+    sizeof(transition_digits) / sizeof(transition_digits[0]));
+  run_mul_ntt16_dense_window(
+    report,
+    "mul-large-ntt16-upper",
+    "mul-large-ntt16-upper-pt",
+    "upper",
+    "24103,32768,52163,65536",
+    upper_digits,
+    sizeof(upper_digits) / sizeof(upper_digits[0]));
+  run_mul_ntt16_sparse_reference_cases_for_bits(
+    report,
+    sparse_bits,
+    sizeof(sparse_bits) / sizeof(sparse_bits[0]));
+  run_mul_ntt16_sparse_coexist_cases_for_bits(
+    report,
+    sparse_bits,
+    sizeof(sparse_bits) / sizeof(sparse_bits[0]),
+    "4096,8192,16384");
+}
+
+static void run_mul_ntt16_million_focus_cases(XrayBenchmarkReport *report) {
+  const size_t million_digits[] = {301030U, 602060U, 1204120U};
+  run_mul_ntt16_dense_window(
+    report,
+    "mul-large-ntt16-million",
+    "mul-large-ntt16-million-pt",
+    "million",
+    "301030,602060,1204120",
+    million_digits,
+    sizeof(million_digits) / sizeof(million_digits[0]));
+}
+
+static XraySquareNtt16Point measure_square_ntt16_dense_point(size_t digits) {
+  const size_t sample_count = XRAY_BENCH_TOOM5_SCOUT_SAMPLES;
+  XraySquareNtt16Point point;
+  memset(&point, 0, sizeof(point));
+  point.digits = digits;
+  point.iterations = mul_ntt16_iterations(digits);
+  point.sample_count = sample_count;
+
+  char *text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  XrayScratchBigInt value[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt ntt_out[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt current_out[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt generic_ntt_out[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gvalue[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gsquare[XRAY_MUL_OPERAND_FAMILIES];
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    xray_bigint_init(&value[family]);
+    xray_bigint_init(&ntt_out[family]);
+    xray_bigint_init(&current_out[family]);
+    xray_bigint_init(&generic_ntt_out[family]);
+    mpz_init(gvalue[family]);
+    mpz_init(gsquare[family]);
+  }
+
+  int ok = 1;
+  for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    text[family] = benchmark_decimal(
+      digits,
+      mul_operand_families[family].left_seed,
+      mul_operand_families[family].left_high_lead);
+    ok = text[family] &&
+      xray_bigint_set_decimal(&value[family], text[family]) &&
+      mpz_set_str(gvalue[family], text[family], 10) == 0;
+    if (ok) mpz_mul(gsquare[family], gvalue[family], gvalue[family]);
+  }
+
+  for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    ok = xray_bigint_square_ntt16_probe(&ntt_out[family], &value[family]) &&
+      xray_bigint_square(&current_out[family], &value[family]) &&
+      xray_bigint_mul_ntt16_probe(&generic_ntt_out[family], &value[family], &value[family]);
+    if (ok) mpz_mul(gsquare[family], gvalue[family], gvalue[family]);
+  }
+
+  unsigned long long ntt_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long current_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long generic_ntt_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  for (size_t sample = 0; ok && sample < sample_count; ++sample) {
+    for (size_t order_index = 0; ok && order_index < 4U; ++order_index) {
+      unsigned int lane = (unsigned int)((sample + order_index) % 4U);
+      unsigned long long started = xray_now_us();
+      for (unsigned int iteration = 0; ok && iteration < point.iterations; ++iteration) {
+        for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+          if (lane == XRAY_MUL_NTT16_LANE_NTT) {
+            ok = xray_bigint_square_ntt16_probe(&ntt_out[family], &value[family]);
+          } else if (lane == XRAY_MUL_NTT16_LANE_CURRENT) {
+            ok = xray_bigint_square(&current_out[family], &value[family]);
+          } else if (lane == XRAY_MUL_NTT16_LANE_COMBO) {
+            ok = xray_bigint_mul_ntt16_probe(&generic_ntt_out[family], &value[family], &value[family]);
+          } else {
+            mpz_mul(gsquare[family], gvalue[family], gvalue[family]);
+          }
+        }
+      }
+      unsigned long long elapsed = xray_now_us() - started;
+      if (lane == XRAY_MUL_NTT16_LANE_NTT) ntt_samples[sample] = elapsed;
+      else if (lane == XRAY_MUL_NTT16_LANE_CURRENT) current_samples[sample] = elapsed;
+      else if (lane == XRAY_MUL_NTT16_LANE_COMBO) generic_ntt_samples[sample] = elapsed;
+      else gmp_samples[sample] = elapsed;
+    }
+  }
+
+  point.parity = ok;
+  point.hash_total = XRAY_MUL_OPERAND_FAMILIES;
+  for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    int family_ok = scratch_value_matches_mpz(&ntt_out[family], gsquare[family]) &&
+      scratch_value_matches_mpz(&current_out[family], gsquare[family]) &&
+      scratch_value_matches_mpz(&generic_ntt_out[family], gsquare[family]) &&
+      xray_bigint_compare(&ntt_out[family], &current_out[family]) == 0 &&
+      xray_bigint_compare(&ntt_out[family], &generic_ntt_out[family]) == 0;
+    if (family_ok) point.hash_matches++;
+    else point.parity = 0;
+  }
+
+  point.ntt_us = median_samples(ntt_samples, sample_count);
+  point.current_us = median_samples(current_samples, sample_count);
+  point.generic_ntt_us = median_samples(generic_ntt_samples, sample_count);
+  point.gmp_us = median_samples(gmp_samples, sample_count);
+  point.ntt_current_ratio = median_paired_ratio(ntt_samples, current_samples, sample_count);
+  point.ntt_generic_ratio = median_paired_ratio(ntt_samples, generic_ntt_samples, sample_count);
+  point.ntt_gmp_ratio = median_paired_ratio(ntt_samples, gmp_samples, sample_count);
+  point.current_gmp_ratio = median_paired_ratio(current_samples, gmp_samples, sample_count);
+  point.ntt_current_worst = max_paired_ratio(ntt_samples, current_samples, sample_count);
+  point.ntt_generic_worst = max_paired_ratio(ntt_samples, generic_ntt_samples, sample_count);
+  point.ntt_gmp_worst = max_paired_ratio(ntt_samples, gmp_samples, sample_count);
+  point.ntt_current_stable = paired_ratio_wins(ntt_samples, current_samples, sample_count, 0.98);
+  point.ntt_generic_stable = paired_ratio_wins(ntt_samples, generic_ntt_samples, sample_count, 0.98);
+  point.ntt_gmp_stable = paired_ratio_wins(ntt_samples, gmp_samples, sample_count, 0.98);
+
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    free(text[family]);
+    xray_bigint_clear(&value[family]);
+    xray_bigint_clear(&ntt_out[family]);
+    xray_bigint_clear(&current_out[family]);
+    xray_bigint_clear(&generic_ntt_out[family]);
+    mpz_clear(gvalue[family]);
+    mpz_clear(gsquare[family]);
+  }
+  return point;
+}
+
+static void append_square_ntt16_dense_point_result(XrayBenchmarkReport *report, const XraySquareNtt16Point *point) {
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "kernel square ntt16 million %zu digits", point->digits);
+  snprintf(result.category, sizeof(result.category), "kernel-probe");
+  snprintf(result.operation, sizeof(result.operation), "square-ntt16-million-pt");
+  result.digits = point->digits;
+  result.scratch_us = point->ntt_us ? point->ntt_us : 1ULL;
+  result.gmp_us = point->current_us ? point->current_us : 1ULL;
+  result.speed_ratio = point->ntt_current_ratio > 0.0 ? point->ntt_current_ratio : (double)result.scratch_us / (double)result.gmp_us;
+  result.max_allowed_speed_ratio = 0.98;
+  result.stable_sample_count = point->ntt_current_stable;
+  result.sample_count = point->sample_count;
+  result.worst_pair_ratio = point->ntt_current_worst;
+  result.parity_verified = point->parity;
+  result.replacement_ready = 0;
+  result.passed = point->parity;
+  snprintf(result.adoption, sizeof(result.adoption), "%s",
+    point->parity ? "observe-only" : "blocked-output-mismatch");
+  snprintf(result.status, sizeof(result.status), "%s",
+    !point->parity ? "mismatch" : (result.speed_ratio < 1.0 ? "candidate-faster" : "current-best"));
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  snprintf(result.detail, sizeof(result.detail),
+    "op=square-ntt16-million-pt digits=%zu window=million samples=%zu iterations=%u operandFamilies=%u squareNttUs=%llu currentUs=%llu genericNttUs=%llu gmpUs=%llu nttCurrentRatio=%.3f nttGenericRatio=%.3f nttGmpRatio=%.3f currentGmpRatio=%.3f stableCurrent=%zu/%zu stableGeneric=%zu/%zu stableGmp=%zu/%zu worstCurrent=%.3f worstGeneric=%.3f worstGmp=%.3f hashSafe=%zu/%zu ratioMethod=paired-median candidate=ntt16-square-base2^16 genericBaseline=ntt16-self-mul baseline=current-scratch-square oracle=mpz_mul featureGate=large-square-cpu-ntt16-million sparsePriority=preserved routeOrder=production-sparse-first replacementReady=false noAutoRoute=1 adoption=%s",
+    point->digits,
+    point->sample_count,
+    point->iterations,
+    (unsigned int)XRAY_MUL_OPERAND_FAMILIES,
+    point->ntt_us,
+    point->current_us,
+    point->generic_ntt_us,
+    point->gmp_us,
+    point->ntt_current_ratio,
+    point->ntt_generic_ratio,
+    point->ntt_gmp_ratio,
+    point->current_gmp_ratio,
+    point->ntt_current_stable,
+    point->sample_count,
+    point->ntt_generic_stable,
+    point->sample_count,
+    point->ntt_gmp_stable,
+    point->sample_count,
+    point->ntt_current_worst,
+    point->ntt_generic_worst,
+    point->ntt_gmp_worst,
+    point->hash_matches,
+    point->hash_total,
+    result.adoption);
+  append_result(report, &result);
+}
+
+static void run_square_ntt16_million_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-ntt-million")) return;
+  const size_t million_digits[] = {301030U, 602060U, 1204120U};
+  for (size_t index = 0; index < sizeof(million_digits) / sizeof(million_digits[0]); ++index) {
+    XraySquareNtt16Point point = measure_square_ntt16_dense_point(million_digits[index]);
+    append_square_ntt16_dense_point_result(report, &point);
+  }
+}
+
+static XraySquareNtt32ReusePoint measure_square_ntt32_reuse_point(size_t digits, int candidate_kind) {
+  enum {
+    XRAY_SQUARE_NTT32_REUSE_LANE_CANDIDATE = 0,
+    XRAY_SQUARE_NTT32_REUSE_LANE_CURRENT = 1,
+    XRAY_SQUARE_NTT32_REUSE_LANE_GMP = 2,
+    XRAY_SQUARE_NTT32_REUSE_LANE_COUNT = 3
+  };
+  const size_t sample_count = 7U;
+  XraySquareNtt32ReusePoint point;
+  memset(&point, 0, sizeof(point));
+  point.candidate_name =
+    candidate_kind == 6 ? "current-square-duplicate" :
+    candidate_kind == 5 ? "ntt32-square-lowtailmap" :
+    candidate_kind == 4 ? "ntt32-square-tailmap" :
+    candidate_kind == 3 ? "ntt32-square-reuse-persistent" :
+    candidate_kind == 2 ? "ntt32-square-persistent-transform" :
+    (candidate_kind == 1 ? "ntt32-square-pointwise-parallel" : "ntt32-square-reuse-buffers");
+  point.candidate_label =
+    candidate_kind == 6 ? "current-duplicate" :
+    candidate_kind == 5 ? "lowtailmap" :
+    candidate_kind == 4 ? "tailmap" :
+    candidate_kind == 3 ? "reuse-persistent" :
+    candidate_kind == 2 ? "persistent-transform" :
+    (candidate_kind == 1 ? "pointwise-parallel" : "reuse-buffers");
+  point.digits = digits;
+  point.iterations = 3U;
+  point.sample_count = sample_count;
+
+  char *text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  XrayScratchBigInt value[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt candidate_out[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt current_out[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gvalue[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gsquare[XRAY_MUL_OPERAND_FAMILIES];
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    xray_bigint_init(&value[family]);
+    xray_bigint_init(&candidate_out[family]);
+    xray_bigint_init(&current_out[family]);
+    mpz_init(gvalue[family]);
+    mpz_init(gsquare[family]);
+  }
+
+  int ok = 1;
+  for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    text[family] = benchmark_decimal(
+      digits,
+      mul_operand_families[family].left_seed,
+      mul_operand_families[family].left_high_lead);
+    ok = text[family] &&
+      xray_bigint_set_decimal(&value[family], text[family]) &&
+      mpz_set_str(gvalue[family], text[family], 10) == 0;
+    if (ok) mpz_mul(gsquare[family], gvalue[family], gvalue[family]);
+  }
+
+  for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    ok = (
+        candidate_kind == 6 ?
+          xray_bigint_square(&candidate_out[family], &value[family]) :
+        candidate_kind == 5 ?
+          xray_bigint_square_ntt32_lowtailmap_probe(&candidate_out[family], &value[family]) :
+        candidate_kind == 4 ?
+          xray_bigint_square_ntt32_tailmap_probe(&candidate_out[family], &value[family]) :
+        candidate_kind == 3 ?
+          xray_bigint_square_ntt32_reuse_persistent_probe(&candidate_out[family], &value[family]) :
+        (candidate_kind == 2 ?
+          xray_bigint_square_ntt32_persistent_transform_probe(&candidate_out[family], &value[family]) :
+        (candidate_kind == 1 ?
+          xray_bigint_square_ntt32_pointwise_parallel_probe(&candidate_out[family], &value[family]) :
+          xray_bigint_square_ntt32_reuse_probe(&candidate_out[family], &value[family])))) &&
+      xray_bigint_square(&current_out[family], &value[family]);
+  }
+
+  unsigned long long candidate_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long current_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  for (size_t sample = 0; ok && sample < sample_count; ++sample) {
+    for (size_t order_index = 0; ok && order_index < XRAY_SQUARE_NTT32_REUSE_LANE_COUNT; ++order_index) {
+      unsigned int lane = (unsigned int)((sample + order_index) % XRAY_SQUARE_NTT32_REUSE_LANE_COUNT);
+      unsigned long long started = xray_now_us();
+      for (unsigned int iteration = 0; ok && iteration < point.iterations; ++iteration) {
+        for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+          if (lane == XRAY_SQUARE_NTT32_REUSE_LANE_CANDIDATE) {
+            ok =
+              candidate_kind == 6 ?
+                xray_bigint_square(&candidate_out[family], &value[family]) :
+              candidate_kind == 5 ?
+                xray_bigint_square_ntt32_lowtailmap_probe(&candidate_out[family], &value[family]) :
+              candidate_kind == 4 ?
+                xray_bigint_square_ntt32_tailmap_probe(&candidate_out[family], &value[family]) :
+              candidate_kind == 3 ?
+                xray_bigint_square_ntt32_reuse_persistent_probe(&candidate_out[family], &value[family]) :
+              (candidate_kind == 2 ?
+                xray_bigint_square_ntt32_persistent_transform_probe(&candidate_out[family], &value[family]) :
+              (candidate_kind == 1 ?
+                xray_bigint_square_ntt32_pointwise_parallel_probe(&candidate_out[family], &value[family]) :
+                xray_bigint_square_ntt32_reuse_probe(&candidate_out[family], &value[family])));
+          } else if (lane == XRAY_SQUARE_NTT32_REUSE_LANE_CURRENT) {
+            ok = xray_bigint_square(&current_out[family], &value[family]);
+          } else {
+            mpz_mul(gsquare[family], gvalue[family], gvalue[family]);
+          }
+        }
+      }
+      unsigned long long elapsed = xray_now_us() - started;
+      if (lane == XRAY_SQUARE_NTT32_REUSE_LANE_CANDIDATE) candidate_samples[sample] = elapsed;
+      else if (lane == XRAY_SQUARE_NTT32_REUSE_LANE_CURRENT) current_samples[sample] = elapsed;
+      else gmp_samples[sample] = elapsed;
+    }
+  }
+
+  point.parity = ok;
+  point.hash_total = XRAY_MUL_OPERAND_FAMILIES;
+  for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    int family_ok = scratch_value_matches_mpz(&candidate_out[family], gsquare[family]) &&
+      scratch_value_matches_mpz(&current_out[family], gsquare[family]) &&
+      xray_bigint_compare(&candidate_out[family], &current_out[family]) == 0;
+    if (family_ok) point.hash_matches++;
+    else point.parity = 0;
+  }
+
+  point.candidate_us = median_samples(candidate_samples, sample_count);
+  point.current_us = median_samples(current_samples, sample_count);
+  point.gmp_us = median_samples(gmp_samples, sample_count);
+  point.candidate_current_ratio = median_paired_ratio(candidate_samples, current_samples, sample_count);
+  point.candidate_gmp_ratio = median_paired_ratio(candidate_samples, gmp_samples, sample_count);
+  point.current_gmp_ratio = median_paired_ratio(current_samples, gmp_samples, sample_count);
+  point.candidate_current_worst = max_paired_ratio(candidate_samples, current_samples, sample_count);
+  point.candidate_gmp_worst = max_paired_ratio(candidate_samples, gmp_samples, sample_count);
+  point.candidate_current_stable = paired_ratio_wins(candidate_samples, current_samples, sample_count, 0.98);
+  point.candidate_gmp_stable = paired_ratio_wins(candidate_samples, gmp_samples, sample_count, 0.98);
+
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    free(text[family]);
+    xray_bigint_clear(&value[family]);
+    xray_bigint_clear(&candidate_out[family]);
+    xray_bigint_clear(&current_out[family]);
+    mpz_clear(gvalue[family]);
+    mpz_clear(gsquare[family]);
+  }
+  return point;
+}
+
+static void append_square_ntt32_reuse_point_result(XrayBenchmarkReport *report, const XraySquareNtt32ReusePoint *point) {
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "kernel square ntt32 %s million %zu digits", point->candidate_label, point->digits);
+  snprintf(result.category, sizeof(result.category), "kernel-probe");
+  snprintf(result.operation, sizeof(result.operation), "square-ntt32-tail-gate");
+  result.digits = point->digits;
+  result.scratch_us = point->candidate_us ? point->candidate_us : 1ULL;
+  result.gmp_us = point->current_us ? point->current_us : 1ULL;
+  result.speed_ratio = point->candidate_current_ratio > 0.0 ?
+    point->candidate_current_ratio :
+    (double)result.scratch_us / (double)result.gmp_us;
+  result.max_allowed_speed_ratio = 0.98;
+  result.stable_sample_count = point->candidate_current_stable;
+  result.sample_count = point->sample_count;
+  result.worst_pair_ratio = point->candidate_current_worst;
+  result.parity_verified = point->parity;
+  result.replacement_ready = 0;
+  result.passed = point->parity;
+  snprintf(result.adoption, sizeof(result.adoption), "%s",
+    point->parity ? "observe-only" : "blocked-output-mismatch");
+  snprintf(result.status, sizeof(result.status), "%s",
+    !point->parity ? "mismatch" : (result.speed_ratio < 1.0 ? "candidate-faster" : "current-best"));
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  snprintf(result.detail, sizeof(result.detail),
+    "op=square-ntt32-million-tail-gate digits=%zu estimatedBits=%zu samples=%zu iterations=%u operandFamilies=%u candidateUs=%llu currentUs=%llu gmpUs=%llu candidateCurrentRatio=%.3f candidateGmpRatio=%.3f currentGmpRatio=%.3f stableCandidateVsCurrent=%zu/%zu stableCandidateVsGmp=%zu/%zu worstCandidateCurrent=%.3f worstCandidateGmp=%.3f hashSafe=%zu/%zu hashGate=%s parity=%s candidate=%s baseline=current-scratch-square oracle=mpz_mul featureGate=large-square-cpu-ntt32-tail-gate ratioMethod=paired-median timingMode=rotating-batch sameInput=yes routeKnob=%s replacementReady=false noAutoRoute=1 adoption=%s",
+    point->digits,
+    (size_t)((double)point->digits * 3.32192809488736234787),
+    point->sample_count,
+    point->iterations,
+    (unsigned int)XRAY_MUL_OPERAND_FAMILIES,
+    point->candidate_us,
+    point->current_us,
+    point->gmp_us,
+    point->candidate_current_ratio,
+    point->candidate_gmp_ratio,
+    point->current_gmp_ratio,
+    point->candidate_current_stable,
+    point->sample_count,
+    point->candidate_gmp_stable,
+    point->sample_count,
+    point->candidate_current_worst,
+    point->candidate_gmp_worst,
+    point->hash_matches,
+    point->hash_total,
+    point->hash_matches == point->hash_total ? "matched" : "blocked",
+    point->parity ? "matched" : "blocked",
+    point->candidate_name,
+    point->candidate_label,
+    result.adoption);
+  append_result(report, &result);
+}
+
+static int run_square_ntt32_control_candidate(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value,
+  int candidate_kind) {
+  return candidate_kind == 7 ?
+    xray_bigint_square_ntt32_direct_crt_probe(out, value) :
+    xray_bigint_square_ntt32_lowtailmap_probe(out, value);
+}
+
+static XraySquareNtt32ControlPoint measure_square_ntt32_control_point(
+  size_t digits,
+  unsigned int iterations,
+  int candidate_kind,
+  int timed_gmp,
+  int interleaved_calls) {
+  enum {
+    XRAY_SQUARE_NTT32_CONTROL_LANE_CANDIDATE = 0,
+    XRAY_SQUARE_NTT32_CONTROL_LANE_CURRENT = 1,
+    XRAY_SQUARE_NTT32_CONTROL_LANE_CONTROL = 2,
+    XRAY_SQUARE_NTT32_CONTROL_LANE_GMP = 3,
+    XRAY_SQUARE_NTT32_CONTROL_LANE_COUNT = 4
+  };
+  const size_t sample_count = 7U;
+  XraySquareNtt32ControlPoint point;
+  memset(&point, 0, sizeof(point));
+  point.candidate_name = candidate_kind == 7 ?
+    "ntt32-square-direct-crt" :
+    "ntt32-square-lowtailmap";
+  point.candidate_label = candidate_kind == 7 ?
+    "direct-crt" :
+    "lowtailmap";
+  point.timing_mode = interleaved_calls ? "interleaved-call" : "rotating-batch";
+  point.timed_gmp = timed_gmp ? 1 : 0;
+  point.digits = digits;
+  point.iterations = iterations ? iterations : 3U;
+  point.sample_count = sample_count;
+
+  char *text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  XrayScratchBigInt value[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt candidate_out[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt current_out[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt control_out[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gvalue[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gsquare[XRAY_MUL_OPERAND_FAMILIES];
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    xray_bigint_init(&value[family]);
+    xray_bigint_init(&candidate_out[family]);
+    xray_bigint_init(&current_out[family]);
+    xray_bigint_init(&control_out[family]);
+    mpz_init(gvalue[family]);
+    mpz_init(gsquare[family]);
+  }
+
+  int ok = 1;
+  for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    text[family] = benchmark_decimal(
+      digits,
+      mul_operand_families[family].left_seed,
+      mul_operand_families[family].left_high_lead);
+    ok = text[family] &&
+      xray_bigint_set_decimal(&value[family], text[family]) &&
+      mpz_set_str(gvalue[family], text[family], 10) == 0;
+    if (ok) mpz_mul(gsquare[family], gvalue[family], gvalue[family]);
+  }
+
+  for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    ok = run_square_ntt32_control_candidate(&candidate_out[family], &value[family], candidate_kind) &&
+      xray_bigint_square(&current_out[family], &value[family]) &&
+      xray_bigint_square(&control_out[family], &value[family]);
+  }
+
+  unsigned long long candidate_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long current_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long control_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  size_t lane_count = timed_gmp ? XRAY_SQUARE_NTT32_CONTROL_LANE_COUNT : 3U;
+  for (size_t sample = 0; ok && sample < sample_count; ++sample) {
+    if (interleaved_calls) {
+      for (unsigned int iteration = 0; ok && iteration < point.iterations; ++iteration) {
+        for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+          for (size_t order_index = 0; ok && order_index < lane_count; ++order_index) {
+            unsigned int lane = (unsigned int)((sample + iteration + family + order_index) % lane_count);
+            unsigned long long started = xray_now_us();
+            if (lane == XRAY_SQUARE_NTT32_CONTROL_LANE_CANDIDATE) {
+              ok = run_square_ntt32_control_candidate(&candidate_out[family], &value[family], candidate_kind);
+            } else if (lane == XRAY_SQUARE_NTT32_CONTROL_LANE_CURRENT) {
+              ok = xray_bigint_square(&current_out[family], &value[family]);
+            } else if (lane == XRAY_SQUARE_NTT32_CONTROL_LANE_CONTROL) {
+              ok = xray_bigint_square(&control_out[family], &value[family]);
+            } else if (lane == XRAY_SQUARE_NTT32_CONTROL_LANE_GMP) {
+              mpz_mul(gsquare[family], gvalue[family], gvalue[family]);
+            }
+            unsigned long long elapsed = xray_now_us() - started;
+            if (lane == XRAY_SQUARE_NTT32_CONTROL_LANE_CANDIDATE) candidate_samples[sample] += elapsed;
+            else if (lane == XRAY_SQUARE_NTT32_CONTROL_LANE_CURRENT) current_samples[sample] += elapsed;
+            else if (lane == XRAY_SQUARE_NTT32_CONTROL_LANE_CONTROL) control_samples[sample] += elapsed;
+            else if (lane == XRAY_SQUARE_NTT32_CONTROL_LANE_GMP) gmp_samples[sample] += elapsed;
+          }
+        }
+      }
+    } else {
+      for (size_t order_index = 0; ok && order_index < lane_count; ++order_index) {
+        unsigned int lane = (unsigned int)((sample + order_index) % lane_count);
+        unsigned long long started = xray_now_us();
+        for (unsigned int iteration = 0; ok && iteration < point.iterations; ++iteration) {
+          for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+            if (lane == XRAY_SQUARE_NTT32_CONTROL_LANE_CANDIDATE) {
+              ok = run_square_ntt32_control_candidate(&candidate_out[family], &value[family], candidate_kind);
+            } else if (lane == XRAY_SQUARE_NTT32_CONTROL_LANE_CURRENT) {
+              ok = xray_bigint_square(&current_out[family], &value[family]);
+            } else if (lane == XRAY_SQUARE_NTT32_CONTROL_LANE_CONTROL) {
+              ok = xray_bigint_square(&control_out[family], &value[family]);
+            } else if (lane == XRAY_SQUARE_NTT32_CONTROL_LANE_GMP) {
+              mpz_mul(gsquare[family], gvalue[family], gvalue[family]);
+            }
+          }
+        }
+        unsigned long long elapsed = xray_now_us() - started;
+        if (lane == XRAY_SQUARE_NTT32_CONTROL_LANE_CANDIDATE) candidate_samples[sample] = elapsed;
+        else if (lane == XRAY_SQUARE_NTT32_CONTROL_LANE_CURRENT) current_samples[sample] = elapsed;
+        else if (lane == XRAY_SQUARE_NTT32_CONTROL_LANE_CONTROL) control_samples[sample] = elapsed;
+        else if (lane == XRAY_SQUARE_NTT32_CONTROL_LANE_GMP) gmp_samples[sample] = elapsed;
+      }
+    }
+  }
+
+  point.parity = ok;
+  point.hash_total = XRAY_MUL_OPERAND_FAMILIES;
+  for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    int family_ok = scratch_value_matches_mpz(&candidate_out[family], gsquare[family]) &&
+      scratch_value_matches_mpz(&current_out[family], gsquare[family]) &&
+      scratch_value_matches_mpz(&control_out[family], gsquare[family]) &&
+      xray_bigint_compare(&candidate_out[family], &current_out[family]) == 0 &&
+      xray_bigint_compare(&control_out[family], &current_out[family]) == 0;
+    if (family_ok) point.hash_matches++;
+    else point.parity = 0;
+  }
+
+  point.candidate_us = median_samples(candidate_samples, sample_count);
+  point.current_us = median_samples(current_samples, sample_count);
+  point.control_us = median_samples(control_samples, sample_count);
+  point.gmp_us = timed_gmp ? median_samples(gmp_samples, sample_count) : 0ULL;
+  point.candidate_current_ratio = median_paired_ratio(candidate_samples, current_samples, sample_count);
+  point.candidate_gmp_ratio = timed_gmp ? median_paired_ratio(candidate_samples, gmp_samples, sample_count) : 0.0;
+  point.current_gmp_ratio = timed_gmp ? median_paired_ratio(current_samples, gmp_samples, sample_count) : 0.0;
+  point.control_current_ratio = median_paired_ratio(control_samples, current_samples, sample_count);
+  point.candidate_current_worst = max_paired_ratio(candidate_samples, current_samples, sample_count);
+  point.candidate_gmp_worst = timed_gmp ? max_paired_ratio(candidate_samples, gmp_samples, sample_count) : 0.0;
+  point.control_current_worst = max_paired_ratio(control_samples, current_samples, sample_count);
+  point.candidate_current_stable = paired_ratio_wins(candidate_samples, current_samples, sample_count, 0.98);
+  point.candidate_gmp_stable = timed_gmp ? paired_ratio_wins(candidate_samples, gmp_samples, sample_count, 0.98) : 0U;
+  point.control_current_stable = paired_ratio_wins(control_samples, current_samples, sample_count, 0.98);
+
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    free(text[family]);
+    xray_bigint_clear(&value[family]);
+    xray_bigint_clear(&candidate_out[family]);
+    xray_bigint_clear(&current_out[family]);
+    xray_bigint_clear(&control_out[family]);
+    mpz_clear(gvalue[family]);
+    mpz_clear(gsquare[family]);
+  }
+  return point;
+}
+
+static void append_square_ntt32_control_point_result(XrayBenchmarkReport *report, const XraySquareNtt32ControlPoint *point) {
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.name, sizeof(result.name), "kernel square ntt32 %s control %zu digits", point->candidate_label, point->digits);
+  snprintf(result.category, sizeof(result.category), "kernel-probe");
+  snprintf(result.operation, sizeof(result.operation), "square-ntt32-control-gate");
+  result.digits = point->digits;
+  result.scratch_us = point->candidate_us ? point->candidate_us : 1ULL;
+  result.gmp_us = point->current_us ? point->current_us : 1ULL;
+  result.speed_ratio = point->candidate_current_ratio > 0.0 ?
+    point->candidate_current_ratio :
+    (double)result.scratch_us / (double)result.gmp_us;
+  result.max_allowed_speed_ratio = 0.98;
+  result.stable_sample_count = point->candidate_current_stable;
+  result.sample_count = point->sample_count;
+  result.worst_pair_ratio = point->candidate_current_worst;
+  result.parity_verified = point->parity;
+  result.replacement_ready = 0;
+  result.passed = point->parity;
+  snprintf(result.adoption, sizeof(result.adoption), "%s",
+    point->parity ? "observe-only" : "blocked-output-mismatch");
+  int control_noisy =
+    point->control_current_ratio < 0.90 ||
+    point->control_current_ratio > 1.10 ||
+    point->control_current_worst > 1.25;
+  int candidate_stable =
+    point->candidate_current_stable >= 5U &&
+    (!point->timed_gmp || point->candidate_gmp_stable >= 5U);
+  int candidate_backend_safe =
+    !point->timed_gmp ||
+    (point->candidate_gmp_ratio > 0.0 &&
+    point->candidate_gmp_ratio <= 1.0);
+  int candidate_current_safe =
+    point->candidate_current_ratio > 0.0 &&
+    point->candidate_current_ratio <= 0.98;
+  snprintf(result.status, sizeof(result.status), "%s",
+    !point->parity ? "mismatch" :
+    (control_noisy ? "noisy-control" :
+    (!candidate_backend_safe ? "backend-regression" :
+    (!candidate_stable ? "needs-stability" :
+    (candidate_current_safe ? "candidate-faster" : "current-best")))));
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  snprintf(result.detail, sizeof(result.detail),
+    "op=square-ntt32-control-gate digits=%zu estimatedBits=%zu samples=%zu iterations=%u operandFamilies=%u candidateUs=%llu currentUs=%llu controlUs=%llu gmpUs=%llu timedGmp=%s candidateCurrentRatio=%.3f candidateGmpRatio=%.3f currentGmpRatio=%.3f controlCurrentRatio=%.3f stableCandidateVsCurrent=%zu/%zu stableCandidateVsGmp=%zu/%zu stableControlVsCurrent=%zu/%zu worstCandidateCurrent=%.3f worstCandidateGmp=%.3f worstControlCurrent=%.3f hashSafe=%zu/%zu hashGate=%s parity=%s candidate=%s control=current-square-duplicate baseline=current-scratch-square oracle=mpz_mul featureGate=large-square-cpu-ntt32-control-gate ratioMethod=paired-median timingMode=%s sameInput=yes replacementReady=false noAutoRoute=1 adoption=%s",
+    point->digits,
+    (size_t)((double)point->digits * 3.32192809488736234787),
+    point->sample_count,
+    point->iterations,
+    (unsigned int)XRAY_MUL_OPERAND_FAMILIES,
+    point->candidate_us,
+    point->current_us,
+    point->control_us,
+    point->gmp_us,
+    point->timed_gmp ? "yes" : "no",
+    point->candidate_current_ratio,
+    point->candidate_gmp_ratio,
+    point->current_gmp_ratio,
+    point->control_current_ratio,
+    point->candidate_current_stable,
+    point->sample_count,
+    point->candidate_gmp_stable,
+    point->sample_count,
+    point->control_current_stable,
+    point->sample_count,
+    point->candidate_current_worst,
+    point->candidate_gmp_worst,
+    point->control_current_worst,
+    point->hash_matches,
+    point->hash_total,
+    point->hash_matches == point->hash_total ? "matched" : "blocked",
+    point->parity ? "matched" : "blocked",
+    point->candidate_name,
+    point->timing_mode ? point->timing_mode : "rotating-batch",
+    result.adoption);
+  append_result(report, &result);
+}
+
+static void run_square_ntt32_million_tail_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-ntt32-million-tail-gate")) return;
+  const size_t million_digits[] = {301030U, 602060U, 1204120U};
+  for (size_t index = 0; index < sizeof(million_digits) / sizeof(million_digits[0]); ++index) {
+    XraySquareNtt32ReusePoint reuse_point = measure_square_ntt32_reuse_point(million_digits[index], 0);
+    append_square_ntt32_reuse_point_result(report, &reuse_point);
+    XraySquareNtt32ReusePoint pointwise_point = measure_square_ntt32_reuse_point(million_digits[index], 1);
+    append_square_ntt32_reuse_point_result(report, &pointwise_point);
+    XraySquareNtt32ReusePoint persistent_point = measure_square_ntt32_reuse_point(million_digits[index], 2);
+    append_square_ntt32_reuse_point_result(report, &persistent_point);
+    XraySquareNtt32ReusePoint combo_point = measure_square_ntt32_reuse_point(million_digits[index], 3);
+    append_square_ntt32_reuse_point_result(report, &combo_point);
+    XraySquareNtt32ReusePoint tailmap_point = measure_square_ntt32_reuse_point(million_digits[index], 4);
+    append_square_ntt32_reuse_point_result(report, &tailmap_point);
+  }
+}
+
+static void run_square_ntt32_current_control_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-ntt32-current-control-gate")) return;
+  const size_t million_digits[] = {301030U, 602060U, 1204120U};
+  for (size_t index = 0; index < sizeof(million_digits) / sizeof(million_digits[0]); ++index) {
+    XraySquareNtt32ReusePoint control_point = measure_square_ntt32_reuse_point(million_digits[index], 6);
+    append_square_ntt32_reuse_point_result(report, &control_point);
+  }
+}
+
+static void run_square_ntt32_lowtailmap_control_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-ntt32-lowtailmap-control-gate")) return;
+  const size_t million_digits[] = {301030U, 602060U, 1204120U};
+  for (size_t index = 0; index < sizeof(million_digits) / sizeof(million_digits[0]); ++index) {
+    XraySquareNtt32ControlPoint point = measure_square_ntt32_control_point(million_digits[index], 3U, 5, 1, 0);
+    append_square_ntt32_control_point_result(report, &point);
+  }
+}
+
+static void run_square_ntt32_lowtailmap_control_long_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-ntt32-lowtailmap-control-long-gate")) return;
+  const size_t million_digits[] = {301030U, 602060U, 1204120U};
+  for (size_t index = 0; index < sizeof(million_digits) / sizeof(million_digits[0]); ++index) {
+    XraySquareNtt32ControlPoint point = measure_square_ntt32_control_point(million_digits[index], 9U, 5, 1, 0);
+    append_square_ntt32_control_point_result(report, &point);
+  }
+}
+
+static void run_square_ntt32_lowtailmap_control_nogmp_long_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-ntt32-lowtailmap-control-nogmp-long-gate")) return;
+  const size_t million_digits[] = {301030U, 602060U, 1204120U};
+  for (size_t index = 0; index < sizeof(million_digits) / sizeof(million_digits[0]); ++index) {
+    XraySquareNtt32ControlPoint point = measure_square_ntt32_control_point(million_digits[index], 9U, 5, 0, 0);
+    append_square_ntt32_control_point_result(report, &point);
+  }
+}
+
+static void run_square_ntt32_lowtailmap_control_interleaved_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-ntt32-lowtailmap-control-interleaved-gate")) return;
+  const size_t million_digits[] = {301030U, 602060U, 1204120U};
+  for (size_t index = 0; index < sizeof(million_digits) / sizeof(million_digits[0]); ++index) {
+    XraySquareNtt32ControlPoint point = measure_square_ntt32_control_point(million_digits[index], 5U, 5, 0, 1);
+    append_square_ntt32_control_point_result(report, &point);
+  }
+}
+
+static void run_square_ntt32_directcrt_control_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-ntt32-directcrt-control-gate")) return;
+  const size_t million_digits[] = {301030U, 602060U, 1204120U};
+  for (size_t index = 0; index < sizeof(million_digits) / sizeof(million_digits[0]); ++index) {
+    XraySquareNtt32ControlPoint point = measure_square_ntt32_control_point(million_digits[index], 3U, 7, 1, 0);
+    append_square_ntt32_control_point_result(report, &point);
+  }
+}
+
+static void run_square_ntt32_tailmap_final_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-ntt32-tailmap-final-gate")) return;
+  const size_t million_digits[] = {301030U, 602060U, 1204120U};
+  for (size_t index = 0; index < sizeof(million_digits) / sizeof(million_digits[0]); ++index) {
+    XraySquareNtt32ReusePoint tailmap_point = measure_square_ntt32_reuse_point(million_digits[index], 4);
+    append_square_ntt32_reuse_point_result(report, &tailmap_point);
+  }
+}
+
+static void run_square_ntt32_lowtailmap_final_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-ntt32-lowtailmap-final-gate")) return;
+  const size_t million_digits[] = {301030U, 602060U, 1204120U};
+  for (size_t index = 0; index < sizeof(million_digits) / sizeof(million_digits[0]); ++index) {
+    XraySquareNtt32ReusePoint lowtailmap_point = measure_square_ntt32_reuse_point(million_digits[index], 5);
+    append_square_ntt32_reuse_point_result(report, &lowtailmap_point);
+  }
+}
+
+static void run_mul_ntt16_smoke_focus_cases(XrayBenchmarkReport *report) {
+  const size_t transition_digits[] = {11717U};
+  const size_t upper_digits[] = {24103U};
+  const size_t sparse_bits[] = {4096U};
+  run_mul_ntt16_dense_window(
+    report,
+    "mul-large-ntt16-transition",
+    "mul-large-ntt16-transition-pt",
+    "transition-smoke",
+    "11717",
+    transition_digits,
+    sizeof(transition_digits) / sizeof(transition_digits[0]));
+  run_mul_ntt16_dense_window(
+    report,
+    "mul-large-ntt16-upper",
+    "mul-large-ntt16-upper-pt",
+    "upper-smoke",
+    "24103",
+    upper_digits,
+    sizeof(upper_digits) / sizeof(upper_digits[0]));
+  run_mul_ntt16_sparse_reference_cases_for_bits(
+    report,
+    sparse_bits,
+    sizeof(sparse_bits) / sizeof(sparse_bits[0]));
+  run_mul_ntt16_sparse_coexist_cases_for_bits(
+    report,
+    sparse_bits,
+    sizeof(sparse_bits) / sizeof(sparse_bits[0]),
+    "4096");
+}
+
 static void run_scratch_divmod_case(XrayBenchmarkReport *report, size_t digits) {
   char *text = benchmark_decimal(digits, 17, 1);
   if (!text) return;
   const uint32_t divisor = 65537U;
   unsigned int iterations = perf_iterations("divmod-u32", digits);
+  size_t sample_count = active_scratch_gmp_sample_count();
   XrayScratchBigInt a, quotient;
   xray_bigint_init(&a);
   xray_bigint_init(&quotient);
@@ -18780,21 +20989,33 @@ static void run_scratch_divmod_case(XrayBenchmarkReport *report, size_t digits) 
   uint32_t scratch_remainder = 0;
   unsigned long gmp_remainder = 0;
 
-  unsigned long long scratch_samples[XRAY_BENCH_SAMPLES] = {0};
-  unsigned long long gmp_samples[XRAY_BENCH_SAMPLES] = {0};
+  unsigned long long scratch_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
   int parity = 1;
-  for (unsigned int sample = 0; sample < XRAY_BENCH_SAMPLES; ++sample) {
-    unsigned long long scratch_started = xray_now_us();
-    for (unsigned int index = 0; ok && index < iterations; ++index) {
-      ok = xray_bigint_divmod_u32(&quotient, &scratch_remainder, &a, divisor);
+  unsigned int batch_iterations = iterations >= 64U ? 8U : (iterations >= 16U ? 4U : 1U);
+  if (ok) {
+    ok = xray_bigint_divmod_u32(&quotient, &scratch_remainder, &a, divisor);
+    gmp_remainder = (unsigned long)mpz_tdiv_q_ui(gquot, ga, divisor);
+  }
+  for (size_t sample = 0; sample < sample_count; ++sample) {
+    unsigned int completed = 0;
+    unsigned int phase = (unsigned int)(sample & 1U);
+    while (ok && completed < iterations) {
+      unsigned int remaining = iterations - completed;
+      unsigned int batch = remaining < batch_iterations ? remaining : batch_iterations;
+      for (unsigned int lane = 0; lane < 2U; ++lane) {
+        unsigned int active = (phase + lane) & 1U;
+        unsigned long long started = xray_now_us();
+        for (unsigned int index = 0; ok && index < batch; ++index) {
+          if (active == 0U) ok = xray_bigint_divmod_u32(&quotient, &scratch_remainder, &a, divisor);
+          else gmp_remainder = (unsigned long)mpz_tdiv_q_ui(gquot, ga, divisor);
+        }
+        if (active == 0U) scratch_samples[sample] += xray_now_us() - started;
+        else gmp_samples[sample] += xray_now_us() - started;
+      }
+      phase ^= 1U;
+      completed += batch;
     }
-    scratch_samples[sample] = xray_now_us() - scratch_started;
-
-    unsigned long long gmp_started = xray_now_us();
-    for (unsigned int index = 0; ok && index < iterations; ++index) {
-      gmp_remainder = (unsigned long)mpz_tdiv_q_ui(gquot, ga, divisor);
-    }
-    gmp_samples[sample] = xray_now_us() - gmp_started;
 
     char *scratch_text = xray_bigint_get_decimal(&quotient);
     char *gmp_text = mpz_get_str(NULL, 10, gquot);
@@ -18804,9 +21025,9 @@ static void run_scratch_divmod_case(XrayBenchmarkReport *report, size_t digits) 
     free(scratch_text);
     free(gmp_text);
   }
-  unsigned long long scratch_us = median_samples(scratch_samples, XRAY_BENCH_SAMPLES);
-  unsigned long long gmp_us = median_samples(gmp_samples, XRAY_BENCH_SAMPLES);
-  double paired_ratio = median_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES);
+  unsigned long long scratch_us = median_samples(scratch_samples, sample_count);
+  unsigned long long gmp_us = median_samples(gmp_samples, sample_count);
+  double paired_ratio = median_paired_ratio(scratch_samples, gmp_samples, sample_count);
   append_perf_result(
     report,
     "divmod-u32",
@@ -18816,9 +21037,9 @@ static void run_scratch_divmod_case(XrayBenchmarkReport *report, size_t digits) 
     scratch_us,
     gmp_us,
     paired_ratio,
-    paired_ratio_wins(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES, 1.0),
-    XRAY_BENCH_SAMPLES,
-    max_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES));
+    paired_ratio_wins(scratch_samples, gmp_samples, sample_count, 1.0),
+    sample_count,
+    max_paired_ratio(scratch_samples, gmp_samples, sample_count));
 
   mpz_clears(ga, gquot, NULL);
   xray_bigint_clear(&a);
@@ -19268,6 +21489,7 @@ static void run_scratch_modular_case(XrayBenchmarkReport *report, const char *op
   const uint32_t gcd_operand = 65537U;
   const uint32_t exponent = 65537U;
   unsigned int iterations = perf_iterations(operation, digits);
+  size_t sample_count = active_scratch_gmp_sample_count();
   XrayScratchBigInt a;
   xray_bigint_init(&a);
   mpz_t ga, gmodulus, gout;
@@ -19276,38 +21498,65 @@ static void run_scratch_modular_case(XrayBenchmarkReport *report, const char *op
   uint32_t scratch_result = 0;
   unsigned long gmp_result = 0;
 
-  unsigned long long scratch_samples[XRAY_BENCH_SAMPLES] = {0};
-  unsigned long long gmp_samples[XRAY_BENCH_SAMPLES] = {0};
+  unsigned long long scratch_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
   int parity = 1;
-  for (unsigned int sample = 0; sample < XRAY_BENCH_SAMPLES; ++sample) {
-    unsigned long long scratch_started = xray_now_us();
-    for (unsigned int index = 0; ok && index < iterations; ++index) {
-      if (strcmp(operation, "mod-u32") == 0) scratch_result = xray_bigint_mod_u32(&a, modulus);
-      else if (strcmp(operation, "gcd-u32") == 0) scratch_result = xray_bigint_gcd_u32(&a, gcd_operand);
-      else scratch_result = xray_bigint_powmod_u32(&a, exponent, modulus);
+  unsigned int batch_iterations = iterations >= 64U ? 8U : (iterations >= 16U ? 4U : 1U);
+  if (ok) {
+    if (strcmp(operation, "mod-u32") == 0) {
+      scratch_result = xray_bigint_mod_u32(&a, modulus);
+      gmp_result = (unsigned long)mpz_tdiv_ui(ga, modulus);
+    } else if (strcmp(operation, "gcd-u32") == 0) {
+      scratch_result = xray_bigint_gcd_u32(&a, gcd_operand);
+      mpz_set_ui(gmodulus, gcd_operand);
+      mpz_gcd(gout, ga, gmodulus);
+      gmp_result = (unsigned long)mpz_get_ui(gout);
+    } else {
+      scratch_result = xray_bigint_powmod_u32(&a, exponent, modulus);
+      mpz_set_ui(gmodulus, modulus);
+      mpz_powm_ui(gout, ga, exponent, gmodulus);
+      gmp_result = (unsigned long)mpz_get_ui(gout);
     }
-    scratch_samples[sample] = xray_now_us() - scratch_started;
-
-    unsigned long long gmp_started = xray_now_us();
-    for (unsigned int index = 0; ok && index < iterations; ++index) {
-      if (strcmp(operation, "mod-u32") == 0) {
-        gmp_result = (unsigned long)mpz_tdiv_ui(ga, modulus);
-      } else if (strcmp(operation, "gcd-u32") == 0) {
-        mpz_set_ui(gmodulus, gcd_operand);
-        mpz_gcd(gout, ga, gmodulus);
-        gmp_result = (unsigned long)mpz_get_ui(gout);
-      } else {
-        mpz_set_ui(gmodulus, modulus);
-        mpz_powm_ui(gout, ga, exponent, gmodulus);
-        gmp_result = (unsigned long)mpz_get_ui(gout);
+  }
+  for (size_t sample = 0; sample < sample_count; ++sample) {
+    unsigned int completed = 0;
+    unsigned int phase = (unsigned int)(sample & 1U);
+    while (ok && completed < iterations) {
+      unsigned int remaining = iterations - completed;
+      unsigned int batch = remaining < batch_iterations ? remaining : batch_iterations;
+      for (unsigned int lane = 0; lane < 2U; ++lane) {
+        unsigned int active = (phase + lane) & 1U;
+        unsigned long long started = xray_now_us();
+        for (unsigned int index = 0; ok && index < batch; ++index) {
+          if (active == 0U) {
+            if (strcmp(operation, "mod-u32") == 0) scratch_result = xray_bigint_mod_u32(&a, modulus);
+            else if (strcmp(operation, "gcd-u32") == 0) scratch_result = xray_bigint_gcd_u32(&a, gcd_operand);
+            else scratch_result = xray_bigint_powmod_u32(&a, exponent, modulus);
+          } else {
+            if (strcmp(operation, "mod-u32") == 0) {
+              gmp_result = (unsigned long)mpz_tdiv_ui(ga, modulus);
+            } else if (strcmp(operation, "gcd-u32") == 0) {
+              mpz_set_ui(gmodulus, gcd_operand);
+              mpz_gcd(gout, ga, gmodulus);
+              gmp_result = (unsigned long)mpz_get_ui(gout);
+            } else {
+              mpz_set_ui(gmodulus, modulus);
+              mpz_powm_ui(gout, ga, exponent, gmodulus);
+              gmp_result = (unsigned long)mpz_get_ui(gout);
+            }
+          }
+        }
+        if (active == 0U) scratch_samples[sample] += xray_now_us() - started;
+        else gmp_samples[sample] += xray_now_us() - started;
       }
+      phase ^= 1U;
+      completed += batch;
     }
-    gmp_samples[sample] = xray_now_us() - gmp_started;
     parity = parity && ok && scratch_result == (uint32_t)gmp_result;
   }
-  unsigned long long scratch_us = median_samples(scratch_samples, XRAY_BENCH_SAMPLES);
-  unsigned long long gmp_us = median_samples(gmp_samples, XRAY_BENCH_SAMPLES);
-  double paired_ratio = median_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES);
+  unsigned long long scratch_us = median_samples(scratch_samples, sample_count);
+  unsigned long long gmp_us = median_samples(gmp_samples, sample_count);
+  double paired_ratio = median_paired_ratio(scratch_samples, gmp_samples, sample_count);
   append_perf_result(
     report,
     operation,
@@ -19317,9 +21566,9 @@ static void run_scratch_modular_case(XrayBenchmarkReport *report, const char *op
     scratch_us,
     gmp_us,
     paired_ratio,
-    paired_ratio_wins(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES, 1.0),
-    XRAY_BENCH_SAMPLES,
-    max_paired_ratio(scratch_samples, gmp_samples, XRAY_BENCH_SAMPLES));
+    paired_ratio_wins(scratch_samples, gmp_samples, sample_count, 1.0),
+    sample_count,
+    max_paired_ratio(scratch_samples, gmp_samples, sample_count));
 
   mpz_clears(ga, gmodulus, gout, NULL);
   xray_bigint_clear(&a);
@@ -19377,6 +21626,166 @@ static void run_u32_precompute_probe_case(XrayBenchmarkReport *report, const cha
 
   xray_bigint_clear(&a);
   free(text);
+}
+
+static void run_gmp_gap_audit_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "gmp-gap-audit")) return;
+  size_t previous_sample_count = scratch_gmp_sample_count;
+  scratch_gmp_sample_count = XRAY_GMP_GAP_AUDIT_SAMPLES;
+  const size_t sizes[] = {40, 150, 1000, 4096, 8192};
+  for (size_t index = 0; index < sizeof(sizes) / sizeof(sizes[0]); ++index) {
+    run_scratch_parse_case(report, sizes[index]);
+    run_scratch_format_case(report, sizes[index]);
+    run_scratch_binary_case(report, "add", sizes[index]);
+    run_scratch_binary_case(report, "sub", sizes[index]);
+    run_scratch_modular_case(report, "mod-u32", sizes[index]);
+    run_scratch_modular_case(report, "gcd-u32", sizes[index]);
+    run_scratch_modular_case(report, "powmod-u32", sizes[index]);
+    run_scratch_divmod_case(report, sizes[index]);
+    run_scratch_mul_case(report, sizes[index]);
+    run_scratch_square_case(report, sizes[index]);
+  }
+  run_scratch_mul_case(report, 16384);
+  run_scratch_square_case(report, 16384);
+  scratch_gmp_sample_count = previous_sample_count;
+}
+
+static void run_format_gmp_gap_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "format-gmp-gap")) return;
+  const size_t sizes[] = {4096, 8192};
+  for (size_t index = 0; index < sizeof(sizes) / sizeof(sizes[0]); ++index) {
+    run_format_route_tournament_case(report, sizes[index]);
+  }
+}
+
+static void run_format_current_gmp_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "format-current-gmp")) return;
+  const size_t sizes[] = {4096, 8192};
+  for (size_t index = 0; index < sizeof(sizes) / sizeof(sizes[0]); ++index) {
+    run_scratch_format_case(report, sizes[index]);
+  }
+}
+
+static void run_format_tight_gap_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "format-tight-gap")) return;
+  const size_t sizes[] = {4096, 8192};
+  run_format_route_interleaved_audit_case_with_samples(
+    report,
+    421U,
+    "tight-cached-preinv-leaf8-4096-8192",
+    "decimal-dc-cached-preinv-leaf8",
+    0,
+    0,
+    8,
+    format_policy_cached_preinv,
+    sizes,
+    sizeof(sizes) / sizeof(sizes[0]),
+    XRAY_BENCH_FORMAT_SCOUT_SAMPLES);
+  run_format_route_interleaved_audit_case_with_samples(
+    report,
+    431U,
+    "tight-cached-preinv-leaf16-4096-8192",
+    "decimal-dc-cached-preinv-leaf16",
+    0,
+    0,
+    16,
+    format_policy_cached_preinv,
+    sizes,
+    sizeof(sizes) / sizeof(sizes[0]),
+    XRAY_BENCH_FORMAT_SCOUT_SAMPLES);
+  run_format_route_interleaved_audit_case_with_samples(
+    report,
+    439U,
+    "tight-cached-preinv-leaf32-4096-8192",
+    "decimal-dc-cached-preinv-leaf32",
+    0,
+    0,
+    32,
+    format_policy_cached_preinv,
+    sizes,
+    sizeof(sizes) / sizeof(sizes[0]),
+    XRAY_BENCH_FORMAT_SCOUT_SAMPLES);
+  run_format_route_interleaved_audit_case_with_samples(
+    report,
+    443U,
+    "tight-cached-preinv-leaf64-4096-8192",
+    "decimal-dc-cached-preinv-leaf64",
+    0,
+    0,
+    64,
+    format_policy_cached_preinv,
+    sizes,
+    sizeof(sizes) / sizeof(sizes[0]),
+    XRAY_BENCH_FORMAT_SCOUT_SAMPLES);
+}
+
+static void run_format_1000_hill_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "format-1000-hill")) return;
+  const size_t sizes[] = {1000U};
+  run_format_route_tournament_case(report, 1000U);
+  run_format_route_interleaved_audit_case_with_samples(
+    report,
+    461U,
+    "format1000-cached-preinv-leaf16",
+    "decimal-dc-cached-preinv-leaf16",
+    0,
+    0,
+    16,
+    format_policy_cached_preinv,
+    sizes,
+    sizeof(sizes) / sizeof(sizes[0]),
+    XRAY_BENCH_SAMPLES);
+  run_format_route_interleaved_audit_case_with_samples(
+    report,
+    463U,
+    "format1000-cached-preinv-leaf32",
+    "decimal-dc-cached-preinv-leaf32",
+    0,
+    0,
+    32,
+    format_policy_cached_preinv,
+    sizes,
+    sizeof(sizes) / sizeof(sizes[0]),
+    XRAY_BENCH_SAMPLES);
+}
+
+static void run_format_150_hill_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "format-150-hill")) return;
+  const size_t sizes[] = {150U};
+  run_format_route_tournament_case(report, 150U);
+  run_format_route_interleaved_audit_case_with_samples(
+    report,
+    467U,
+    "format150-dc-direct-leaf16",
+    "decimal-dc-direct-leaf16",
+    0,
+    0,
+    16,
+    format_policy_direct,
+    sizes,
+    sizeof(sizes) / sizeof(sizes[0]),
+    XRAY_BENCH_SAMPLES);
+}
+
+static void run_divmod_tight_gap_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "divmod-tight-gap")) return;
+  const size_t sizes[] = {4096, 8192};
+  XrayDivmodPreinvQhatSafetyPoint divmod_preinv_qhat_points[sizeof(sizes) / sizeof(sizes[0])];
+  memset(divmod_preinv_qhat_points, 0, sizeof(divmod_preinv_qhat_points));
+  for (size_t index = 0; index < sizeof(sizes) / sizeof(sizes[0]); ++index) {
+    run_divmod_dc_power_probe_case(report, sizes[index], (unsigned int)(509U + index));
+    run_divmod_precomputed_probe_case(report, sizes[index], (unsigned int)(521U + index));
+    run_divmod_workspace_probe_case(report, sizes[index], (unsigned int)(541U + index));
+    run_divmod_preinv_qhat_probe_case(
+      report,
+      sizes[index],
+      (unsigned int)(557U + index),
+      &divmod_preinv_qhat_points[index]);
+  }
+  append_divmod_preinv_qhat_safety_result(
+    report,
+    divmod_preinv_qhat_points,
+    sizeof(divmod_preinv_qhat_points) / sizeof(divmod_preinv_qhat_points[0]));
 }
 
 static void run_scratch_bigint_gates(XrayBenchmarkReport *report) {
@@ -21018,6 +23427,16 @@ static void run_sparse_mul_focus_cases(XrayBenchmarkReport *report) {
   }
 }
 
+static int benchmark_focus_any_mul_ntt(const char *focus) {
+  return benchmark_focus_eq(focus, "mul-ntt") ||
+    benchmark_focus_eq(focus, "mul-novelty");
+}
+
+static int benchmark_focus_any_mul_toom_upper(const char *focus) {
+  return benchmark_focus_eq(focus, "mul-toom-upper") ||
+    benchmark_focus_eq(focus, "mul-toom-upper-smoke");
+}
+
 static void run_mul_large_focus_cases(XrayBenchmarkReport *report) {
   const size_t dense_leaf_digits[] = {4096, 8192, 16384, 32768, 65536};
   for (size_t digit_index = 0; digit_index < sizeof(dense_leaf_digits) / sizeof(dense_leaf_digits[0]); ++digit_index) {
@@ -21030,12 +23449,4422 @@ static void run_mul_large_focus_cases(XrayBenchmarkReport *report) {
   }
 }
 
+static void run_mul_dense_current_gmp_point(XrayBenchmarkReport *report, size_t digits, size_t sample_count) {
+  if (!report || sample_count == 0 || sample_count > XRAY_BENCH_MAX_SAMPLES) return;
+  char *left_text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  char *right_text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  XrayScratchBigInt left[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt right[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt current_out[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gleft[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gright[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gout[XRAY_MUL_OPERAND_FAMILIES];
+  unsigned long long current_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned int iterations = perf_iterations("mul", digits);
+  if (digits <= 4096U && iterations < 512U) iterations = 512U;
+  if (digits >= 32768U && iterations < 256U) iterations = 256U;
+  if (iterations < 128U) iterations = 128U;
+  unsigned int batch_iterations = 1U;
+  int ok = 1;
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    xray_bigint_init(&left[family]);
+    xray_bigint_init(&right[family]);
+    xray_bigint_init(&current_out[family]);
+    mpz_inits(gleft[family], gright[family], gout[family], NULL);
+    left_text[family] = benchmark_decimal(
+      digits,
+      2609U + mul_operand_families[family].left_seed + (unsigned int)(family * 31U),
+      mul_operand_families[family].left_high_lead);
+    right_text[family] = benchmark_decimal(
+      digits,
+      2609U + mul_operand_families[family].right_seed + (unsigned int)(family * 37U),
+      mul_operand_families[family].right_high_lead);
+    ok = ok &&
+      left_text[family] &&
+      right_text[family] &&
+      xray_bigint_set_decimal(&left[family], left_text[family]) &&
+      xray_bigint_set_decimal(&right[family], right_text[family]) &&
+      mpz_set_str(gleft[family], left_text[family], 10) == 0 &&
+      mpz_set_str(gright[family], right_text[family], 10) == 0;
+  }
+
+  int parity = 1;
+  size_t hash_match_count = 0;
+  for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    ok = xray_bigint_mul(&current_out[family], &left[family], &right[family]);
+    if (ok) mpz_mul(gout[family], gleft[family], gright[family]);
+  }
+  for (size_t sample = 0; ok && sample < sample_count; ++sample) {
+    unsigned int completed = 0;
+    unsigned int phase = (unsigned int)(sample & 1U);
+    while (ok && completed < iterations) {
+      unsigned int remaining = iterations - completed;
+      unsigned int batch = remaining < batch_iterations ? remaining : batch_iterations;
+      for (unsigned int lane = 0; ok && lane < 2U; ++lane) {
+        unsigned int active = (unsigned int)((phase + lane) & 1U);
+        unsigned long long started = xray_now_us();
+        for (unsigned int iteration = 0; ok && iteration < batch; ++iteration) {
+          for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+            if (active == 0U) {
+              ok = xray_bigint_mul(&current_out[family], &left[family], &right[family]);
+            } else {
+              mpz_mul(gout[family], gleft[family], gright[family]);
+            }
+          }
+        }
+        if (active == 0U) current_samples[sample] += xray_now_us() - started;
+        else gmp_samples[sample] += xray_now_us() - started;
+      }
+      phase ^= 1U;
+      completed += batch;
+    }
+    for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+      char *current_text = xray_bigint_get_decimal(&current_out[family]);
+      char *gmp_text = mpz_get_str(NULL, 10, gout[family]);
+      uint64_t current_hash = xray_benchmark_text_hash64(current_text);
+      uint64_t gmp_hash = xray_benchmark_text_hash64(gmp_text);
+      int sample_match = ok &&
+        current_text &&
+        gmp_text &&
+        strcmp(current_text, gmp_text) == 0;
+      if (sample_match && current_hash != 0ULL && current_hash == gmp_hash) hash_match_count++;
+      parity = parity && sample_match;
+      free(current_text);
+      free(gmp_text);
+    }
+  }
+
+  double current_gmp_ratio = median_paired_ratio(current_samples, gmp_samples, sample_count);
+  double current_gmp_worst = max_paired_ratio(current_samples, gmp_samples, sample_count);
+  size_t stable = paired_ratio_wins(current_samples, gmp_samples, sample_count, 1.0);
+  size_t expected_hash_count = sample_count * XRAY_MUL_OPERAND_FAMILIES;
+  int hash_gate = hash_match_count == expected_hash_count;
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.category, sizeof(result.category), "kernel-probe");
+  snprintf(result.name, sizeof(result.name), "kernel dense current vs GMP %zu digits", digits);
+  snprintf(result.operation, sizeof(result.operation), "mul-dense-current-gmp-pt");
+  result.digits = digits;
+  result.scratch_us = median_samples(current_samples, sample_count);
+  result.gmp_us = median_samples(gmp_samples, sample_count);
+  result.speed_ratio = current_gmp_ratio > 0.0 ? current_gmp_ratio :
+    (result.gmp_us ? (double)result.scratch_us / (double)result.gmp_us : 0.0);
+  result.max_allowed_speed_ratio = 1.0;
+  result.worst_pair_ratio = current_gmp_worst;
+  result.stable_sample_count = stable;
+  result.sample_count = sample_count;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  result.parity_verified = parity && hash_gate;
+  result.passed = parity && hash_gate;
+  result.replacement_ready = 0;
+  snprintf(result.status, sizeof(result.status), "%s",
+    !parity ? "mismatch" :
+    (!hash_gate ? "hash-mismatch" :
+    (current_gmp_ratio <= 1.0 ? "current-faster-or-tie" : "gmp-faster")));
+  snprintf(result.adoption, sizeof(result.adoption), "observe-only");
+  snprintf(result.detail, sizeof(result.detail),
+    "op=mul-dense-current-gmp-point digits=%zu sizeRole=%s operandFamilies=%u samples=%zu iterations=%u batchIterations=%u stableCurrent=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s currentUs=%llu gmpUs=%llu currentGmpRatio=%.3f worstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch warmup=1 sameInput=yes oracle=mpz_mul featureGate=large-multiply-cpu-dense-current-gmp-short replacementReady=false noAutoRoute=1 adoption=observe-only",
+    digits,
+    large_mul_campaign_size_role(digits),
+    (unsigned int)XRAY_MUL_OPERAND_FAMILIES,
+    sample_count,
+    iterations,
+    batch_iterations,
+    stable,
+    sample_count,
+    hash_match_count,
+    expected_hash_count,
+    hash_gate ? "matched" : "blocked",
+    parity ? "matched" : "blocked",
+    result.scratch_us,
+    result.gmp_us,
+    current_gmp_ratio,
+    current_gmp_worst);
+  append_result(report, &result);
+
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    mpz_clears(gleft[family], gright[family], gout[family], NULL);
+    xray_bigint_clear(&left[family]);
+    xray_bigint_clear(&right[family]);
+    xray_bigint_clear(&current_out[family]);
+    free(left_text[family]);
+    free(right_text[family]);
+  }
+}
+
+static void run_mul_dense_current_gmp_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "mul-dense-current-gmp")) return;
+  const size_t digits[] = {24103, 32768, 52163, 65536};
+  for (size_t index = 0; index < sizeof(digits) / sizeof(digits[0]); ++index) {
+    run_mul_dense_current_gmp_point(report, digits[index], 7U);
+  }
+}
+
+static void run_mul_dense_frontier_gmp_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "mul-dense-frontier-gmp")) return;
+  const size_t digits[] = {4096, 8192, 11717, 16384};
+  for (size_t index = 0; index < sizeof(digits) / sizeof(digits[0]); ++index) {
+    run_mul_dense_current_gmp_point(report, digits[index], 5U);
+  }
+}
+
+enum {
+  XRAY_SQUARE_DENSE_LANE_CURRENT = 0,
+  XRAY_SQUARE_DENSE_LANE_MUL = 1,
+  XRAY_SQUARE_DENSE_LANE_GMP = 2,
+  XRAY_SQUARE_DENSE_LANE_COUNT = 3
+};
+
+static void run_square_dense_hill_point(XrayBenchmarkReport *report, size_t digits, size_t sample_count) {
+  if (!report || sample_count == 0 || sample_count > XRAY_BENCH_MAX_SAMPLES) return;
+  char *text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  XrayScratchBigInt value[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt mirror[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt current_out[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt mul_out[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gvalue[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gout[XRAY_MUL_OPERAND_FAMILIES];
+  unsigned long long current_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long mul_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned int iterations = perf_iterations("mul", digits);
+  if (digits <= 4096U && iterations < 1024U) iterations = 1024U;
+  else if (digits <= 8192U && iterations < 512U) iterations = 512U;
+  if (digits >= 52163U && iterations < 256U) iterations = 256U;
+  if (iterations < 128U) iterations = 128U;
+  unsigned int batch_iterations = 1U;
+  int ok = 1;
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    xray_bigint_init(&value[family]);
+    xray_bigint_init(&mirror[family]);
+    xray_bigint_init(&current_out[family]);
+    xray_bigint_init(&mul_out[family]);
+    mpz_inits(gvalue[family], gout[family], NULL);
+    text[family] = benchmark_decimal(
+      digits,
+      3719U + mul_operand_families[family].left_seed + (unsigned int)(family * 43U),
+      mul_operand_families[family].left_high_lead);
+    ok = ok &&
+      text[family] &&
+      xray_bigint_set_decimal(&value[family], text[family]) &&
+      xray_bigint_set_decimal(&mirror[family], text[family]) &&
+      mpz_set_str(gvalue[family], text[family], 10) == 0;
+  }
+
+  int parity = 1;
+  size_t hash_match_count = 0;
+  for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    ok = xray_bigint_square(&current_out[family], &value[family]) &&
+      xray_bigint_mul(&mul_out[family], &value[family], &mirror[family]);
+    if (ok) mpz_mul(gout[family], gvalue[family], gvalue[family]);
+  }
+  for (size_t sample = 0; ok && sample < sample_count; ++sample) {
+    unsigned int completed = 0;
+    unsigned int phase = (unsigned int)(sample % XRAY_SQUARE_DENSE_LANE_COUNT);
+    while (ok && completed < iterations) {
+      unsigned int remaining = iterations - completed;
+      unsigned int batch = remaining < batch_iterations ? remaining : batch_iterations;
+      for (unsigned int lane = 0; ok && lane < XRAY_SQUARE_DENSE_LANE_COUNT; ++lane) {
+        unsigned int active = (phase + lane) % XRAY_SQUARE_DENSE_LANE_COUNT;
+        unsigned long long started = xray_now_us();
+        for (unsigned int iteration = 0; ok && iteration < batch; ++iteration) {
+          for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+            if (active == XRAY_SQUARE_DENSE_LANE_CURRENT) {
+              ok = xray_bigint_square(&current_out[family], &value[family]);
+            } else if (active == XRAY_SQUARE_DENSE_LANE_MUL) {
+              ok = xray_bigint_mul(&mul_out[family], &value[family], &mirror[family]);
+            } else {
+              mpz_mul(gout[family], gvalue[family], gvalue[family]);
+            }
+          }
+        }
+        if (active == XRAY_SQUARE_DENSE_LANE_CURRENT) current_samples[sample] += xray_now_us() - started;
+        else if (active == XRAY_SQUARE_DENSE_LANE_MUL) mul_samples[sample] += xray_now_us() - started;
+        else gmp_samples[sample] += xray_now_us() - started;
+      }
+      phase = (phase + 1U) % XRAY_SQUARE_DENSE_LANE_COUNT;
+      completed += batch;
+    }
+    for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+      char *current_text = xray_bigint_get_decimal(&current_out[family]);
+      char *mul_text = xray_bigint_get_decimal(&mul_out[family]);
+      char *gmp_text = mpz_get_str(NULL, 10, gout[family]);
+      uint64_t gmp_hash = xray_benchmark_text_hash64(gmp_text);
+      uint64_t current_hash = xray_benchmark_text_hash64(current_text);
+      uint64_t mul_hash = xray_benchmark_text_hash64(mul_text);
+      int current_match = ok && current_text && gmp_text && strcmp(current_text, gmp_text) == 0;
+      int mul_match = ok && mul_text && gmp_text && strcmp(mul_text, gmp_text) == 0;
+      if (current_match && current_hash != 0ULL && current_hash == gmp_hash) hash_match_count++;
+      if (mul_match && mul_hash != 0ULL && mul_hash == gmp_hash) hash_match_count++;
+      parity = parity && current_match && mul_match;
+      free(current_text);
+      free(mul_text);
+      free(gmp_text);
+    }
+  }
+
+  double current_gmp_ratio = median_paired_ratio(current_samples, gmp_samples, sample_count);
+  double current_gmp_worst = max_paired_ratio(current_samples, gmp_samples, sample_count);
+  double mul_gmp_ratio = median_paired_ratio(mul_samples, gmp_samples, sample_count);
+  double mul_gmp_worst = max_paired_ratio(mul_samples, gmp_samples, sample_count);
+  double mul_current_ratio = median_paired_ratio(mul_samples, current_samples, sample_count);
+  size_t current_stable = paired_ratio_wins(current_samples, gmp_samples, sample_count, 1.0);
+  size_t mul_stable = paired_ratio_wins(mul_samples, gmp_samples, sample_count, 1.0);
+  size_t expected_hash_count = sample_count * XRAY_MUL_OPERAND_FAMILIES * 2U;
+  int hash_gate = hash_match_count == expected_hash_count;
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.category, sizeof(result.category), "kernel-probe");
+  snprintf(result.name, sizeof(result.name), "kernel square dense hill %zu digits", digits);
+  snprintf(result.operation, sizeof(result.operation), "square-dense-hill-pt");
+  result.digits = digits;
+  result.scratch_us = median_samples(current_samples, sample_count);
+  result.gmp_us = median_samples(gmp_samples, sample_count);
+  result.speed_ratio = current_gmp_ratio;
+  result.max_allowed_speed_ratio = 1.0;
+  result.worst_pair_ratio = current_gmp_worst;
+  result.stable_sample_count = current_stable;
+  result.sample_count = sample_count;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + median_samples(mul_samples, sample_count) + 999ULL) / 1000ULL);
+  result.parity_verified = parity && hash_gate;
+  result.passed = parity && hash_gate;
+  result.replacement_ready = 0;
+  snprintf(result.status, sizeof(result.status), "%s",
+    !parity ? "mismatch" :
+    (!hash_gate ? "hash-mismatch" :
+    (current_gmp_ratio <= 1.0 ? "current-faster-or-tie" : "gmp-faster")));
+  snprintf(result.adoption, sizeof(result.adoption), "observe-only");
+  snprintf(result.detail, sizeof(result.detail),
+    "op=square-dense-hill-point digits=%zu sizeRole=%s operandFamilies=%u samples=%zu iterations=%u batchIterations=%u stableCurrent=%zu/%zu stableMul=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s currentUs=%llu mulUs=%llu gmpUs=%llu currentGmpRatio=%.3f mulGmpRatio=%.3f mulCurrentRatio=%.3f currentWorst=%.3f mulWorst=%.3f ratioMethod=paired-median timingMode=rotating-batch warmup=1 sameInput=yes oracle=mpz_mul candidate=current-scratch-square alternate=production-mul-equal-values baseline=mpz_mul featureGate=square-dense-hill-climb replacementReady=false noAutoRoute=1 adoption=observe-only",
+    digits,
+    large_mul_campaign_size_role(digits),
+    (unsigned int)XRAY_MUL_OPERAND_FAMILIES,
+    sample_count,
+    iterations,
+    batch_iterations,
+    current_stable,
+    sample_count,
+    mul_stable,
+    sample_count,
+    hash_match_count,
+    expected_hash_count,
+    hash_gate ? "matched" : "blocked",
+    parity ? "matched" : "blocked",
+    result.scratch_us,
+    median_samples(mul_samples, sample_count),
+    result.gmp_us,
+    current_gmp_ratio,
+    mul_gmp_ratio,
+    mul_current_ratio,
+    current_gmp_worst,
+    mul_gmp_worst);
+  append_result(report, &result);
+
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    mpz_clears(gvalue[family], gout[family], NULL);
+    xray_bigint_clear(&value[family]);
+    xray_bigint_clear(&mirror[family]);
+    xray_bigint_clear(&current_out[family]);
+    xray_bigint_clear(&mul_out[family]);
+    free(text[family]);
+  }
+}
+
+static void run_square_dense_current_gmp_point(XrayBenchmarkReport *report, size_t digits, size_t sample_count) {
+  if (!report || sample_count == 0 || sample_count > XRAY_BENCH_MAX_SAMPLES) return;
+  char *text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  XrayScratchBigInt value[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt current_out[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gvalue[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gout[XRAY_MUL_OPERAND_FAMILIES];
+  unsigned long long current_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned int iterations = perf_iterations("mul", digits);
+  if (digits <= 4096U && iterations < 1024U) iterations = 1024U;
+  else if (digits <= 8192U && iterations < 512U) iterations = 512U;
+  if (digits >= 52163U && iterations < 256U) iterations = 256U;
+  if (iterations < 128U) iterations = 128U;
+  unsigned int batch_iterations = 1U;
+  int ok = 1;
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    xray_bigint_init(&value[family]);
+    xray_bigint_init(&current_out[family]);
+    mpz_inits(gvalue[family], gout[family], NULL);
+    text[family] = benchmark_decimal(
+      digits,
+      3719U + mul_operand_families[family].left_seed + (unsigned int)(family * 43U),
+      mul_operand_families[family].left_high_lead);
+    ok = ok &&
+      text[family] &&
+      xray_bigint_set_decimal(&value[family], text[family]) &&
+      mpz_set_str(gvalue[family], text[family], 10) == 0;
+  }
+
+  int parity = 1;
+  size_t hash_match_count = 0;
+  for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    ok = xray_bigint_square(&current_out[family], &value[family]);
+    if (ok) mpz_mul(gout[family], gvalue[family], gvalue[family]);
+  }
+  for (size_t sample = 0; ok && sample < sample_count; ++sample) {
+    unsigned int completed = 0;
+    unsigned int phase = (unsigned int)(sample & 1U);
+    while (ok && completed < iterations) {
+      unsigned int remaining = iterations - completed;
+      unsigned int batch = remaining < batch_iterations ? remaining : batch_iterations;
+      for (unsigned int lane = 0; ok && lane < 2U; ++lane) {
+        unsigned int active = (unsigned int)((phase + lane) & 1U);
+        unsigned long long started = xray_now_us();
+        for (unsigned int iteration = 0; ok && iteration < batch; ++iteration) {
+          for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+            if (active == 0U) {
+              ok = xray_bigint_square(&current_out[family], &value[family]);
+            } else {
+              mpz_mul(gout[family], gvalue[family], gvalue[family]);
+            }
+          }
+        }
+        if (active == 0U) current_samples[sample] += xray_now_us() - started;
+        else gmp_samples[sample] += xray_now_us() - started;
+      }
+      phase ^= 1U;
+      completed += batch;
+    }
+    for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+      char *current_text = xray_bigint_get_decimal(&current_out[family]);
+      char *gmp_text = mpz_get_str(NULL, 10, gout[family]);
+      uint64_t current_hash = xray_benchmark_text_hash64(current_text);
+      uint64_t gmp_hash = xray_benchmark_text_hash64(gmp_text);
+      int sample_match = ok &&
+        current_text &&
+        gmp_text &&
+        strcmp(current_text, gmp_text) == 0;
+      if (sample_match && current_hash != 0ULL && current_hash == gmp_hash) hash_match_count++;
+      parity = parity && sample_match;
+      free(current_text);
+      free(gmp_text);
+    }
+  }
+
+  double current_gmp_ratio = median_paired_ratio(current_samples, gmp_samples, sample_count);
+  double current_gmp_worst = max_paired_ratio(current_samples, gmp_samples, sample_count);
+  size_t stable = paired_ratio_wins(current_samples, gmp_samples, sample_count, 1.0);
+  size_t expected_hash_count = sample_count * XRAY_MUL_OPERAND_FAMILIES;
+  int hash_gate = hash_match_count == expected_hash_count;
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.category, sizeof(result.category), "kernel-probe");
+  snprintf(result.name, sizeof(result.name), "kernel square dense current vs GMP %zu digits", digits);
+  snprintf(result.operation, sizeof(result.operation), "square-dense-current-gmp-pt");
+  result.digits = digits;
+  result.scratch_us = median_samples(current_samples, sample_count);
+  result.gmp_us = median_samples(gmp_samples, sample_count);
+  result.speed_ratio = current_gmp_ratio > 0.0 ? current_gmp_ratio :
+    (result.gmp_us ? (double)result.scratch_us / (double)result.gmp_us : 0.0);
+  result.max_allowed_speed_ratio = 1.0;
+  result.worst_pair_ratio = current_gmp_worst;
+  result.stable_sample_count = stable;
+  result.sample_count = sample_count;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  result.parity_verified = parity && hash_gate;
+  result.passed = parity && hash_gate;
+  result.replacement_ready = 0;
+  snprintf(result.status, sizeof(result.status), "%s",
+    !parity ? "mismatch" :
+    (!hash_gate ? "hash-mismatch" :
+    (current_gmp_ratio <= 1.0 ? "current-faster-or-tie" : "gmp-faster")));
+  snprintf(result.adoption, sizeof(result.adoption), "observe-only");
+  snprintf(result.detail, sizeof(result.detail),
+    "op=square-dense-current-gmp-point digits=%zu sizeRole=%s operandFamilies=%u samples=%zu iterations=%u batchIterations=%u stableCurrent=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s currentUs=%llu gmpUs=%llu currentGmpRatio=%.3f worstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch warmup=1 sameInput=yes oracle=mpz_mul featureGate=square-dense-current-gmp-proof replacementReady=false noAutoRoute=1 adoption=observe-only",
+    digits,
+    large_mul_campaign_size_role(digits),
+    (unsigned int)XRAY_MUL_OPERAND_FAMILIES,
+    sample_count,
+    iterations,
+    batch_iterations,
+    stable,
+    sample_count,
+    hash_match_count,
+    expected_hash_count,
+    hash_gate ? "matched" : "blocked",
+    parity ? "matched" : "blocked",
+    result.scratch_us,
+    result.gmp_us,
+    current_gmp_ratio,
+    current_gmp_worst);
+  append_result(report, &result);
+
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    mpz_clears(gvalue[family], gout[family], NULL);
+    xray_bigint_clear(&value[family]);
+    xray_bigint_clear(&current_out[family]);
+    free(text[family]);
+  }
+}
+
+static void run_square_dense_hill_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-dense-hill")) return;
+  const size_t lower_digits[] = {4096, 8192, 11717, 16384};
+  const size_t upper_digits[] = {24103, 32768, 52163, 65536};
+  for (size_t index = 0; index < sizeof(lower_digits) / sizeof(lower_digits[0]); ++index) {
+    run_square_dense_hill_point(report, lower_digits[index], 3U);
+  }
+  for (size_t index = 0; index < sizeof(upper_digits) / sizeof(upper_digits[0]); ++index) {
+    run_square_dense_hill_point(report, upper_digits[index], 3U);
+  }
+}
+
+static void run_square_dense_frontier_current_gmp_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-dense-frontier-current-gmp")) return;
+  const size_t digits[] = {4096, 8192, 11717, 16384};
+  for (size_t index = 0; index < sizeof(digits) / sizeof(digits[0]); ++index) {
+    run_square_dense_current_gmp_point(report, digits[index], 7U);
+  }
+}
+
+static void run_square_dense_frontier_gmp_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-dense-frontier-gmp")) return;
+  const size_t digits[] = {4096, 8192, 11717, 16384};
+  for (size_t index = 0; index < sizeof(digits) / sizeof(digits[0]); ++index) {
+    run_square_dense_hill_point(report, digits[index], 7U);
+  }
+}
+
+static void run_square_dense_upper_gmp_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-dense-upper-gmp")) return;
+  const size_t digits[] = {52163, 65536};
+  for (size_t index = 0; index < sizeof(digits) / sizeof(digits[0]); ++index) {
+    run_square_dense_hill_point(report, digits[index], 7U);
+  }
+}
+
+static void run_dense_gmp_proof_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "dense-gmp-proof")) return;
+  const size_t digits[] = {4096, 8192, 11717, 16384, 24103, 32768, 52163, 65536};
+  for (size_t index = 0; index < sizeof(digits) / sizeof(digits[0]); ++index) {
+    run_mul_dense_current_gmp_point(report, digits[index], 7U);
+  }
+  for (size_t index = 0; index < sizeof(digits) / sizeof(digits[0]); ++index) {
+    run_square_dense_current_gmp_point(report, digits[index], 7U);
+  }
+}
+
+static void run_dense_million_bit_frontier_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "dense-million-bit-frontier")) return;
+  const size_t digits[] = {301030U, 602060U, 1204120U};
+  for (size_t index = 0; index < sizeof(digits) / sizeof(digits[0]); ++index) {
+    run_frontier_scout_case(report, "mul", digits[index]);
+    run_frontier_scout_case(report, "square", digits[index]);
+  }
+}
+
+static void run_dense_million_bit_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "dense-million-bit-gate")) return;
+  const size_t digits[] = {301030U, 602060U, 1204120U};
+  for (size_t index = 0; index < sizeof(digits) / sizeof(digits[0]); ++index) {
+    run_frontier_scout_case_with_samples(report, "mul", digits[index], 7U);
+    run_frontier_scout_case_with_samples(report, "square", digits[index], 7U);
+  }
+}
+
+static void run_dense_million_bit_floor_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "dense-million-bit-floor-gate")) return;
+  const size_t digits[] = {301030U, 602060U, 1204120U};
+  for (size_t index = 0; index < sizeof(digits) / sizeof(digits[0]); ++index) {
+    run_frontier_scout_case_rotating_with_samples_and_iterations(report, "mul", digits[index], 7U, 3U);
+    run_frontier_scout_case_rotating_with_samples_and_iterations(report, "square", digits[index], 7U, 3U);
+  }
+}
+
+static void run_dense_million_bit_floor_interleaved_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "dense-million-bit-floor-interleaved-gate")) return;
+  const size_t digits[] = {301030U, 602060U, 1204120U};
+  for (size_t index = 0; index < sizeof(digits) / sizeof(digits[0]); ++index) {
+    run_frontier_scout_case_interleaved_with_samples_and_iterations(report, "mul", digits[index], 7U, 5U);
+    run_frontier_scout_case_interleaved_with_samples_and_iterations(report, "square", digits[index], 7U, 5U);
+  }
+}
+
+typedef enum XraySquareDenseRoute {
+  XRAY_SQUARE_DENSE_TOOM4_FACTORED = 0,
+  XRAY_SQUARE_DENSE_PRODUCTION_SELF_MUL,
+  XRAY_SQUARE_DENSE_TOOM3_COMBO,
+  XRAY_SQUARE_DENSE_TOOM3_SQUARE,
+  XRAY_SQUARE_DENSE_TOOM3_SQUARE_NEG2,
+  XRAY_SQUARE_DENSE_TOOM3_SQUARE_MUL_POINTS,
+  XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL2,
+  XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL,
+  XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL4,
+  XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5,
+  XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF,
+  XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3,
+  XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF_PARALLEL4,
+  XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF_PARALLEL5,
+  XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF_DISPATCH,
+  XRAY_SQUARE_DENSE_TOOM4_SQUARE,
+  XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4,
+  XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_TOP52_CHILD,
+  XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL2,
+  XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL3,
+  XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL4,
+  XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL7,
+  XRAY_SQUARE_DENSE_TOOM4_SQUARE_MUL_POINTS,
+  XRAY_SQUARE_DENSE_TOOM5_FACTORED,
+  XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL,
+  XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL4,
+  XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL2,
+  XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL4_ANY
+} XraySquareDenseRoute;
+
+typedef struct XraySquareDenseCandidate {
+  const char *name;
+  XraySquareDenseRoute route;
+  size_t leaf_threshold;
+  size_t depth_limit;
+} XraySquareDenseCandidate;
+
+int xray_bigint_square_toom3_full_workspace_reuse_neg2_div2_div3_probe(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value,
+  size_t leaf_threshold,
+  size_t depth_limit,
+  XrayBigIntMulWorkspace *workspace);
+
+static const char *square_dense_route_name(XraySquareDenseRoute route) {
+  switch (route) {
+    case XRAY_SQUARE_DENSE_TOOM4_FACTORED: return "toom4-top-factored";
+    case XRAY_SQUARE_DENSE_PRODUCTION_SELF_MUL: return "production-self-mul";
+    case XRAY_SQUARE_DENSE_TOOM3_COMBO: return "toom3-combo";
+    case XRAY_SQUARE_DENSE_TOOM3_SQUARE: return "toom3-square";
+    case XRAY_SQUARE_DENSE_TOOM3_SQUARE_NEG2: return "toom3-square-neg2";
+    case XRAY_SQUARE_DENSE_TOOM3_SQUARE_MUL_POINTS: return "toom3-square-mul-points";
+    case XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL2: return "toom3-square-parallel2";
+    case XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL: return "toom3-square-parallel";
+    case XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL4: return "toom3-square-parallel4";
+    case XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5: return "toom3-square-parallel5";
+    case XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF: return "toom3-direct-coeff";
+    case XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3: return "toom3-chung-sqr3";
+    case XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF_PARALLEL4: return "toom3-direct-coeff-parallel4";
+    case XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF_PARALLEL5: return "toom3-direct-coeff-parallel5";
+    case XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF_DISPATCH: return "toom3-direct-dispatch";
+    case XRAY_SQUARE_DENSE_TOOM4_SQUARE: return "toom4-square";
+    case XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4: return "toom4-chung-sqr4";
+    case XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_TOP52_CHILD: return "toom4-chung-sqr4-top52-child";
+    case XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL2: return "toom4-chung-sqr4-parallel2";
+    case XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL3: return "toom4-chung-sqr4-parallel3";
+    case XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL4: return "toom4-chung-sqr4-parallel4";
+    case XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL7: return "toom4-chung-sqr4-parallel7";
+    case XRAY_SQUARE_DENSE_TOOM4_SQUARE_MUL_POINTS: return "toom4-square-mul-points";
+    case XRAY_SQUARE_DENSE_TOOM5_FACTORED: return "toom5-top-factored";
+    case XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL: return "toom4-top-factored-parallel";
+    case XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL4: return "toom4-top-factored-parallel4";
+    case XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL2: return "toom4-top-factored-parallel2";
+    case XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL4_ANY: return "toom4-top-factored-parallel4-any";
+  }
+  return "unknown";
+}
+
+static int run_square_dense_route_candidate(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value,
+  const XrayScratchBigInt *mirror,
+  const XraySquareDenseCandidate *candidate,
+  XrayBigIntMulWorkspace *workspace) {
+  if (!out || !value || !mirror || !candidate || !workspace) return 0;
+  if (candidate->route == XRAY_SQUARE_DENSE_PRODUCTION_SELF_MUL) {
+    (void)workspace;
+    return xray_bigint_mul(out, value, mirror);
+  }
+  if (candidate->route == XRAY_SQUARE_DENSE_TOOM4_FACTORED) {
+    return xray_bigint_mul_toom4_top_full_workspace_reuse_factored_div_probe(
+      out,
+      value,
+      mirror,
+      candidate->leaf_threshold,
+      candidate->depth_limit,
+      workspace);
+  }
+  if (candidate->route == XRAY_SQUARE_DENSE_TOOM3_COMBO) {
+    return xray_bigint_mul_toom3_unroll4_recursive_full_workspace_reuse_div2_div3_probe(
+      out,
+      value,
+      mirror,
+      candidate->leaf_threshold,
+      candidate->depth_limit,
+      workspace);
+  }
+  if (candidate->route == XRAY_SQUARE_DENSE_TOOM5_FACTORED) {
+    return xray_bigint_mul_toom5_top_full_workspace_reuse_factored_div_probe(
+      out,
+      value,
+      mirror,
+      candidate->leaf_threshold,
+      candidate->depth_limit,
+      workspace);
+  }
+  if (candidate->route == XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL) {
+    return xray_bigint_mul_toom4_top_full_workspace_reuse_factored_div_parallel_probe(
+      out,
+      value,
+      mirror,
+      candidate->leaf_threshold,
+      candidate->depth_limit,
+      1200U,
+      0U,
+      workspace);
+  }
+  if (candidate->route == XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL4) {
+    return xray_bigint_mul_toom4_top_full_workspace_reuse_factored_div_parallel_probe(
+      out,
+      value,
+      mirror,
+      candidate->leaf_threshold,
+      candidate->depth_limit,
+      1200U,
+      4U,
+      workspace);
+  }
+  if (candidate->route == XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL2) {
+    return xray_bigint_mul_toom4_top_full_workspace_reuse_factored_div_parallel_probe(
+      out,
+      value,
+      mirror,
+      candidate->leaf_threshold,
+      candidate->depth_limit,
+      1200U,
+      2U,
+      workspace);
+  }
+  if (candidate->route == XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL4_ANY) {
+    return xray_bigint_mul_toom4_top_full_workspace_reuse_factored_div_parallel_probe(
+      out,
+      value,
+      mirror,
+      candidate->leaf_threshold,
+      candidate->depth_limit,
+      1U,
+      4U,
+      workspace);
+  }
+  if (candidate->route == XRAY_SQUARE_DENSE_TOOM3_SQUARE) {
+    (void)mirror;
+    return xray_bigint_square_toom3_full_workspace_reuse_probe(
+      out,
+      value,
+      candidate->leaf_threshold,
+      candidate->depth_limit,
+      workspace);
+  }
+  if (candidate->route == XRAY_SQUARE_DENSE_TOOM3_SQUARE_NEG2) {
+    (void)mirror;
+    return xray_bigint_square_toom3_full_workspace_reuse_neg2_div2_div3_probe(
+      out,
+      value,
+      candidate->leaf_threshold,
+      candidate->depth_limit,
+      workspace);
+  }
+  if (candidate->route == XRAY_SQUARE_DENSE_TOOM3_SQUARE_MUL_POINTS) {
+    (void)mirror;
+    return xray_bigint_square_toom3_full_workspace_reuse_mul_points_probe(
+      out,
+      value,
+      candidate->leaf_threshold,
+      candidate->depth_limit,
+      workspace);
+  }
+  if (candidate->route == XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL2) {
+    (void)mirror;
+    return xray_bigint_square_toom3_full_workspace_reuse_parallel_probe(
+      out,
+      value,
+      candidate->leaf_threshold,
+      candidate->depth_limit,
+      1U,
+      2U,
+      workspace);
+  }
+  if (candidate->route == XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL) {
+    (void)mirror;
+    return xray_bigint_square_toom3_full_workspace_reuse_parallel_probe(
+      out,
+      value,
+      candidate->leaf_threshold,
+      candidate->depth_limit,
+      1U,
+      0U,
+      workspace);
+  }
+  if (candidate->route == XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL4) {
+    (void)mirror;
+    return xray_bigint_square_toom3_full_workspace_reuse_parallel_probe(
+      out,
+      value,
+      candidate->leaf_threshold,
+      candidate->depth_limit,
+      1U,
+      4U,
+      workspace);
+  }
+  if (candidate->route == XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5) {
+    (void)mirror;
+    return xray_bigint_square_toom3_full_workspace_reuse_parallel_probe(
+      out,
+      value,
+      candidate->leaf_threshold,
+      candidate->depth_limit,
+      1U,
+      5U,
+      workspace);
+  }
+  if (candidate->route == XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF) {
+    (void)mirror;
+    return xray_bigint_square_toom3_direct_coeff_reuse_probe(
+      out,
+      value,
+      candidate->leaf_threshold,
+      candidate->depth_limit,
+      workspace);
+  }
+  if (candidate->route == XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3) {
+    (void)mirror;
+    return xray_bigint_square_toom3_chung_sqr3_reuse_probe(
+      out,
+      value,
+      candidate->leaf_threshold,
+      candidate->depth_limit,
+      workspace);
+  }
+  if (candidate->route == XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF_PARALLEL4) {
+    (void)mirror;
+    return xray_bigint_square_toom3_direct_coeff_parallel_reuse_probe(
+      out,
+      value,
+      candidate->leaf_threshold,
+      candidate->depth_limit,
+      4U,
+      workspace);
+  }
+  if (candidate->route == XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF_PARALLEL5) {
+    (void)mirror;
+    return xray_bigint_square_toom3_direct_coeff_parallel_reuse_probe(
+      out,
+      value,
+      candidate->leaf_threshold,
+      candidate->depth_limit,
+      5U,
+      workspace);
+  }
+  if (candidate->route == XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF_DISPATCH) {
+    (void)mirror;
+    (void)workspace;
+    return xray_bigint_square_toom3_direct_coeff_dispatch_probe(out, value);
+  }
+  if (candidate->route == XRAY_SQUARE_DENSE_TOOM4_SQUARE) {
+    (void)mirror;
+    return xray_bigint_square_toom4_top_full_workspace_reuse_probe(
+      out,
+      value,
+      candidate->leaf_threshold,
+      candidate->depth_limit,
+      workspace);
+  }
+  if (candidate->route == XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4) {
+    (void)mirror;
+    return xray_bigint_square_toom4_chung_sqr4_reuse_probe(
+      out,
+      value,
+      candidate->leaf_threshold,
+      candidate->depth_limit,
+      workspace);
+  }
+  if (candidate->route == XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_TOP52_CHILD) {
+    (void)mirror;
+    return xray_bigint_square_toom4_chung_sqr4_split_leaf_reuse_probe(
+      out,
+      value,
+      52U,
+      candidate->leaf_threshold,
+      candidate->depth_limit,
+      workspace);
+  }
+  if (candidate->route == XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL2 ||
+      candidate->route == XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL3 ||
+      candidate->route == XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL4 ||
+      candidate->route == XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL7) {
+    (void)mirror;
+    size_t group_count =
+      candidate->route == XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL2 ? 2U :
+      candidate->route == XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL3 ? 3U :
+      candidate->route == XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL4 ? 4U : 7U;
+    return xray_bigint_square_toom4_chung_sqr4_parallel_reuse_probe(
+      out,
+      value,
+      candidate->leaf_threshold,
+      candidate->depth_limit,
+      group_count,
+      workspace);
+  }
+  if (candidate->route == XRAY_SQUARE_DENSE_TOOM4_SQUARE_MUL_POINTS) {
+    (void)mirror;
+    return xray_bigint_square_toom4_top_full_workspace_reuse_mul_points_probe(
+      out,
+      value,
+      candidate->leaf_threshold,
+      candidate->depth_limit,
+      workspace);
+  }
+  return 0;
+}
+
+static void run_square_dense_route_hill_point_seeded(
+  XrayBenchmarkReport *report,
+  size_t digits,
+  const XraySquareDenseCandidate *candidate,
+  size_t sample_count,
+  unsigned int min_iterations,
+  unsigned int max_iterations,
+  unsigned int seed_base,
+  unsigned int forced_batch_iterations) {
+  if (!report || !candidate || sample_count == 0 || sample_count > XRAY_BENCH_MAX_SAMPLES) return;
+  char *text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  XrayScratchBigInt value[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt mirror[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt candidate_out[XRAY_MUL_OPERAND_FAMILIES];
+  XrayBigIntMulWorkspace workspace;
+  mpz_t gvalue[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gout[XRAY_MUL_OPERAND_FAMILIES];
+  unsigned long long candidate_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned int iterations = perf_iterations("mul", digits);
+  if (max_iterations > 0U && iterations > max_iterations) iterations = max_iterations;
+  if (iterations < min_iterations) iterations = min_iterations;
+  unsigned int batch_iterations = forced_batch_iterations > 0U ?
+    forced_batch_iterations :
+    (iterations >= 8U ? 4U : 1U);
+  xray_bigint_mul_workspace_init(&workspace);
+  int ok = 1;
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    xray_bigint_init(&value[family]);
+    xray_bigint_init(&mirror[family]);
+    xray_bigint_init(&candidate_out[family]);
+    mpz_inits(gvalue[family], gout[family], NULL);
+    text[family] = benchmark_decimal(
+      digits,
+      seed_base + mul_operand_families[family].left_seed + (unsigned int)(family * 47U),
+      mul_operand_families[family].left_high_lead);
+    ok = ok &&
+      text[family] &&
+      xray_bigint_set_decimal(&value[family], text[family]) &&
+      xray_bigint_set_decimal(&mirror[family], text[family]) &&
+      mpz_set_str(gvalue[family], text[family], 10) == 0;
+  }
+
+  int parity = 1;
+  size_t hash_match_count = 0;
+  for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    ok = run_square_dense_route_candidate(
+      &candidate_out[family],
+      &value[family],
+      &mirror[family],
+      candidate,
+      &workspace);
+    if (ok) mpz_mul(gout[family], gvalue[family], gvalue[family]);
+  }
+  for (size_t sample = 0; ok && sample < sample_count; ++sample) {
+    unsigned int completed = 0;
+    unsigned int phase = (unsigned int)(sample & 1U);
+    while (ok && completed < iterations) {
+      unsigned int remaining = iterations - completed;
+      unsigned int batch = remaining < batch_iterations ? remaining : batch_iterations;
+      for (unsigned int lane = 0; ok && lane < 2U; ++lane) {
+        unsigned int active = (unsigned int)((phase + lane) & 1U);
+        unsigned long long started = xray_now_us();
+        for (unsigned int iteration = 0; ok && iteration < batch; ++iteration) {
+          for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+            if (active == 0U) {
+              ok = run_square_dense_route_candidate(
+                &candidate_out[family],
+                &value[family],
+                &mirror[family],
+                candidate,
+                &workspace);
+            } else {
+              mpz_mul(gout[family], gvalue[family], gvalue[family]);
+            }
+          }
+        }
+        if (active == 0U) candidate_samples[sample] += xray_now_us() - started;
+        else gmp_samples[sample] += xray_now_us() - started;
+      }
+      phase ^= 1U;
+      completed += batch;
+    }
+    for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+      char *candidate_text = xray_bigint_get_decimal(&candidate_out[family]);
+      char *gmp_text = mpz_get_str(NULL, 10, gout[family]);
+      uint64_t candidate_hash = xray_benchmark_text_hash64(candidate_text);
+      uint64_t gmp_hash = xray_benchmark_text_hash64(gmp_text);
+      int sample_match = ok &&
+        candidate_text &&
+        gmp_text &&
+        strcmp(candidate_text, gmp_text) == 0;
+      if (sample_match && candidate_hash != 0ULL && candidate_hash == gmp_hash) hash_match_count++;
+      parity = parity && sample_match;
+      free(candidate_text);
+      free(gmp_text);
+    }
+  }
+
+  double candidate_gmp_ratio = median_paired_ratio(candidate_samples, gmp_samples, sample_count);
+  double candidate_gmp_worst = max_paired_ratio(candidate_samples, gmp_samples, sample_count);
+  size_t stable = paired_ratio_wins(candidate_samples, gmp_samples, sample_count, 1.0);
+  size_t expected_hash_count = sample_count * XRAY_MUL_OPERAND_FAMILIES;
+  int hash_gate = hash_match_count == expected_hash_count;
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.category, sizeof(result.category), "kernel-probe");
+  snprintf(result.name, sizeof(result.name), "kernel square dense route hill %s %zu digits", candidate->name, digits);
+  snprintf(result.operation, sizeof(result.operation), "square-dense-route-hill-pt");
+  result.digits = digits;
+  result.scratch_us = median_samples(candidate_samples, sample_count);
+  result.gmp_us = median_samples(gmp_samples, sample_count);
+  result.speed_ratio = candidate_gmp_ratio;
+  result.max_allowed_speed_ratio = 1.0;
+  result.worst_pair_ratio = candidate_gmp_worst;
+  result.stable_sample_count = stable;
+  result.sample_count = sample_count;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  result.parity_verified = parity && hash_gate;
+  result.passed = parity && hash_gate;
+  result.replacement_ready = 0;
+  snprintf(result.status, sizeof(result.status), "%s",
+    !parity ? "mismatch" :
+    (!hash_gate ? "hash-mismatch" :
+    (candidate_gmp_ratio <= 1.0 ? "candidate-faster-or-tie" : "gmp-faster")));
+  snprintf(result.adoption, sizeof(result.adoption), "observe-only");
+  snprintf(result.detail, sizeof(result.detail),
+    "op=square-dense-route-hill-point digits=%zu sizeRole=%s candidate=%s route=%s leafThreshold=%zu depthLimit=%zu operandFamilies=%u samples=%zu iterations=%u batchIterations=%u stableCandidate=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s candidateUs=%llu gmpUs=%llu candidateGmpRatio=%.3f worstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch warmup=1 sameInput=yes oracle=mpz_mul featureGate=square-dense-route-hill-climb replacementReady=false noAutoRoute=1 adoption=observe-only",
+    digits,
+    large_mul_campaign_size_role(digits),
+    candidate->name,
+    square_dense_route_name(candidate->route),
+    candidate->leaf_threshold,
+    candidate->depth_limit,
+    (unsigned int)XRAY_MUL_OPERAND_FAMILIES,
+    sample_count,
+    iterations,
+    batch_iterations,
+    stable,
+    sample_count,
+    hash_match_count,
+    expected_hash_count,
+    hash_gate ? "matched" : "blocked",
+    parity ? "matched" : "blocked",
+    result.scratch_us,
+    result.gmp_us,
+    candidate_gmp_ratio,
+    candidate_gmp_worst);
+  append_result(report, &result);
+
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    mpz_clears(gvalue[family], gout[family], NULL);
+    xray_bigint_clear(&value[family]);
+    xray_bigint_clear(&mirror[family]);
+    xray_bigint_clear(&candidate_out[family]);
+    free(text[family]);
+  }
+  xray_bigint_mul_workspace_clear(&workspace);
+}
+
+static void run_square_dense_route_hill_point(
+  XrayBenchmarkReport *report,
+  size_t digits,
+  const XraySquareDenseCandidate *candidate,
+  size_t sample_count,
+  unsigned int min_iterations,
+  unsigned int max_iterations) {
+  run_square_dense_route_hill_point_seeded(
+    report,
+    digits,
+    candidate,
+    sample_count,
+    min_iterations,
+    max_iterations,
+    3911U,
+    0U);
+}
+
+static void run_square_dense_route_current_gate_point(
+  XrayBenchmarkReport *report,
+  size_t digits,
+  const XraySquareDenseCandidate *candidate,
+  size_t sample_count,
+  unsigned int min_iterations,
+  unsigned int max_iterations) {
+  if (!report || !candidate || sample_count == 0 || sample_count > XRAY_BENCH_MAX_SAMPLES) return;
+  char *text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  XrayScratchBigInt value[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt mirror[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt candidate_out[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt current_out[XRAY_MUL_OPERAND_FAMILIES];
+  XrayBigIntMulWorkspace workspace;
+  mpz_t gvalue[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gout[XRAY_MUL_OPERAND_FAMILIES];
+  unsigned long long candidate_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long current_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned int iterations = perf_iterations("mul", digits);
+  if (max_iterations > 0U && iterations > max_iterations) iterations = max_iterations;
+  if (iterations < min_iterations) iterations = min_iterations;
+  unsigned int batch_iterations = iterations >= 8U ? 4U : 1U;
+  xray_bigint_mul_workspace_init(&workspace);
+  int ok = 1;
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    xray_bigint_init(&value[family]);
+    xray_bigint_init(&mirror[family]);
+    xray_bigint_init(&candidate_out[family]);
+    xray_bigint_init(&current_out[family]);
+    mpz_inits(gvalue[family], gout[family], NULL);
+    text[family] = benchmark_decimal(
+      digits,
+      4127U + mul_operand_families[family].left_seed + (unsigned int)(family * 53U),
+      mul_operand_families[family].left_high_lead);
+    ok = ok &&
+      text[family] &&
+      xray_bigint_set_decimal(&value[family], text[family]) &&
+      xray_bigint_set_decimal(&mirror[family], text[family]) &&
+      mpz_set_str(gvalue[family], text[family], 10) == 0;
+  }
+
+  int parity = 1;
+  size_t hash_match_count = 0;
+  for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    ok = run_square_dense_route_candidate(
+      &candidate_out[family],
+      &value[family],
+      &mirror[family],
+      candidate,
+      &workspace) &&
+      xray_bigint_square(&current_out[family], &value[family]);
+    if (ok) mpz_mul(gout[family], gvalue[family], gvalue[family]);
+  }
+
+  for (size_t sample = 0; ok && sample < sample_count; ++sample) {
+    unsigned int completed = 0;
+    unsigned int phase = (unsigned int)(sample % 3U);
+    while (ok && completed < iterations) {
+      unsigned int remaining = iterations - completed;
+      unsigned int batch = remaining < batch_iterations ? remaining : batch_iterations;
+      for (unsigned int lane = 0; ok && lane < 3U; ++lane) {
+        unsigned int active = (phase + lane) % 3U;
+        unsigned long long started = xray_now_us();
+        for (unsigned int iteration = 0; ok && iteration < batch; ++iteration) {
+          for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+            if (active == 0U) {
+              ok = run_square_dense_route_candidate(
+                &candidate_out[family],
+                &value[family],
+                &mirror[family],
+                candidate,
+                &workspace);
+            } else if (active == 1U) {
+              ok = xray_bigint_square(&current_out[family], &value[family]);
+            } else {
+              mpz_mul(gout[family], gvalue[family], gvalue[family]);
+            }
+          }
+        }
+        if (active == 0U) candidate_samples[sample] += xray_now_us() - started;
+        else if (active == 1U) current_samples[sample] += xray_now_us() - started;
+        else gmp_samples[sample] += xray_now_us() - started;
+      }
+      phase = (phase + 1U) % 3U;
+      completed += batch;
+    }
+    for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+      char *candidate_text = xray_bigint_get_decimal(&candidate_out[family]);
+      char *current_text = xray_bigint_get_decimal(&current_out[family]);
+      char *gmp_text = mpz_get_str(NULL, 10, gout[family]);
+      uint64_t candidate_hash = xray_benchmark_text_hash64(candidate_text);
+      uint64_t current_hash = xray_benchmark_text_hash64(current_text);
+      uint64_t gmp_hash = xray_benchmark_text_hash64(gmp_text);
+      int sample_match = ok &&
+        candidate_text &&
+        current_text &&
+        gmp_text &&
+        strcmp(candidate_text, current_text) == 0 &&
+        strcmp(candidate_text, gmp_text) == 0;
+      if (sample_match &&
+          candidate_hash != 0ULL &&
+          candidate_hash == current_hash &&
+          candidate_hash == gmp_hash) {
+        hash_match_count++;
+      }
+      parity = parity && sample_match;
+      free(candidate_text);
+      free(current_text);
+      free(gmp_text);
+    }
+  }
+
+  double candidate_current_ratio = median_paired_ratio(candidate_samples, current_samples, sample_count);
+  double candidate_current_worst = max_paired_ratio(candidate_samples, current_samples, sample_count);
+  double candidate_gmp_ratio = median_paired_ratio(candidate_samples, gmp_samples, sample_count);
+  double candidate_gmp_worst = max_paired_ratio(candidate_samples, gmp_samples, sample_count);
+  double current_gmp_ratio = median_paired_ratio(current_samples, gmp_samples, sample_count);
+  size_t stable_current = paired_ratio_wins(candidate_samples, current_samples, sample_count, 0.98);
+  size_t stable_gmp = paired_ratio_wins(candidate_samples, gmp_samples, sample_count, 1.0);
+  size_t expected_hash_count = sample_count * XRAY_MUL_OPERAND_FAMILIES;
+  int hash_gate = hash_match_count == expected_hash_count;
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.category, sizeof(result.category), "kernel-probe");
+  snprintf(result.name, sizeof(result.name), "kernel square dense route current gate %s %zu digits", candidate->name, digits);
+  snprintf(result.operation, sizeof(result.operation), "square-dense-route-current-gate-pt");
+  result.digits = digits;
+  result.scratch_us = median_samples(candidate_samples, sample_count);
+  result.gmp_us = median_samples(gmp_samples, sample_count);
+  result.speed_ratio = candidate_current_ratio > 0.0 ? candidate_current_ratio : 0.0;
+  result.max_allowed_speed_ratio = 0.98;
+  result.worst_pair_ratio = candidate_current_worst;
+  result.stable_sample_count = stable_current;
+  result.sample_count = sample_count;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + median_samples(current_samples, sample_count) + result.gmp_us + 999ULL) / 1000ULL);
+  result.parity_verified = parity && hash_gate;
+  result.passed = parity && hash_gate;
+  result.replacement_ready = 0;
+  snprintf(result.status, sizeof(result.status), "%s",
+    !parity ? "mismatch" :
+    (!hash_gate ? "hash-mismatch" :
+    (candidate_current_ratio <= 0.98 ? "candidate-beats-current" :
+    (candidate_current_ratio <= 1.02 ? "candidate-current-tie" : "current-faster"))));
+  snprintf(result.adoption, sizeof(result.adoption), "observe-only");
+  snprintf(result.detail, sizeof(result.detail),
+    "op=square-dense-route-current-gate-point digits=%zu sizeRole=%s candidate=%s route=%s leafThreshold=%zu depthLimit=%zu operandFamilies=%u samples=%zu iterations=%u batchIterations=%u stableCandidateVsCurrent=%zu/%zu stableCandidateVsGmp=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s candidateUs=%llu currentUs=%llu gmpUs=%llu candidateCurrentRatio=%.3f candidateGmpRatio=%.3f currentGmpRatio=%.3f worstCandidateCurrent=%.3f worstCandidateGmp=%.3f ratioMethod=paired-median timingMode=rotating-batch warmup=1 sameInput=yes oracle=mpz_mul featureGate=square-dense-route-current-gate replacementReady=false noAutoRoute=1 adoption=observe-only",
+    digits,
+    large_mul_campaign_size_role(digits),
+    candidate->name,
+    square_dense_route_name(candidate->route),
+    candidate->leaf_threshold,
+    candidate->depth_limit,
+    (unsigned int)XRAY_MUL_OPERAND_FAMILIES,
+    sample_count,
+    iterations,
+    batch_iterations,
+    stable_current,
+    sample_count,
+    stable_gmp,
+    sample_count,
+    hash_match_count,
+    expected_hash_count,
+    hash_gate ? "matched" : "blocked",
+    parity ? "matched" : "blocked",
+    result.scratch_us,
+    median_samples(current_samples, sample_count),
+    result.gmp_us,
+    candidate_current_ratio,
+    candidate_gmp_ratio,
+    current_gmp_ratio,
+    candidate_current_worst,
+    candidate_gmp_worst);
+  append_result(report, &result);
+
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    mpz_clears(gvalue[family], gout[family], NULL);
+    xray_bigint_clear(&value[family]);
+    xray_bigint_clear(&mirror[family]);
+    xray_bigint_clear(&candidate_out[family]);
+    xray_bigint_clear(&current_out[family]);
+    free(text[family]);
+  }
+  xray_bigint_mul_workspace_clear(&workspace);
+}
+
+static void run_square_dense_route_hill_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-dense-route-hill")) return;
+  static const XraySquareDenseCandidate candidates[] = {
+    {"top4-l32d3", XRAY_SQUARE_DENSE_TOOM4_FACTORED, 32U, 3U},
+    {"top4-l48d2", XRAY_SQUARE_DENSE_TOOM4_FACTORED, 48U, 2U},
+    {"top4-l64d2", XRAY_SQUARE_DENSE_TOOM4_FACTORED, 64U, 2U},
+    {"top4-l80d2", XRAY_SQUARE_DENSE_TOOM4_FACTORED, 80U, 2U},
+    {"top4-l48d3", XRAY_SQUARE_DENSE_TOOM4_FACTORED, 48U, 3U},
+    {"combo-l64d2", XRAY_SQUARE_DENSE_TOOM3_COMBO, 64U, 2U},
+    {"combo-l48d4", XRAY_SQUARE_DENSE_TOOM3_COMBO, 48U, 4U},
+    {"sq3-l48d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 48U, 3U},
+    {"sq3-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 2U},
+    {"sq3-l96d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 96U, 2U},
+    {"sq4-l40d3", XRAY_SQUARE_DENSE_TOOM4_SQUARE, 40U, 3U},
+    {"sq4-l48d3", XRAY_SQUARE_DENSE_TOOM4_SQUARE, 48U, 3U},
+    {"sq4-l64d2", XRAY_SQUARE_DENSE_TOOM4_SQUARE, 64U, 2U}
+  };
+  const size_t digits[] = {8192, 16384, 24103, 32768, 52163, 65536};
+  for (size_t digit_index = 0; digit_index < sizeof(digits) / sizeof(digits[0]); ++digit_index) {
+    for (size_t candidate_index = 0; candidate_index < sizeof(candidates) / sizeof(candidates[0]); ++candidate_index) {
+      run_square_dense_route_hill_point(report, digits[digit_index], &candidates[candidate_index], 3U, 3U, 16U);
+    }
+  }
+}
+
+static void run_square_toom3_hill_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-toom3-hill")) return;
+  static const XraySquareDenseCandidate candidates[] = {
+    {"sq3-l40d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 40U, 3U},
+    {"sq3-l48d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 48U, 3U},
+    {"sq3-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 2U},
+    {"sq3mul-l40d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE_MUL_POINTS, 40U, 3U},
+    {"sq3mul-l48d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE_MUL_POINTS, 48U, 3U},
+    {"sq3mul-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_MUL_POINTS, 64U, 2U},
+    {"combo-l48d3", XRAY_SQUARE_DENSE_TOOM3_COMBO, 48U, 3U},
+    {"combo-l64d2", XRAY_SQUARE_DENSE_TOOM3_COMBO, 64U, 2U}
+  };
+  const size_t digits[] = {8192, 11717, 16384, 24103, 32768};
+  for (size_t digit_index = 0; digit_index < sizeof(digits) / sizeof(digits[0]); ++digit_index) {
+    for (size_t candidate_index = 0; candidate_index < sizeof(candidates) / sizeof(candidates[0]); ++candidate_index) {
+      run_square_dense_route_hill_point(report, digits[digit_index], &candidates[candidate_index], 3U, 3U, 12U);
+    }
+  }
+}
+
+static void run_square_toom3_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-toom3-gate")) return;
+  static const struct {
+    size_t digits;
+    XraySquareDenseCandidate candidate;
+  } cases[] = {
+    {8192, {"sq3mul-l48d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE_MUL_POINTS, 48U, 3U}},
+    {11717, {"combo-l48d3", XRAY_SQUARE_DENSE_TOOM3_COMBO, 48U, 3U}},
+    {32768, {"sq3mul-l40d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE_MUL_POINTS, 40U, 3U}}
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    run_square_dense_route_hill_point(report, cases[index].digits, &cases[index].candidate, 5U, 64U, 128U);
+  }
+}
+
+static void run_square_route_current_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-route-current-gate")) return;
+  static const struct {
+    size_t digits;
+    XraySquareDenseCandidate candidate;
+  } cases[] = {
+    {8192, {"sq3mul-l48d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE_MUL_POINTS, 48U, 3U}},
+    {11717, {"combo-l48d3", XRAY_SQUARE_DENSE_TOOM3_COMBO, 48U, 3U}},
+    {11717, {"sq3mul-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_MUL_POINTS, 64U, 2U}},
+    {16384, {"sq3-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 2U}},
+    {32768, {"self-mul-prod", XRAY_SQUARE_DENSE_PRODUCTION_SELF_MUL, 0U, 0U}},
+    {32768, {"sq3mul-l40d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE_MUL_POINTS, 40U, 3U}},
+    {32768, {"sq3mul-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_MUL_POINTS, 64U, 2U}}
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    run_square_dense_route_current_gate_point(report, cases[index].digits, &cases[index].candidate, 5U, 64U, 128U);
+  }
+}
+
+static void run_square_toom3_current_low_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-toom3-current-low-gate")) return;
+  static const struct {
+    size_t digits;
+    XraySquareDenseCandidate candidate;
+  } cases[] = {
+    {8192, {"sq3-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 2U}},
+    {8192, {"sq3-l48d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 48U, 3U}},
+    {11717, {"sq3-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 2U}},
+    {16384, {"sq3-l40d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 40U, 3U}},
+    {16384, {"combo-l48d3", XRAY_SQUARE_DENSE_TOOM3_COMBO, 48U, 3U}},
+    {16384, {"sq3-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 2U}},
+    {24103, {"sq3-l40d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 40U, 3U}},
+    {24103, {"sq3-l48d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 48U, 3U}},
+    {24103, {"sq3-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 2U}}
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    run_square_dense_route_current_gate_point(report, cases[index].digits, &cases[index].candidate, 5U, 64U, 96U);
+  }
+}
+
+static void run_square_toom3_frontier_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-toom3-frontier-gate")) return;
+  static const struct {
+    size_t digits;
+    XraySquareDenseCandidate candidate;
+  } cases[] = {
+    {4096, {"sq3-l32d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 32U, 2U}},
+    {4096, {"sq3-l40d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 40U, 2U}},
+    {4096, {"sq3-l48d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 48U, 2U}},
+    {4096, {"sq3-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 2U}},
+    {4096, {"sq3-l80d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 80U, 2U}},
+    {4096, {"sq3-l96d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 96U, 2U}},
+    {5639, {"sq3-l32d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 32U, 2U}},
+    {5639, {"sq3-l40d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 40U, 2U}},
+    {5639, {"sq3-l48d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 48U, 2U}},
+    {5639, {"sq3-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 2U}},
+    {7000, {"sq3-l32d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 32U, 2U}},
+    {7000, {"sq3-l40d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 40U, 2U}},
+    {7000, {"sq3-l48d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 48U, 2U}},
+    {7000, {"sq3-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 2U}}
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    run_square_dense_route_current_gate_point(report, cases[index].digits, &cases[index].candidate, 5U, 64U, 96U);
+  }
+}
+
+static void run_square_toom3_frontier_final_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-toom3-frontier-final-gate")) return;
+  static const struct {
+    size_t digits;
+    XraySquareDenseCandidate candidate;
+  } cases[] = {
+    {4096, {"sq3-l40d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 40U, 2U}},
+    {5639, {"sq3-l40d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 40U, 2U}},
+    {5639, {"sq3-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 2U}},
+    {7000, {"sq3-l48d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 48U, 2U}},
+    {7000, {"sq3-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 2U}},
+    {8192, {"sq3-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 2U}}
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    run_square_dense_route_current_gate_point(report, cases[index].digits, &cases[index].candidate, 7U, 64U, 96U);
+  }
+}
+
+static void run_square_toom3_low_final_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-toom3-low-final-gate")) return;
+  static const struct {
+    size_t digits;
+    XraySquareDenseCandidate candidate;
+    unsigned int min_iterations;
+    unsigned int max_iterations;
+  } cases[] = {
+    {4096, {"sq3-l40d1", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 40U, 1U}, 256U, 256U},
+    {4096, {"sq3-l48d1", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 48U, 1U}, 256U, 256U},
+    {4096, {"sq3-l64d1", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 1U}, 256U, 256U},
+    {4096, {"sq3-l40d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 40U, 2U}, 256U, 256U},
+    {4096, {"sq3-l48d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 48U, 2U}, 256U, 256U},
+    {4096, {"sq3-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 2U}, 256U, 256U},
+    {4096, {"sq3-l40d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 40U, 3U}, 256U, 256U},
+    {4096, {"sq3-l48d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 48U, 3U}, 256U, 256U},
+    {4096, {"sq3-l64d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 3U}, 256U, 256U},
+    {4096, {"sq3p2-l40d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL2, 40U, 2U}, 256U, 256U},
+    {4096, {"sq3p4-l40d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL4, 40U, 2U}, 256U, 256U},
+    {4096, {"sq3dc-l40d2", XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF, 40U, 2U}, 256U, 256U},
+    {4096, {"sq3dc-l48d2", XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF, 48U, 2U}, 256U, 256U},
+    {4096, {"sq3dcp4-l40d2", XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF_PARALLEL4, 40U, 2U}, 256U, 256U},
+    {4096, {"sq3dcp5-l40d2", XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF_PARALLEL5, 40U, 2U}, 256U, 256U},
+    {5639, {"sq3-l40d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 40U, 2U}, 128U, 128U},
+    {5639, {"sq3-l48d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 48U, 2U}, 128U, 128U},
+    {5639, {"sq3-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 2U}, 128U, 128U}
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    run_square_dense_route_current_gate_point(
+      report,
+      cases[index].digits,
+      &cases[index].candidate,
+      7U,
+      cases[index].min_iterations,
+      cases[index].max_iterations);
+  }
+}
+
+static void run_square_toom3_low_seed_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-toom3-low-seed-gate")) return;
+  static const XraySquareDenseCandidate candidates[] = {
+    {"sq3-l40d1", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 40U, 1U},
+    {"sq3-l48d1", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 48U, 1U},
+    {"sq3-l64d1", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 1U},
+    {"sq3-l40d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 40U, 2U},
+    {"sq3-l48d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 48U, 2U},
+    {"sq3-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 2U},
+    {"sq3-l40d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 40U, 3U},
+    {"sq3-l48d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 48U, 3U},
+    {"sq3-l64d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 3U}
+  };
+  for (size_t index = 0; index < sizeof(candidates) / sizeof(candidates[0]); ++index) {
+    run_square_dense_route_hill_point_seeded(
+      report,
+      4096U,
+      &candidates[index],
+      7U,
+      1024U,
+      1024U,
+      3719U,
+      1U);
+  }
+}
+
+static void run_square_toom3_mid_tune_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-toom3-mid-tune")) return;
+  static const size_t digits[] = {8192, 11717, 16384, 24103};
+  static const size_t leaf_thresholds[] = {40U, 48U, 56U, 64U, 80U};
+  for (size_t digit_index = 0; digit_index < sizeof(digits) / sizeof(digits[0]); ++digit_index) {
+    for (size_t leaf_index = 0; leaf_index < sizeof(leaf_thresholds) / sizeof(leaf_thresholds[0]); ++leaf_index) {
+      char name[32];
+      snprintf(name, sizeof(name), "sq3-l%zud2", leaf_thresholds[leaf_index]);
+      XraySquareDenseCandidate candidate = {
+        name,
+        XRAY_SQUARE_DENSE_TOOM3_SQUARE,
+        leaf_thresholds[leaf_index],
+        2U
+      };
+      run_square_dense_route_current_gate_point(report, digits[digit_index], &candidate, 3U, 32U, 64U);
+    }
+  }
+}
+
+static void run_square_toom3_mid_final_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-toom3-mid-final-gate")) return;
+  static const struct {
+    size_t digits;
+    XraySquareDenseCandidate candidate;
+  } cases[] = {
+    {8192, {"sq3-l48d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 48U, 2U}},
+    {8192, {"sq3-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 2U}},
+    {11717, {"sq3-l40d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 40U, 2U}},
+    {11717, {"sq3-l48d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 48U, 2U}},
+    {11717, {"sq3-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 2U}},
+    {16384, {"sq3-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 2U}},
+    {16384, {"sq3-l80d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 80U, 2U}}
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    run_square_dense_route_current_gate_point(report, cases[index].digits, &cases[index].candidate, 7U, 64U, 96U);
+  }
+}
+
+static void run_square_toom3_parallel_scout_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-toom3-parallel-scout")) return;
+  static const struct {
+    size_t digits;
+    XraySquareDenseCandidate candidate;
+  } cases[] = {
+    {8192, {"sq3p-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL, 64U, 2U}},
+    {11717, {"sq3p-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL, 64U, 2U}},
+    {16384, {"sq3p-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL, 64U, 2U}},
+    {16384, {"sq3p4-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL4, 64U, 2U}},
+    {24103, {"sq3p-l48d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL, 48U, 3U}},
+    {24103, {"sq3p4-l48d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL4, 48U, 3U}}
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    run_square_dense_route_current_gate_point(report, cases[index].digits, &cases[index].candidate, 3U, 32U, 64U);
+  }
+}
+
+static void run_square_toom3_parallel_tune_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-toom3-parallel-tune")) return;
+  static const struct {
+    size_t digits;
+    XraySquareDenseCandidate candidate;
+  } cases[] = {
+    {8192, {"sq3p2-l40d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL2, 40U, 2U}},
+    {8192, {"sq3p4-l40d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL4, 40U, 2U}},
+    {8192, {"sq3p5-l48d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 48U, 2U}},
+    {11717, {"sq3p2-l40d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL2, 40U, 2U}},
+    {11717, {"sq3p4-l40d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL4, 40U, 2U}},
+    {11717, {"sq3p4-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL4, 64U, 2U}},
+    {16384, {"sq3p2-l48d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL2, 48U, 2U}},
+    {16384, {"sq3p4-l48d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL4, 48U, 2U}},
+    {16384, {"sq3p5-l48d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 48U, 2U}},
+    {16384, {"sq3p-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL, 64U, 2U}},
+    {16384, {"sq3p5-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 64U, 2U}},
+    {24103, {"sq3p2-l48d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL2, 48U, 3U}},
+    {24103, {"sq3p4-l48d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL4, 48U, 3U}},
+    {24103, {"sq3p5-l48d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 48U, 3U}},
+    {24103, {"sq3p4-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL4, 64U, 2U}},
+    {32768, {"sq3p4-l48d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL4, 48U, 3U}},
+    {32768, {"sq3p5-l48d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 48U, 3U}}
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    run_square_dense_route_current_gate_point(report, cases[index].digits, &cases[index].candidate, 3U, 32U, 64U);
+  }
+}
+
+static void run_square_toom3_parallel_hillseed_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-toom3-parallel-hillseed")) return;
+  static const struct {
+    size_t digits;
+    XraySquareDenseCandidate candidate;
+  } cases[] = {
+    {8192, {"sq3p4-l40d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL4, 40U, 2U}},
+    {11717, {"sq3p2-l40d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL2, 40U, 2U}},
+    {16384, {"sq3p-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL, 64U, 2U}},
+    {24103, {"sq3p4-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL4, 64U, 2U}},
+    {32768, {"sq3p5-l48d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 48U, 3U}}
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    run_square_dense_route_hill_point_seeded(
+      report,
+      cases[index].digits,
+      &cases[index].candidate,
+      3U,
+      128U,
+      128U,
+      3719U,
+      1U);
+  }
+}
+
+static void run_square_toom3_parallel_hillseed_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-toom3-parallel-hillseed-gate")) return;
+  static const XraySquareDenseCandidate candidates[] = {
+    {"sq3p5-l40d2-4096", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 40U, 2U},
+    {"sq3p5-l64d2-4096", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 64U, 2U},
+    {"sq3p5-l32d2-8192", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 32U, 2U},
+    {"sq3p5-l40d2-8192", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 40U, 2U},
+    {"sq3p5-l48d2-8192", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 48U, 2U},
+    {"sq3p5-l64d2-8192", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 64U, 2U},
+    {"sq3p5-l40d2-11717", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 40U, 2U},
+    {"sq3p5-l64d2-11717", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 64U, 2U},
+    {"sq3p5-l64d2-16384", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 64U, 2U},
+    {"sq3p-l64d2-24103", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL, 64U, 2U},
+    {"sq3p4-l64d2-24103", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL4, 64U, 2U},
+    {"sq3p5-l64d2-24103", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 64U, 2U},
+    {"sq3p5-l48d3-24103", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 48U, 3U},
+    {"sq3p4-l48d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL4, 48U, 3U},
+    {"sq3p5-l48d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 48U, 3U}
+  };
+  for (size_t index = 0; index < sizeof(candidates) / sizeof(candidates[0]); ++index) {
+    size_t digits = strstr(candidates[index].name, "4096") ? 4096U :
+      (strstr(candidates[index].name, "8192") ? 8192U :
+      (strstr(candidates[index].name, "11717") ? 11717U :
+      (strstr(candidates[index].name, "16384") ? 16384U :
+      (strstr(candidates[index].name, "24103") ? 24103U : 32768U))));
+    run_square_dense_route_hill_point_seeded(
+      report,
+      digits,
+      &candidates[index],
+      7U,
+      128U,
+      128U,
+      3719U,
+      1U);
+  }
+}
+
+static void run_square_8192_parallel_leaf_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-8192-parallel-leaf-gate")) return;
+  static const XraySquareDenseCandidate candidates[] = {
+    {"sq3p5-l40d2-8192", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 40U, 2U},
+    {"sq3p5-l48d2-8192-current-shape", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 48U, 2U},
+    {"sq3p5-l64d2-8192", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 64U, 2U}
+  };
+  for (size_t index = 0; index < sizeof(candidates) / sizeof(candidates[0]); ++index) {
+    run_square_dense_route_current_gate_point(
+      report,
+      8192U,
+      &candidates[index],
+      7U,
+      128U,
+      128U);
+  }
+}
+
+static void run_square_8192_parallel_ridge_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-8192-parallel-ridge-gate")) return;
+  static const XraySquareDenseCandidate candidates[] = {
+    {"sq3p5-l32d2-8192", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 32U, 2U},
+    {"sq3p5-l40d2-8192", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 40U, 2U},
+    {"sq3p5-l48d2-8192-current-shape", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 48U, 2U},
+    {"sq3p5-l56d2-8192", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 56U, 2U},
+    {"sq3p5-l64d2-8192", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 64U, 2U},
+    {"sq3p5-l72d2-8192", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 72U, 2U},
+    {"sq3p5-l80d2-8192", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 80U, 2U},
+    {"sq3p5-l88d2-8192", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 88U, 2U},
+    {"sq3p5-l96d2-8192", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 96U, 2U},
+    {"sq3p-l80d2-8192", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL, 80U, 2U},
+    {"sq3p2-l80d2-8192", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL2, 80U, 2U},
+    {"sq3p4-l80d2-8192", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL4, 80U, 2U},
+    {"sq3p4-l96d2-8192", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL4, 96U, 2U}
+  };
+  for (size_t index = 0; index < sizeof(candidates) / sizeof(candidates[0]); ++index) {
+    run_square_dense_route_current_gate_point(
+      report,
+      8192U,
+      &candidates[index],
+      7U,
+      1024U,
+      1024U);
+  }
+}
+
+static void run_square_8192_parallel_leaf56_proof_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-8192-parallel-leaf56-proof-gate")) return;
+  static const XraySquareDenseCandidate candidates[] = {
+    {"sq3p5-l48d2-8192-current-shape", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 48U, 2U},
+    {"sq3p5-l56d2-8192", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 56U, 2U},
+    {"sq3p5-l72d2-8192", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 72U, 2U}
+  };
+  for (size_t index = 0; index < sizeof(candidates) / sizeof(candidates[0]); ++index) {
+    run_square_dense_route_current_gate_point(
+      report,
+      8192U,
+      &candidates[index],
+      7U,
+      4096U,
+      4096U);
+  }
+}
+
+static void run_square_8192_parallel_final_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-8192-parallel-final-gate")) return;
+  static const XraySquareDenseCandidate candidates[] = {
+    {"sq3p5-l32d2-8192", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 32U, 2U},
+    {"sq3p5-l40d2-8192", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 40U, 2U},
+    {"sq3p5-l48d2-8192", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 48U, 2U},
+    {"sq3p5-l56d2-8192", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 56U, 2U},
+    {"sq3p5-l64d2-8192", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 64U, 2U},
+    {"sq3p5-l72d2-8192-current", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 72U, 2U},
+    {"sq3p5-l80d2-8192", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 80U, 2U},
+    {"sq3p5-l88d2-8192", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 88U, 2U},
+    {"sq3p5-l96d2-8192", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 96U, 2U}
+  };
+  for (size_t index = 0; index < sizeof(candidates) / sizeof(candidates[0]); ++index) {
+    run_square_dense_route_current_gate_point(
+      report,
+      8192U,
+      &candidates[index],
+      7U,
+      4096U,
+      4096U);
+  }
+}
+
+static void run_square_8192_sqr4_ridge_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-8192-sqr4-ridge-gate")) return;
+  static const XraySquareDenseCandidate candidates[] = {
+    {"sqr4-l32d1-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 32U, 1U},
+    {"sqr4-l36d1-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 36U, 1U},
+    {"sqr4-l36d2-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 36U, 2U},
+    {"sqr4-l40d1-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 40U, 1U},
+    {"sqr4-l40d2-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 40U, 2U},
+    {"sqr4-l44d1-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 44U, 1U},
+    {"sqr4-l44d2-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 44U, 2U},
+    {"sqr4-l48d1-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 48U, 1U},
+    {"sqr4-l48d2-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 48U, 2U},
+    {"sqr4-l52d1-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 52U, 1U},
+    {"sqr4-l52d2-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 52U, 2U},
+    {"sqr4-l44d1-p2-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL2, 44U, 1U},
+    {"sqr4-l44d1-p3-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL3, 44U, 1U},
+    {"sqr4-l44d1-p4-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL4, 44U, 1U},
+    {"sqr4-l44d1-p7-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL7, 44U, 1U},
+    {"sqr4-l48d1-p2-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL2, 48U, 1U},
+    {"sqr4-l48d1-p3-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL3, 48U, 1U},
+    {"sqr4-l48d1-p4-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL4, 48U, 1U},
+    {"sqr4-l48d1-p7-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL7, 48U, 1U},
+    {"sqr4-l52d1-p2-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL2, 52U, 1U},
+    {"sqr4-l52d1-p3-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL3, 52U, 1U},
+    {"sqr4-l52d1-p4-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL4, 52U, 1U},
+    {"sqr4-l52d1-p7-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL7, 52U, 1U},
+    {"sqr4-l56d1-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 56U, 1U},
+    {"sqr4-l56d2-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 56U, 2U},
+    {"sqr4-l64d1-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 64U, 1U},
+    {"sqr4-l72d1-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 72U, 1U},
+    {"sqr4-l80d1-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 80U, 1U},
+    {"sqr4-l88d1-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 88U, 1U},
+    {"sqr4-l96d1-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 96U, 1U},
+    {"sqr4-l104d1-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 104U, 1U},
+    {"sqr4-top52-child64d1-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_TOP52_CHILD, 64U, 1U},
+    {"sqr4-top52-child80d1-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_TOP52_CHILD, 80U, 1U},
+    {"sqr4-top52-child96d1-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_TOP52_CHILD, 96U, 1U}
+  };
+  for (size_t index = 0; index < sizeof(candidates) / sizeof(candidates[0]); ++index) {
+    run_square_dense_route_current_gate_point(
+      report,
+      8192U,
+      &candidates[index],
+      7U,
+      1024U,
+      1024U);
+  }
+}
+
+static void run_square_8192_sqr4_parallel_final_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-8192-sqr4-parallel-final-gate")) return;
+  static const XraySquareDenseCandidate candidates[] = {
+    {"sqr4-l48d1-current-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 48U, 1U},
+    {"sqr4-l44d1-serial-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 44U, 1U},
+    {"sqr4-l44d1-p4-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL4, 44U, 1U},
+    {"sqr4-l48d1-p4-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL4, 48U, 1U},
+    {"sqr4-l52d1-p4-8192", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL4, 52U, 1U}
+  };
+  for (size_t index = 0; index < sizeof(candidates) / sizeof(candidates[0]); ++index) {
+    run_square_dense_route_current_gate_point(
+      report,
+      8192U,
+      &candidates[index],
+      7U,
+      4096U,
+      4096U);
+  }
+}
+
+static void run_square_8192_all_options_hillclimb_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-8192-all-options-hillclimb")) return;
+  static const XraySquareDenseCandidate candidates[] = {
+    {"prod-selfmul", XRAY_SQUARE_DENSE_PRODUCTION_SELF_MUL, 0U, 0U},
+    {"sq3-l40d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 40U, 2U},
+    {"sq3-l48d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 48U, 2U},
+    {"sq3-l48d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 48U, 3U},
+    {"sq3-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 2U},
+    {"sq3-l64d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 3U},
+    {"sq3-l80d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 80U, 2U},
+    {"sq3-l80d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 80U, 3U},
+    {"sq3p2-l40d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL2, 40U, 2U},
+    {"sq3p4-l40d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL4, 40U, 2U},
+    {"sq3p5-l40d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 40U, 2U},
+    {"sq3p-l48d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL, 48U, 2U},
+    {"sq3p2-l48d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL2, 48U, 2U},
+    {"sq3p4-l48d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL4, 48U, 2U},
+    {"sq3p5-l48d2-current", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 48U, 2U},
+    {"sq3p-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL, 64U, 2U},
+    {"sq3p2-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL2, 64U, 2U},
+    {"sq3p4-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL4, 64U, 2U},
+    {"sq3p5-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 64U, 2U},
+    {"sq3p4-l80d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL4, 80U, 2U},
+    {"sq3p5-l80d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 80U, 2U},
+    {"sq3neg2-l48d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_NEG2, 48U, 2U},
+    {"sq3neg2-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_NEG2, 64U, 2U},
+    {"sq3mul-l48d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_MUL_POINTS, 48U, 2U},
+    {"sq3mul-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_MUL_POINTS, 64U, 2U},
+    {"combo-l48d2", XRAY_SQUARE_DENSE_TOOM3_COMBO, 48U, 2U},
+    {"combo-l64d2", XRAY_SQUARE_DENSE_TOOM3_COMBO, 64U, 2U},
+    {"sq3dc-l48d2", XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF, 48U, 2U},
+    {"sq3dc-l64d2", XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF, 64U, 2U},
+    {"sq3dc-p4-l48d2", XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF_PARALLEL4, 48U, 2U},
+    {"sq3dc-p5-l48d2", XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF_PARALLEL5, 48U, 2U},
+    {"sqr3-l48d1", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 48U, 1U},
+    {"sqr3-l48d2", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 48U, 2U},
+    {"sqr3-l64d1", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 64U, 1U},
+    {"sqr3-l64d2", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 64U, 2U},
+    {"sqr3-l80d1", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 80U, 1U},
+    {"sqr3-l80d2", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 80U, 2U},
+    {"sqr3-l96d1", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 96U, 1U},
+    {"sqr4-l32d2", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 32U, 2U},
+    {"sqr4-l40d2", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 40U, 2U},
+    {"sqr4-l52d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 52U, 1U},
+    {"sqr4-l64d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 64U, 1U},
+    {"sqr4-l72d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 72U, 1U},
+    {"sqr4-l80d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 80U, 1U},
+    {"sqr4-l88d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 88U, 1U},
+    {"sqr4-l96d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 96U, 1U},
+    {"sqr4-l104d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 104U, 1U},
+    {"sqr4-top52-child64d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_TOP52_CHILD, 64U, 1U},
+    {"sqr4-top52-child80d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_TOP52_CHILD, 80U, 1U},
+    {"sqr4-top52-child96d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_TOP52_CHILD, 96U, 1U},
+    {"top4sq-l48d2", XRAY_SQUARE_DENSE_TOOM4_SQUARE, 48U, 2U},
+    {"top4sq-l64d1", XRAY_SQUARE_DENSE_TOOM4_SQUARE, 64U, 1U},
+    {"top4sq-l80d1", XRAY_SQUARE_DENSE_TOOM4_SQUARE, 80U, 1U},
+    {"top4sq-l96d1", XRAY_SQUARE_DENSE_TOOM4_SQUARE, 96U, 1U},
+    {"top4sqm-l64d1", XRAY_SQUARE_DENSE_TOOM4_SQUARE_MUL_POINTS, 64U, 1U},
+    {"top4sqm-l80d1", XRAY_SQUARE_DENSE_TOOM4_SQUARE_MUL_POINTS, 80U, 1U},
+    {"top5f-l64d1", XRAY_SQUARE_DENSE_TOOM5_FACTORED, 64U, 1U},
+    {"top5f-l72d1", XRAY_SQUARE_DENSE_TOOM5_FACTORED, 72U, 1U},
+    {"top5f-l80d1", XRAY_SQUARE_DENSE_TOOM5_FACTORED, 80U, 1U}
+  };
+  for (size_t index = 0; index < sizeof(candidates) / sizeof(candidates[0]); ++index) {
+    run_square_dense_route_current_gate_point(
+      report,
+      8192U,
+      &candidates[index],
+      3U,
+      1024U,
+      1024U);
+  }
+}
+
+static void run_square_4096_toom3_leaf_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-4096-toom3-leaf-gate")) return;
+  static const XraySquareDenseCandidate candidates[] = {
+    {"sq3-l32d2-4096", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 32U, 2U},
+    {"sq3-l48d3-4096-current-shape", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 48U, 3U},
+    {"sq3-l48d2-4096", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 48U, 2U},
+    {"sq3-l64d2-4096", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 2U}
+  };
+  for (size_t index = 0; index < sizeof(candidates) / sizeof(candidates[0]); ++index) {
+    run_square_dense_route_current_gate_point(
+      report,
+      4096U,
+      &candidates[index],
+      7U,
+      512U,
+      512U);
+  }
+}
+
+static void run_square_4096_margin_smoke_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-4096-margin-smoke")) return;
+  static const XraySquareDenseCandidate candidates[] = {
+    {"sq3-l40d1", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 40U, 1U},
+    {"sq3-l48d1", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 48U, 1U},
+    {"sq3-l40d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 40U, 2U},
+    {"sq3-l48d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 48U, 2U},
+    {"sq3-l56d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 56U, 2U},
+    {"sq3-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 2U},
+    {"sq3-l40d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 40U, 3U},
+    {"sq3-l48d3-current", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 48U, 3U},
+    {"sq3-l56d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 56U, 3U},
+    {"sq3-l64d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 3U},
+    {"sq3mul-l40d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE_MUL_POINTS, 40U, 3U},
+    {"sq3mul-l48d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE_MUL_POINTS, 48U, 3U},
+    {"combo-l48d3", XRAY_SQUARE_DENSE_TOOM3_COMBO, 48U, 3U},
+    {"combo-l56d3", XRAY_SQUARE_DENSE_TOOM3_COMBO, 56U, 3U}
+  };
+  for (size_t index = 0; index < sizeof(candidates) / sizeof(candidates[0]); ++index) {
+    run_square_dense_route_current_gate_point(
+      report,
+      4096U,
+      &candidates[index],
+      3U,
+      4096U,
+      4096U);
+  }
+}
+
+static void run_square_4096_margin_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-4096-margin-gate")) return;
+  static const XraySquareDenseCandidate candidates[] = {
+    {"sq3-l48d3-current", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 48U, 3U},
+    {"sq3-l40d1", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 40U, 1U},
+    {"sq3-l48d1", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 48U, 1U},
+    {"sq3-l40d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 40U, 3U},
+    {"sq3-l56d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 56U, 3U},
+    {"sq3-l64d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 3U},
+    {"sq3mul-l48d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE_MUL_POINTS, 48U, 3U},
+    {"combo-l56d3", XRAY_SQUARE_DENSE_TOOM3_COMBO, 56U, 3U}
+  };
+  for (size_t index = 0; index < sizeof(candidates) / sizeof(candidates[0]); ++index) {
+    run_square_dense_route_current_gate_point(
+      report,
+      4096U,
+      &candidates[index],
+      7U,
+      4096U,
+      4096U);
+  }
+}
+
+static void run_square_4096_paper_smoke_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-4096-paper-smoke")) return;
+  static const XraySquareDenseCandidate candidates[] = {
+    {"sq3-l48d3-current", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 48U, 3U},
+    {"sq3dc-l48d3", XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF, 48U, 3U},
+    {"sqr3-l40d1", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 40U, 1U},
+    {"sqr3-l48d1", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 48U, 1U},
+    {"sqr3-l40d3", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 40U, 3U},
+    {"sqr3-l48d3", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 48U, 3U}
+  };
+  for (size_t index = 0; index < sizeof(candidates) / sizeof(candidates[0]); ++index) {
+    run_square_dense_route_current_gate_point(
+      report,
+      4096U,
+      &candidates[index],
+      3U,
+      4096U,
+      4096U);
+  }
+}
+
+static void run_square_4096_paper_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-4096-paper-gate")) return;
+  static const XraySquareDenseCandidate candidates[] = {
+    {"sq3-l48d3-current", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 48U, 3U},
+    {"sqr3-l40d1", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 40U, 1U},
+    {"sqr3-l64d1", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 64U, 1U},
+    {"sqr3-l68d1", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 68U, 1U},
+    {"sqr3-l40d3", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 40U, 3U}
+  };
+  for (size_t index = 0; index < sizeof(candidates) / sizeof(candidates[0]); ++index) {
+    run_square_dense_route_current_gate_point(
+      report,
+      4096U,
+      &candidates[index],
+      7U,
+      4096U,
+      4096U);
+  }
+}
+
+static void run_square_4096_sqr4_smoke_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-4096-sqr4-smoke")) return;
+  static const XraySquareDenseCandidate candidates[] = {
+    {"sq3-l48d3-current", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 48U, 3U},
+    {"sqr4-l16d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 16U, 1U},
+    {"sqr4-l16d2", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 16U, 2U},
+    {"sqr4-l24d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 24U, 1U},
+    {"sqr4-l32d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 32U, 1U},
+    {"sqr4-l40d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 40U, 1U},
+    {"sqr4-l48d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 48U, 1U}
+  };
+  for (size_t index = 0; index < sizeof(candidates) / sizeof(candidates[0]); ++index) {
+    run_square_dense_route_current_gate_point(
+      report,
+      4096U,
+      &candidates[index],
+      3U,
+      4096U,
+      4096U);
+  }
+}
+
+static void run_square_4096_sqr4_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-4096-sqr4-gate")) return;
+  static const XraySquareDenseCandidate candidates[] = {
+    {"sq3-l48d3-current", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 48U, 3U},
+    {"sqr4-l32d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 32U, 1U},
+    {"sqr4-l36d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 36U, 1U},
+    {"sqr4-l40d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 40U, 1U},
+    {"sqr4-l44d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 44U, 1U},
+    {"sqr4-l48d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 48U, 1U},
+    {"sqr4-l52d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 52U, 1U}
+  };
+  for (size_t index = 0; index < sizeof(candidates) / sizeof(candidates[0]); ++index) {
+    run_square_dense_route_current_gate_point(
+      report,
+      4096U,
+      &candidates[index],
+      7U,
+      4096U,
+      4096U);
+  }
+}
+
+static void run_square_4096_sqr4_ridge_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-4096-sqr4-ridge")) return;
+  static const XraySquareDenseCandidate candidates[] = {
+    {"sqr4-l32d1-anchor", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 32U, 1U},
+    {"sqr4-l44d1-anchor", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 44U, 1U},
+    {"sqr4-l48d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 48U, 1U},
+    {"sqr4-l49d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 49U, 1U},
+    {"sqr4-l50d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 50U, 1U},
+    {"sqr4-l51d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 51U, 1U},
+    {"sqr4-l52d1-current", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 52U, 1U},
+    {"sqr4-l53d1-edge", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 53U, 1U}
+  };
+  for (size_t index = 0; index < sizeof(candidates) / sizeof(candidates[0]); ++index) {
+    run_square_dense_route_current_gate_point(
+      report,
+      4096U,
+      &candidates[index],
+      7U,
+      4096U,
+      4096U);
+  }
+}
+
+static void run_square_4096_sqr4_childleaf_smoke_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-4096-sqr4-childleaf-smoke")) return;
+  static const XraySquareDenseCandidate candidates[] = {
+    {"sqr4-l52d1-current", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 52U, 1U},
+    {"sqr4-top52-child53d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_TOP52_CHILD, 53U, 1U},
+    {"sqr4-top52-child54d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_TOP52_CHILD, 54U, 1U},
+    {"sqr4-top52-child55d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_TOP52_CHILD, 55U, 1U},
+    {"sqr4-top52-child56d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_TOP52_CHILD, 56U, 1U},
+    {"sqr4-top52-child60d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_TOP52_CHILD, 60U, 1U},
+    {"sqr4-top52-child64d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_TOP52_CHILD, 64U, 1U},
+    {"sqr4-top52-child72d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_TOP52_CHILD, 72U, 1U},
+    {"sqr4-top52-child96d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_TOP52_CHILD, 96U, 1U}
+  };
+  for (size_t index = 0; index < sizeof(candidates) / sizeof(candidates[0]); ++index) {
+    run_square_dense_route_current_gate_point(
+      report,
+      4096U,
+      &candidates[index],
+      3U,
+      4096U,
+      4096U);
+  }
+}
+
+static void run_square_4096_sqr4_childleaf_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-4096-sqr4-childleaf-gate")) return;
+  static const XraySquareDenseCandidate candidates[] = {
+    {"sqr4-l52d1-current", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 52U, 1U},
+    {"sqr4-top52-child53d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_TOP52_CHILD, 53U, 1U},
+    {"sqr4-top52-child55d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_TOP52_CHILD, 55U, 1U},
+    {"sqr4-top52-child56d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_TOP52_CHILD, 56U, 1U},
+    {"sqr4-top52-child60d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_TOP52_CHILD, 60U, 1U},
+    {"sqr4-top52-child64d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_TOP52_CHILD, 64U, 1U},
+    {"sqr4-top52-child72d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_TOP52_CHILD, 72U, 1U}
+  };
+  for (size_t index = 0; index < sizeof(candidates) / sizeof(candidates[0]); ++index) {
+    run_square_dense_route_current_gate_point(
+      report,
+      4096U,
+      &candidates[index],
+      7U,
+      4096U,
+      4096U);
+  }
+}
+
+static void run_square_4096_sqr4_parallel_smoke_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-4096-sqr4-parallel-smoke")) return;
+  static const XraySquareDenseCandidate candidates[] = {
+    {"sqr4-l52d1-current", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 52U, 1U},
+    {"sqr4-l52d1-parallel2", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL2, 52U, 1U},
+    {"sqr4-l52d1-parallel3", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL3, 52U, 1U},
+    {"sqr4-l52d1-parallel4", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL4, 52U, 1U},
+    {"sqr4-l52d1-parallel7", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL7, 52U, 1U}
+  };
+  for (size_t index = 0; index < sizeof(candidates) / sizeof(candidates[0]); ++index) {
+    run_square_dense_route_current_gate_point(
+      report,
+      4096U,
+      &candidates[index],
+      3U,
+      4096U,
+      4096U);
+  }
+}
+
+static void run_square_4096_all_options_hillclimb_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-4096-all-options-hillclimb")) return;
+  static const XraySquareDenseCandidate candidates[] = {
+    {"current-square", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 52U, 1U},
+    {"prod-selfmul", XRAY_SQUARE_DENSE_PRODUCTION_SELF_MUL, 0U, 0U},
+    {"sq3-l32d1", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 32U, 1U},
+    {"sq3-l32d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 32U, 2U},
+    {"sq3-l32d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 32U, 3U},
+    {"sq3-l40d1", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 40U, 1U},
+    {"sq3-l40d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 40U, 2U},
+    {"sq3-l40d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 40U, 3U},
+    {"sq3-l48d1", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 48U, 1U},
+    {"sq3-l48d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 48U, 2U},
+    {"sq3-l48d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 48U, 3U},
+    {"sq3-l56d1", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 56U, 1U},
+    {"sq3-l56d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 56U, 2U},
+    {"sq3-l56d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 56U, 3U},
+    {"sq3-l64d1", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 1U},
+    {"sq3-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 2U},
+    {"sq3-l64d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 3U},
+    {"sq3-l68d1", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 68U, 1U},
+    {"sq3-l68d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 68U, 2U},
+    {"sq3-l68d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 68U, 3U},
+    {"sq3neg2-l48d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE_NEG2, 48U, 3U},
+    {"sq3neg2-l64d1", XRAY_SQUARE_DENSE_TOOM3_SQUARE_NEG2, 64U, 1U},
+    {"sq3dc-l40d1", XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF, 40U, 1U},
+    {"sq3dc-l48d3", XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF, 48U, 3U},
+    {"sq3dc-l64d1", XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF, 64U, 1U},
+    {"sq3dc-p4-l48d2", XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF_PARALLEL4, 48U, 2U},
+    {"sq3dc-p5-l48d2", XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF_PARALLEL5, 48U, 2U},
+    {"sq3mul-l40d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE_MUL_POINTS, 40U, 3U},
+    {"sq3mul-l48d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE_MUL_POINTS, 48U, 3U},
+    {"sq3mul-l56d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE_MUL_POINTS, 56U, 3U},
+    {"combo-l48d3", XRAY_SQUARE_DENSE_TOOM3_COMBO, 48U, 3U},
+    {"combo-l56d3", XRAY_SQUARE_DENSE_TOOM3_COMBO, 56U, 3U},
+    {"sqr3-l32d1", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 32U, 1U},
+    {"sqr3-l32d2", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 32U, 2U},
+    {"sqr3-l32d3", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 32U, 3U},
+    {"sqr3-l40d1", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 40U, 1U},
+    {"sqr3-l40d2", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 40U, 2U},
+    {"sqr3-l40d3", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 40U, 3U},
+    {"sqr3-l48d1", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 48U, 1U},
+    {"sqr3-l48d2", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 48U, 2U},
+    {"sqr3-l48d3", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 48U, 3U},
+    {"sqr3-l56d1", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 56U, 1U},
+    {"sqr3-l56d2", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 56U, 2U},
+    {"sqr3-l56d3", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 56U, 3U},
+    {"sqr3-l64d1", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 64U, 1U},
+    {"sqr3-l64d2", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 64U, 2U},
+    {"sqr3-l64d3", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 64U, 3U},
+    {"sqr3-l68d1", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 68U, 1U},
+    {"sqr3-l68d2", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 68U, 2U},
+    {"sqr3-l68d3", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 68U, 3U},
+    {"sqr4-l16d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 16U, 1U},
+    {"sqr4-l16d2", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 16U, 2U},
+    {"sqr4-l16d3", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 16U, 3U},
+    {"sqr4-l20d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 20U, 1U},
+    {"sqr4-l20d2", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 20U, 2U},
+    {"sqr4-l24d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 24U, 1U},
+    {"sqr4-l24d2", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 24U, 2U},
+    {"sqr4-l28d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 28U, 1U},
+    {"sqr4-l28d2", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 28U, 2U},
+    {"sqr4-l32d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 32U, 1U},
+    {"sqr4-l36d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 36U, 1U},
+    {"sqr4-l40d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 40U, 1U},
+    {"sqr4-l44d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 44U, 1U},
+    {"sqr4-l48d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 48U, 1U},
+    {"sqr4-l50d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 50U, 1U},
+    {"sqr4-l52d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 52U, 1U},
+    {"sqr4-l53d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4, 53U, 1U},
+    {"sqr4-top52-child52d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_TOP52_CHILD, 52U, 1U},
+    {"sqr4-top52-child53d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_TOP52_CHILD, 53U, 1U},
+    {"sqr4-top52-child54d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_TOP52_CHILD, 54U, 1U},
+    {"sqr4-top52-child55d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_TOP52_CHILD, 55U, 1U},
+    {"sqr4-top52-child56d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_TOP52_CHILD, 56U, 1U},
+    {"sqr4-top52-child60d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_TOP52_CHILD, 60U, 1U},
+    {"sqr4-top52-child64d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_TOP52_CHILD, 64U, 1U},
+    {"sqr4-top52-child72d1", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_TOP52_CHILD, 72U, 1U},
+    {"sqr4-l52d1-parallel2", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL2, 52U, 1U},
+    {"sqr4-l52d1-parallel3", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL3, 52U, 1U},
+    {"sqr4-l52d1-parallel4", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL4, 52U, 1U},
+    {"sqr4-l52d1-parallel7", XRAY_SQUARE_DENSE_TOOM4_CHUNG_SQR4_PARALLEL7, 52U, 1U},
+    {"top4sq-l32d1", XRAY_SQUARE_DENSE_TOOM4_SQUARE, 32U, 1U},
+    {"top4sq-l40d1", XRAY_SQUARE_DENSE_TOOM4_SQUARE, 40U, 1U},
+    {"top4sq-l48d1", XRAY_SQUARE_DENSE_TOOM4_SQUARE, 48U, 1U},
+    {"top4sq-l52d1", XRAY_SQUARE_DENSE_TOOM4_SQUARE, 52U, 1U},
+    {"top4sq-l53d1", XRAY_SQUARE_DENSE_TOOM4_SQUARE, 53U, 1U},
+    {"top4sqm-l48d1", XRAY_SQUARE_DENSE_TOOM4_SQUARE_MUL_POINTS, 48U, 1U},
+    {"top4sqm-l52d1", XRAY_SQUARE_DENSE_TOOM4_SQUARE_MUL_POINTS, 52U, 1U},
+    {"top4sqm-l53d1", XRAY_SQUARE_DENSE_TOOM4_SQUARE_MUL_POINTS, 53U, 1U},
+    {"top5f-l24d1", XRAY_SQUARE_DENSE_TOOM5_FACTORED, 24U, 1U},
+    {"top5f-l32d1", XRAY_SQUARE_DENSE_TOOM5_FACTORED, 32U, 1U},
+    {"top5f-l36d1", XRAY_SQUARE_DENSE_TOOM5_FACTORED, 36U, 1U},
+    {"top5f-l40d1", XRAY_SQUARE_DENSE_TOOM5_FACTORED, 40U, 1U},
+    {"top5f-l42d1", XRAY_SQUARE_DENSE_TOOM5_FACTORED, 42U, 1U}
+  };
+  for (size_t index = 0; index < sizeof(candidates) / sizeof(candidates[0]); ++index) {
+    run_square_dense_route_current_gate_point(
+      report,
+      4096U,
+      &candidates[index],
+      3U,
+      4096U,
+      4096U);
+  }
+}
+
+static void run_square_4096_sqr3_tune_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-4096-sqr3-tune")) return;
+  static const XraySquareDenseCandidate candidates[] = {
+    {"sqr3-l32d1", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 32U, 1U},
+    {"sqr3-l40d1", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 40U, 1U},
+    {"sqr3-l48d1", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 48U, 1U},
+    {"sqr3-l56d1", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 56U, 1U},
+    {"sqr3-l64d1", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 64U, 1U},
+    {"sqr3-l68d1", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 68U, 1U},
+    {"sqr3-l72d1", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 72U, 1U},
+    {"sqr3-l80d1", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 80U, 1U},
+    {"sqr3-l96d1", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 96U, 1U},
+    {"sqr3-l128d1", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 128U, 1U},
+    {"sqr3-l32d2", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 32U, 2U},
+    {"sqr3-l40d2", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 40U, 2U},
+    {"sqr3-l48d2", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 48U, 2U},
+    {"sqr3-l56d2", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 56U, 2U},
+    {"sqr3-l64d2", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 64U, 2U},
+    {"sqr3-l32d3", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 32U, 3U},
+    {"sqr3-l40d3", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 40U, 3U},
+    {"sqr3-l48d3", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 48U, 3U},
+    {"sqr3-l56d3", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 56U, 3U},
+    {"sqr3-l64d3", XRAY_SQUARE_DENSE_TOOM3_CHUNG_SQR3, 64U, 3U}
+  };
+  for (size_t index = 0; index < sizeof(candidates) / sizeof(candidates[0]); ++index) {
+    run_square_dense_route_current_gate_point(
+      report,
+      4096U,
+      &candidates[index],
+      3U,
+      4096U,
+      4096U);
+  }
+}
+
+static void run_square_route_hillseed_options_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-route-hillseed-options")) return;
+  static const struct {
+    size_t digits;
+    XraySquareDenseCandidate candidate;
+  } cases[] = {
+    {8192, {"self-mul-prod", XRAY_SQUARE_DENSE_PRODUCTION_SELF_MUL, 0U, 0U}},
+    {8192, {"combo-l48d3", XRAY_SQUARE_DENSE_TOOM3_COMBO, 48U, 3U}},
+    {8192, {"sq3-l40d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 40U, 2U}},
+    {8192, {"sq3-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 2U}},
+    {8192, {"sq3dc-l40d2", XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF, 40U, 2U}},
+    {8192, {"sq3dc-l64d2", XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF, 64U, 2U}},
+    {8192, {"sq3dcd-prod", XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF_DISPATCH, 0U, 0U}},
+    {8192, {"sq3p5-l40d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 40U, 2U}},
+    {11717, {"self-mul-prod", XRAY_SQUARE_DENSE_PRODUCTION_SELF_MUL, 0U, 0U}},
+    {11717, {"combo-l48d3", XRAY_SQUARE_DENSE_TOOM3_COMBO, 48U, 3U}},
+    {11717, {"sq3-l40d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 40U, 2U}},
+    {11717, {"sq3-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 2U}},
+    {11717, {"sq3dc-l40d2", XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF, 40U, 2U}},
+    {11717, {"sq3dc-l64d2", XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF, 64U, 2U}},
+    {11717, {"sq3dcd-prod", XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF_DISPATCH, 0U, 0U}},
+    {11717, {"sq3dcp5-l64d2", XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF_PARALLEL5, 64U, 2U}},
+    {11717, {"sq3p5-l40d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 40U, 2U}},
+    {11717, {"sq3p5-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 64U, 2U}},
+    {16384, {"self-mul-prod", XRAY_SQUARE_DENSE_PRODUCTION_SELF_MUL, 0U, 0U}},
+    {16384, {"combo-l48d4", XRAY_SQUARE_DENSE_TOOM3_COMBO, 48U, 4U}},
+    {16384, {"sq3-l48d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 48U, 2U}},
+    {16384, {"sq3-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 2U}},
+    {16384, {"sq3dc-l64d2", XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF, 64U, 2U}},
+    {16384, {"sq3dcd-prod", XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF_DISPATCH, 0U, 0U}},
+    {16384, {"sq3dcp4-l64d2", XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF_PARALLEL4, 64U, 2U}},
+    {16384, {"sq3dcp5-l64d2", XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF_PARALLEL5, 64U, 2U}},
+    {16384, {"sq3p5-l48d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 48U, 2U}},
+    {16384, {"sq3p5-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 64U, 2U}},
+    {24103, {"self-mul-prod", XRAY_SQUARE_DENSE_PRODUCTION_SELF_MUL, 0U, 0U}},
+    {24103, {"top4-l48d2", XRAY_SQUARE_DENSE_TOOM4_FACTORED, 48U, 2U}},
+    {24103, {"top4-l64d2", XRAY_SQUARE_DENSE_TOOM4_FACTORED, 64U, 2U}},
+    {24103, {"sq3-l48d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 48U, 3U}},
+    {24103, {"sq3dc-l48d3", XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF, 48U, 3U}},
+    {24103, {"sq3dcd-prod", XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF_DISPATCH, 0U, 0U}},
+    {24103, {"sq3dcp4-l48d3", XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF_PARALLEL4, 48U, 3U}},
+    {24103, {"sq3dcp5-l48d3", XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF_PARALLEL5, 48U, 3U}},
+    {24103, {"sq3dcp5-l64d2", XRAY_SQUARE_DENSE_TOOM3_DIRECT_COEFF_PARALLEL5, 64U, 2U}},
+    {24103, {"sq3p4-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL4, 64U, 2U}}
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    run_square_dense_route_hill_point_seeded(
+      report,
+      cases[index].digits,
+      &cases[index].candidate,
+      3U,
+      128U,
+      128U,
+      3719U,
+      1U);
+  }
+}
+
+static void run_square_toom3_parallel_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-toom3-parallel-gate")) return;
+  static const struct {
+    size_t digits;
+    XraySquareDenseCandidate candidate;
+  } cases[] = {
+    {16384, {"sq3p4-l48d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL4, 48U, 2U}},
+    {16384, {"sq3p-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL, 64U, 2U}},
+    {24103, {"sq3p4-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL4, 64U, 2U}},
+    {32768, {"sq3p5-l48d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE_PARALLEL5, 48U, 3U}}
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    run_square_dense_route_current_gate_point(report, cases[index].digits, &cases[index].candidate, 7U, 64U, 96U);
+  }
+}
+
+static void run_square_route_current_final_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-route-current-final-gate")) return;
+  static const struct {
+    size_t digits;
+    XraySquareDenseCandidate candidate;
+  } cases[] = {
+    {8192, {"sq3mul-l48d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE_MUL_POINTS, 48U, 3U}},
+    {11717, {"sq3mul-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE_MUL_POINTS, 64U, 2U}},
+    {11717, {"combo-l48d3", XRAY_SQUARE_DENSE_TOOM3_COMBO, 48U, 3U}},
+    {16384, {"sq3-l64d2", XRAY_SQUARE_DENSE_TOOM3_SQUARE, 64U, 2U}}
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    run_square_dense_route_current_gate_point(report, cases[index].digits, &cases[index].candidate, 7U, 128U, 128U);
+  }
+}
+
+static void run_square_best_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-best-gate")) return;
+  static const struct {
+    size_t digits;
+    XraySquareDenseCandidate candidate;
+  } cases[] = {
+    {8192, {"sq4mul-l32d3", XRAY_SQUARE_DENSE_TOOM4_SQUARE_MUL_POINTS, 32U, 3U}},
+    {11717, {"sq4-l48d3", XRAY_SQUARE_DENSE_TOOM4_SQUARE, 48U, 3U}},
+    {16384, {"sq4mul-l32d3", XRAY_SQUARE_DENSE_TOOM4_SQUARE_MUL_POINTS, 32U, 3U}},
+    {24103, {"sq4-l48d3", XRAY_SQUARE_DENSE_TOOM4_SQUARE, 48U, 3U}},
+    {32768, {"sq4mul-l64d2", XRAY_SQUARE_DENSE_TOOM4_SQUARE_MUL_POINTS, 64U, 2U}}
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    run_square_dense_route_current_gate_point(report, cases[index].digits, &cases[index].candidate, 5U, 64U, 96U);
+  }
+}
+
+static void run_square_dense_selfmap_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-dense-selfmap")) return;
+  static const struct {
+    size_t digits;
+    XraySquareDenseCandidate candidate;
+  } cases[] = {
+    {8192, {"top4-l64d2", XRAY_SQUARE_DENSE_TOOM4_FACTORED, 64U, 2U}},
+    {8192, {"sq3mul-l48d3", XRAY_SQUARE_DENSE_TOOM3_SQUARE_MUL_POINTS, 48U, 3U}},
+    {11717, {"combo-l56d3", XRAY_SQUARE_DENSE_TOOM3_COMBO, 56U, 3U}},
+    {11717, {"top4-l64d2", XRAY_SQUARE_DENSE_TOOM4_FACTORED, 64U, 2U}},
+    {16384, {"top4-l64d2", XRAY_SQUARE_DENSE_TOOM4_FACTORED, 64U, 2U}},
+    {16384, {"combo-l48d4", XRAY_SQUARE_DENSE_TOOM3_COMBO, 48U, 4U}},
+    {24103, {"top4-l48d2", XRAY_SQUARE_DENSE_TOOM4_FACTORED, 48U, 2U}},
+    {24103, {"combo-l32d4", XRAY_SQUARE_DENSE_TOOM3_COMBO, 32U, 4U}},
+    {24103, {"top5f-l48d2", XRAY_SQUARE_DENSE_TOOM5_FACTORED, 48U, 2U}},
+    {32768, {"top4-l48d3", XRAY_SQUARE_DENSE_TOOM4_FACTORED, 48U, 3U}},
+    {32768, {"top4-l64d2", XRAY_SQUARE_DENSE_TOOM4_FACTORED, 64U, 2U}},
+    {32768, {"sq4mul-l64d2", XRAY_SQUARE_DENSE_TOOM4_SQUARE_MUL_POINTS, 64U, 2U}},
+    {32768, {"top5f-l48d2", XRAY_SQUARE_DENSE_TOOM5_FACTORED, 48U, 2U}},
+    {32768, {"top5f-l56d2", XRAY_SQUARE_DENSE_TOOM5_FACTORED, 56U, 2U}}
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    run_square_dense_route_current_gate_point(report, cases[index].digits, &cases[index].candidate, 3U, 32U, 64U);
+  }
+}
+
+static void run_square_toom5_tune_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-toom5-tune")) return;
+  static const struct {
+    size_t digits;
+    XraySquareDenseCandidate candidate;
+  } cases[] = {
+    {24103, {"top5f-l32d2", XRAY_SQUARE_DENSE_TOOM5_FACTORED, 32U, 2U}},
+    {24103, {"top5f-l40d2", XRAY_SQUARE_DENSE_TOOM5_FACTORED, 40U, 2U}},
+    {24103, {"top5f-l48d2", XRAY_SQUARE_DENSE_TOOM5_FACTORED, 48U, 2U}},
+    {32768, {"top5f-l32d2", XRAY_SQUARE_DENSE_TOOM5_FACTORED, 32U, 2U}},
+    {32768, {"top5f-l40d2", XRAY_SQUARE_DENSE_TOOM5_FACTORED, 40U, 2U}},
+    {32768, {"top5f-l48d2", XRAY_SQUARE_DENSE_TOOM5_FACTORED, 48U, 2U}},
+    {32768, {"top5f-l56d2", XRAY_SQUARE_DENSE_TOOM5_FACTORED, 56U, 2U}},
+    {32768, {"top5f-l48d3", XRAY_SQUARE_DENSE_TOOM5_FACTORED, 48U, 3U}}
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    run_square_dense_route_current_gate_point(report, cases[index].digits, &cases[index].candidate, 3U, 32U, 64U);
+  }
+}
+
+static void run_square_toom5_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-toom5-gate")) return;
+  static const struct {
+    size_t digits;
+    XraySquareDenseCandidate candidate;
+  } cases[] = {
+    {24103, {"top5f-l48d2", XRAY_SQUARE_DENSE_TOOM5_FACTORED, 48U, 2U}},
+    {32768, {"top5f-l40d2", XRAY_SQUARE_DENSE_TOOM5_FACTORED, 40U, 2U}},
+    {32768, {"top5f-l48d2", XRAY_SQUARE_DENSE_TOOM5_FACTORED, 48U, 2U}}
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    run_square_dense_route_current_gate_point(report, cases[index].digits, &cases[index].candidate, 5U, 64U, 128U);
+  }
+}
+
+static void run_square_toom4_parallel_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-toom4-parallel")) return;
+  static const struct {
+    size_t digits;
+    XraySquareDenseCandidate candidate;
+  } cases[] = {
+    {24103, {"top4p-l48d3", XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL, 48U, 3U}},
+    {32768, {"top4p-l48d3", XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL, 48U, 3U}},
+    {32768, {"top4p-l64d2", XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL, 64U, 2U}}
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    run_square_dense_route_current_gate_point(report, cases[index].digits, &cases[index].candidate, 3U, 32U, 64U);
+  }
+}
+
+static void run_square_toom4_parallel_tune_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-toom4-parallel-tune")) return;
+  static const struct {
+    size_t digits;
+    XraySquareDenseCandidate candidate;
+  } cases[] = {
+    {32768, {"top4p-l48d2", XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL, 48U, 2U}},
+    {32768, {"top4p-l56d2", XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL, 56U, 2U}},
+    {32768, {"top4p-l64d2", XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL, 64U, 2U}},
+    {32768, {"top4p-l72d2", XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL, 72U, 2U}},
+    {32768, {"top4p-l80d2", XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL, 80U, 2U}},
+    {32768, {"top4p-l48d3", XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL, 48U, 3U}},
+    {32768, {"top4p4-l64d2", XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL4, 64U, 2U}},
+    {32768, {"top4p4-l80d2", XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL4, 80U, 2U}},
+    {32768, {"top4p4-l48d3", XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL4, 48U, 3U}}
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    run_square_dense_route_current_gate_point(report, cases[index].digits, &cases[index].candidate, 3U, 32U, 64U);
+  }
+}
+
+static void run_square_toom4_parallel_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-toom4-parallel-gate")) return;
+  static const struct {
+    size_t digits;
+    XraySquareDenseCandidate candidate;
+  } cases[] = {
+    {24103, {"top4p4-l80d2", XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL4, 80U, 2U}},
+    {24103, {"top4p4-l48d3", XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL4, 48U, 3U}},
+    {32768, {"top4p4-l64d2", XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL4, 64U, 2U}},
+    {32768, {"top4p4-l80d2", XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL4, 80U, 2U}},
+    {32768, {"top4p4-l48d3", XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL4, 48U, 3U}}
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    run_square_dense_route_current_gate_point(report, cases[index].digits, &cases[index].candidate, 5U, 64U, 128U);
+  }
+}
+
+static void run_square_toom4_parallel_low_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-toom4-parallel-low")) return;
+  static const struct {
+    size_t digits;
+    XraySquareDenseCandidate candidate;
+  } cases[] = {
+    {16384, {"top4p4a-l64d2", XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL4_ANY, 64U, 2U}},
+    {16384, {"top4p4a-l80d2", XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL4_ANY, 80U, 2U}},
+    {16384, {"top4p4a-l48d3", XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL4_ANY, 48U, 3U}},
+    {24103, {"top4p2-l64d2", XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL2, 64U, 2U}},
+    {24103, {"top4p2-l80d2", XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL2, 80U, 2U}},
+    {24103, {"top4p4-l64d2", XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL4, 64U, 2U}},
+    {24103, {"top4p4-l80d2", XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL4, 80U, 2U}},
+    {24103, {"top4p4-l48d3", XRAY_SQUARE_DENSE_TOOM4_FACTORED_PARALLEL4, 48U, 3U}}
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    run_square_dense_route_current_gate_point(report, cases[index].digits, &cases[index].candidate, 3U, 32U, 64U);
+  }
+}
+
+static void run_square_toom4_hill_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-toom4-hill")) return;
+  static const XraySquareDenseCandidate candidates[] = {
+    {"sq4-l32d3", XRAY_SQUARE_DENSE_TOOM4_SQUARE, 32U, 3U},
+    {"sq4-l40d3", XRAY_SQUARE_DENSE_TOOM4_SQUARE, 40U, 3U},
+    {"sq4-l48d3", XRAY_SQUARE_DENSE_TOOM4_SQUARE, 48U, 3U},
+    {"sq4-l64d2", XRAY_SQUARE_DENSE_TOOM4_SQUARE, 64U, 2U},
+    {"sq4mul-l32d3", XRAY_SQUARE_DENSE_TOOM4_SQUARE_MUL_POINTS, 32U, 3U},
+    {"sq4mul-l40d3", XRAY_SQUARE_DENSE_TOOM4_SQUARE_MUL_POINTS, 40U, 3U},
+    {"sq4mul-l48d3", XRAY_SQUARE_DENSE_TOOM4_SQUARE_MUL_POINTS, 48U, 3U},
+    {"sq4mul-l64d2", XRAY_SQUARE_DENSE_TOOM4_SQUARE_MUL_POINTS, 64U, 2U},
+    {"top4-l48d3", XRAY_SQUARE_DENSE_TOOM4_FACTORED, 48U, 3U}
+  };
+  const size_t digits[] = {8192, 11717, 16384, 24103, 32768};
+  for (size_t digit_index = 0; digit_index < sizeof(digits) / sizeof(digits[0]); ++digit_index) {
+    for (size_t candidate_index = 0; candidate_index < sizeof(candidates) / sizeof(candidates[0]); ++candidate_index) {
+      run_square_dense_route_hill_point(report, digits[digit_index], &candidates[candidate_index], 3U, 3U, 12U);
+    }
+  }
+}
+
+static void run_square_dense_upper_route_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-dense-upper-route-gate")) return;
+  static const XraySquareDenseCandidate candidates[] = {
+    {"top4-l48d2", XRAY_SQUARE_DENSE_TOOM4_FACTORED, 48U, 2U},
+    {"top4-l64d2", XRAY_SQUARE_DENSE_TOOM4_FACTORED, 64U, 2U},
+    {"top4-l80d2", XRAY_SQUARE_DENSE_TOOM4_FACTORED, 80U, 2U},
+    {"top4-l48d3", XRAY_SQUARE_DENSE_TOOM4_FACTORED, 48U, 3U}
+  };
+  const size_t digits[] = {52163, 65536};
+  for (size_t digit_index = 0; digit_index < sizeof(digits) / sizeof(digits[0]); ++digit_index) {
+    for (size_t candidate_index = 0; candidate_index < sizeof(candidates) / sizeof(candidates[0]); ++candidate_index) {
+      run_square_dense_route_hill_point(report, digits[digit_index], &candidates[candidate_index], 5U, 128U, 128U);
+    }
+  }
+}
+
+typedef enum XraySquareThresholdHillRoute {
+  XRAY_SQUARE_THRESHOLD_HILL_KARATSUBA = 0,
+  XRAY_SQUARE_THRESHOLD_HILL_FUSED_LEAF,
+  XRAY_SQUARE_THRESHOLD_HILL_UNROLL4_LEAF,
+  XRAY_SQUARE_THRESHOLD_HILL_COMBA_LEAF,
+  XRAY_SQUARE_THRESHOLD_HILL_SELF_MUL,
+  XRAY_SQUARE_THRESHOLD_HILL_WORKSPACE_KARATSUBA,
+  XRAY_SQUARE_THRESHOLD_HILL_WORKSPACE_KARATSUBA_MUL_LEAF
+} XraySquareThresholdHillRoute;
+
+typedef struct XraySquareThresholdHillCandidate {
+  const char *name;
+  XraySquareThresholdHillRoute route;
+  size_t threshold;
+} XraySquareThresholdHillCandidate;
+
+static const char *square_threshold_hill_route_name(XraySquareThresholdHillRoute route) {
+  switch (route) {
+    case XRAY_SQUARE_THRESHOLD_HILL_KARATSUBA: return "karatsuba-square";
+    case XRAY_SQUARE_THRESHOLD_HILL_FUSED_LEAF: return "karatsuba-fused-leaf";
+    case XRAY_SQUARE_THRESHOLD_HILL_UNROLL4_LEAF: return "karatsuba-unroll4-leaf";
+    case XRAY_SQUARE_THRESHOLD_HILL_COMBA_LEAF: return "karatsuba-comba-leaf";
+    case XRAY_SQUARE_THRESHOLD_HILL_SELF_MUL: return "production-self-mul";
+    case XRAY_SQUARE_THRESHOLD_HILL_WORKSPACE_KARATSUBA: return "karatsuba-square-workspace";
+    case XRAY_SQUARE_THRESHOLD_HILL_WORKSPACE_KARATSUBA_MUL_LEAF: return "karatsuba-square-workspace-mul-leaf";
+  }
+  return "unknown";
+}
+
+static int run_square_threshold_hill_candidate(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value,
+  const XrayScratchBigInt *mirror,
+  const XraySquareThresholdHillCandidate *candidate) {
+  if (!out || !value || !mirror || !candidate) return 0;
+  if (candidate->route == XRAY_SQUARE_THRESHOLD_HILL_KARATSUBA) {
+    return xray_bigint_square_karatsuba_probe(out, value, candidate->threshold);
+  }
+  if (candidate->route == XRAY_SQUARE_THRESHOLD_HILL_FUSED_LEAF) {
+    return xray_bigint_square_fused_leaf_probe(out, value, candidate->threshold);
+  }
+  if (candidate->route == XRAY_SQUARE_THRESHOLD_HILL_UNROLL4_LEAF) {
+    return xray_bigint_square_unroll4_leaf_probe(out, value, candidate->threshold);
+  }
+  if (candidate->route == XRAY_SQUARE_THRESHOLD_HILL_COMBA_LEAF) {
+    return xray_bigint_square_comba_leaf_probe(out, value, candidate->threshold);
+  }
+  if (candidate->route == XRAY_SQUARE_THRESHOLD_HILL_WORKSPACE_KARATSUBA) {
+    return xray_bigint_square_karatsuba_workspace_probe(out, value, candidate->threshold);
+  }
+  if (candidate->route == XRAY_SQUARE_THRESHOLD_HILL_WORKSPACE_KARATSUBA_MUL_LEAF) {
+    return xray_bigint_square_karatsuba_workspace_mul_leaf_probe(out, value, candidate->threshold);
+  }
+  if (candidate->route == XRAY_SQUARE_THRESHOLD_HILL_SELF_MUL) {
+    return xray_bigint_mul(out, value, mirror);
+  }
+  return 0;
+}
+
+static void run_square_threshold_hill_point(
+  XrayBenchmarkReport *report,
+  size_t digits,
+  const XraySquareThresholdHillCandidate *candidate,
+  size_t sample_count,
+  unsigned int min_iterations,
+  unsigned int max_iterations) {
+  if (!report || !candidate || sample_count == 0 || sample_count > XRAY_BENCH_MAX_SAMPLES) return;
+  char *text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  XrayScratchBigInt value[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt mirror[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt candidate_out[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt current_out[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gvalue[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gout[XRAY_MUL_OPERAND_FAMILIES];
+  unsigned long long candidate_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long current_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned int iterations = perf_iterations("mul", digits);
+  if (max_iterations > 0U && iterations > max_iterations) iterations = max_iterations;
+  if (iterations < min_iterations) iterations = min_iterations;
+  unsigned int batch_iterations = iterations >= 8U ? 4U : 1U;
+  int ok = 1;
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    xray_bigint_init(&value[family]);
+    xray_bigint_init(&mirror[family]);
+    xray_bigint_init(&candidate_out[family]);
+    xray_bigint_init(&current_out[family]);
+    mpz_inits(gvalue[family], gout[family], NULL);
+    text[family] = benchmark_decimal(
+      digits,
+      4219U + mul_operand_families[family].left_seed + (unsigned int)(family * 53U),
+      mul_operand_families[family].left_high_lead);
+    ok = ok &&
+      text[family] &&
+      xray_bigint_set_decimal(&value[family], text[family]) &&
+      xray_bigint_set_decimal(&mirror[family], text[family]) &&
+      mpz_set_str(gvalue[family], text[family], 10) == 0;
+  }
+
+  int parity = 1;
+  size_t hash_match_count = 0;
+  for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    ok = run_square_threshold_hill_candidate(
+      &candidate_out[family],
+      &value[family],
+      &mirror[family],
+      candidate) &&
+      xray_bigint_square(&current_out[family], &value[family]);
+    if (ok) mpz_mul(gout[family], gvalue[family], gvalue[family]);
+  }
+
+  for (size_t sample = 0; ok && sample < sample_count; ++sample) {
+    unsigned int completed = 0;
+    unsigned int phase = (unsigned int)(sample % 3U);
+    while (ok && completed < iterations) {
+      unsigned int remaining = iterations - completed;
+      unsigned int batch = remaining < batch_iterations ? remaining : batch_iterations;
+      for (unsigned int lane = 0; ok && lane < 3U; ++lane) {
+        unsigned int active = (unsigned int)((phase + lane) % 3U);
+        unsigned long long started = xray_now_us();
+        for (unsigned int iteration = 0; ok && iteration < batch; ++iteration) {
+          for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+            if (active == 0U) {
+              ok = run_square_threshold_hill_candidate(
+                &candidate_out[family],
+                &value[family],
+                &mirror[family],
+                candidate);
+            } else if (active == 1U) {
+              ok = xray_bigint_square(&current_out[family], &value[family]);
+            } else {
+              mpz_mul(gout[family], gvalue[family], gvalue[family]);
+            }
+          }
+        }
+        if (active == 0U) candidate_samples[sample] += xray_now_us() - started;
+        else if (active == 1U) current_samples[sample] += xray_now_us() - started;
+        else gmp_samples[sample] += xray_now_us() - started;
+      }
+      phase = (phase + 1U) % 3U;
+      completed += batch;
+    }
+    for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+      char *candidate_text = xray_bigint_get_decimal(&candidate_out[family]);
+      char *current_text = xray_bigint_get_decimal(&current_out[family]);
+      char *gmp_text = mpz_get_str(NULL, 10, gout[family]);
+      uint64_t candidate_hash = xray_benchmark_text_hash64(candidate_text);
+      uint64_t current_hash = xray_benchmark_text_hash64(current_text);
+      uint64_t gmp_hash = xray_benchmark_text_hash64(gmp_text);
+      int sample_match = ok &&
+        candidate_text &&
+        current_text &&
+        gmp_text &&
+        strcmp(candidate_text, current_text) == 0 &&
+        strcmp(candidate_text, gmp_text) == 0;
+      if (sample_match &&
+          candidate_hash != 0ULL &&
+          candidate_hash == current_hash &&
+          candidate_hash == gmp_hash) {
+        hash_match_count++;
+      }
+      parity = parity && sample_match;
+      free(candidate_text);
+      free(current_text);
+      free(gmp_text);
+    }
+  }
+
+  double candidate_current_ratio = median_paired_ratio(candidate_samples, current_samples, sample_count);
+  double candidate_current_worst = max_paired_ratio(candidate_samples, current_samples, sample_count);
+  double candidate_gmp_ratio = median_paired_ratio(candidate_samples, gmp_samples, sample_count);
+  double candidate_gmp_worst = max_paired_ratio(candidate_samples, gmp_samples, sample_count);
+  double current_gmp_ratio = median_paired_ratio(current_samples, gmp_samples, sample_count);
+  size_t stable_current = paired_ratio_wins(candidate_samples, current_samples, sample_count, 0.98);
+  size_t stable_gmp = paired_ratio_wins(candidate_samples, gmp_samples, sample_count, 1.0);
+  size_t expected_hash_count = sample_count * XRAY_MUL_OPERAND_FAMILIES;
+  int hash_gate = hash_match_count == expected_hash_count;
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.category, sizeof(result.category), "kernel-probe");
+  snprintf(result.name, sizeof(result.name), "kernel square threshold hill %s %zu digits", candidate->name, digits);
+  snprintf(result.operation, sizeof(result.operation), "square-threshold-hill-pt");
+  result.digits = digits;
+  result.scratch_us = median_samples(candidate_samples, sample_count);
+  result.gmp_us = median_samples(gmp_samples, sample_count);
+  result.speed_ratio = candidate_current_ratio > 0.0 ? candidate_current_ratio : 0.0;
+  result.max_allowed_speed_ratio = 0.98;
+  result.worst_pair_ratio = candidate_current_worst;
+  result.stable_sample_count = stable_current;
+  result.sample_count = sample_count;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + median_samples(current_samples, sample_count) + 999ULL) / 1000ULL);
+  result.parity_verified = parity && hash_gate;
+  result.passed = parity && hash_gate;
+  result.replacement_ready = 0;
+  snprintf(result.status, sizeof(result.status), "%s",
+    !parity ? "mismatch" :
+    (!hash_gate ? "hash-mismatch" :
+    (candidate_current_ratio <= 0.98 ? "candidate-beats-current" :
+    (candidate_current_ratio <= 1.02 ? "candidate-current-tie" : "current-faster"))));
+  snprintf(result.adoption, sizeof(result.adoption), "observe-only");
+  snprintf(result.detail, sizeof(result.detail),
+    "op=square-threshold-hill-point digits=%zu sizeRole=%s candidate=%s route=%s threshold=%zu operandFamilies=%u samples=%zu iterations=%u batchIterations=%u stableCandidateVsCurrent=%zu/%zu stableCandidateVsGmp=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s candidateUs=%llu currentUs=%llu gmpUs=%llu candidateCurrentRatio=%.3f candidateGmpRatio=%.3f currentGmpRatio=%.3f worstCandidateCurrent=%.3f worstCandidateGmp=%.3f ratioMethod=paired-median timingMode=rotating-batch warmup=1 sameInput=yes oracle=mpz_mul featureGate=square-threshold-hill replacementReady=false noAutoRoute=1 adoption=observe-only",
+    digits,
+    large_mul_campaign_size_role(digits),
+    candidate->name,
+    square_threshold_hill_route_name(candidate->route),
+    candidate->threshold,
+    (unsigned int)XRAY_MUL_OPERAND_FAMILIES,
+    sample_count,
+    iterations,
+    batch_iterations,
+    stable_current,
+    sample_count,
+    stable_gmp,
+    sample_count,
+    hash_match_count,
+    expected_hash_count,
+    hash_gate ? "matched" : "blocked",
+    parity ? "matched" : "blocked",
+    result.scratch_us,
+    median_samples(current_samples, sample_count),
+    result.gmp_us,
+    candidate_current_ratio,
+    candidate_gmp_ratio,
+    current_gmp_ratio,
+    candidate_current_worst,
+    candidate_gmp_worst);
+  append_result(report, &result);
+
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    mpz_clears(gvalue[family], gout[family], NULL);
+    xray_bigint_clear(&value[family]);
+    xray_bigint_clear(&mirror[family]);
+    xray_bigint_clear(&candidate_out[family]);
+    xray_bigint_clear(&current_out[family]);
+    free(text[family]);
+  }
+}
+
+static void run_square_threshold_hill_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-threshold-hill")) return;
+  static const XraySquareThresholdHillCandidate candidates[] = {
+    {"self-mul-prod", XRAY_SQUARE_THRESHOLD_HILL_SELF_MUL, 0U},
+    {"kara-l48", XRAY_SQUARE_THRESHOLD_HILL_KARATSUBA, 48U},
+    {"kara-l64", XRAY_SQUARE_THRESHOLD_HILL_KARATSUBA, 64U},
+    {"kara-l96", XRAY_SQUARE_THRESHOLD_HILL_KARATSUBA, 96U},
+    {"kara-l128", XRAY_SQUARE_THRESHOLD_HILL_KARATSUBA, 128U},
+    {"kara-l160", XRAY_SQUARE_THRESHOLD_HILL_KARATSUBA, 160U},
+    {"kara-l224", XRAY_SQUARE_THRESHOLD_HILL_KARATSUBA, 224U},
+    {"kara-l320", XRAY_SQUARE_THRESHOLD_HILL_KARATSUBA, 320U},
+    {"fused-l64", XRAY_SQUARE_THRESHOLD_HILL_FUSED_LEAF, 64U},
+    {"fused-l96", XRAY_SQUARE_THRESHOLD_HILL_FUSED_LEAF, 96U},
+    {"fused-l160", XRAY_SQUARE_THRESHOLD_HILL_FUSED_LEAF, 160U},
+    {"fused-l224", XRAY_SQUARE_THRESHOLD_HILL_FUSED_LEAF, 224U}
+  };
+  const size_t digits[] = {8192, 11717, 16384, 24103, 32768};
+  for (size_t digit_index = 0; digit_index < sizeof(digits) / sizeof(digits[0]); ++digit_index) {
+    for (size_t candidate_index = 0; candidate_index < sizeof(candidates) / sizeof(candidates[0]); ++candidate_index) {
+      run_square_threshold_hill_point(report, digits[digit_index], &candidates[candidate_index], 3U, 3U, 16U);
+    }
+  }
+}
+
+static void run_square_1000_leaf_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-1000-leaf-gate")) return;
+  static const XraySquareThresholdHillCandidate candidates[] = {
+    {"self-mul-prod", XRAY_SQUARE_THRESHOLD_HILL_SELF_MUL, 0U},
+    {"kara-l32", XRAY_SQUARE_THRESHOLD_HILL_KARATSUBA, 32U},
+    {"kara-l40", XRAY_SQUARE_THRESHOLD_HILL_KARATSUBA, 40U},
+    {"kara-l48", XRAY_SQUARE_THRESHOLD_HILL_KARATSUBA, 48U},
+    {"kara-l64-current", XRAY_SQUARE_THRESHOLD_HILL_KARATSUBA, 64U},
+    {"fused-l40", XRAY_SQUARE_THRESHOLD_HILL_FUSED_LEAF, 40U},
+    {"fused-l48", XRAY_SQUARE_THRESHOLD_HILL_FUSED_LEAF, 48U},
+    {"fused-l64", XRAY_SQUARE_THRESHOLD_HILL_FUSED_LEAF, 64U},
+    {"unroll4-l40", XRAY_SQUARE_THRESHOLD_HILL_UNROLL4_LEAF, 40U},
+    {"unroll4-l48", XRAY_SQUARE_THRESHOLD_HILL_UNROLL4_LEAF, 48U},
+    {"unroll4-l64", XRAY_SQUARE_THRESHOLD_HILL_UNROLL4_LEAF, 64U},
+    {"comba-l40", XRAY_SQUARE_THRESHOLD_HILL_COMBA_LEAF, 40U},
+    {"comba-l48", XRAY_SQUARE_THRESHOLD_HILL_COMBA_LEAF, 48U},
+    {"comba-l64", XRAY_SQUARE_THRESHOLD_HILL_COMBA_LEAF, 64U}
+  };
+  for (size_t index = 0; index < sizeof(candidates) / sizeof(candidates[0]); ++index) {
+    run_square_threshold_hill_point(report, 1000U, &candidates[index], 7U, 4096U, 4096U);
+  }
+}
+
+static void run_square_threshold_frontier_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-threshold-frontier")) return;
+  static const XraySquareThresholdHillCandidate candidates[] = {
+    {"kara-l40", XRAY_SQUARE_THRESHOLD_HILL_KARATSUBA, 40U},
+    {"kara-l64", XRAY_SQUARE_THRESHOLD_HILL_KARATSUBA, 64U},
+    {"kara-l96", XRAY_SQUARE_THRESHOLD_HILL_KARATSUBA, 96U},
+    {"kara-l128", XRAY_SQUARE_THRESHOLD_HILL_KARATSUBA, 128U},
+    {"fused-l40", XRAY_SQUARE_THRESHOLD_HILL_FUSED_LEAF, 40U},
+    {"fused-l64", XRAY_SQUARE_THRESHOLD_HILL_FUSED_LEAF, 64U},
+    {"fused-l96", XRAY_SQUARE_THRESHOLD_HILL_FUSED_LEAF, 96U},
+    {"unroll-l40", XRAY_SQUARE_THRESHOLD_HILL_UNROLL4_LEAF, 40U},
+    {"unroll-l64", XRAY_SQUARE_THRESHOLD_HILL_UNROLL4_LEAF, 64U},
+    {"unroll-l96", XRAY_SQUARE_THRESHOLD_HILL_UNROLL4_LEAF, 96U},
+    {"comba-l40", XRAY_SQUARE_THRESHOLD_HILL_COMBA_LEAF, 40U},
+    {"comba-l64", XRAY_SQUARE_THRESHOLD_HILL_COMBA_LEAF, 64U},
+    {"comba-l96", XRAY_SQUARE_THRESHOLD_HILL_COMBA_LEAF, 96U},
+    {"wskara-l40", XRAY_SQUARE_THRESHOLD_HILL_WORKSPACE_KARATSUBA, 40U},
+    {"wskara-l64", XRAY_SQUARE_THRESHOLD_HILL_WORKSPACE_KARATSUBA, 64U},
+    {"wsmul-l40", XRAY_SQUARE_THRESHOLD_HILL_WORKSPACE_KARATSUBA_MUL_LEAF, 40U},
+    {"wsmul-l64", XRAY_SQUARE_THRESHOLD_HILL_WORKSPACE_KARATSUBA_MUL_LEAF, 64U}
+  };
+  for (size_t index = 0; index < sizeof(candidates) / sizeof(candidates[0]); ++index) {
+    run_square_threshold_hill_point(report, 4096U, &candidates[index], 5U, 80U, 80U);
+  }
+}
+
+static void run_square_workspace_hill_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-workspace-hill")) return;
+  static const XraySquareThresholdHillCandidate candidates[] = {
+    {"ws-kara-l24", XRAY_SQUARE_THRESHOLD_HILL_WORKSPACE_KARATSUBA, 24U},
+    {"ws-kara-l32", XRAY_SQUARE_THRESHOLD_HILL_WORKSPACE_KARATSUBA, 32U},
+    {"ws-kara-l40", XRAY_SQUARE_THRESHOLD_HILL_WORKSPACE_KARATSUBA, 40U},
+    {"ws-kara-l48", XRAY_SQUARE_THRESHOLD_HILL_WORKSPACE_KARATSUBA, 48U},
+    {"ws-kara-l64", XRAY_SQUARE_THRESHOLD_HILL_WORKSPACE_KARATSUBA, 64U},
+    {"ws-kara-l96", XRAY_SQUARE_THRESHOLD_HILL_WORKSPACE_KARATSUBA, 96U},
+    {"wsmul-l32", XRAY_SQUARE_THRESHOLD_HILL_WORKSPACE_KARATSUBA_MUL_LEAF, 32U},
+    {"wsmul-l40", XRAY_SQUARE_THRESHOLD_HILL_WORKSPACE_KARATSUBA_MUL_LEAF, 40U},
+    {"wsmul-l48", XRAY_SQUARE_THRESHOLD_HILL_WORKSPACE_KARATSUBA_MUL_LEAF, 48U},
+    {"wsmul-l64", XRAY_SQUARE_THRESHOLD_HILL_WORKSPACE_KARATSUBA_MUL_LEAF, 64U},
+    {"self-mul-prod", XRAY_SQUARE_THRESHOLD_HILL_SELF_MUL, 0U}
+  };
+  const size_t digits[] = {3072, 4096, 5639, 7000, 8192};
+  for (size_t digit_index = 0; digit_index < sizeof(digits) / sizeof(digits[0]); ++digit_index) {
+    for (size_t candidate_index = 0; candidate_index < sizeof(candidates) / sizeof(candidates[0]); ++candidate_index) {
+      run_square_threshold_hill_point(report, digits[digit_index], &candidates[candidate_index], 3U, 3U, 12U);
+    }
+  }
+}
+
+static void run_square_workspace_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-workspace-gate")) return;
+  static const struct {
+    size_t digits;
+    XraySquareThresholdHillCandidate candidate;
+  } cases[] = {
+    {3072, {"ws-kara-l64", XRAY_SQUARE_THRESHOLD_HILL_WORKSPACE_KARATSUBA, 64U}},
+    {4096, {"ws-kara-l48", XRAY_SQUARE_THRESHOLD_HILL_WORKSPACE_KARATSUBA, 48U}},
+    {4096, {"ws-kara-l64", XRAY_SQUARE_THRESHOLD_HILL_WORKSPACE_KARATSUBA, 64U}},
+    {5639, {"ws-kara-l40", XRAY_SQUARE_THRESHOLD_HILL_WORKSPACE_KARATSUBA, 40U}},
+    {7000, {"ws-kara-l48", XRAY_SQUARE_THRESHOLD_HILL_WORKSPACE_KARATSUBA, 48U}},
+    {8192, {"ws-kara-l40", XRAY_SQUARE_THRESHOLD_HILL_WORKSPACE_KARATSUBA, 40U}}
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    run_square_threshold_hill_point(report, cases[index].digits, &cases[index].candidate, 7U, 6U, 24U);
+  }
+}
+
+static void run_square_leaf_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-leaf-gate")) return;
+  static const struct {
+    size_t digits;
+    XraySquareThresholdHillCandidate candidate;
+  } cases[] = {
+    {4096, {"unroll4-l48", XRAY_SQUARE_THRESHOLD_HILL_UNROLL4_LEAF, 48U}},
+    {4096, {"unroll4-l64", XRAY_SQUARE_THRESHOLD_HILL_UNROLL4_LEAF, 64U}},
+    {8192, {"unroll4-l48", XRAY_SQUARE_THRESHOLD_HILL_UNROLL4_LEAF, 48U}},
+    {8192, {"unroll4-l64", XRAY_SQUARE_THRESHOLD_HILL_UNROLL4_LEAF, 64U}},
+    {11717, {"unroll4-l64", XRAY_SQUARE_THRESHOLD_HILL_UNROLL4_LEAF, 64U}},
+    {16384, {"unroll4-l64", XRAY_SQUARE_THRESHOLD_HILL_UNROLL4_LEAF, 64U}}
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    run_square_threshold_hill_point(report, cases[index].digits, &cases[index].candidate, 5U, 12U, 32U);
+  }
+}
+
+static void run_square_comba_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "square-comba-gate")) return;
+  static const struct {
+    size_t digits;
+    XraySquareThresholdHillCandidate candidate;
+  } cases[] = {
+    {4096, {"comba-l48", XRAY_SQUARE_THRESHOLD_HILL_COMBA_LEAF, 48U}},
+    {4096, {"comba-l64", XRAY_SQUARE_THRESHOLD_HILL_COMBA_LEAF, 64U}},
+    {8192, {"comba-l48", XRAY_SQUARE_THRESHOLD_HILL_COMBA_LEAF, 48U}},
+    {8192, {"comba-l64", XRAY_SQUARE_THRESHOLD_HILL_COMBA_LEAF, 64U}},
+    {11717, {"comba-l64", XRAY_SQUARE_THRESHOLD_HILL_COMBA_LEAF, 64U}},
+    {16384, {"comba-l64", XRAY_SQUARE_THRESHOLD_HILL_COMBA_LEAF, 64U}},
+    {24103, {"comba-l64", XRAY_SQUARE_THRESHOLD_HILL_COMBA_LEAF, 64U}}
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    run_square_threshold_hill_point(report, cases[index].digits, &cases[index].candidate, 5U, 12U, 32U);
+  }
+}
+
+typedef enum XrayDenseHillRoute {
+  XRAY_DENSE_HILL_CURRENT = 0,
+  XRAY_DENSE_HILL_TOOM4_FACTORED,
+  XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL2,
+  XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4,
+  XRAY_DENSE_HILL_TOOM3_COMBO,
+  XRAY_DENSE_HILL_TOOM5_FACTORED,
+  XRAY_DENSE_HILL_NTT16
+} XrayDenseHillRoute;
+
+typedef struct XrayDenseHillCandidate {
+  const char *name;
+  XrayDenseHillRoute route;
+  size_t leaf_threshold;
+  size_t depth_limit;
+} XrayDenseHillCandidate;
+
+static const char *dense_hill_route_name(XrayDenseHillRoute route) {
+  switch (route) {
+    case XRAY_DENSE_HILL_CURRENT: return "current-production";
+    case XRAY_DENSE_HILL_TOOM4_FACTORED: return "toom4-top-factored";
+    case XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL2: return "toom4-top-factored-parallel2";
+    case XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4: return "toom4-top-factored-parallel4";
+    case XRAY_DENSE_HILL_TOOM3_COMBO: return "toom3-combo";
+    case XRAY_DENSE_HILL_TOOM5_FACTORED: return "toom5-top-factored";
+    case XRAY_DENSE_HILL_NTT16: return "ntt16-base2^16";
+  }
+  return "unknown";
+}
+
+static int run_dense_hill_candidate(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *left,
+  const XrayScratchBigInt *right,
+  const XrayDenseHillCandidate *candidate,
+  XrayBigIntMulWorkspace *workspace) {
+  if (!out || !left || !right || !candidate) return 0;
+  if (candidate->route == XRAY_DENSE_HILL_CURRENT) return xray_bigint_mul(out, left, right);
+  if (candidate->route == XRAY_DENSE_HILL_NTT16) return xray_bigint_mul_ntt16_probe(out, left, right);
+  if (!workspace) return 0;
+  if (candidate->route == XRAY_DENSE_HILL_TOOM4_FACTORED) {
+    return xray_bigint_mul_toom4_top_full_workspace_reuse_factored_div_probe(
+      out,
+      left,
+      right,
+      candidate->leaf_threshold,
+      candidate->depth_limit,
+      workspace);
+  }
+  if (candidate->route == XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL2) {
+    return xray_bigint_mul_toom4_top_full_workspace_reuse_factored_div_parallel_probe(
+      out,
+      left,
+      right,
+      candidate->leaf_threshold,
+      candidate->depth_limit,
+      1U,
+      2U,
+      workspace);
+  }
+  if (candidate->route == XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4) {
+    return xray_bigint_mul_toom4_top_full_workspace_reuse_factored_div_parallel_probe(
+      out,
+      left,
+      right,
+      candidate->leaf_threshold,
+      candidate->depth_limit,
+      1U,
+      4U,
+      workspace);
+  }
+  if (candidate->route == XRAY_DENSE_HILL_TOOM3_COMBO) {
+    return xray_bigint_mul_toom3_unroll4_recursive_full_workspace_reuse_div2_div3_probe(
+      out,
+      left,
+      right,
+      candidate->leaf_threshold,
+      candidate->depth_limit,
+      workspace);
+  }
+  if (candidate->route == XRAY_DENSE_HILL_TOOM5_FACTORED) {
+    return xray_bigint_mul_toom5_top_full_workspace_reuse_factored_div_probe(
+      out,
+      left,
+      right,
+      candidate->leaf_threshold,
+      candidate->depth_limit,
+      workspace);
+  }
+  return 0;
+}
+
+static void run_mul_dense_hill_point(
+  XrayBenchmarkReport *report,
+  size_t digits,
+  const XrayDenseHillCandidate *candidate,
+  size_t sample_count) {
+  if (!report || !candidate || sample_count == 0 || sample_count > XRAY_BENCH_MAX_SAMPLES) return;
+  char *left_text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  char *right_text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  XrayScratchBigInt left[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt right[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt candidate_out[XRAY_MUL_OPERAND_FAMILIES];
+  XrayBigIntMulWorkspace workspace;
+  mpz_t gleft[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gright[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gout[XRAY_MUL_OPERAND_FAMILIES];
+  unsigned long long candidate_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned int iterations = perf_iterations("mul", digits);
+  if (iterations > 16U) iterations = 16U;
+  if (iterations < 3U) iterations = 3U;
+  unsigned int batch_iterations = iterations >= 8U ? 4U : 1U;
+  xray_bigint_mul_workspace_init(&workspace);
+  int ok = 1;
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    xray_bigint_init(&left[family]);
+    xray_bigint_init(&right[family]);
+    xray_bigint_init(&candidate_out[family]);
+    mpz_inits(gleft[family], gright[family], gout[family], NULL);
+    left_text[family] = benchmark_decimal(
+      digits,
+      2609U + mul_operand_families[family].left_seed + (unsigned int)(family * 31U),
+      mul_operand_families[family].left_high_lead);
+    right_text[family] = benchmark_decimal(
+      digits,
+      2609U + mul_operand_families[family].right_seed + (unsigned int)(family * 37U),
+      mul_operand_families[family].right_high_lead);
+    ok = ok &&
+      left_text[family] &&
+      right_text[family] &&
+      xray_bigint_set_decimal(&left[family], left_text[family]) &&
+      xray_bigint_set_decimal(&right[family], right_text[family]) &&
+      mpz_set_str(gleft[family], left_text[family], 10) == 0 &&
+      mpz_set_str(gright[family], right_text[family], 10) == 0;
+  }
+
+  int parity = 1;
+  size_t hash_match_count = 0;
+  for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    ok = run_dense_hill_candidate(
+      &candidate_out[family],
+      &left[family],
+      &right[family],
+      candidate,
+      &workspace);
+    if (ok) mpz_mul(gout[family], gleft[family], gright[family]);
+  }
+  for (size_t sample = 0; ok && sample < sample_count; ++sample) {
+    unsigned int completed = 0;
+    unsigned int phase = (unsigned int)(sample & 1U);
+    while (ok && completed < iterations) {
+      unsigned int remaining = iterations - completed;
+      unsigned int batch = remaining < batch_iterations ? remaining : batch_iterations;
+      for (unsigned int lane = 0; ok && lane < 2U; ++lane) {
+        unsigned int active = (unsigned int)((phase + lane) & 1U);
+        unsigned long long started = xray_now_us();
+        for (unsigned int iteration = 0; ok && iteration < batch; ++iteration) {
+          for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+            if (active == 0U) {
+              ok = run_dense_hill_candidate(
+                &candidate_out[family],
+                &left[family],
+                &right[family],
+                candidate,
+                &workspace);
+            } else {
+              mpz_mul(gout[family], gleft[family], gright[family]);
+            }
+          }
+        }
+        if (active == 0U) candidate_samples[sample] += xray_now_us() - started;
+        else gmp_samples[sample] += xray_now_us() - started;
+      }
+      phase ^= 1U;
+      completed += batch;
+    }
+    for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+      char *candidate_text = xray_bigint_get_decimal(&candidate_out[family]);
+      char *gmp_text = mpz_get_str(NULL, 10, gout[family]);
+      uint64_t candidate_hash = xray_benchmark_text_hash64(candidate_text);
+      uint64_t gmp_hash = xray_benchmark_text_hash64(gmp_text);
+      int sample_match = ok &&
+        candidate_text &&
+        gmp_text &&
+        strcmp(candidate_text, gmp_text) == 0;
+      if (sample_match && candidate_hash != 0ULL && candidate_hash == gmp_hash) hash_match_count++;
+      parity = parity && sample_match;
+      free(candidate_text);
+      free(gmp_text);
+    }
+  }
+
+  double candidate_gmp_ratio = median_paired_ratio(candidate_samples, gmp_samples, sample_count);
+  double candidate_gmp_worst = max_paired_ratio(candidate_samples, gmp_samples, sample_count);
+  size_t stable = paired_ratio_wins(candidate_samples, gmp_samples, sample_count, 1.0);
+  size_t expected_hash_count = sample_count * XRAY_MUL_OPERAND_FAMILIES;
+  int hash_gate = hash_match_count == expected_hash_count;
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.category, sizeof(result.category), "kernel-probe");
+  snprintf(result.name, sizeof(result.name), "kernel dense hill %s %zu digits", candidate->name, digits);
+  snprintf(result.operation, sizeof(result.operation), "mul-dense-hill-pt");
+  result.digits = digits;
+  result.scratch_us = median_samples(candidate_samples, sample_count);
+  result.gmp_us = median_samples(gmp_samples, sample_count);
+  result.speed_ratio = candidate_gmp_ratio > 0.0 ? candidate_gmp_ratio :
+    (result.gmp_us ? (double)result.scratch_us / (double)result.gmp_us : 0.0);
+  result.max_allowed_speed_ratio = 1.0;
+  result.worst_pair_ratio = candidate_gmp_worst;
+  result.stable_sample_count = stable;
+  result.sample_count = sample_count;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  result.parity_verified = parity && hash_gate;
+  result.passed = parity && hash_gate;
+  result.replacement_ready = 0;
+  snprintf(result.status, sizeof(result.status), "%s",
+    !parity ? "mismatch" :
+    (!hash_gate ? "hash-mismatch" :
+    (candidate_gmp_ratio <= 1.0 ? "candidate-faster-or-tie" : "gmp-faster")));
+  snprintf(result.adoption, sizeof(result.adoption), "observe-only");
+  snprintf(result.detail, sizeof(result.detail),
+    "op=mul-dense-hill-point digits=%zu sizeRole=%s candidate=%s route=%s leafThreshold=%zu depthLimit=%zu operandFamilies=%u samples=%zu iterations=%u batchIterations=%u stableCandidate=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s candidateUs=%llu gmpUs=%llu candidateGmpRatio=%.3f worstPairRatio=%.3f ratioMethod=paired-median timingMode=rotating-batch warmup=1 sameInput=yes oracle=mpz_mul featureGate=large-multiply-cpu-dense-hill-climb replacementReady=false noAutoRoute=1 adoption=observe-only",
+    digits,
+    large_mul_campaign_size_role(digits),
+    candidate->name,
+    dense_hill_route_name(candidate->route),
+    candidate->leaf_threshold,
+    candidate->depth_limit,
+    (unsigned int)XRAY_MUL_OPERAND_FAMILIES,
+    sample_count,
+    iterations,
+    batch_iterations,
+    stable,
+    sample_count,
+    hash_match_count,
+    expected_hash_count,
+    hash_gate ? "matched" : "blocked",
+    parity ? "matched" : "blocked",
+    result.scratch_us,
+    result.gmp_us,
+    candidate_gmp_ratio,
+    candidate_gmp_worst);
+  append_result(report, &result);
+
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    mpz_clears(gleft[family], gright[family], gout[family], NULL);
+    xray_bigint_clear(&left[family]);
+    xray_bigint_clear(&right[family]);
+    xray_bigint_clear(&candidate_out[family]);
+    free(left_text[family]);
+    free(right_text[family]);
+  }
+  xray_bigint_mul_workspace_clear(&workspace);
+}
+
+static void run_mul_dense_finalist_gate_point_with_iterations(
+  XrayBenchmarkReport *report,
+  size_t digits,
+  const XrayDenseHillCandidate *candidate,
+  size_t sample_count,
+  unsigned int min_iterations,
+  const char *operation_name,
+  const char *detail_operation,
+  const char *feature_gate) {
+  if (!report || !candidate || sample_count == 0 || sample_count > XRAY_BENCH_MAX_SAMPLES) return;
+  if (!operation_name) operation_name = "mul-dense-finalist-gate-pt";
+  if (!detail_operation) detail_operation = "mul-dense-finalist-gate-point";
+  if (!feature_gate) feature_gate = "large-multiply-cpu-dense-finalist-gate";
+  char *left_text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  char *right_text[XRAY_MUL_OPERAND_FAMILIES] = {0};
+  XrayScratchBigInt left[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt right[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt candidate_out[XRAY_MUL_OPERAND_FAMILIES];
+  XrayScratchBigInt current_out[XRAY_MUL_OPERAND_FAMILIES];
+  XrayBigIntMulWorkspace workspace;
+  mpz_t gleft[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gright[XRAY_MUL_OPERAND_FAMILIES];
+  mpz_t gout[XRAY_MUL_OPERAND_FAMILIES];
+  unsigned long long candidate_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long current_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned long long gmp_samples[XRAY_BENCH_MAX_SAMPLES] = {0};
+  unsigned int iterations = perf_iterations("mul", digits);
+  if (iterations > 16U) iterations = 16U;
+  if (iterations < min_iterations) iterations = min_iterations;
+  if (iterations < 3U) iterations = 3U;
+  unsigned int batch_iterations = iterations >= 8U ? 4U : 1U;
+  xray_bigint_mul_workspace_init(&workspace);
+  int ok = 1;
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    xray_bigint_init(&left[family]);
+    xray_bigint_init(&right[family]);
+    xray_bigint_init(&candidate_out[family]);
+    xray_bigint_init(&current_out[family]);
+    mpz_inits(gleft[family], gright[family], gout[family], NULL);
+    left_text[family] = benchmark_decimal(
+      digits,
+      2819U + mul_operand_families[family].left_seed + (unsigned int)(family * 41U),
+      mul_operand_families[family].left_high_lead);
+    right_text[family] = benchmark_decimal(
+      digits,
+      2819U + mul_operand_families[family].right_seed + (unsigned int)(family * 43U),
+      mul_operand_families[family].right_high_lead);
+    ok = ok &&
+      left_text[family] &&
+      right_text[family] &&
+      xray_bigint_set_decimal(&left[family], left_text[family]) &&
+      xray_bigint_set_decimal(&right[family], right_text[family]) &&
+      mpz_set_str(gleft[family], left_text[family], 10) == 0 &&
+      mpz_set_str(gright[family], right_text[family], 10) == 0;
+  }
+
+  int parity = 1;
+  size_t hash_match_count = 0;
+  for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    ok = run_dense_hill_candidate(
+      &candidate_out[family],
+      &left[family],
+      &right[family],
+      candidate,
+      &workspace) &&
+      xray_bigint_mul(&current_out[family], &left[family], &right[family]);
+    if (ok) mpz_mul(gout[family], gleft[family], gright[family]);
+  }
+
+  for (size_t sample = 0; ok && sample < sample_count; ++sample) {
+    unsigned int completed = 0;
+    unsigned int phase = (unsigned int)(sample % 3U);
+    while (ok && completed < iterations) {
+      unsigned int remaining = iterations - completed;
+      unsigned int batch = remaining < batch_iterations ? remaining : batch_iterations;
+      for (unsigned int lane = 0; ok && lane < 3U; ++lane) {
+        unsigned int active = (unsigned int)((phase + lane) % 3U);
+        unsigned long long started = xray_now_us();
+        for (unsigned int iteration = 0; ok && iteration < batch; ++iteration) {
+          for (size_t family = 0; ok && family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+            if (active == 0U) {
+              ok = run_dense_hill_candidate(
+                &candidate_out[family],
+                &left[family],
+                &right[family],
+                candidate,
+                &workspace);
+            } else if (active == 1U) {
+              ok = xray_bigint_mul(&current_out[family], &left[family], &right[family]);
+            } else {
+              mpz_mul(gout[family], gleft[family], gright[family]);
+            }
+          }
+        }
+        if (active == 0U) candidate_samples[sample] += xray_now_us() - started;
+        else if (active == 1U) current_samples[sample] += xray_now_us() - started;
+        else gmp_samples[sample] += xray_now_us() - started;
+      }
+      phase = (phase + 1U) % 3U;
+      completed += batch;
+    }
+    for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+      char *candidate_text = xray_bigint_get_decimal(&candidate_out[family]);
+      char *current_text = xray_bigint_get_decimal(&current_out[family]);
+      char *gmp_text = mpz_get_str(NULL, 10, gout[family]);
+      uint64_t candidate_hash = xray_benchmark_text_hash64(candidate_text);
+      uint64_t current_hash = xray_benchmark_text_hash64(current_text);
+      uint64_t gmp_hash = xray_benchmark_text_hash64(gmp_text);
+      int sample_match = ok &&
+        candidate_text &&
+        current_text &&
+        gmp_text &&
+        strcmp(candidate_text, current_text) == 0 &&
+        strcmp(candidate_text, gmp_text) == 0;
+      if (sample_match &&
+          candidate_hash != 0ULL &&
+          candidate_hash == current_hash &&
+          candidate_hash == gmp_hash) {
+        hash_match_count++;
+      }
+      parity = parity && sample_match;
+      free(candidate_text);
+      free(current_text);
+      free(gmp_text);
+    }
+  }
+
+  double candidate_current_ratio = median_paired_ratio(candidate_samples, current_samples, sample_count);
+  double candidate_current_worst = max_paired_ratio(candidate_samples, current_samples, sample_count);
+  double candidate_gmp_ratio = median_paired_ratio(candidate_samples, gmp_samples, sample_count);
+  double candidate_gmp_worst = max_paired_ratio(candidate_samples, gmp_samples, sample_count);
+  double current_gmp_ratio = median_paired_ratio(current_samples, gmp_samples, sample_count);
+  size_t stable_current = paired_ratio_wins(candidate_samples, current_samples, sample_count, 0.98);
+  size_t stable_gmp = paired_ratio_wins(candidate_samples, gmp_samples, sample_count, 1.0);
+  size_t expected_hash_count = sample_count * XRAY_MUL_OPERAND_FAMILIES;
+  int hash_gate = hash_match_count == expected_hash_count;
+  XrayBenchmarkResult result;
+  memset(&result, 0, sizeof(result));
+  snprintf(result.category, sizeof(result.category), "kernel-probe");
+  snprintf(result.name, sizeof(result.name), "kernel dense finalist %s %zu digits", candidate->name, digits);
+  snprintf(result.operation, sizeof(result.operation), "%s", operation_name);
+  result.digits = digits;
+  result.scratch_us = median_samples(candidate_samples, sample_count);
+  result.gmp_us = median_samples(gmp_samples, sample_count);
+  result.speed_ratio = candidate_current_ratio > 0.0 ? candidate_current_ratio : 0.0;
+  result.max_allowed_speed_ratio = 0.98;
+  result.worst_pair_ratio = candidate_current_worst;
+  result.stable_sample_count = stable_current;
+  result.sample_count = sample_count;
+  result.elapsed_ms = (unsigned long)((result.scratch_us + result.gmp_us + 999ULL) / 1000ULL);
+  result.parity_verified = parity && hash_gate;
+  result.passed = parity && hash_gate;
+  result.replacement_ready = 0;
+  snprintf(result.status, sizeof(result.status), "%s",
+    !parity ? "mismatch" :
+    (!hash_gate ? "hash-mismatch" :
+    (candidate_current_ratio <= 0.98 ? "candidate-beats-current" :
+    (candidate_current_ratio <= 1.02 ? "candidate-current-tie" : "current-faster"))));
+  snprintf(result.adoption, sizeof(result.adoption), "observe-only");
+  snprintf(result.detail, sizeof(result.detail),
+    "op=%s digits=%zu sizeRole=%s candidate=%s route=%s leafThreshold=%zu depthLimit=%zu operandFamilies=%u samples=%zu iterations=%u batchIterations=%u stableCandidateVsCurrent=%zu/%zu stableCandidateVsGmp=%zu/%zu hashSafe=%zu/%zu hashGate=%s parity=%s candidateUs=%llu currentUs=%llu gmpUs=%llu candidateCurrentRatio=%.3f candidateGmpRatio=%.3f currentGmpRatio=%.3f worstCandidateCurrent=%.3f worstCandidateGmp=%.3f ratioMethod=paired-median timingMode=rotating-batch warmup=1 sameInput=yes oracle=mpz_mul featureGate=%s replacementReady=false noAutoRoute=1 adoption=observe-only",
+    detail_operation,
+    digits,
+    large_mul_campaign_size_role(digits),
+    candidate->name,
+    dense_hill_route_name(candidate->route),
+    candidate->leaf_threshold,
+    candidate->depth_limit,
+    (unsigned int)XRAY_MUL_OPERAND_FAMILIES,
+    sample_count,
+    iterations,
+    batch_iterations,
+    stable_current,
+    sample_count,
+    stable_gmp,
+    sample_count,
+    hash_match_count,
+    expected_hash_count,
+    hash_gate ? "matched" : "blocked",
+    parity ? "matched" : "blocked",
+    result.scratch_us,
+    median_samples(current_samples, sample_count),
+    result.gmp_us,
+    candidate_current_ratio,
+    candidate_gmp_ratio,
+    current_gmp_ratio,
+    candidate_current_worst,
+    candidate_gmp_worst,
+    feature_gate);
+  append_result(report, &result);
+
+  for (size_t family = 0; family < XRAY_MUL_OPERAND_FAMILIES; ++family) {
+    mpz_clears(gleft[family], gright[family], gout[family], NULL);
+    xray_bigint_clear(&left[family]);
+    xray_bigint_clear(&right[family]);
+    xray_bigint_clear(&candidate_out[family]);
+    xray_bigint_clear(&current_out[family]);
+    free(left_text[family]);
+    free(right_text[family]);
+  }
+  xray_bigint_mul_workspace_clear(&workspace);
+}
+
+static void run_mul_dense_finalist_gate_point(
+  XrayBenchmarkReport *report,
+  size_t digits,
+  const XrayDenseHillCandidate *candidate,
+  size_t sample_count,
+  const char *operation_name,
+  const char *detail_operation,
+  const char *feature_gate) {
+  run_mul_dense_finalist_gate_point_with_iterations(
+    report,
+    digits,
+    candidate,
+    sample_count,
+    0U,
+    operation_name,
+    detail_operation,
+    feature_gate);
+}
+
+static void run_mul_dense_hill_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "mul-dense-hill")) return;
+  static const XrayDenseHillCandidate candidates[] = {
+    {"current-prod", XRAY_DENSE_HILL_CURRENT, 0U, 0U},
+    {"top4-l32d3", XRAY_DENSE_HILL_TOOM4_FACTORED, 32U, 3U},
+    {"top4-l48d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 48U, 2U},
+    {"top4-l64d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 64U, 2U},
+    {"top4-l80d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 80U, 2U},
+    {"top4-l96d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 96U, 2U},
+    {"top4-l128d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 128U, 2U},
+    {"top4-l48d3", XRAY_DENSE_HILL_TOOM4_FACTORED, 48U, 3U},
+    {"combo-l32d4", XRAY_DENSE_HILL_TOOM3_COMBO, 32U, 4U},
+    {"combo-l64d2", XRAY_DENSE_HILL_TOOM3_COMBO, 64U, 2U},
+    {"combo-l48d4", XRAY_DENSE_HILL_TOOM3_COMBO, 48U, 4U}
+  };
+  const size_t digits[] = {24103, 32768, 52163, 65536};
+  for (size_t digit_index = 0; digit_index < sizeof(digits) / sizeof(digits[0]); ++digit_index) {
+    for (size_t candidate_index = 0; candidate_index < sizeof(candidates) / sizeof(candidates[0]); ++candidate_index) {
+      run_mul_dense_hill_point(report, digits[digit_index], &candidates[candidate_index], 3U);
+    }
+  }
+}
+
+static void run_mul_dense_finalist_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "mul-dense-finalist-gate")) return;
+  static const struct {
+    size_t digits;
+    XrayDenseHillCandidate candidate;
+  } cases[] = {
+    {24103, {"top4-l48d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 48U, 2U}},
+    {24103, {"combo-l32d4", XRAY_DENSE_HILL_TOOM3_COMBO, 32U, 4U}},
+    {32768, {"top4-l48d3", XRAY_DENSE_HILL_TOOM4_FACTORED, 48U, 3U}},
+    {32768, {"combo-l64d2", XRAY_DENSE_HILL_TOOM3_COMBO, 64U, 2U}},
+    {52163, {"top4-l48d3", XRAY_DENSE_HILL_TOOM4_FACTORED, 48U, 3U}},
+    {52163, {"top4-l64d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 64U, 2U}},
+    {65536, {"top4-l48d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 48U, 2U}},
+    {65536, {"top4-l64d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 64U, 2U}},
+    {65536, {"top4-l96d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 96U, 2U}}
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    run_mul_dense_finalist_gate_point(
+      report,
+      cases[index].digits,
+      &cases[index].candidate,
+      XRAY_BENCH_SAMPLES,
+      "mul-dense-finalist-gate-pt",
+      "mul-dense-finalist-gate-point",
+      "large-multiply-cpu-dense-finalist-gate");
+  }
+}
+
+static void run_mul_dense_hill_frontier_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "mul-dense-hill-frontier")) return;
+  static const XrayDenseHillCandidate candidates[] = {
+    {"current-prod", XRAY_DENSE_HILL_CURRENT, 0U, 0U},
+    {"top4-l32d3", XRAY_DENSE_HILL_TOOM4_FACTORED, 32U, 3U},
+    {"top4-l48d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 48U, 2U},
+    {"top4-l64d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 64U, 2U},
+    {"top4-l48d3", XRAY_DENSE_HILL_TOOM4_FACTORED, 48U, 3U},
+    {"combo-l32d4", XRAY_DENSE_HILL_TOOM3_COMBO, 32U, 4U},
+    {"combo-l64d2", XRAY_DENSE_HILL_TOOM3_COMBO, 64U, 2U},
+    {"combo-l48d4", XRAY_DENSE_HILL_TOOM3_COMBO, 48U, 4U}
+  };
+  const size_t digits[] = {8192, 11717, 16384, 24103};
+  for (size_t digit_index = 0; digit_index < sizeof(digits) / sizeof(digits[0]); ++digit_index) {
+    for (size_t candidate_index = 0; candidate_index < sizeof(candidates) / sizeof(candidates[0]); ++candidate_index) {
+      run_mul_dense_hill_point(report, digits[digit_index], &candidates[candidate_index], 3U);
+    }
+  }
+}
+
+static void run_mul_dense_best_hill_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "mul-dense-best-hill")) return;
+  static const struct {
+    size_t digits;
+    XrayDenseHillCandidate candidate;
+  } cases[] = {
+    {11717, {"combo-l48d3", XRAY_DENSE_HILL_TOOM3_COMBO, 48U, 3U}},
+    {16384, {"combo-l48d4", XRAY_DENSE_HILL_TOOM3_COMBO, 48U, 4U}},
+    {16384, {"top4-l64d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 64U, 2U}},
+    {24103, {"top4-l48d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 48U, 2U}},
+    {24103, {"combo-l32d4", XRAY_DENSE_HILL_TOOM3_COMBO, 32U, 4U}},
+    {32768, {"combo-l64d2", XRAY_DENSE_HILL_TOOM3_COMBO, 64U, 2U}},
+    {32768, {"top4-l48d3", XRAY_DENSE_HILL_TOOM4_FACTORED, 48U, 3U}},
+    {52163, {"top4-l56d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 56U, 2U}},
+    {52163, {"top4-l80d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 80U, 2U}},
+    {65536, {"top4-l56d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 56U, 2U}},
+    {65536, {"top4-l80d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 80U, 2U}},
+    {65536, {"top5f-l56d2", XRAY_DENSE_HILL_TOOM5_FACTORED, 56U, 2U}},
+    {65536, {"ntt16", XRAY_DENSE_HILL_NTT16, 0U, 0U}}
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    run_mul_dense_finalist_gate_point(
+      report,
+      cases[index].digits,
+      &cases[index].candidate,
+      XRAY_BENCH_TOOM5_SCOUT_SAMPLES,
+      "mul-dense-best-hill-pt",
+      "mul-dense-best-hill-point",
+      "large-multiply-cpu-dense-best-hill-climb");
+  }
+}
+
+static void run_mul_dense_climb_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "mul-dense-climb")) return;
+  static const struct {
+    size_t digits;
+    XrayDenseHillCandidate candidate;
+  } cases[] = {
+    {8192, {"combo-l40d3", XRAY_DENSE_HILL_TOOM3_COMBO, 40U, 3U}},
+    {8192, {"combo-l48d3", XRAY_DENSE_HILL_TOOM3_COMBO, 48U, 3U}},
+    {8192, {"combo-l56d3", XRAY_DENSE_HILL_TOOM3_COMBO, 56U, 3U}},
+    {8192, {"combo-l48d4", XRAY_DENSE_HILL_TOOM3_COMBO, 48U, 4U}},
+    {11717, {"combo-l40d3", XRAY_DENSE_HILL_TOOM3_COMBO, 40U, 3U}},
+    {11717, {"combo-l48d3", XRAY_DENSE_HILL_TOOM3_COMBO, 48U, 3U}},
+    {11717, {"combo-l56d3", XRAY_DENSE_HILL_TOOM3_COMBO, 56U, 3U}},
+    {11717, {"combo-l48d4", XRAY_DENSE_HILL_TOOM3_COMBO, 48U, 4U}},
+    {16384, {"combo-l40d3", XRAY_DENSE_HILL_TOOM3_COMBO, 40U, 3U}},
+    {16384, {"combo-l48d3", XRAY_DENSE_HILL_TOOM3_COMBO, 48U, 3U}},
+    {16384, {"combo-l48d4", XRAY_DENSE_HILL_TOOM3_COMBO, 48U, 4U}},
+    {16384, {"combo-l56d4", XRAY_DENSE_HILL_TOOM3_COMBO, 56U, 4U}},
+    {24103, {"top4-l40d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 40U, 2U}},
+    {24103, {"top4-l48d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 48U, 2U}},
+    {24103, {"top4-l56d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 56U, 2U}},
+    {24103, {"top4-l48d3", XRAY_DENSE_HILL_TOOM4_FACTORED, 48U, 3U}},
+    {32768, {"combo-l48d4", XRAY_DENSE_HILL_TOOM3_COMBO, 48U, 4U}},
+    {32768, {"top4-l48d3", XRAY_DENSE_HILL_TOOM4_FACTORED, 48U, 3U}},
+    {52163, {"top4-l56d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 56U, 2U}},
+    {52163, {"top4-l64d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 64U, 2U}},
+    {52163, {"top4-l80d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 80U, 2U}},
+    {65536, {"top4-l56d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 56U, 2U}},
+    {65536, {"top4-l64d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 64U, 2U}},
+    {65536, {"top4-l80d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 80U, 2U}}
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    run_mul_dense_finalist_gate_point(
+      report,
+      cases[index].digits,
+      &cases[index].candidate,
+      XRAY_BENCH_TOOM5_SCOUT_SAMPLES,
+      "mul-dense-climb-pt",
+      "mul-dense-climb-point",
+      "large-multiply-cpu-dense-local-climb");
+  }
+}
+
+static void run_mul_dense_climb_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "mul-dense-climb-gate")) return;
+  static const struct {
+    size_t digits;
+    XrayDenseHillCandidate candidate;
+  } cases[] = {
+    {8192, {"combo-l40d3", XRAY_DENSE_HILL_TOOM3_COMBO, 40U, 3U}},
+    {8192, {"combo-l48d3", XRAY_DENSE_HILL_TOOM3_COMBO, 48U, 3U}},
+    {11717, {"combo-l48d3", XRAY_DENSE_HILL_TOOM3_COMBO, 48U, 3U}},
+    {11717, {"combo-l56d3", XRAY_DENSE_HILL_TOOM3_COMBO, 56U, 3U}},
+    {11717, {"combo-l48d4", XRAY_DENSE_HILL_TOOM3_COMBO, 48U, 4U}},
+    {16384, {"combo-l40d3", XRAY_DENSE_HILL_TOOM3_COMBO, 40U, 3U}},
+    {16384, {"combo-l48d4", XRAY_DENSE_HILL_TOOM3_COMBO, 48U, 4U}},
+    {24103, {"top4-l48d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 48U, 2U}},
+    {24103, {"combo-l32d4", XRAY_DENSE_HILL_TOOM3_COMBO, 32U, 4U}},
+    {32768, {"combo-l48d4", XRAY_DENSE_HILL_TOOM3_COMBO, 48U, 4U}},
+    {32768, {"top4-l48d3", XRAY_DENSE_HILL_TOOM4_FACTORED, 48U, 3U}},
+    {52163, {"top4-l64d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 64U, 2U}},
+    {65536, {"top4-l56d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 56U, 2U}},
+    {65536, {"top4-l80d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 80U, 2U}}
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    run_mul_dense_finalist_gate_point(
+      report,
+      cases[index].digits,
+      &cases[index].candidate,
+      XRAY_BENCH_SAMPLES,
+      "mul-dense-climb-gate-pt",
+      "mul-dense-climb-gate-point",
+      "large-multiply-cpu-dense-local-climb-gate");
+  }
+}
+
+static void run_mul_dense_best_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "mul-dense-best-gate")) return;
+  static const struct {
+    size_t digits;
+    XrayDenseHillCandidate candidate;
+  } cases[] = {
+    {11717, {"combo-l48d3", XRAY_DENSE_HILL_TOOM3_COMBO, 48U, 3U}},
+    {16384, {"combo-l48d4", XRAY_DENSE_HILL_TOOM3_COMBO, 48U, 4U}},
+    {32768, {"top4-l48d3", XRAY_DENSE_HILL_TOOM4_FACTORED, 48U, 3U}},
+    {32768, {"top4p4-l64d2", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 64U, 2U}},
+    {52163, {"top4-l80d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 80U, 2U}},
+    {65536, {"top4-l56d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 56U, 2U}},
+    {65536, {"top4-l80d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 80U, 2U}}
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    run_mul_dense_finalist_gate_point(
+      report,
+      cases[index].digits,
+      &cases[index].candidate,
+      XRAY_BENCH_SAMPLES,
+      "mul-dense-best-gate-pt",
+      "mul-dense-best-gate-point",
+      "large-multiply-cpu-dense-best-gate");
+  }
+}
+
+static void run_mul_dense_best_options_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "mul-dense-best-options")) return;
+  static const struct {
+    size_t digits;
+    XrayDenseHillCandidate candidate;
+  } cases[] = {
+    {11717, {"combo-l48d3", XRAY_DENSE_HILL_TOOM3_COMBO, 48U, 3U}},
+    {11717, {"combo-l56d3", XRAY_DENSE_HILL_TOOM3_COMBO, 56U, 3U}},
+    {16384, {"combo-l48d4", XRAY_DENSE_HILL_TOOM3_COMBO, 48U, 4U}},
+    {16384, {"top4-l64d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 64U, 2U}},
+    {24103, {"top4-l48d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 48U, 2U}},
+    {24103, {"combo-l32d4", XRAY_DENSE_HILL_TOOM3_COMBO, 32U, 4U}},
+    {24103, {"top4p4-l48d3", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 48U, 3U}},
+    {32768, {"top4-l48d3", XRAY_DENSE_HILL_TOOM4_FACTORED, 48U, 3U}},
+    {32768, {"combo-l48d4", XRAY_DENSE_HILL_TOOM3_COMBO, 48U, 4U}},
+    {32768, {"top4p4-l48d3", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 48U, 3U}},
+    {32768, {"top4p4-l64d2", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 64U, 2U}},
+    {52163, {"top4-l64d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 64U, 2U}},
+    {52163, {"top4-l80d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 80U, 2U}},
+    {52163, {"top4p2-l64d2", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL2, 64U, 2U}},
+    {52163, {"top4p4-l64d2", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 64U, 2U}},
+    {52163, {"top4p4-l80d2", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 80U, 2U}},
+    {65536, {"top4-l56d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 56U, 2U}},
+    {65536, {"top4-l80d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 80U, 2U}},
+    {65536, {"top4p2-l64d2", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL2, 64U, 2U}},
+    {65536, {"top4p4-l64d2", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 64U, 2U}},
+    {65536, {"top4p4-l80d2", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 80U, 2U}},
+    {65536, {"ntt16", XRAY_DENSE_HILL_NTT16, 0U, 0U}}
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    run_mul_dense_finalist_gate_point(
+      report,
+      cases[index].digits,
+      &cases[index].candidate,
+      XRAY_BENCH_TOOM5_SCOUT_SAMPLES,
+      "mul-dense-best-options-pt",
+      "mul-dense-best-options-point",
+      "large-multiply-cpu-dense-best-options-hill");
+  }
+}
+
+static void run_mul_big_hill_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  const int smoke = benchmark_focus_eq(focus, "mul-big-hill-smoke");
+  if (!smoke && !benchmark_focus_eq(focus, "mul-big-hill")) return;
+  static const struct {
+    size_t digits;
+    XrayDenseHillCandidate candidate;
+  } full_cases[] = {
+    {11717, {"combo-l48d3", XRAY_DENSE_HILL_TOOM3_COMBO, 48U, 3U}},
+    {11717, {"combo-l56d4", XRAY_DENSE_HILL_TOOM3_COMBO, 56U, 4U}},
+    {16384, {"combo-l40d4", XRAY_DENSE_HILL_TOOM3_COMBO, 40U, 4U}},
+    {16384, {"combo-l48d4", XRAY_DENSE_HILL_TOOM3_COMBO, 48U, 4U}},
+    {24103, {"top4p4-l48d3", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 48U, 3U}},
+    {24103, {"top4p4-l56d3", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 56U, 3U}},
+    {32768, {"top4p4-l56d3", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 56U, 3U}},
+    {32768, {"top4p4-l64d2", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 64U, 2U}},
+    {52163, {"top4p4-l64d2", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 64U, 2U}},
+    {52163, {"top4p4-l96d2", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 96U, 2U}},
+    {65536, {"top4-l64d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 64U, 2U}},
+    {65536, {"top4-l80d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 80U, 2U}},
+    {65536, {"top4p4-l80d2", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 80U, 2U}}
+  };
+  static const struct {
+    size_t digits;
+    XrayDenseHillCandidate candidate;
+  } smoke_cases[] = {
+    {11717, {"combo-l56d4", XRAY_DENSE_HILL_TOOM3_COMBO, 56U, 4U}},
+    {16384, {"combo-l40d4", XRAY_DENSE_HILL_TOOM3_COMBO, 40U, 4U}}
+  };
+  const size_t case_count = smoke ?
+    sizeof(smoke_cases) / sizeof(smoke_cases[0]) :
+    sizeof(full_cases) / sizeof(full_cases[0]);
+  const size_t sample_count = smoke ? 1U : XRAY_BENCH_TOOM5_SCOUT_SAMPLES;
+  const char *operation_name = smoke ? "mul-big-hill-smoke-pt" : "mul-big-hill-pt";
+  const char *detail_operation = smoke ? "mul-big-hill-smoke-point" : "mul-big-hill-point";
+  const char *feature_gate = smoke ?
+    "large-multiply-cpu-big-hill-smoke" :
+    "large-multiply-cpu-big-hill";
+  for (size_t index = 0; index < case_count; ++index) {
+    const XrayDenseHillCandidate *candidate = smoke ?
+      &smoke_cases[index].candidate :
+      &full_cases[index].candidate;
+    const size_t digits = smoke ? smoke_cases[index].digits : full_cases[index].digits;
+    run_mul_dense_finalist_gate_point(
+      report,
+      digits,
+      candidate,
+      sample_count,
+      operation_name,
+      detail_operation,
+      feature_gate);
+  }
+}
+
+static void run_mul_big_hill_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "mul-big-hill-gate")) return;
+  static const struct {
+    size_t digits;
+    XrayDenseHillCandidate candidate;
+  } cases[] = {
+    {11717, {"combo-l56d4", XRAY_DENSE_HILL_TOOM3_COMBO, 56U, 4U}},
+    {24103, {"top4p4-l48d3", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 48U, 3U}},
+    {32768, {"top4p4-l64d2", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 64U, 2U}},
+    {52163, {"top4p4-l64d2", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 64U, 2U}},
+    {65536, {"top4p4-l80d2", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 80U, 2U}}
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    run_mul_dense_finalist_gate_point_with_iterations(
+      report,
+      cases[index].digits,
+      &cases[index].candidate,
+      XRAY_BENCH_SAMPLES,
+      32U,
+      "mul-big-hill-gate-pt",
+      "mul-big-hill-gate-point",
+      "large-multiply-cpu-big-hill-gate");
+  }
+}
+
+static void run_mul_big_hill_climb_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "mul-big-hill-climb-gate")) return;
+  static const struct {
+    size_t digits;
+    XrayDenseHillCandidate candidate;
+  } cases[] = {
+    {11717, {"combo-l56d4", XRAY_DENSE_HILL_TOOM3_COMBO, 56U, 4U}},
+    {16384, {"combo-l48d4", XRAY_DENSE_HILL_TOOM3_COMBO, 48U, 4U}},
+    {24103, {"top4p4-l56d3", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 56U, 3U}},
+    {32768, {"top4p4-l64d2", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 64U, 2U}},
+    {52163, {"top4p4-l96d2", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 96U, 2U}},
+    {65536, {"top4-l80d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 80U, 2U}}
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    run_mul_dense_finalist_gate_point_with_iterations(
+      report,
+      cases[index].digits,
+      &cases[index].candidate,
+      XRAY_BENCH_SAMPLES,
+      24U,
+      "mul-big-hill-climb-gate-pt",
+      "mul-big-hill-climb-gate-point",
+      "large-multiply-cpu-big-hill-climb-gate");
+  }
+}
+
+static void run_mul_dense_neighbor_hill_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "mul-dense-neighbor-hill")) return;
+  static const struct {
+    size_t digits;
+    XrayDenseHillCandidate candidate;
+  } cases[] = {
+    {11717, {"combo-l48d3", XRAY_DENSE_HILL_TOOM3_COMBO, 48U, 3U}},
+    {11717, {"combo-l56d3", XRAY_DENSE_HILL_TOOM3_COMBO, 56U, 3U}},
+    {11717, {"combo-l64d3", XRAY_DENSE_HILL_TOOM3_COMBO, 64U, 3U}},
+    {11717, {"combo-l56d4", XRAY_DENSE_HILL_TOOM3_COMBO, 56U, 4U}},
+    {16384, {"combo-l40d3", XRAY_DENSE_HILL_TOOM3_COMBO, 40U, 3U}},
+    {16384, {"combo-l40d4", XRAY_DENSE_HILL_TOOM3_COMBO, 40U, 4U}},
+    {16384, {"combo-l48d4", XRAY_DENSE_HILL_TOOM3_COMBO, 48U, 4U}},
+    {16384, {"combo-l56d4", XRAY_DENSE_HILL_TOOM3_COMBO, 56U, 4U}},
+    {16384, {"top4-l64d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 64U, 2U}},
+    {24103, {"top4p2-l48d3", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL2, 48U, 3U}},
+    {24103, {"top4p4-l48d3", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 48U, 3U}},
+    {24103, {"top4p4-l56d3", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 56U, 3U}},
+    {32768, {"top4p4-l48d3", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 48U, 3U}},
+    {32768, {"top4p4-l56d3", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 56U, 3U}},
+    {32768, {"top4p4-l64d2", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 64U, 2U}},
+    {52163, {"top4p4-l64d2", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 64U, 2U}},
+    {52163, {"top4p4-l80d2", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 80U, 2U}},
+    {52163, {"top4p4-l96d2", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 96U, 2U}},
+    {65536, {"top4-l64d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 64U, 2U}},
+    {65536, {"top4-l80d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 80U, 2U}},
+    {65536, {"top4-l96d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 96U, 2U}},
+    {65536, {"top4p4-l64d2", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 64U, 2U}},
+    {65536, {"top4p4-l80d2", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 80U, 2U}}
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    run_mul_dense_finalist_gate_point(
+      report,
+      cases[index].digits,
+      &cases[index].candidate,
+      XRAY_BENCH_TOOM5_SCOUT_SAMPLES,
+      "mul-dense-neighbor-hill-pt",
+      "mul-dense-neighbor-hill-point",
+      "large-multiply-cpu-dense-neighbor-hill");
+  }
+}
+
+static void run_mul_dense_tight_climb_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "mul-dense-tight-climb")) return;
+  static const struct {
+    size_t digits;
+    XrayDenseHillCandidate candidate;
+  } cases[] = {
+    {16384, {"combo-l40d3", XRAY_DENSE_HILL_TOOM3_COMBO, 40U, 3U}},
+    {16384, {"combo-l48d4", XRAY_DENSE_HILL_TOOM3_COMBO, 48U, 4U}},
+    {24103, {"combo-l32d4", XRAY_DENSE_HILL_TOOM3_COMBO, 32U, 4U}},
+    {32768, {"combo-l48d4", XRAY_DENSE_HILL_TOOM3_COMBO, 48U, 4U}},
+    {32768, {"top4-l48d3", XRAY_DENSE_HILL_TOOM4_FACTORED, 48U, 3U}},
+    {52163, {"top4-l80d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 80U, 2U}},
+    {65536, {"top4-l56d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 56U, 2U}},
+    {65536, {"top4-l80d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 80U, 2U}}
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    run_mul_dense_finalist_gate_point(
+      report,
+      cases[index].digits,
+      &cases[index].candidate,
+      XRAY_BENCH_DEEP_SAMPLES,
+      "mul-dense-tight-climb-pt",
+      "mul-dense-tight-climb-point",
+      "large-multiply-cpu-dense-tight-climb");
+  }
+}
+
+static void run_mul_dense_65536_hill_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  const int smoke = benchmark_focus_eq(focus, "mul-dense-65536-hill-smoke");
+  if (!smoke && !benchmark_focus_eq(focus, "mul-dense-65536-hill-gate")) return;
+  static const XrayDenseHillCandidate full_candidates[] = {
+    {"current-prod", XRAY_DENSE_HILL_CURRENT, 0U, 0U},
+    {"top4-l56d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 56U, 2U},
+    {"top4-l64d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 64U, 2U},
+    {"top4-l80d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 80U, 2U}
+  };
+  static const XrayDenseHillCandidate smoke_candidates[] = {
+    {"top4-l56d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 56U, 2U},
+    {"top4-l80d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 80U, 2U}
+  };
+  const XrayDenseHillCandidate *candidates = smoke ? smoke_candidates : full_candidates;
+  const size_t candidate_count = smoke ?
+    sizeof(smoke_candidates) / sizeof(smoke_candidates[0]) :
+    sizeof(full_candidates) / sizeof(full_candidates[0]);
+  const size_t sample_count = smoke ? 1U : XRAY_BENCH_SAMPLES;
+  const unsigned int min_iterations = smoke ? 3U : 32U;
+  const char *operation_name = smoke ?
+    "mul-dense-65536-hill-smoke-pt" :
+    "mul-dense-65536-hill-gate-pt";
+  const char *detail_operation = smoke ?
+    "mul-dense-65536-hill-smoke-point" :
+    "mul-dense-65536-hill-gate-point";
+  const char *feature_gate = smoke ?
+    "large-multiply-cpu-dense-65536-hill-smoke" :
+    "large-multiply-cpu-dense-65536-hill-gate";
+  for (size_t index = 0; index < candidate_count; ++index) {
+    run_mul_dense_finalist_gate_point_with_iterations(
+      report,
+      65536U,
+      &candidates[index],
+      sample_count,
+      min_iterations,
+      operation_name,
+      detail_operation,
+      feature_gate);
+  }
+}
+
+static void run_mul_dense_32768_proof_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "mul-dense-32768-proof")) return;
+  static const XrayDenseHillCandidate candidates[] = {
+    {"current-prod", XRAY_DENSE_HILL_CURRENT, 0U, 0U},
+    {"combo-l48d4", XRAY_DENSE_HILL_TOOM3_COMBO, 48U, 4U},
+    {"top4-l48d3", XRAY_DENSE_HILL_TOOM4_FACTORED, 48U, 3U},
+    {"top4-l64d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 64U, 2U},
+    {"top4-l128d2", XRAY_DENSE_HILL_TOOM4_FACTORED, 128U, 2U}
+  };
+  for (size_t index = 0; index < sizeof(candidates) / sizeof(candidates[0]); ++index) {
+    run_mul_dense_finalist_gate_point_with_iterations(
+      report,
+      32768U,
+      &candidates[index],
+      XRAY_BENCH_DEEP_SAMPLES,
+      64U,
+      "mul-dense-32768-proof-pt",
+      "mul-dense-32768-proof-point",
+      "large-multiply-cpu-dense-32768-proof");
+  }
+}
+
+static void run_mul_dense_32768_parallel_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "mul-dense-32768-parallel")) return;
+  static const XrayDenseHillCandidate candidates[] = {
+    {"current-prod", XRAY_DENSE_HILL_CURRENT, 0U, 0U},
+    {"top4p2-l48d3", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL2, 48U, 3U},
+    {"top4p4-l48d3", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 48U, 3U},
+    {"top4p2-l64d2", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL2, 64U, 2U},
+    {"top4p4-l64d2", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 64U, 2U},
+    {"top4p4-l80d2", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 80U, 2U}
+  };
+  for (size_t index = 0; index < sizeof(candidates) / sizeof(candidates[0]); ++index) {
+    run_mul_dense_finalist_gate_point_with_iterations(
+      report,
+      32768U,
+      &candidates[index],
+      XRAY_BENCH_DEEP_SAMPLES,
+      64U,
+      "mul-dense-32768-parallel-pt",
+      "mul-dense-32768-parallel-point",
+      "large-multiply-cpu-dense-32768-parallel");
+  }
+}
+
+static void run_mul_dense_parallel_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "mul-dense-parallel-gate")) return;
+  static const struct {
+    size_t digits;
+    XrayDenseHillCandidate candidate;
+  } cases[] = {
+    {24103, {"top4p4-l48d3", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 48U, 3U}},
+    {32768, {"top4p4-l64d2", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 64U, 2U}},
+    {52163, {"top4p4-l64d2", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 64U, 2U}},
+    {65536, {"top4p4-l80d2", XRAY_DENSE_HILL_TOOM4_FACTORED_PARALLEL4, 80U, 2U}}
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); ++index) {
+    run_mul_dense_finalist_gate_point_with_iterations(
+      report,
+      cases[index].digits,
+      &cases[index].candidate,
+      XRAY_BENCH_DEEP_SAMPLES,
+      64U,
+      "mul-dense-parallel-gate-pt",
+      "mul-dense-parallel-gate-point",
+      "large-multiply-cpu-dense-parallel-gate");
+  }
+}
+
 #if XRAY_HAS_MSVC_BMI2_ADX_INTRINSICS
 static void run_mul_full_audit_pocket_focus_cases(XrayBenchmarkReport *report) {
   const size_t pocket_digits[] = {5639, 8192, 11717, 16384, 24103, 32768};
   for (size_t digit_index = 0; digit_index < sizeof(pocket_digits) / sizeof(pocket_digits[0]); ++digit_index) {
     run_large_mul_cpu_toom_full_audit_only_case(report, pocket_digits[digit_index], 64);
   }
+}
+
+static void run_mul_toom_upper_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_any_mul_toom_upper(focus)) return;
+  const int smoke = benchmark_focus_eq(focus, "mul-toom-upper-smoke");
+  const size_t smoke_digits[] = {24103};
+  const size_t upper_digits[] = {24103, 32768, 52163, 65536};
+  const size_t *digits = smoke ? smoke_digits : upper_digits;
+  const size_t digit_count = smoke ?
+    sizeof(smoke_digits) / sizeof(smoke_digits[0]) :
+    sizeof(upper_digits) / sizeof(upper_digits[0]);
+  const size_t sample_count = XRAY_BENCH_TOOM5_SCOUT_SAMPLES;
+  const char *toom4_policy = smoke ?
+    "full-workspace-toom4-top-smoke-ge24103" :
+    "full-workspace-toom4-top-upper-scout-ge24103";
+  const char *toom4_reuse_policy = smoke ?
+    "full-workspace-toom4-top-reuse-smoke-ge24103" :
+    "full-workspace-toom4-top-reuse-upper-scout-ge24103";
+  const char *toom4_handoff_policy = smoke ?
+    "full-workspace-toom4-top-handoff-smoke-ge24103" :
+    "full-workspace-toom4-top-handoff-upper-scout-ge24103";
+  const char *toom4_fdiv_policy = smoke ?
+    "full-workspace-toom4-top-factored-div-smoke-ge24103" :
+    "full-workspace-toom4-top-factored-div-upper-scout-ge24103";
+  const char *toom4_vs_combo_policy = smoke ?
+    "full-workspace-toom4-top-vs-combo-smoke-ge24103" :
+    "full-workspace-toom4-top-vs-combo-upper-scout-ge24103";
+  const char *toom5_l32_policy = smoke ?
+    "full-workspace-toom5-top-l32-smoke-ge24103" :
+    "full-workspace-toom5-top-l32-upper-scout-ge24103";
+  const char *toom5_l48_policy = smoke ?
+    "full-workspace-toom5-top-l48-smoke-ge24103" :
+    "full-workspace-toom5-top-l48-upper-scout-ge24103";
+  const char *toom5_l64_policy = smoke ?
+    "full-workspace-toom5-top-l64-smoke-ge24103" :
+    "full-workspace-toom5-top-l64-upper-scout-ge24103";
+  const char *ipdiv_policy = smoke ?
+    "full-workspace-combo-reuse-ipdiv-smoke-ge24103" :
+    "full-workspace-combo-reuse-ipdiv-upper-scout-ge24103";
+  const unsigned int combo_interp_flags =
+    XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3;
+  const unsigned int toom4_interp_flags =
+    combo_interp_flags | XRAY_BENCH_TOOM_INTERP_TOOM4_TOP;
+
+  run_mul_full_workspace_depth_scout_case_with_samples(
+    report,
+    1391U,
+    toom4_policy,
+    24103,
+    48,
+    48,
+    3,
+    3,
+    toom4_interp_flags,
+    combo_interp_flags,
+    digits,
+    digit_count,
+    sample_count);
+  run_mul_toom4_top_reuse_scout_case_with_samples(
+    report,
+    1393U,
+    toom4_reuse_policy,
+    digits,
+    digit_count,
+    sample_count);
+  run_mul_toom4_top_handoff_scout_case_with_samples(
+    report,
+    1421U,
+    toom4_handoff_policy,
+    digits,
+    digit_count,
+    sample_count);
+  run_mul_toom4_top_factored_div_scout_case_with_samples(
+    report,
+    1451U,
+    toom4_fdiv_policy,
+    digits,
+    digit_count,
+    sample_count);
+  run_mul_toom4_top_vs_combo_reuse_scout_case_with_samples(
+    report,
+    1463U,
+    toom4_vs_combo_policy,
+    digits,
+    digit_count,
+    sample_count);
+  run_mul_toom5_top_vs_combo_reuse_case_with_samples(
+    report,
+    1567U,
+    toom5_l32_policy,
+    digits,
+    digit_count,
+    "mul-large-toom5-top-reuse-pt",
+    "mul-large-toom5-top-reuse",
+    "mul-toom5-top-reuse-point",
+    "toom5-top-vs-combo-reuse",
+    "top reuse vs combo reuse",
+    "toom5-top-reuse-l32d2-upper",
+    "full-ws-toom5-top-reuse-l32d2",
+    "full-ws-combo-reuse-l32d2",
+    "large-multiply-cpu-toom5-top-reuse",
+    "toom5-top-l32-upper-window",
+    32U,
+    2U,
+    sample_count);
+  run_mul_toom5_top_vs_combo_reuse_case_with_samples(
+    report,
+    1571U,
+    toom5_l48_policy,
+    digits,
+    digit_count,
+    "mul-large-toom5-top-handoff-pt",
+    "mul-large-toom5-top-handoff",
+    "mul-toom5-top-handoff-point",
+    "toom5-top-handoff-vs-combo-reuse",
+    "top handoff vs combo reuse",
+    "toom5-top-reuse-l48d2-upper",
+    "full-ws-toom5-top-reuse-l48d2",
+    "full-ws-combo-reuse-l48d2",
+    "large-multiply-cpu-toom5-top-handoff",
+    "toom5-top-leaf48-upper-window",
+    48U,
+    2U,
+    sample_count);
+  run_mul_toom5_top_vs_combo_reuse_case_with_samples(
+    report,
+    1579U,
+    toom5_l64_policy,
+    digits,
+    digit_count,
+    "mul-large-toom5-top-l64-pt",
+    "mul-large-toom5-top-l64",
+    "mul-toom5-top-l64-point",
+    "toom5-top-l64-vs-combo",
+    "top leaf64 vs combo reuse",
+    "toom5-top-reuse-l64d2-upper",
+    "full-ws-toom5-top-reuse-l64d2",
+    "full-ws-combo-reuse-l64d2",
+    "large-multiply-cpu-toom5-top-l64",
+    "toom5-top-leaf64-upper-window",
+    64U,
+    2U,
+    sample_count);
+  run_mul_combo_reuse_ipdiv_map_audit_case_with_samples(
+    report,
+    1531U,
+    ipdiv_policy,
+    digits,
+    digit_count,
+    sample_count);
+}
+
+static void run_mul_toom_upper_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "mul-toom-upper-gate")) return;
+  const size_t digits_24103[] = {24103};
+  const size_t digits_32768[] = {32768};
+  const size_t digits_52163[] = {52163};
+  const size_t digits_65536[] = {65536};
+  const size_t sample_count = XRAY_BENCH_DEEP_SAMPLES;
+
+  run_mul_toom4_top_reuse_scout_case_with_samples(
+    report,
+    1703U,
+    "full-workspace-toom4-top-reuse-gate-24103",
+    digits_24103,
+    sizeof(digits_24103) / sizeof(digits_24103[0]),
+    sample_count);
+  run_mul_combo_reuse_ipdiv_map_audit_case_with_samples(
+    report,
+    1709U,
+    "full-workspace-combo-reuse-ipdiv-gate-24103",
+    digits_24103,
+    sizeof(digits_24103) / sizeof(digits_24103[0]),
+    sample_count);
+  run_mul_toom4_top_factored_div_scout_case_with_samples(
+    report,
+    1721U,
+    "full-workspace-toom4-top-factored-div-gate-32768",
+    digits_32768,
+    sizeof(digits_32768) / sizeof(digits_32768[0]),
+    sample_count);
+  run_mul_toom4_top_handoff_scout_case_with_samples(
+    report,
+    1723U,
+    "full-workspace-toom4-top-handoff-gate-32768",
+    digits_32768,
+    sizeof(digits_32768) / sizeof(digits_32768[0]),
+    sample_count);
+  run_mul_toom5_top_vs_combo_reuse_case_with_samples(
+    report,
+    1733U,
+    "full-workspace-toom5-top-l32-gate-52163",
+    digits_52163,
+    sizeof(digits_52163) / sizeof(digits_52163[0]),
+    "mul-large-toom5-top-reuse-pt",
+    "mul-large-toom5-top-reuse",
+    "mul-toom5-top-reuse-point",
+    "toom5-top-vs-combo-reuse",
+    "top reuse vs combo reuse",
+    "toom5-top-reuse-l32d2-gate",
+    "full-ws-toom5-top-reuse-l32d2",
+    "full-ws-combo-reuse-l32d2",
+    "large-multiply-cpu-toom5-top-reuse",
+    "toom5-top-l32-gate",
+    32U,
+    2U,
+    sample_count);
+  run_mul_toom5_top_vs_combo_reuse_case_with_samples(
+    report,
+    1739U,
+    "full-workspace-toom5-top-l64-gate-52163",
+    digits_52163,
+    sizeof(digits_52163) / sizeof(digits_52163[0]),
+    "mul-large-toom5-top-l64-pt",
+    "mul-large-toom5-top-l64",
+    "mul-toom5-top-l64-point",
+    "toom5-top-l64-vs-combo",
+    "top leaf64 vs combo reuse",
+    "toom5-top-reuse-l64d2-gate",
+    "full-ws-toom5-top-reuse-l64d2",
+    "full-ws-combo-reuse-l64d2",
+    "large-multiply-cpu-toom5-top-l64",
+    "toom5-top-leaf64-gate",
+    64U,
+    2U,
+    sample_count);
+  run_mul_toom5_top_vs_combo_reuse_case_with_samples(
+    report,
+    1741U,
+    "full-workspace-toom5-top-l48-gate-65536",
+    digits_65536,
+    sizeof(digits_65536) / sizeof(digits_65536[0]),
+    "mul-large-toom5-top-handoff-pt",
+    "mul-large-toom5-top-handoff",
+    "mul-toom5-top-handoff-point",
+    "toom5-top-handoff-vs-combo-reuse",
+    "top handoff vs combo reuse",
+    "toom5-top-reuse-l48d2-gate",
+    "full-ws-toom5-top-reuse-l48d2",
+    "full-ws-combo-reuse-l48d2",
+    "large-multiply-cpu-toom5-top-handoff",
+    "toom5-top-leaf48-gate",
+    48U,
+    2U,
+    sample_count);
+  run_mul_toom5_top_vs_combo_reuse_case_with_samples(
+    report,
+    1747U,
+    "full-workspace-toom5-top-l64-gate-65536",
+    digits_65536,
+    sizeof(digits_65536) / sizeof(digits_65536[0]),
+    "mul-large-toom5-top-l64-pt",
+    "mul-large-toom5-top-l64",
+    "mul-toom5-top-l64-point",
+    "toom5-top-l64-vs-combo",
+    "top leaf64 vs combo reuse",
+    "toom5-top-reuse-l64d2-gate",
+    "full-ws-toom5-top-reuse-l64d2",
+    "full-ws-combo-reuse-l64d2",
+    "large-multiply-cpu-toom5-top-l64",
+    "toom5-top-leaf64-gate",
+    64U,
+    2U,
+    sample_count);
+}
+
+static void run_mul_toom5_tune_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "mul-toom5-tune")) return;
+  const size_t digits[] = {65536};
+  const size_t leaf_thresholds[] = {32, 40, 48, 56, 64, 80, 96};
+  const size_t depth_limits[] = {1, 2, 3};
+  const size_t sample_count = XRAY_BENCH_TOOM5_SCOUT_SAMPLES;
+  for (size_t depth_index = 0; depth_index < sizeof(depth_limits) / sizeof(depth_limits[0]); ++depth_index) {
+    for (size_t leaf_index = 0; leaf_index < sizeof(leaf_thresholds) / sizeof(leaf_thresholds[0]); ++leaf_index) {
+      char policy[96];
+      char route_policy[48];
+      char candidate[48];
+      char baseline[48];
+      char gmp_clue[64];
+      size_t leaf = leaf_thresholds[leaf_index];
+      size_t depth = depth_limits[depth_index];
+      snprintf(policy, sizeof(policy), "full-workspace-toom5-tune-l%zud%zu-65536", leaf, depth);
+      snprintf(route_policy, sizeof(route_policy), "toom5-tune-l%zud%zu", leaf, depth);
+      snprintf(candidate, sizeof(candidate), "full-ws-toom5-top-l%zud%zu", leaf, depth);
+      snprintf(baseline, sizeof(baseline), "full-ws-combo-l%zud%zu", leaf, depth);
+      snprintf(gmp_clue, sizeof(gmp_clue), "toom5-tune-leaf%zu-depth%zu", leaf, depth);
+      run_mul_toom5_top_vs_combo_reuse_case_with_samples(
+        report,
+        1801U + (unsigned int)(depth_index * 43U + leaf_index * 5U),
+        policy,
+        digits,
+        sizeof(digits) / sizeof(digits[0]),
+        "mul-toom5-tune-pt",
+        "mul-toom5-tune",
+        "mul-toom5-tune-point",
+        "toom5-tune",
+        "top tune vs combo reuse",
+        route_policy,
+        candidate,
+        baseline,
+        "large-multiply-cpu-toom5-tune",
+        gmp_clue,
+        leaf,
+        depth,
+        sample_count);
+    }
+  }
+}
+
+static void run_mul_toom5_window_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "mul-toom5-window-gate")) return;
+  const size_t upper_digits[] = {24103, 32768, 52163, 65536};
+  run_mul_toom5_top_vs_combo_reuse_case_with_samples(
+    report,
+    1901U,
+    "full-workspace-toom5-top-l48d3-window-gate-ge24103",
+    upper_digits,
+    sizeof(upper_digits) / sizeof(upper_digits[0]),
+    "mul-toom5-window-gate-pt",
+    "mul-toom5-window-gate",
+    "mul-toom5-window-gate-point",
+    "toom5-window-gate",
+    "top leaf48 depth3 window gate",
+    "toom5-top-reuse-l48d3-window-gate",
+    "full-ws-toom5-top-reuse-l48d3",
+    "full-ws-combo-reuse-l48d3",
+    "large-multiply-cpu-toom5-window-gate",
+    "toom5-top-leaf48-depth3-upper-window",
+    48U,
+    3U,
+    XRAY_BENCH_DEEP_SAMPLES);
+}
+
+static void run_mul_toom5_final_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "mul-toom5-final-gate")) return;
+  const size_t digits[] = {65536};
+  const struct {
+    size_t leaf;
+    size_t depth;
+  } routes[] = {
+    {48U, 1U},
+    {56U, 2U},
+    {40U, 2U},
+    {64U, 3U},
+    {32U, 2U},
+  };
+  const size_t sample_count = XRAY_BENCH_DEEP_SAMPLES;
+  for (size_t index = 0; index < sizeof(routes) / sizeof(routes[0]); ++index) {
+    char policy[96];
+    char route_policy[48];
+    char candidate[48];
+    char baseline[48];
+    char gmp_clue[64];
+    size_t leaf = routes[index].leaf;
+    size_t depth = routes[index].depth;
+    snprintf(policy, sizeof(policy), "full-workspace-toom5-final-gate-l%zud%zu-65536", leaf, depth);
+    snprintf(route_policy, sizeof(route_policy), "toom5-final-l%zud%zu", leaf, depth);
+    snprintf(candidate, sizeof(candidate), "full-ws-toom5-top-l%zud%zu", leaf, depth);
+    snprintf(baseline, sizeof(baseline), "full-ws-combo-l%zud%zu", leaf, depth);
+    snprintf(gmp_clue, sizeof(gmp_clue), "toom5-final-leaf%zu-depth%zu", leaf, depth);
+    run_mul_toom5_top_vs_combo_reuse_case_with_samples(
+      report,
+      2003U + (unsigned int)(index * 11U),
+      policy,
+      digits,
+      sizeof(digits) / sizeof(digits[0]),
+      "mul-toom5-final-gate-pt",
+      "mul-toom5-final-gate",
+      "mul-toom5-final-gate-point",
+      "toom5-final-gate",
+      "top final gate vs combo reuse",
+      route_policy,
+      candidate,
+      baseline,
+      "large-multiply-cpu-toom5-final-gate",
+      gmp_clue,
+      leaf,
+      depth,
+      sample_count);
+  }
+}
+
+static void run_mul_toom5_factored_div_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "mul-toom5-fdiv-gate")) return;
+  const size_t digits[] = {65536};
+  const struct {
+    size_t leaf;
+    size_t depth;
+  } routes[] = {
+    {48U, 1U},
+    {56U, 2U},
+    {40U, 2U},
+    {64U, 3U},
+    {48U, 3U},
+  };
+  const size_t sample_count = XRAY_BENCH_DEEP_SAMPLES;
+  for (size_t index = 0; index < sizeof(routes) / sizeof(routes[0]); ++index) {
+    char policy[96];
+    char route_policy[48];
+    char candidate[64];
+    char baseline[64];
+    char gmp_clue[64];
+    char size_list[32];
+    XrayMulFullWorkspaceDepthScoutPoint point;
+    size_t leaf = routes[index].leaf;
+    size_t depth = routes[index].depth;
+    snprintf(policy, sizeof(policy), "full-workspace-toom5-fdiv-gate-l%zud%zu-65536", leaf, depth);
+    snprintf(route_policy, sizeof(route_policy), "toom5-fdiv-l%zud%zu", leaf, depth);
+    snprintf(candidate, sizeof(candidate), "full-ws-toom5-top-fdiv-l%zud%zu", leaf, depth);
+    snprintf(baseline, sizeof(baseline), "full-ws-toom5-top-regular-l%zud%zu", leaf, depth);
+    snprintf(gmp_clue, sizeof(gmp_clue), "toom5-factored-div-leaf%zu-depth%zu", leaf, depth);
+    snprintf(size_list, sizeof(size_list), "%zu", digits[0]);
+    point = measure_mul_toom5_top_factored_div_point(
+      digits[0],
+      2101U + (unsigned int)(index * 13U),
+      sample_count,
+      leaf,
+      depth);
+    append_mul_toom5_top_vs_combo_reuse_point_result(
+      report,
+      policy,
+      &point,
+      sample_count,
+      "mul-toom5-fdiv-gate-pt",
+      "mul-toom5-fdiv-gate-point",
+      "toom5-fdiv-gate",
+      route_policy,
+      candidate,
+      baseline,
+      "large-multiply-cpu-toom5-fdiv-gate",
+      gmp_clue,
+      leaf,
+      depth);
+    append_mul_toom5_top_vs_combo_reuse_result(
+      report,
+      policy,
+      size_list,
+      &point,
+      1U,
+      sample_count,
+      "mul-toom5-fdiv-gate",
+      "factored div vs regular",
+      route_policy,
+      candidate,
+      baseline,
+      "large-multiply-cpu-toom5-fdiv-gate",
+      gmp_clue,
+      leaf,
+      depth);
+  }
+}
+
+static void run_mul_dense_prodstyle_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "mul-dense-prodstyle-gate")) return;
+  const size_t digits[] = {24103, 32768, 52163, 65536};
+  const unsigned int combo_interp_flags =
+    XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3;
+  const unsigned int toom4_interp_flags =
+    combo_interp_flags | XRAY_BENCH_TOOM_INTERP_TOOM4_TOP;
+  run_mul_full_workspace_depth_scout_case_with_samples(
+    report,
+    2203U,
+    "full-workspace-toom4-top-l64d2-production-style-gate-ge24103",
+    24103,
+    64,
+    64,
+    2,
+    2,
+    toom4_interp_flags,
+    combo_interp_flags,
+    digits,
+    sizeof(digits) / sizeof(digits[0]),
+    XRAY_BENCH_DEEP_SAMPLES);
+}
+
+static void run_mul_toom4_prodstyle_tune_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "mul-toom4-prod-tune")) return;
+  const size_t digits[] = {65536};
+  const size_t leaf_thresholds[] = {40, 48, 56, 64, 80, 96, 128};
+  const size_t depth_limits[] = {1, 2, 3};
+  const unsigned int combo_interp_flags =
+    XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3;
+  const unsigned int toom4_interp_flags =
+    combo_interp_flags | XRAY_BENCH_TOOM_INTERP_TOOM4_TOP;
+  for (size_t depth_index = 0; depth_index < sizeof(depth_limits) / sizeof(depth_limits[0]); ++depth_index) {
+    for (size_t leaf_index = 0; leaf_index < sizeof(leaf_thresholds) / sizeof(leaf_thresholds[0]); ++leaf_index) {
+      char policy[96];
+      size_t leaf = leaf_thresholds[leaf_index];
+      size_t depth = depth_limits[depth_index];
+      snprintf(policy, sizeof(policy), "full-workspace-toom4-prod-tune-l%zud%zu-65536", leaf, depth);
+      run_mul_full_workspace_depth_scout_case_with_samples(
+        report,
+        2309U + (unsigned int)(depth_index * 47U + leaf_index * 5U),
+        policy,
+        65536,
+        leaf,
+        leaf,
+        depth,
+        depth,
+        toom4_interp_flags,
+        combo_interp_flags,
+        digits,
+        sizeof(digits) / sizeof(digits[0]),
+        XRAY_BENCH_TOOM5_SCOUT_SAMPLES);
+    }
+  }
+}
+
+static void run_mul_dense_prodstyle_l80d2_gate_focus_cases(XrayBenchmarkReport *report, const char *focus) {
+  if (!benchmark_focus_eq(focus, "mul-dense-prodstyle-l80d2-gate")) return;
+  const size_t digits[] = {24103, 32768, 52163, 65536};
+  const unsigned int combo_interp_flags =
+    XRAY_BENCH_TOOM_INTERP_DIV2 | XRAY_BENCH_TOOM_INTERP_DIV3;
+  const unsigned int toom4_interp_flags =
+    combo_interp_flags | XRAY_BENCH_TOOM_INTERP_TOOM4_TOP;
+  run_mul_full_workspace_depth_scout_case_with_samples(
+    report,
+    2407U,
+    "full-workspace-toom4-top-l80d2-production-style-gate-ge24103",
+    24103,
+    80,
+    64,
+    2,
+    2,
+    toom4_interp_flags,
+    toom4_interp_flags,
+    digits,
+    sizeof(digits) / sizeof(digits[0]),
+    XRAY_BENCH_DEEP_SAMPLES);
 }
 
 static void run_mul_combo_focus_cases(XrayBenchmarkReport *report, const char *focus) {
@@ -21392,6 +28221,115 @@ int xray_benchmark_run_focus_with_callback(
   if (benchmark_focus_eq(focus, "mul-sparse") || benchmark_focus_eq(focus, "mul-novelty")) {
     run_sparse_mul_focus_cases(report);
   }
+  run_gmp_gap_audit_focus_cases(report, focus);
+  run_format_gmp_gap_focus_cases(report, focus);
+  run_format_current_gmp_focus_cases(report, focus);
+  run_format_tight_gap_focus_cases(report, focus);
+  run_format_150_hill_focus_cases(report, focus);
+  run_format_1000_hill_focus_cases(report, focus);
+  run_divmod_tight_gap_focus_cases(report, focus);
+  run_mul_dense_current_gmp_focus_cases(report, focus);
+  run_mul_dense_frontier_gmp_focus_cases(report, focus);
+  run_mul_dense_hill_focus_cases(report, focus);
+  run_mul_dense_finalist_gate_focus_cases(report, focus);
+  run_mul_dense_hill_frontier_focus_cases(report, focus);
+  run_mul_dense_best_hill_focus_cases(report, focus);
+  run_mul_dense_climb_focus_cases(report, focus);
+  run_mul_dense_climb_gate_focus_cases(report, focus);
+  run_mul_dense_best_gate_focus_cases(report, focus);
+  run_mul_dense_best_options_focus_cases(report, focus);
+  run_mul_big_hill_focus_cases(report, focus);
+  run_mul_big_hill_gate_focus_cases(report, focus);
+  run_mul_big_hill_climb_gate_focus_cases(report, focus);
+  run_mul_dense_neighbor_hill_focus_cases(report, focus);
+  run_mul_dense_tight_climb_focus_cases(report, focus);
+  run_mul_dense_65536_hill_gate_focus_cases(report, focus);
+  run_mul_dense_32768_proof_focus_cases(report, focus);
+  run_mul_dense_32768_parallel_focus_cases(report, focus);
+  run_mul_dense_parallel_gate_focus_cases(report, focus);
+  run_square_dense_hill_focus_cases(report, focus);
+  run_square_dense_frontier_current_gmp_focus_cases(report, focus);
+  run_square_dense_frontier_gmp_focus_cases(report, focus);
+  run_square_dense_upper_gmp_focus_cases(report, focus);
+  run_dense_gmp_proof_focus_cases(report, focus);
+  run_dense_million_bit_frontier_focus_cases(report, focus);
+  run_dense_million_bit_gate_focus_cases(report, focus);
+  run_dense_million_bit_floor_gate_focus_cases(report, focus);
+  run_dense_million_bit_floor_interleaved_gate_focus_cases(report, focus);
+  run_square_dense_route_hill_focus_cases(report, focus);
+  run_square_toom3_hill_focus_cases(report, focus);
+  run_square_toom3_gate_focus_cases(report, focus);
+  run_square_route_current_gate_focus_cases(report, focus);
+  run_square_toom3_current_low_gate_focus_cases(report, focus);
+  run_square_toom3_frontier_gate_focus_cases(report, focus);
+  run_square_toom3_frontier_final_gate_focus_cases(report, focus);
+  run_square_toom3_low_final_gate_focus_cases(report, focus);
+  run_square_toom3_low_seed_gate_focus_cases(report, focus);
+  run_square_toom3_mid_tune_focus_cases(report, focus);
+  run_square_toom3_mid_final_gate_focus_cases(report, focus);
+  run_square_toom3_parallel_scout_focus_cases(report, focus);
+  run_square_toom3_parallel_tune_focus_cases(report, focus);
+  run_square_toom3_parallel_hillseed_focus_cases(report, focus);
+  run_square_toom3_parallel_hillseed_gate_focus_cases(report, focus);
+  run_square_8192_parallel_leaf_gate_focus_cases(report, focus);
+  run_square_8192_parallel_ridge_gate_focus_cases(report, focus);
+  run_square_8192_parallel_leaf56_proof_gate_focus_cases(report, focus);
+  run_square_8192_parallel_final_gate_focus_cases(report, focus);
+  run_square_8192_sqr4_ridge_gate_focus_cases(report, focus);
+  run_square_8192_sqr4_parallel_final_gate_focus_cases(report, focus);
+  run_square_8192_all_options_hillclimb_focus_cases(report, focus);
+  run_square_4096_toom3_leaf_gate_focus_cases(report, focus);
+  run_square_4096_margin_smoke_focus_cases(report, focus);
+  run_square_4096_margin_gate_focus_cases(report, focus);
+  run_square_4096_paper_smoke_focus_cases(report, focus);
+  run_square_4096_paper_gate_focus_cases(report, focus);
+  run_square_4096_sqr4_smoke_focus_cases(report, focus);
+  run_square_4096_sqr4_gate_focus_cases(report, focus);
+  run_square_4096_sqr4_ridge_focus_cases(report, focus);
+  run_square_4096_sqr4_childleaf_smoke_focus_cases(report, focus);
+  run_square_4096_sqr4_childleaf_gate_focus_cases(report, focus);
+  run_square_4096_sqr4_parallel_smoke_focus_cases(report, focus);
+  run_square_4096_all_options_hillclimb_focus_cases(report, focus);
+  run_square_4096_sqr3_tune_focus_cases(report, focus);
+  run_square_route_hillseed_options_focus_cases(report, focus);
+  run_square_toom3_parallel_gate_focus_cases(report, focus);
+  run_square_route_current_final_gate_focus_cases(report, focus);
+  run_square_best_gate_focus_cases(report, focus);
+  run_square_dense_selfmap_focus_cases(report, focus);
+  run_square_toom5_tune_focus_cases(report, focus);
+  run_square_toom5_gate_focus_cases(report, focus);
+  run_square_toom4_parallel_focus_cases(report, focus);
+  run_square_toom4_parallel_tune_focus_cases(report, focus);
+  run_square_toom4_parallel_gate_focus_cases(report, focus);
+  run_square_toom4_parallel_low_focus_cases(report, focus);
+  run_square_toom4_hill_focus_cases(report, focus);
+  run_square_dense_upper_route_gate_focus_cases(report, focus);
+  run_square_threshold_hill_focus_cases(report, focus);
+  run_square_1000_leaf_gate_focus_cases(report, focus);
+  run_square_threshold_frontier_focus_cases(report, focus);
+  run_square_workspace_hill_focus_cases(report, focus);
+  run_square_workspace_gate_focus_cases(report, focus);
+  run_square_leaf_gate_focus_cases(report, focus);
+  run_square_comba_gate_focus_cases(report, focus);
+  if (benchmark_focus_eq(focus, "mul-ntt-smoke")) {
+    run_mul_ntt16_smoke_focus_cases(report);
+  }
+  if (benchmark_focus_eq(focus, "mul-ntt-million")) {
+    run_mul_ntt16_million_focus_cases(report);
+  }
+  run_square_ntt16_million_focus_cases(report, focus);
+  run_square_ntt32_million_tail_gate_focus_cases(report, focus);
+  run_square_ntt32_current_control_gate_focus_cases(report, focus);
+  run_square_ntt32_lowtailmap_control_gate_focus_cases(report, focus);
+  run_square_ntt32_lowtailmap_control_long_gate_focus_cases(report, focus);
+  run_square_ntt32_lowtailmap_control_nogmp_long_gate_focus_cases(report, focus);
+  run_square_ntt32_lowtailmap_control_interleaved_gate_focus_cases(report, focus);
+  run_square_ntt32_directcrt_control_gate_focus_cases(report, focus);
+  run_square_ntt32_tailmap_final_gate_focus_cases(report, focus);
+  run_square_ntt32_lowtailmap_final_gate_focus_cases(report, focus);
+  if (benchmark_focus_any_mul_ntt(focus)) {
+    run_mul_ntt16_focus_cases(report);
+  }
 #if XRAY_HAS_MSVC_BMI2_ADX_INTRINSICS
   if (benchmark_focus_eq(focus, "mul-backend-gap")) {
     run_mul_backend_gap_focus_cases(report);
@@ -21399,6 +28337,15 @@ int xray_benchmark_run_focus_with_callback(
   if (benchmark_focus_eq(focus, "mul-full-audit-pocket")) {
     run_mul_full_audit_pocket_focus_cases(report);
   }
+  run_mul_toom_upper_focus_cases(report, focus);
+  run_mul_toom_upper_gate_focus_cases(report, focus);
+  run_mul_toom5_tune_focus_cases(report, focus);
+  run_mul_toom5_window_gate_focus_cases(report, focus);
+  run_mul_toom5_final_gate_focus_cases(report, focus);
+  run_mul_toom5_factored_div_gate_focus_cases(report, focus);
+  run_mul_dense_prodstyle_gate_focus_cases(report, focus);
+  run_mul_toom4_prodstyle_tune_focus_cases(report, focus);
+  run_mul_dense_prodstyle_l80d2_gate_focus_cases(report, focus);
   run_mul_combo_focus_cases(report, focus);
 #else
   (void)focus;

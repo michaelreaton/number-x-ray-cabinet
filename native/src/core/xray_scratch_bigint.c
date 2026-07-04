@@ -4,6 +4,46 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if defined(_WIN32) && defined(_MSC_VER)
+#include <process.h>
+typedef void *XrayWinHandle;
+typedef void *XrayWinThreadpoolWork;
+typedef void *XrayWinThreadpoolInstance;
+typedef void (__stdcall *XrayWinThreadpoolWorkCallback)(
+  XrayWinThreadpoolInstance instance,
+  void *context,
+  XrayWinThreadpoolWork work);
+__declspec(dllimport) unsigned long __stdcall WaitForMultipleObjects(
+  unsigned long nCount,
+  const XrayWinHandle *lpHandles,
+  int bWaitAll,
+  unsigned long dwMilliseconds);
+__declspec(dllimport) unsigned long __stdcall WaitForSingleObject(
+  XrayWinHandle hHandle,
+  unsigned long dwMilliseconds);
+__declspec(dllimport) int __stdcall CloseHandle(XrayWinHandle hObject);
+__declspec(dllimport) XrayWinHandle __stdcall CreateEventA(
+  void *lpEventAttributes,
+  int bManualReset,
+  int bInitialState,
+  const char *lpName);
+__declspec(dllimport) int __stdcall SetEvent(XrayWinHandle hEvent);
+__declspec(dllimport) int __stdcall ResetEvent(XrayWinHandle hEvent);
+__declspec(dllimport) XrayWinThreadpoolWork __stdcall CreateThreadpoolWork(
+  XrayWinThreadpoolWorkCallback pfnwk,
+  void *pv,
+  void *pcbe);
+__declspec(dllimport) void __stdcall SubmitThreadpoolWork(XrayWinThreadpoolWork pwk);
+__declspec(dllimport) void __stdcall WaitForThreadpoolWorkCallbacks(
+  XrayWinThreadpoolWork pwk,
+  int fCancelPendingCallbacks);
+__declspec(dllimport) void __stdcall CloseThreadpoolWork(XrayWinThreadpoolWork pwk);
+#define XRAY_WIN_WAIT_INFINITE 0xffffffffUL
+#define XRAY_WIN_MAXIMUM_WAIT_OBJECTS 64U
+#define XRAY_NTT16_TRANSFORM_POOL_WORKERS 8U
+#define XRAY_TOOM_POINT_POOL_WORKERS 5U
+#endif
+
 #if defined(_MSC_VER) && defined(_M_X64)
 #include <intrin.h>
 #define XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS 1
@@ -11,6 +51,20 @@
 #define XRAY_BIGINT_HAS_UINT128 1
 #else
 #error "The 64-bit scratch bigint core requires __uint128 or MSVC x64 128-bit intrinsics."
+#endif
+
+#if defined(_MSC_VER)
+#define XRAY_BIGINT_HAS_THREAD_LOCAL 1
+#define XRAY_BIGINT_THREAD_LOCAL __declspec(thread)
+#elif defined(__GNUC__)
+#define XRAY_BIGINT_HAS_THREAD_LOCAL 1
+#define XRAY_BIGINT_THREAD_LOCAL __thread
+#elif defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 201112L)
+#define XRAY_BIGINT_HAS_THREAD_LOCAL 1
+#define XRAY_BIGINT_THREAD_LOCAL _Thread_local
+#else
+#define XRAY_BIGINT_HAS_THREAD_LOCAL 0
+#define XRAY_BIGINT_THREAD_LOCAL
 #endif
 
 #define XRAY_BIGINT_WORD_BITS 64U
@@ -28,8 +82,13 @@
 #define XRAY_BIGINT_DECIMAL_PAIR_WRITER_HORNER_MAX_LIMBS 54U
 #define XRAY_BIGINT_DECIMAL_PREINV_PAIR_MIN_EST_DIGITS 1001U
 #define XRAY_BIGINT_DECIMAL_PREINV_PAIR_MAX_EST_DIGITS 1001U
-#define XRAY_BIGINT_DECIMAL_DC_MIN_WIDE_CHUNKS 216U
+#define XRAY_BIGINT_DECIMAL_DC_DIRECT_SMALL_EST_DIGITS 151U
+#define XRAY_BIGINT_DECIMAL_DC_DIRECT_SMALL_LEAF_CHUNKS 16U
+#define XRAY_BIGINT_DECIMAL_DC_MIN_WIDE_CHUNKS 192U
 #define XRAY_BIGINT_DECIMAL_DC_LEAF_CHUNKS 8U
+#define XRAY_BIGINT_DECIMAL_DC_CACHED_PREINV_LEAF32_MIN_WIDE_CHUNKS 384U
+#define XRAY_BIGINT_DECIMAL_DC_CACHED_PREINV_MAX_WIDE_CHUNKS 512U
+#define XRAY_BIGINT_DECIMAL_DC_STATIC_DIRECT_MAX_WIDE_CHUNKS 512U
 #define XRAY_BIGINT_PARSE_CHUNK_DIGITS 19U
 #define XRAY_BIGINT_PARSE_LARGE_MIN_DIGITS 2048U
 #define XRAY_BIGINT_PARSE_LARGE_CHUNK_DIGITS 15U
@@ -45,6 +104,54 @@
 #define XRAY_BIGINT_SPARSE_MUL_TINY_PRODUCTS_MIN_LIMBS 32U
 #define XRAY_BIGINT_SPARSE_MUL_TINY_PRODUCTS_MAX 16U
 #define XRAY_BIGINT_SPARSE_STACK_INDEX_CAP 64U
+#define XRAY_BIGINT_DENSE_TOOM4_L64D2_MIN_LIMBS 400U
+#define XRAY_BIGINT_DENSE_TOOM4_L64D2_MAX_LIMBS 3600U
+#define XRAY_BIGINT_DENSE_TOOM3_COMBO_UPPER_MIN_LIMBS 768U
+#define XRAY_BIGINT_DENSE_TOOM4_TOP_MIN_LIMBS 1200U
+#define XRAY_BIGINT_DENSE_TOOM4_PARALLEL_LOW_MAX_LIMBS 1500U
+#define XRAY_BIGINT_DENSE_TOOM4_PARALLEL_MID_MIN_LIMBS 1500U
+#define XRAY_BIGINT_DENSE_TOOM4_PARALLEL_MID_MAX_LIMBS 1800U
+#define XRAY_BIGINT_DENSE_TOOM4_PARALLEL_UPPER_MIN_LIMBS 2400U
+#define XRAY_BIGINT_DENSE_TOOM4_PARALLEL_UPPER_MAX_LIMBS 3000U
+#define XRAY_BIGINT_DENSE_TOOM4_PARALLEL_MID_GROUPS 4U
+#define XRAY_BIGINT_DENSE_NTT16_MIN_LIMBS 15000U
+#define XRAY_BIGINT_DENSE_SQUARE_TOOM3_MIN_LIMBS 200U
+#define XRAY_BIGINT_DENSE_SQUARE_TOOM3_MAX_LIMBS 1500U
+#define XRAY_BIGINT_DENSE_SQUARE_TOOM3_LOW_LEAF_CUT_LIMBS 260U
+#define XRAY_BIGINT_DENSE_SQUARE_TOOM3_MID_LEAF_CUT_LIMBS 320U
+#define XRAY_BIGINT_DENSE_SQUARE_TOOM3_UPPER_LEAF_CUT_LIMBS 1200U
+#define XRAY_BIGINT_DENSE_SQUARE_PARALLEL_TOOM3_MIN_LIMBS 400U
+#define XRAY_BIGINT_DENSE_SQUARE_PARALLEL_TOOM3_MAX_LIMBS 1800U
+#define XRAY_BIGINT_DENSE_SQUARE_PARALLEL_TOOM3_LOW_LEAF_CUT_LIMBS 500U
+#define XRAY_BIGINT_DENSE_SQUARE_PARALLEL_TOOM3_MID_LEAF_CUT_LIMBS 800U
+#define XRAY_BIGINT_DENSE_SQUARE_PARALLEL_TOOM3_UPPER_LEAF_CUT_LIMBS 1500U
+#define XRAY_BIGINT_DENSE_SQUARE_PARALLEL_TOOM3_8192_MIN_LIMBS 420U
+#define XRAY_BIGINT_DENSE_SQUARE_PARALLEL_TOOM3_8192_MAX_LIMBS 440U
+#define XRAY_BIGINT_DENSE_SQUARE_PARALLEL_TOOM3_8192_LEAF_LIMBS 72U
+#define XRAY_BIGINT_DENSE_SQUARE_PARALLEL_TOOM3_GROUPS 5U
+#define XRAY_BIGINT_DENSE_SQUARE_CHUNG_SQR4_MIN_LIMBS 208U
+#define XRAY_BIGINT_DENSE_SQUARE_CHUNG_SQR4_MAX_LIMBS 240U
+#define XRAY_BIGINT_DENSE_SQUARE_CHUNG_SQR4_LEAF_LIMBS 52U
+#define XRAY_BIGINT_DENSE_SQUARE_CHUNG_SQR4_DEPTH 1U
+#define XRAY_BIGINT_DENSE_SQUARE_CHUNG_SQR4_8192_MIN_LIMBS 420U
+#define XRAY_BIGINT_DENSE_SQUARE_CHUNG_SQR4_8192_MAX_LIMBS 440U
+#define XRAY_BIGINT_DENSE_SQUARE_CHUNG_SQR4_8192_LEAF_LIMBS 44U
+#define XRAY_BIGINT_DENSE_SQUARE_CHUNG_SQR4_8192_DEPTH 1U
+#define XRAY_BIGINT_DENSE_SQUARE_CHUNG_SQR4_8192_GROUPS 4U
+#define XRAY_BIGINT_DENSE_SQUARE_TOOM4_MIN_LIMBS 2400U
+#define XRAY_BIGINT_DENSE_SQUARE_PARALLEL_TOOM4_MIN_LIMBS 1500U
+#define XRAY_BIGINT_DENSE_SQUARE_PARALLEL_TOOM4_MAX_LIMBS 1800U
+#define XRAY_BIGINT_DENSE_SQUARE_PARALLEL_TOOM4_GROUPS 4U
+#define XRAY_BIGINT_DENSE_SQUARE_NTT16_MIN_LIMBS 15000U
+#define XRAY_BIGINT_NTT16_BASE_BITS 16U
+#define XRAY_BIGINT_NTT16_BASE_MASK UINT64_C(0xffff)
+#define XRAY_BIGINT_NTT16_MAX_POWER 21U
+#define XRAY_BIGINT_NTT16_MAX_LENGTH (1ULL << XRAY_BIGINT_NTT16_MAX_POWER)
+#define XRAY_BIGINT_NTT16_MOD0 998244353U
+#define XRAY_BIGINT_NTT16_MOD1 1004535809U
+#define XRAY_BIGINT_NTT32_MOD2 469762049U
+#define XRAY_BIGINT_NTT16_ROOT 3U
+#define XRAY_BIGINT_NTT32_MAX_SAFE_DIGITS 25536448U
 #define XRAY_BIGINT_FERMAT_65537 65537U
 #define XRAY_BIGINT_DIVEXACT_3_INVERSE UINT64_C(0xAAAAAAAAAAAAAAAB)
 #define XRAY_BIGINT_DIVEXACT_5_INVERSE UINT64_C(0xCCCCCCCCCCCCCCCD)
@@ -275,6 +382,8 @@ char *xray_bigint_route_config_json(void) {
     ",\"decimalPreinvPairMaxEstimatedDigits\":%u"
     ",\"decimalDcMinWideChunks\":%u"
     ",\"decimalDcLeafChunks\":%u"
+    ",\"decimalDcCachedPreinvMaxWideChunks\":%u"
+    ",\"decimalDcStaticDirectMaxWideChunks\":%u"
     ",\"decimalDcStaticSplitChunks\":[108,216]"
     ",\"decimalWideChunkDigits\":%u"
     ",\"decimalWideChunkBase\":\"10000000000000000000\""
@@ -289,8 +398,8 @@ char *xray_bigint_route_config_json(void) {
     ",\"msvcUint128Helpers\":%s"
     ",\"squareSelfMulMaxLimbs\":%u"
     ",\"squareTinySelfMulPolicy\":\"<=8 limbs\""
-    ",\"decimalPairWriterPolicy\":\"small<=8 limbs, horner 48..54 limbs, or preinv base-1e19 pair writer for estimated 1001-digit inputs\""
-    ",\"decimalDcPolicy\":\"base-1e19 D&C ladder at >=4096 digits, leaf=8 chunks\""
+    ",\"decimalPairWriterPolicy\":\"small<=8 limbs, horner 48..54 limbs, D&C direct leaf16 for estimated 151-digit inputs, or cached D&C preinv then preinv base-1e19 pair writer fallback for estimated 1001-digit inputs\""
+    ",\"decimalDcPolicy\":\"base-1e19 D&C cached preinv leaf16 through 512 wide chunks, ladder fallback above\""
     ",\"sparseSquareMinLimbs\":%u"
     ",\"sparseSquareDensityDivisor\":%u"
     ",\"sparseMulMinLimbs\":%u"
@@ -304,8 +413,9 @@ char *xray_bigint_route_config_json(void) {
       "{\"name\":\"karatsuba-square\",\"thresholdLimbs\":%u},"
       "{\"name\":\"decimal-horner\",\"minLimbs\":%u},"
       "{\"name\":\"decimal-pair-writer\",\"smallMaxLimbs\":%u,\"hornerMaxLimbs\":%u},"
-      "{\"name\":\"decimal-preinv1e19-pair-window\",\"minEstimatedDigits\":%u,\"maxEstimatedDigits\":%u},"
-      "{\"name\":\"decimal-dc-ladder\",\"minWideChunks\":%u,\"leafChunks\":%u,\"staticSplitChunks\":[108,216]},"
+      "{\"name\":\"decimal-dc-direct-small-window\",\"estimatedDigits\":151,\"leafChunks\":16},"
+      "{\"name\":\"decimal-cached-preinv1e19-window\",\"minEstimatedDigits\":%u,\"maxEstimatedDigits\":%u,\"leafChunks\":32,\"fallback\":\"decimal-preinv1e19-pair-window\"},"
+      "{\"name\":\"decimal-dc-ladder\",\"minWideChunks\":%u,\"leafChunks\":%u,\"cachedPreinvMaxWideChunks\":%u,\"staticDirectMaxWideChunks\":%u,\"staticSplitChunks\":[108,216]},"
       "{\"name\":\"decimal-parse-large\",\"minDigits\":%u,\"chunkDigits\":%u},"
       "{\"name\":\"mul-unroll4\",\"enabled\":%s,\"minLimbs\":%zu,\"maxLimbs\":%zu},"
       "{\"name\":\"sparse-square\",\"minLimbs\":%u,\"densityDivisor\":%u},"
@@ -320,6 +430,8 @@ char *xray_bigint_route_config_json(void) {
       "\"decimal-dc-static\","
       "\"decimal-dc-workspace\","
       "\"decimal-dc-preinv-qhat\","
+      "\"decimal-dc-cached-preinv\","
+      "\"decimal-dc-parallel\","
       "\"mul-threshold\","
       "\"karatsuba-middle\","
       "\"karatsuba-workspace\","
@@ -343,6 +455,8 @@ char *xray_bigint_route_config_json(void) {
     XRAY_BIGINT_DECIMAL_PREINV_PAIR_MAX_EST_DIGITS,
     XRAY_BIGINT_DECIMAL_DC_MIN_WIDE_CHUNKS,
     XRAY_BIGINT_DECIMAL_DC_LEAF_CHUNKS,
+    XRAY_BIGINT_DECIMAL_DC_CACHED_PREINV_MAX_WIDE_CHUNKS,
+    XRAY_BIGINT_DECIMAL_DC_STATIC_DIRECT_MAX_WIDE_CHUNKS,
     XRAY_BIGINT_DECIMAL_WIDE_CHUNK_DIGITS,
     XRAY_BIGINT_PARSE_CHUNK_DIGITS,
     XRAY_BIGINT_PARSE_LARGE_MIN_DIGITS,
@@ -369,6 +483,8 @@ char *xray_bigint_route_config_json(void) {
     XRAY_BIGINT_DECIMAL_PREINV_PAIR_MAX_EST_DIGITS,
     XRAY_BIGINT_DECIMAL_DC_MIN_WIDE_CHUNKS,
     XRAY_BIGINT_DECIMAL_DC_LEAF_CHUNKS,
+    XRAY_BIGINT_DECIMAL_DC_CACHED_PREINV_MAX_WIDE_CHUNKS,
+    XRAY_BIGINT_DECIMAL_DC_STATIC_DIRECT_MAX_WIDE_CHUNKS,
     XRAY_BIGINT_PARSE_LARGE_MIN_DIGITS,
     XRAY_BIGINT_PARSE_LARGE_CHUNK_DIGITS,
     config.mul_unroll4_route_enabled ? "true" : "false",
@@ -486,6 +602,52 @@ static uint64_t mul_add_word(uint64_t existing, uint64_t left, uint64_t right, u
 #endif
 }
 
+static uint64_t sub_mul_word_inplace(
+  uint64_t *target,
+  const uint64_t *right,
+  size_t count,
+  uint64_t multiplier,
+  unsigned char *borrow_out) {
+  uint64_t carry = 0;
+  unsigned char borrow = 0;
+  size_t index = 0;
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+#define XRAY_SUBMUL_WORD_STEP(offset) do { \
+    unsigned __int64 high = 0; \
+    unsigned __int64 low = _umul128(right[index + (offset)], multiplier, &high); \
+    unsigned __int64 product_low = 0; \
+    unsigned char carry_out = _addcarry_u64(0, low, carry, &product_low); \
+    high += carry_out; \
+    unsigned __int64 diff = 0; \
+    borrow = _subborrow_u64(borrow, target[index + (offset)], product_low, &diff); \
+    target[index + (offset)] = (uint64_t)diff; \
+    carry = (uint64_t)high; \
+  } while (0)
+  for (; index + 4U <= count; index += 4U) {
+    XRAY_SUBMUL_WORD_STEP(0U);
+    XRAY_SUBMUL_WORD_STEP(1U);
+    XRAY_SUBMUL_WORD_STEP(2U);
+    XRAY_SUBMUL_WORD_STEP(3U);
+  }
+  for (; index < count; ++index) {
+    XRAY_SUBMUL_WORD_STEP(0U);
+  }
+#undef XRAY_SUBMUL_WORD_STEP
+#else
+  for (; index < count; ++index) {
+    uint64_t product_low = 0;
+    carry = mul_add_small_word(right[index], multiplier, carry, &product_low);
+    uint64_t subtrahend = product_low + (uint64_t)borrow;
+    unsigned char borrow_from_add = subtrahend < product_low;
+    uint64_t before = target[index];
+    target[index] = before - subtrahend;
+    borrow = (unsigned char)(borrow_from_add || before < subtrahend);
+  }
+#endif
+  if (borrow_out) *borrow_out = borrow;
+  return carry;
+}
+
 #if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
 static uint64_t mul_add_word_unroll4_row(uint64_t *target, const uint64_t *right, uint64_t left, size_t count) {
   if (left == 0 || count == 0) return 0;
@@ -559,6 +721,33 @@ static unsigned char add_with_carry_u64(uint64_t left, uint64_t right, unsigned 
   return (unsigned char)(carry_from_sum || (with_carry < sum));
 #endif
 }
+
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+static unsigned char add_limbs_u64_unroll4(
+  uint64_t *out,
+  const uint64_t *left,
+  const uint64_t *right,
+  size_t count,
+  unsigned char carry) {
+  size_t index = 0;
+#define XRAY_ADD_LIMBS_UNROLL4_STEP(offset) do { \
+    unsigned __int64 word = 0; \
+    carry = _addcarry_u64(carry, left[index + (offset)], right[index + (offset)], &word); \
+    out[index + (offset)] = (uint64_t)word; \
+  } while (0)
+  for (; index + 4U <= count; index += 4U) {
+    XRAY_ADD_LIMBS_UNROLL4_STEP(0U);
+    XRAY_ADD_LIMBS_UNROLL4_STEP(1U);
+    XRAY_ADD_LIMBS_UNROLL4_STEP(2U);
+    XRAY_ADD_LIMBS_UNROLL4_STEP(3U);
+  }
+  for (; index < count; ++index) {
+    XRAY_ADD_LIMBS_UNROLL4_STEP(0U);
+  }
+#undef XRAY_ADD_LIMBS_UNROLL4_STEP
+  return carry;
+}
+#endif
 
 static unsigned char sub_with_borrow_u64(uint64_t left, uint64_t right, unsigned char borrow, uint64_t *out) {
 #if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
@@ -750,8 +939,12 @@ static int append_decimal_wide_chunk(uint64_t **chunks, size_t *count, size_t *c
 }
 
 static int mul_add_small_inplace(XrayScratchBigInt *value, uint64_t multiplier, uint64_t addend);
+static size_t write_u32_decimal_pairs(char *out, uint32_t value);
+static void write_u32_decimal_padded9_mixed_pairs(char *out, uint32_t value);
 static size_t write_u64_decimal(char *out, uint64_t value);
+static size_t write_u64_decimal_pairs(char *out, uint64_t value);
 static void write_u64_decimal_padded19(char *out, uint64_t value);
+static void write_u64_decimal_padded19_pairs(char *out, uint64_t value);
 
 static int decimal_chunks_from_limbs_horner(uint32_t **chunks_out, size_t *chunk_count_out, const XrayScratchBigInt *value) {
   uint32_t *chunks = NULL;
@@ -1044,6 +1237,15 @@ static int divmod_bigint_normalized_preinv_workspace_probe(
   unsigned int shift,
   XrayBigIntDivisionWorkspace *workspace);
 
+static int divmod_bigint_normalized_preinv_workspace_with_inverse_probe(
+  XrayScratchBigInt *quotient,
+  XrayScratchBigInt *remainder,
+  const XrayScratchBigInt *numerator,
+  const XrayScratchBigInt *normalized_divisor,
+  unsigned int shift,
+  uint64_t normalized_top_inverse,
+  XrayBigIntDivisionWorkspace *workspace);
+
 static int divmod_bigint_normalized_probe(
   XrayScratchBigInt *quotient,
   XrayScratchBigInt *remainder,
@@ -1113,17 +1315,13 @@ static int divmod_bigint_normalized_workspace_probe(
         }
       }
 
-      uint64_t carry = 0;
       unsigned char borrow = 0;
-      for (size_t index = 0; index < n; ++index) {
-        uint64_t product_low = 0;
-        carry = mul_add_small_word(normalized_divisor->limbs[index], qhat, carry, &product_low);
-        borrow = sub_with_borrow_u64(
-          normalized_numerator->limbs[j + index],
-          product_low,
-          borrow,
-          &normalized_numerator->limbs[j + index]);
-      }
+      uint64_t carry = sub_mul_word_inplace(
+        &normalized_numerator->limbs[j],
+        normalized_divisor->limbs,
+        n,
+        qhat,
+        &borrow);
       borrow = sub_with_borrow_u64(
         normalized_numerator->limbs[j + n],
         carry,
@@ -1169,13 +1367,32 @@ static int divmod_bigint_normalized_preinv_workspace_probe(
   const XrayScratchBigInt *normalized_divisor,
   unsigned int shift,
   XrayBigIntDivisionWorkspace *workspace) {
+  if (!normalized_divisor || normalized_divisor->count == 0) return 0;
+  uint64_t vn1 = normalized_divisor->limbs[normalized_divisor->count - 1U];
+  return divmod_bigint_normalized_preinv_workspace_with_inverse_probe(
+    quotient,
+    remainder,
+    numerator,
+    normalized_divisor,
+    shift,
+    invert_limb_u64(vn1),
+    workspace);
+}
+
+static int divmod_bigint_normalized_preinv_workspace_with_inverse_probe(
+  XrayScratchBigInt *quotient,
+  XrayScratchBigInt *remainder,
+  const XrayScratchBigInt *numerator,
+  const XrayScratchBigInt *normalized_divisor,
+  unsigned int shift,
+  uint64_t normalized_top_inverse,
+  XrayBigIntDivisionWorkspace *workspace) {
   if (!quotient || !remainder || !numerator || !normalized_divisor || !workspace || normalized_divisor->count == 0) return 0;
   size_t n = normalized_divisor->count;
   size_t m = numerator->count - n;
   XrayScratchBigInt *normalized_numerator = &workspace->normalized_numerator;
   XrayScratchBigInt *remainder_slice = &workspace->remainder_slice;
   uint64_t vn1 = normalized_divisor->limbs[n - 1U];
-  uint64_t vn1_inverse = invert_limb_u64(vn1);
 
   int ok = shift_left_bits_copy(normalized_numerator, numerator, shift) &&
     reserve_limbs(normalized_numerator, n + m + 1U) &&
@@ -1199,7 +1416,7 @@ static int divmod_bigint_normalized_preinv_workspace_probe(
         rhat = ujn1 + vn1;
         rhat_overflow = rhat < ujn1;
       } else {
-        qhat = divmod_word_u64_preinv(ujn, ujn1, vn1, vn1_inverse, &rhat);
+        qhat = divmod_word_u64_preinv(ujn, ujn1, vn1, normalized_top_inverse, &rhat);
       }
 
       if (n > 1U) {
@@ -1213,17 +1430,13 @@ static int divmod_bigint_normalized_preinv_workspace_probe(
         }
       }
 
-      uint64_t carry = 0;
       unsigned char borrow = 0;
-      for (size_t index = 0; index < n; ++index) {
-        uint64_t product_low = 0;
-        carry = mul_add_small_word(normalized_divisor->limbs[index], qhat, carry, &product_low);
-        borrow = sub_with_borrow_u64(
-          normalized_numerator->limbs[j + index],
-          product_low,
-          borrow,
-          &normalized_numerator->limbs[j + index]);
-      }
+      uint64_t carry = sub_mul_word_inplace(
+        &normalized_numerator->limbs[j],
+        normalized_divisor->limbs,
+        n,
+        qhat,
+        &borrow);
       borrow = sub_with_borrow_u64(
         normalized_numerator->limbs[j + n],
         carry,
@@ -1549,6 +1762,18 @@ typedef struct {
   int use_static_ladder;
 } XrayDecimalDcPowerCache;
 
+typedef struct {
+  size_t chunks;
+  XrayBigIntDivisorContext context;
+  uint64_t normalized_top_inverse;
+} XrayDecimalDcContextEntry;
+
+typedef struct {
+  XrayDecimalDcContextEntry *items;
+  size_t count;
+  size_t capacity;
+} XrayDecimalDcContextCache;
+
 typedef enum {
   XRAY_DECIMAL_DC_DIVMOD_DEFAULT = 0,
   XRAY_DECIMAL_DC_DIVMOD_WORKSPACE = 1,
@@ -1597,6 +1822,46 @@ static void decimal_dc_power_cache_clear(XrayDecimalDcPowerCache *cache) {
   cache->ladder = NULL;
   cache->ladder_count = 0;
   cache->ladder_capacity = 0;
+}
+
+static void decimal_dc_context_cache_init(XrayDecimalDcContextCache *cache) {
+  if (!cache) return;
+  cache->items = NULL;
+  cache->count = 0;
+  cache->capacity = 0;
+}
+
+static void decimal_dc_context_cache_clear(XrayDecimalDcContextCache *cache) {
+  if (!cache) return;
+  for (size_t index = 0; index < cache->count; ++index) {
+    xray_bigint_divisor_context_clear(&cache->items[index].context);
+  }
+  free(cache->items);
+  cache->items = NULL;
+  cache->count = 0;
+  cache->capacity = 0;
+}
+
+static int decimal_dc_context_cache_reserve(XrayDecimalDcContextCache *cache, size_t needed) {
+  if (cache->capacity >= needed) return 1;
+  size_t old_capacity = cache->capacity;
+  size_t next_capacity = cache->capacity ? cache->capacity * 2U : 8U;
+  while (next_capacity < needed) {
+    if (next_capacity > SIZE_MAX / 2U) return 0;
+    next_capacity *= 2U;
+  }
+  if (next_capacity > SIZE_MAX / sizeof(XrayDecimalDcContextEntry)) return 0;
+  XrayDecimalDcContextEntry *next =
+    (XrayDecimalDcContextEntry *)realloc(cache->items, sizeof(XrayDecimalDcContextEntry) * next_capacity);
+  if (!next) return 0;
+  cache->items = next;
+  for (size_t index = old_capacity; index < next_capacity; ++index) {
+    cache->items[index].chunks = 0;
+    cache->items[index].normalized_top_inverse = 0;
+    xray_bigint_divisor_context_init(&cache->items[index].context);
+  }
+  cache->capacity = next_capacity;
+  return 1;
 }
 
 static int decimal_dc_power_cache_reserve(XrayDecimalDcPowerCache *cache, size_t needed) {
@@ -1732,6 +1997,33 @@ static const XrayScratchBigInt *decimal_dc_power_cache_get(XrayDecimalDcPowerCac
   xray_bigint_clear(&power);
   if (!ok) return NULL;
   return &cache->items[cache->count - 1U].value;
+}
+
+static const XrayDecimalDcContextEntry *decimal_dc_context_cache_get(
+  XrayDecimalDcContextCache *context_cache,
+  XrayDecimalDcPowerCache *power_cache,
+  size_t chunks) {
+  if (!context_cache || !power_cache) return NULL;
+  for (size_t index = 0; index < context_cache->count; ++index) {
+    if (context_cache->items[index].chunks == chunks) {
+      return &context_cache->items[index];
+    }
+  }
+  const XrayScratchBigInt *power = decimal_dc_power_cache_get(power_cache, chunks);
+  if (!power) return NULL;
+  if (!decimal_dc_context_cache_reserve(context_cache, context_cache->count + 1U)) return NULL;
+  XrayDecimalDcContextEntry *entry = &context_cache->items[context_cache->count];
+  entry->chunks = chunks;
+  if (!xray_bigint_divisor_context_set(&entry->context, power)) {
+    entry->chunks = 0;
+    entry->normalized_top_inverse = 0;
+    return NULL;
+  }
+  entry->normalized_top_inverse = entry->context.normalized_divisor.count > 0 ?
+    invert_limb_u64(entry->context.normalized_divisor.limbs[entry->context.normalized_divisor.count - 1U]) :
+    0;
+  context_cache->count++;
+  return entry;
 }
 
 static size_t estimate_decimal_digits_from_bits(const XrayScratchBigInt *value) {
@@ -1892,21 +2184,46 @@ static int format_decimal_dc_write_leaf(
   size_t end,
   size_t min_width,
   size_t *start_out) {
-  uint64_t *chunks = NULL;
-  size_t chunk_count = 0;
-  int ok = decimal_wide_chunks_from_limbs_divide(&chunks, &chunk_count, value);
-  if (ok && chunk_count == 0) {
-    uint64_t *zero_chunk = (uint64_t *)realloc(chunks, sizeof(uint64_t));
-    if (!zero_chunk) {
-      free(chunks);
-      return 0;
-    }
-    chunks = zero_chunk;
-    chunks[0] = 0;
-    chunk_count = 1;
+  if (!buffer || !start_out) return 0;
+  if (!value || value->count == 0) {
+    static const uint64_t zero_chunks[1] = {0};
+    return write_decimal_wide_chunks_tail(buffer, end, min_width, zero_chunks, 1U, start_out);
   }
-  if (ok) ok = write_decimal_wide_chunks_tail(buffer, end, min_width, chunks, chunk_count, start_out);
-  free(chunks);
+
+  XrayScratchBigInt copy;
+  xray_bigint_init(&copy);
+  int ok = xray_bigint_copy(&copy, value);
+  size_t cursor = end;
+  while (ok && copy.count > 0) {
+    uint64_t chunk = divmod_decimal_wide_chunk_preinv_inplace(&copy);
+    if (copy.count == 0) {
+      char top_digits[20];
+      size_t top_len = write_u64_decimal_pairs(top_digits, chunk);
+      if (top_len > cursor) {
+        ok = 0;
+        break;
+      }
+      size_t top_start = cursor - top_len;
+      size_t natural_width = end - top_start;
+      size_t width = min_width > natural_width ? min_width : natural_width;
+      if (width > end) {
+        ok = 0;
+        break;
+      }
+      size_t start = end - width;
+      if (start < top_start) memset(buffer + start, '0', top_start - start);
+      memcpy(buffer + top_start, top_digits, top_len);
+      *start_out = start;
+      break;
+    }
+    if (cursor < XRAY_BIGINT_DECIMAL_WIDE_CHUNK_DIGITS) {
+      ok = 0;
+      break;
+    }
+    cursor -= XRAY_BIGINT_DECIMAL_WIDE_CHUNK_DIGITS;
+    write_u64_decimal_padded19_pairs(buffer + cursor, chunk);
+  }
+  xray_bigint_clear(&copy);
   return ok;
 }
 
@@ -1986,6 +2303,136 @@ static int format_decimal_dc_write_internal(
       cache,
       divmod_mode,
       division_workspace,
+      leaf_chunks,
+      depth + 1U,
+      buffer,
+      right_start,
+      0,
+      &left_start);
+  }
+  if (ok) {
+    size_t natural_width = end - left_start;
+    if (min_width > natural_width) {
+      if (min_width > end) {
+        ok = 0;
+      } else {
+        size_t padded_start = end - min_width;
+        memset(buffer + padded_start, '0', left_start - padded_start);
+        left_start = padded_start;
+      }
+    }
+  }
+  if (ok) *start_out = left_start;
+  xray_bigint_clear(&quotient);
+  xray_bigint_clear(&remainder);
+  return ok;
+}
+
+static int format_decimal_dc_write_context_internal(
+  const XrayScratchBigInt *value,
+  XrayDecimalDcPowerCache *power_cache,
+  XrayDecimalDcContextCache *context_cache,
+  XrayBigIntDivisionWorkspace *division_workspace,
+  int use_preinv_qhat,
+  size_t leaf_chunks,
+  unsigned int depth,
+  char *buffer,
+  size_t end,
+  size_t min_width,
+  size_t *start_out) {
+  if (!value || value->count == 0) {
+    static const uint64_t zero_chunks[1] = {0};
+    return write_decimal_wide_chunks_tail(buffer, end, min_width, zero_chunks, 1U, start_out);
+  }
+  if (leaf_chunks == 0) leaf_chunks = 32U;
+  size_t estimated_chunks = estimate_decimal_wide_chunks_from_bits(value);
+  if (estimated_chunks <= leaf_chunks || depth >= 64U) {
+    return format_decimal_dc_write_leaf(value, buffer, end, min_width, start_out);
+  }
+
+  size_t split_chunks = estimated_chunks / 2U;
+  const XrayScratchBigInt *power = NULL;
+  while (split_chunks > 0) {
+    power = decimal_dc_power_cache_get(power_cache, split_chunks);
+    if (!power) return 0;
+    if (xray_bigint_compare(value, power) >= 0) break;
+    split_chunks--;
+  }
+  if (split_chunks == 0 || !power) {
+    return format_decimal_dc_write_leaf(value, buffer, end, min_width, start_out);
+  }
+
+  const XrayDecimalDcContextEntry *context_entry =
+    decimal_dc_context_cache_get(context_cache, power_cache, split_chunks);
+  if (!context_entry) return 0;
+  const XrayBigIntDivisorContext *context = &context_entry->context;
+
+  XrayScratchBigInt quotient;
+  XrayScratchBigInt remainder;
+  xray_bigint_init(&quotient);
+  xray_bigint_init(&remainder);
+  int ordering = 0;
+  int ok = 1;
+  if (use_preinv_qhat) {
+    ordering = xray_bigint_compare(value, &context->divisor);
+    if (ordering < 0) {
+      quotient.count = 0;
+      ok = xray_bigint_copy(&remainder, value);
+    } else if (ordering == 0) {
+      remainder.count = 0;
+      ok = set_u32(&quotient, 1U);
+    } else if (context->divisor.count == 1U) {
+      ok = divmod_bigint_u64_probe(&quotient, &remainder, value, context->divisor.limbs[0]);
+    } else {
+      ok = division_workspace &&
+        divmod_bigint_normalized_preinv_workspace_with_inverse_probe(
+          &quotient,
+          &remainder,
+          value,
+          &context->normalized_divisor,
+          context->normalization_shift,
+          context_entry->normalized_top_inverse,
+          division_workspace);
+    }
+  } else {
+    ok = division_workspace ?
+      xray_bigint_divmod_precomputed_workspace(&quotient, &remainder, value, context, division_workspace) :
+      xray_bigint_divmod_precomputed(&quotient, &remainder, value, context);
+  }
+  if (ok && quotient.count == 0) {
+    ok = format_decimal_dc_write_leaf(value, buffer, end, min_width, start_out);
+    xray_bigint_clear(&quotient);
+    xray_bigint_clear(&remainder);
+    return ok;
+  }
+
+  if (split_chunks > SIZE_MAX / XRAY_BIGINT_DECIMAL_WIDE_CHUNK_DIGITS) ok = 0;
+  size_t right_width = ok ? split_chunks * XRAY_BIGINT_DECIMAL_WIDE_CHUNK_DIGITS : 0;
+  if (ok && right_width > end) ok = 0;
+  size_t right_start = 0;
+  size_t left_start = 0;
+  if (ok) {
+    ok = format_decimal_dc_write_context_internal(
+      &remainder,
+      power_cache,
+      context_cache,
+      division_workspace,
+      use_preinv_qhat,
+      leaf_chunks,
+      depth + 1U,
+      buffer,
+      end,
+      right_width,
+      &right_start);
+  }
+  if (ok && right_start != end - right_width) ok = 0;
+  if (ok) {
+    ok = format_decimal_dc_write_context_internal(
+      &quotient,
+      power_cache,
+      context_cache,
+      division_workspace,
+      use_preinv_qhat,
       leaf_chunks,
       depth + 1U,
       buffer,
@@ -2250,6 +2697,37 @@ static char *format_decimal_chunks_u64_pair_writer(const uint64_t *chunks, size_
   return format_decimal_chunks_u64_mode(chunks, chunk_count, 1);
 }
 
+static char *get_decimal_small_limbs_u64_pair_writer(const XrayScratchBigInt *value) {
+  if (!value || value->count == 0) {
+    char *zero = (char *)calloc(2, 1);
+    if (zero) zero[0] = '0';
+    return zero;
+  }
+  if (value->count > 3U) return NULL;
+
+  uint64_t temp[3] = {0, 0, 0};
+  uint64_t chunks[4] = {0, 0, 0, 0};
+  size_t temp_count = value->count;
+  memcpy(temp, value->limbs, sizeof(uint64_t) * temp_count);
+
+  size_t chunk_count = 0;
+  while (temp_count > 0) {
+    uint64_t remainder = 0;
+    for (size_t index = temp_count; index-- > 0;) {
+      temp[index] = divmod_word_u64_direct(
+        remainder,
+        temp[index],
+        XRAY_BIGINT_DECIMAL_WIDE_CHUNK_BASE,
+        &remainder);
+    }
+    if (chunk_count >= sizeof(chunks) / sizeof(chunks[0])) return NULL;
+    chunks[chunk_count++] = remainder;
+    while (temp_count > 0 && temp[temp_count - 1U] == 0) temp_count--;
+  }
+
+  return format_decimal_chunks_u64_pair_writer(chunks, chunk_count);
+}
+
 static int set_decimal_with_chunk_digits(XrayScratchBigInt *value, const char *decimal, unsigned int chunk_size) {
   if (!value || !decimal) return 0;
   if (chunk_size == 0 || chunk_size >= sizeof(parse_decimal_powers) / sizeof(parse_decimal_powers[0])) return 0;
@@ -2361,11 +2839,20 @@ static int use_decimal_pair_writer_route(const XrayScratchBigInt *value) {
      limbs <= XRAY_BIGINT_DECIMAL_PAIR_WRITER_HORNER_MAX_LIMBS);
 }
 
+static int use_decimal_dc_direct_small_window_route(const XrayScratchBigInt *value) {
+  if (!value || value->count == 0) return 0;
+  return estimate_decimal_digits_from_bits(value) == XRAY_BIGINT_DECIMAL_DC_DIRECT_SMALL_EST_DIGITS;
+}
+
 static int use_decimal_preinv_pair_window_route(const XrayScratchBigInt *value) {
   if (!value || value->count == 0) return 0;
   size_t digits = estimate_decimal_digits_from_bits(value);
   return digits >= XRAY_BIGINT_DECIMAL_PREINV_PAIR_MIN_EST_DIGITS &&
     digits <= XRAY_BIGINT_DECIMAL_PREINV_PAIR_MAX_EST_DIGITS;
+}
+
+static size_t decimal_dc_cached_preinv_leaf_chunks(size_t estimated_wide_chunks) {
+  return estimated_wide_chunks >= XRAY_BIGINT_DECIMAL_DC_CACHED_PREINV_LEAF32_MIN_WIDE_CHUNKS ? 32U : 16U;
 }
 
 char *xray_bigint_get_decimal_folded_probe(const XrayScratchBigInt *value) {
@@ -2608,6 +3095,410 @@ static char *get_decimal_dc_direct_with_divmod_mode(
   return text;
 }
 
+static char *get_decimal_dc_direct_with_context_cache(
+  const XrayScratchBigInt *value,
+  size_t leaf_chunks,
+  int use_static_ladder,
+  int use_division_workspace) {
+  if (!value || value->count == 0) {
+    char *zero = (char *)calloc(2, 1);
+    if (zero) zero[0] = '0';
+    return zero;
+  }
+  size_t chunk_capacity = estimate_decimal_wide_chunk_capacity(value);
+  if (chunk_capacity > (SIZE_MAX - 3U) / XRAY_BIGINT_DECIMAL_WIDE_CHUNK_DIGITS) return NULL;
+  size_t text_capacity = (chunk_capacity + 2U) * XRAY_BIGINT_DECIMAL_WIDE_CHUNK_DIGITS + 1U;
+  char *text = (char *)calloc(text_capacity, 1);
+  if (!text) return NULL;
+
+  XrayDecimalDcPowerCache power_cache;
+  XrayDecimalDcContextCache context_cache;
+  XrayBigIntDivisionWorkspace division_workspace;
+  XrayBigIntDivisionWorkspace *workspace = NULL;
+  decimal_dc_power_cache_init(&power_cache, 1, use_static_ladder);
+  decimal_dc_context_cache_init(&context_cache);
+  if (use_division_workspace) {
+    xray_bigint_division_workspace_init(&division_workspace);
+    workspace = &division_workspace;
+  }
+
+  size_t start = 0;
+  int ok = format_decimal_dc_write_context_internal(
+    value,
+    &power_cache,
+    &context_cache,
+    workspace,
+    0,
+    leaf_chunks ? leaf_chunks : 32U,
+    0,
+    text,
+    text_capacity - 1U,
+    0,
+    &start);
+  if (workspace) xray_bigint_division_workspace_clear(workspace);
+  decimal_dc_context_cache_clear(&context_cache);
+  decimal_dc_power_cache_clear(&power_cache);
+  if (!ok) {
+    free(text);
+    return NULL;
+  }
+  size_t used = text_capacity - 1U - start;
+  memmove(text, text + start, used);
+  text[used] = '\0';
+  return text;
+}
+
+static char *get_decimal_dc_direct_with_reusable_context_cache(
+  const XrayScratchBigInt *value,
+  XrayDecimalDcPowerCache *power_cache,
+  XrayDecimalDcContextCache *context_cache,
+  XrayBigIntDivisionWorkspace *workspace,
+  size_t leaf_chunks,
+  int use_preinv_qhat) {
+  if (!value || value->count == 0) {
+    char *zero = (char *)calloc(2, 1);
+    if (zero) zero[0] = '0';
+    return zero;
+  }
+  if (!power_cache || !context_cache || (use_preinv_qhat && !workspace)) return NULL;
+  size_t chunk_capacity = estimate_decimal_wide_chunk_capacity(value);
+  if (chunk_capacity > (SIZE_MAX - 3U) / XRAY_BIGINT_DECIMAL_WIDE_CHUNK_DIGITS) return NULL;
+  size_t text_capacity = (chunk_capacity + 2U) * XRAY_BIGINT_DECIMAL_WIDE_CHUNK_DIGITS + 1U;
+  char *text = (char *)calloc(text_capacity, 1);
+  if (!text) return NULL;
+  size_t start = 0;
+  int ok = format_decimal_dc_write_context_internal(
+    value,
+    power_cache,
+    context_cache,
+    workspace,
+    use_preinv_qhat,
+    leaf_chunks ? leaf_chunks : 16U,
+    0,
+    text,
+    text_capacity - 1U,
+    0,
+    &start);
+  if (!ok) {
+    free(text);
+    return NULL;
+  }
+  size_t used = text_capacity - 1U - start;
+  memmove(text, text + start, used);
+  text[used] = '\0';
+  return text;
+}
+
+typedef struct XrayDecimalDcParallelFormatTask {
+  const XrayScratchBigInt *value;
+  size_t leaf_chunks;
+  char *text;
+  int ok;
+} XrayDecimalDcParallelFormatTask;
+
+static int run_decimal_dc_parallel_format_task(XrayDecimalDcParallelFormatTask *task) {
+  if (!task || !task->value) return 0;
+  task->text = get_decimal_dc_direct_with_divmod_mode(
+    task->value,
+    task->leaf_chunks,
+    1,
+    XRAY_DECIMAL_DC_DIVMOD_PREINV_QHAT);
+  task->ok = task->text != NULL;
+  return task->ok;
+}
+
+#if defined(_WIN32) && defined(_MSC_VER)
+static unsigned __stdcall run_decimal_dc_parallel_format_thread(void *context) {
+  XrayDecimalDcParallelFormatTask *task = (XrayDecimalDcParallelFormatTask *)context;
+  run_decimal_dc_parallel_format_task(task);
+  return 0U;
+}
+#endif
+
+char *xray_bigint_get_decimal_dc_parallel_probe(const XrayScratchBigInt *value, size_t leaf_chunks) {
+  if (!value || value->count == 0) {
+    char *zero = (char *)calloc(2, 1);
+    if (zero) zero[0] = '0';
+    return zero;
+  }
+  size_t active_leaf = leaf_chunks ? leaf_chunks : 16U;
+  size_t estimated_chunks = estimate_decimal_wide_chunks_from_bits(value);
+  if (estimated_chunks <= active_leaf) {
+    return xray_bigint_get_decimal_divide_1e19_preinv_probe(value);
+  }
+
+  XrayDecimalDcPowerCache cache;
+  decimal_dc_power_cache_init(&cache, 1, 1);
+  size_t split_chunks = estimated_chunks / 2U;
+  const XrayScratchBigInt *power = NULL;
+  while (split_chunks > 0) {
+    power = decimal_dc_power_cache_get(&cache, split_chunks);
+    if (!power) {
+      decimal_dc_power_cache_clear(&cache);
+      return NULL;
+    }
+    if (xray_bigint_compare(value, power) >= 0) break;
+    split_chunks--;
+  }
+  if (split_chunks == 0 || !power) {
+    decimal_dc_power_cache_clear(&cache);
+    return xray_bigint_get_decimal_divide_1e19_preinv_probe(value);
+  }
+
+  XrayScratchBigInt quotient;
+  XrayScratchBigInt remainder;
+  xray_bigint_init(&quotient);
+  xray_bigint_init(&remainder);
+  XrayBigIntDivisionWorkspace division_workspace;
+  xray_bigint_division_workspace_init(&division_workspace);
+  int ok = decimal_dc_divmod_with_mode(
+    &quotient,
+    &remainder,
+    value,
+    power,
+    XRAY_DECIMAL_DC_DIVMOD_PREINV_QHAT,
+    &division_workspace);
+  xray_bigint_division_workspace_clear(&division_workspace);
+  decimal_dc_power_cache_clear(&cache);
+  if (ok && quotient.count == 0) {
+    ok = 0;
+  }
+
+  XrayDecimalDcParallelFormatTask right_task;
+  right_task.value = &remainder;
+  right_task.leaf_chunks = active_leaf;
+  right_task.text = NULL;
+  right_task.ok = 0;
+  char *left = NULL;
+  char *combined = NULL;
+
+#if defined(_WIN32) && defined(_MSC_VER)
+  XrayWinHandle thread = NULL;
+  if (ok) {
+    uintptr_t handle = _beginthreadex(NULL, 0, run_decimal_dc_parallel_format_thread, &right_task, 0, NULL);
+    if (handle) thread = (XrayWinHandle)handle;
+  }
+  if (ok) {
+    left = get_decimal_dc_direct_with_divmod_mode(
+      &quotient,
+      active_leaf,
+      1,
+      XRAY_DECIMAL_DC_DIVMOD_PREINV_QHAT);
+    ok = left != NULL;
+  }
+  if (thread) {
+    WaitForSingleObject(thread, XRAY_WIN_WAIT_INFINITE);
+    CloseHandle(thread);
+  } else if (ok) {
+    ok = run_decimal_dc_parallel_format_task(&right_task);
+  }
+#else
+  if (ok) {
+    right_task.ok = run_decimal_dc_parallel_format_task(&right_task);
+    left = get_decimal_dc_direct_with_divmod_mode(
+      &quotient,
+      active_leaf,
+      1,
+      XRAY_DECIMAL_DC_DIVMOD_PREINV_QHAT);
+    ok = left != NULL;
+  }
+#endif
+
+  ok = ok && right_task.ok && right_task.text;
+  if (ok) {
+    size_t left_len = strlen(left);
+    size_t right_len = strlen(right_task.text);
+    size_t right_width = split_chunks * XRAY_BIGINT_DECIMAL_WIDE_CHUNK_DIGITS;
+    if (right_len > right_width || left_len > SIZE_MAX - right_width - 1U) {
+      ok = 0;
+    } else {
+      combined = (char *)calloc(left_len + right_width + 1U, 1);
+      ok = combined != NULL;
+      if (ok) {
+        memcpy(combined, left, left_len);
+        memset(combined + left_len, '0', right_width - right_len);
+        memcpy(combined + left_len + right_width - right_len, right_task.text, right_len);
+      }
+    }
+  }
+  free(left);
+  free(right_task.text);
+  xray_bigint_clear(&quotient);
+  xray_bigint_clear(&remainder);
+  return ok ? combined : NULL;
+}
+
+static char *get_decimal_dc_direct_with_cache(
+  const XrayScratchBigInt *value,
+  XrayDecimalDcPowerCache *cache,
+  size_t leaf_chunks,
+  XrayDecimalDcDivmodMode divmod_mode,
+  XrayBigIntDivisionWorkspace *reusable_workspace) {
+  if (!value || value->count == 0) {
+    char *zero = (char *)calloc(2, 1);
+    if (zero) zero[0] = '0';
+    return zero;
+  }
+  if (!cache) return NULL;
+  size_t chunk_capacity = estimate_decimal_wide_chunk_capacity(value);
+  if (chunk_capacity > (SIZE_MAX - 3U) / XRAY_BIGINT_DECIMAL_WIDE_CHUNK_DIGITS) return NULL;
+  size_t text_capacity = (chunk_capacity + 2U) * XRAY_BIGINT_DECIMAL_WIDE_CHUNK_DIGITS + 1U;
+  char *text = (char *)calloc(text_capacity, 1);
+  if (!text) return NULL;
+
+  XrayBigIntDivisionWorkspace division_workspace;
+  XrayBigIntDivisionWorkspace *workspace = NULL;
+  int owns_workspace = 0;
+  if (divmod_mode != XRAY_DECIMAL_DC_DIVMOD_DEFAULT) {
+    if (reusable_workspace) {
+      workspace = reusable_workspace;
+    } else {
+      xray_bigint_division_workspace_init(&division_workspace);
+      workspace = &division_workspace;
+      owns_workspace = 1;
+    }
+  }
+  size_t start = 0;
+  int ok = format_decimal_dc_write_internal(
+    value,
+    cache,
+    divmod_mode,
+    workspace,
+    leaf_chunks ? leaf_chunks : 16U,
+    0,
+    text,
+    text_capacity - 1U,
+    0,
+    &start);
+  if (owns_workspace) xray_bigint_division_workspace_clear(workspace);
+  if (!ok) {
+    free(text);
+    return NULL;
+  }
+  size_t used = text_capacity - 1U - start;
+  memmove(text, text + start, used);
+  text[used] = '\0';
+  return text;
+}
+
+#if XRAY_BIGINT_HAS_THREAD_LOCAL
+static XRAY_BIGINT_THREAD_LOCAL XrayDecimalDcPowerCache decimal_dc_tls_cache;
+static XRAY_BIGINT_THREAD_LOCAL int decimal_dc_tls_cache_initialized;
+static XRAY_BIGINT_THREAD_LOCAL int decimal_dc_tls_cache_in_use;
+static XRAY_BIGINT_THREAD_LOCAL XrayBigIntDivisionWorkspace decimal_dc_tls_division_workspace;
+static XRAY_BIGINT_THREAD_LOCAL int decimal_dc_tls_division_workspace_initialized;
+static XRAY_BIGINT_THREAD_LOCAL int decimal_dc_tls_division_workspace_in_use;
+static XRAY_BIGINT_THREAD_LOCAL XrayDecimalDcContextCache decimal_dc_tls_context_cache;
+static XRAY_BIGINT_THREAD_LOCAL int decimal_dc_tls_context_cache_initialized;
+static XRAY_BIGINT_THREAD_LOCAL int decimal_dc_tls_context_cache_in_use;
+
+static void decimal_dc_tls_cache_clear_at_exit(void) {
+  if (decimal_dc_tls_cache_initialized && !decimal_dc_tls_cache_in_use) {
+    decimal_dc_power_cache_clear(&decimal_dc_tls_cache);
+    decimal_dc_tls_cache_initialized = 0;
+  }
+  if (decimal_dc_tls_division_workspace_initialized && !decimal_dc_tls_division_workspace_in_use) {
+    xray_bigint_division_workspace_clear(&decimal_dc_tls_division_workspace);
+    decimal_dc_tls_division_workspace_initialized = 0;
+  }
+  if (decimal_dc_tls_context_cache_initialized && !decimal_dc_tls_context_cache_in_use) {
+    decimal_dc_context_cache_clear(&decimal_dc_tls_context_cache);
+    decimal_dc_tls_context_cache_initialized = 0;
+  }
+}
+
+static XrayDecimalDcPowerCache *decimal_dc_tls_cache_acquire(int *using_tls) {
+  if (using_tls) *using_tls = 0;
+  if (decimal_dc_tls_cache_in_use) return NULL;
+  if (!decimal_dc_tls_cache_initialized) {
+    decimal_dc_power_cache_init(&decimal_dc_tls_cache, 1, 1);
+    decimal_dc_tls_cache_initialized = 1;
+    (void)atexit(decimal_dc_tls_cache_clear_at_exit);
+  }
+  decimal_dc_tls_cache_in_use = 1;
+  if (using_tls) *using_tls = 1;
+  return &decimal_dc_tls_cache;
+}
+
+static void decimal_dc_tls_cache_release(void) {
+  decimal_dc_tls_cache_in_use = 0;
+}
+
+static XrayBigIntDivisionWorkspace *decimal_dc_tls_division_workspace_acquire(int *using_tls) {
+  if (using_tls) *using_tls = 0;
+  if (decimal_dc_tls_division_workspace_in_use) return NULL;
+  if (!decimal_dc_tls_division_workspace_initialized) {
+    xray_bigint_division_workspace_init(&decimal_dc_tls_division_workspace);
+    decimal_dc_tls_division_workspace_initialized = 1;
+    (void)atexit(decimal_dc_tls_cache_clear_at_exit);
+  }
+  decimal_dc_tls_division_workspace_in_use = 1;
+  if (using_tls) *using_tls = 1;
+  return &decimal_dc_tls_division_workspace;
+}
+
+static void decimal_dc_tls_division_workspace_release(void) {
+  decimal_dc_tls_division_workspace_in_use = 0;
+}
+
+static XrayDecimalDcContextCache *decimal_dc_tls_context_cache_acquire(int *using_tls) {
+  if (using_tls) *using_tls = 0;
+  if (decimal_dc_tls_context_cache_in_use) return NULL;
+  if (!decimal_dc_tls_context_cache_initialized) {
+    decimal_dc_context_cache_init(&decimal_dc_tls_context_cache);
+    decimal_dc_tls_context_cache_initialized = 1;
+    (void)atexit(decimal_dc_tls_cache_clear_at_exit);
+  }
+  decimal_dc_tls_context_cache_in_use = 1;
+  if (using_tls) *using_tls = 1;
+  return &decimal_dc_tls_context_cache;
+}
+
+static void decimal_dc_tls_context_cache_release(void) {
+  decimal_dc_tls_context_cache_in_use = 0;
+}
+#endif
+
+char *xray_bigint_get_decimal_dc_cached_preinv_probe(const XrayScratchBigInt *value, size_t leaf_chunks) {
+  if (!value || value->count == 0) {
+    char *zero = (char *)calloc(2, 1);
+    if (zero) zero[0] = '0';
+    return zero;
+  }
+  int using_tls = 0;
+  int using_workspace_tls = 0;
+  XrayDecimalDcPowerCache local_cache;
+  XrayDecimalDcPowerCache *cache = NULL;
+  XrayBigIntDivisionWorkspace *workspace = NULL;
+#if XRAY_BIGINT_HAS_THREAD_LOCAL
+  cache = decimal_dc_tls_cache_acquire(&using_tls);
+  workspace = decimal_dc_tls_division_workspace_acquire(&using_workspace_tls);
+#endif
+  if (!cache) {
+    decimal_dc_power_cache_init(&local_cache, 1, 1);
+    cache = &local_cache;
+  }
+  char *text = get_decimal_dc_direct_with_cache(
+    value,
+    cache,
+    leaf_chunks ? leaf_chunks : 16U,
+    XRAY_DECIMAL_DC_DIVMOD_PREINV_QHAT,
+    workspace);
+  if (using_workspace_tls) {
+#if XRAY_BIGINT_HAS_THREAD_LOCAL
+    decimal_dc_tls_division_workspace_release();
+#endif
+  }
+  if (using_tls) {
+#if XRAY_BIGINT_HAS_THREAD_LOCAL
+    decimal_dc_tls_cache_release();
+#endif
+  } else {
+    decimal_dc_power_cache_clear(&local_cache);
+  }
+  return text;
+}
+
 char *xray_bigint_get_decimal_dc_direct_probe(const XrayScratchBigInt *value, size_t leaf_chunks) {
   return get_decimal_dc_direct_with_divmod_mode(
     value,
@@ -2640,6 +3531,14 @@ char *xray_bigint_get_decimal_dc_preinv_qhat_probe(const XrayScratchBigInt *valu
     XRAY_DECIMAL_DC_DIVMOD_PREINV_QHAT);
 }
 
+char *xray_bigint_get_decimal_dc_cached_context_probe(const XrayScratchBigInt *value, size_t leaf_chunks) {
+  return get_decimal_dc_direct_with_context_cache(value, leaf_chunks, 1, 0);
+}
+
+char *xray_bigint_get_decimal_dc_cached_context_workspace_probe(const XrayScratchBigInt *value, size_t leaf_chunks) {
+  return get_decimal_dc_direct_with_context_cache(value, leaf_chunks, 1, 1);
+}
+
 char *xray_bigint_get_decimal_wide_probe(const XrayScratchBigInt *value) {
   if (!value || value->count == 0) {
     char *zero = (char *)calloc(2, 1);
@@ -2666,13 +3565,32 @@ char *xray_bigint_get_decimal_wide_probe(const XrayScratchBigInt *value) {
 }
 
 char *xray_bigint_get_decimal(const XrayScratchBigInt *value) {
+  if (value && value->count <= 3U) {
+    char *small_text = get_decimal_small_limbs_u64_pair_writer(value);
+    if (small_text) return small_text;
+  }
+  if (use_decimal_dc_direct_small_window_route(value)) {
+    char *direct_text = xray_bigint_get_decimal_dc_direct_probe(
+      value,
+      XRAY_BIGINT_DECIMAL_DC_DIRECT_SMALL_LEAF_CHUNKS);
+    if (direct_text) return direct_text;
+  }
   if (use_decimal_preinv_pair_window_route(value)) {
+    char *cached_preinv_text = xray_bigint_get_decimal_dc_cached_preinv_probe(value, 32U);
+    if (cached_preinv_text) return cached_preinv_text;
     char *preinv_pair_text = xray_bigint_get_decimal_divide_1e19_preinv_pair_writer_probe(value);
     if (preinv_pair_text) return preinv_pair_text;
   }
-  if (value && value->count > 0 &&
-      estimate_decimal_wide_chunks_from_bits(value) >= XRAY_BIGINT_DECIMAL_DC_MIN_WIDE_CHUNKS) {
-    char *dc_text = xray_bigint_get_decimal_dc_ladder_probe(value, XRAY_BIGINT_DECIMAL_DC_LEAF_CHUNKS);
+  if (value && value->count > 0) {
+    size_t estimated_wide_chunks = estimate_decimal_wide_chunks_from_bits(value);
+    char *dc_text = NULL;
+    if (estimated_wide_chunks >= XRAY_BIGINT_DECIMAL_DC_MIN_WIDE_CHUNKS &&
+        estimated_wide_chunks <= XRAY_BIGINT_DECIMAL_DC_CACHED_PREINV_MAX_WIDE_CHUNKS) {
+      size_t leaf_chunks = decimal_dc_cached_preinv_leaf_chunks(estimated_wide_chunks);
+      dc_text = xray_bigint_get_decimal_dc_cached_preinv_probe(value, leaf_chunks);
+    } else if (estimated_wide_chunks >= XRAY_BIGINT_DECIMAL_DC_MIN_WIDE_CHUNKS) {
+      dc_text = xray_bigint_get_decimal_dc_ladder_probe(value, XRAY_BIGINT_DECIMAL_DC_LEAF_CHUNKS);
+    }
     if (dc_text) return dc_text;
   }
   return get_decimal_with_options_writer(
@@ -2702,10 +3620,46 @@ int xray_bigint_compare(const XrayScratchBigInt *left, const XrayScratchBigInt *
   return 0;
 }
 
+static int add_small_equal_count(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
+  if (!out || !left || !right || left->count != right->count || left->count == 0 || left->count > 4U) return 0;
+  size_t count = left->count;
+  if (!reserve_limbs(out, count + 1U)) return 0;
+  unsigned char carry = 0;
+#define XRAY_ADD_SMALL_EQUAL_STEP(offset) \
+  carry = add_with_carry_u64(left->limbs[(offset)], right->limbs[(offset)], carry, &out->limbs[(offset)])
+  switch (count) {
+    case 4U:
+      XRAY_ADD_SMALL_EQUAL_STEP(0U);
+      XRAY_ADD_SMALL_EQUAL_STEP(1U);
+      XRAY_ADD_SMALL_EQUAL_STEP(2U);
+      XRAY_ADD_SMALL_EQUAL_STEP(3U);
+      break;
+    case 3U:
+      XRAY_ADD_SMALL_EQUAL_STEP(0U);
+      XRAY_ADD_SMALL_EQUAL_STEP(1U);
+      XRAY_ADD_SMALL_EQUAL_STEP(2U);
+      break;
+    case 2U:
+      XRAY_ADD_SMALL_EQUAL_STEP(0U);
+      XRAY_ADD_SMALL_EQUAL_STEP(1U);
+      break;
+    case 1U:
+      XRAY_ADD_SMALL_EQUAL_STEP(0U);
+      break;
+    default:
+      return 0;
+  }
+#undef XRAY_ADD_SMALL_EQUAL_STEP
+  out->count = count;
+  if (carry) out->limbs[out->count++] = carry;
+  return 1;
+}
+
 int xray_bigint_add(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
   if (!out || !left || !right) return 0;
   if (left->count == 0) return xray_bigint_copy(out, right);
   if (right->count == 0) return xray_bigint_copy(out, left);
+  if (left->count == right->count && left->count <= 4U) return add_small_equal_count(out, left, right);
   const XrayScratchBigInt *longer = left;
   const XrayScratchBigInt *shorter = right;
   if (right->count > left->count) {
@@ -2715,6 +3669,12 @@ int xray_bigint_add(XrayScratchBigInt *out, const XrayScratchBigInt *left, const
   if (!reserve_limbs(out, longer->count + 1)) return 0;
   unsigned char carry = 0;
   size_t index = 0;
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (shorter->count >= 8U) {
+    carry = add_limbs_u64_unroll4(out->limbs, left->limbs, right->limbs, shorter->count, 0);
+    index = shorter->count;
+  }
+#endif
   for (; index < shorter->count; ++index) {
     carry = add_with_carry_u64(left->limbs[index], right->limbs[index], carry, &out->limbs[index]);
   }
@@ -2758,6 +3718,27 @@ static int sub_known_greater_or_equal(XrayScratchBigInt *out, const XrayScratchB
   return borrow == 0;
 }
 
+static int sub_small_equal_count(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
+  if (!out || !left || !right || left->count != right->count || left->count > 4U) return 0;
+  size_t count = left->count;
+  for (size_t index = count; index-- > 0;) {
+    if (left->limbs[index] < right->limbs[index]) return 0;
+    if (left->limbs[index] > right->limbs[index]) break;
+    if (index == 0) {
+      out->count = 0;
+      return 1;
+    }
+  }
+  if (!reserve_limbs(out, count ? count : 1U)) return 0;
+  unsigned char borrow = 0;
+  for (size_t index = 0; index < count; ++index) {
+    borrow = sub_with_borrow_u64(left->limbs[index], right->limbs[index], borrow, &out->limbs[index]);
+  }
+  out->count = count;
+  normalize(out);
+  return borrow == 0;
+}
+
 int xray_bigint_sub(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
   if (!out || !left || !right) return 0;
   size_t left_count = left->count;
@@ -2765,9 +3746,15 @@ int xray_bigint_sub(XrayScratchBigInt *out, const XrayScratchBigInt *left, const
   if (right_count == 0) return xray_bigint_copy(out, left);
   if (left_count < right_count) return 0;
   if (left_count == right_count) {
-    int ordering = xray_bigint_compare(left, right);
-    if (ordering < 0) return 0;
-    if (ordering == 0) return set_u32(out, 0);
+    if (left_count <= 4U) return sub_small_equal_count(out, left, right);
+    uint64_t left_top = left->limbs[left_count - 1U];
+    uint64_t right_top = right->limbs[right_count - 1U];
+    if (left_top < right_top) return 0;
+    if (left_top == right_top) {
+      int ordering = xray_bigint_compare(left, right);
+      if (ordering < 0) return 0;
+      if (ordering == 0) return set_u32(out, 0);
+    }
   }
   return sub_known_greater_or_equal(out, left, right);
 }
@@ -2855,6 +3842,45 @@ static void square_add_doubled_cross_row(XrayScratchBigInt *out, const uint64_t 
 #endif
 }
 
+static void square_add_doubled_cross_row_unroll4(XrayScratchBigInt *out, const uint64_t *limbs, size_t count, size_t row) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (limbs[row] == 0) return;
+  uint64_t carry_low = 0;
+  uint64_t carry_high = 0;
+  size_t column = row + 1U;
+#define XRAY_SQUARE_CROSS_UNROLL4_STEP(offset) do { \
+    unsigned __int64 high = 0; \
+    unsigned __int64 low = _umul128(limbs[row], limbs[column + (offset)], &high); \
+    unsigned __int64 doubled_low = low << 1U; \
+    uint64_t carry_from_double = (uint64_t)(low >> 63U); \
+    unsigned __int64 sum = 0; \
+    unsigned char carry1 = _addcarry_u64(0, doubled_low, out->limbs[row + column + (offset)], &sum); \
+    unsigned char carry2 = _addcarry_u64(0, sum, carry_low, &sum); \
+    out->limbs[row + column + (offset)] = (uint64_t)sum; \
+    uint64_t small = carry_from_double + (uint64_t)carry1 + (uint64_t)carry2 + carry_high; \
+    uint64_t next_low = ((uint64_t)high) << 1U; \
+    uint64_t next_high = ((uint64_t)high) >> 63U; \
+    uint64_t next_sum = next_low + small; \
+    if (next_sum < next_low) next_high++; \
+    carry_low = next_sum; \
+    carry_high = next_high; \
+  } while (0)
+  for (; column + 4U <= count; column += 4U) {
+    XRAY_SQUARE_CROSS_UNROLL4_STEP(0U);
+    XRAY_SQUARE_CROSS_UNROLL4_STEP(1U);
+    XRAY_SQUARE_CROSS_UNROLL4_STEP(2U);
+    XRAY_SQUARE_CROSS_UNROLL4_STEP(3U);
+  }
+  for (; column < count; ++column) {
+    XRAY_SQUARE_CROSS_UNROLL4_STEP(0U);
+  }
+#undef XRAY_SQUARE_CROSS_UNROLL4_STEP
+  if (carry_low || carry_high) add_two_limb_at(out, row + count, carry_low, carry_high);
+#else
+  square_add_doubled_cross_row(out, limbs, count, row);
+#endif
+}
+
 static size_t count_nonzero_limbs(const XrayScratchBigInt *value) {
   size_t count = 0;
   if (!value) return 0;
@@ -2863,6 +3889,8 @@ static size_t count_nonzero_limbs(const XrayScratchBigInt *value) {
   }
   return count;
 }
+
+static int count_nonzero_limbs_bounded(const XrayScratchBigInt *value, size_t max_nonzero, size_t *out_count);
 
 static int should_use_sparse_square(const XrayScratchBigInt *value, size_t nonzero_count) {
   if (!value || value->count < XRAY_BIGINT_SPARSE_SQUARE_MIN_LIMBS) return 0;
@@ -2913,14 +3941,9 @@ static int square_schoolbook_sparse(XrayScratchBigInt *out, const XrayScratchBig
   return 1;
 }
 
-static int square_schoolbook(XrayScratchBigInt *out, const XrayScratchBigInt *value) {
+static int square_schoolbook_dense(XrayScratchBigInt *out, const XrayScratchBigInt *value) {
   if (!out || !value) return 0;
   if (value->count == 0) return set_u32(out, 0);
-  size_t nonzero_count = count_nonzero_limbs(value);
-  if (should_use_sparse_square(value, nonzero_count) &&
-      square_schoolbook_sparse(out, value, nonzero_count)) {
-    return 1;
-  }
   size_t needed = value->count * 2U;
   if (!reserve_limbs(out, needed + 2U)) return 0;
   memset(out->limbs, 0, sizeof(uint64_t) * (needed + 2U));
@@ -2936,13 +3959,28 @@ static int square_schoolbook(XrayScratchBigInt *out, const XrayScratchBigInt *va
   return 1;
 }
 
+static int square_schoolbook(XrayScratchBigInt *out, const XrayScratchBigInt *value) {
+  if (!out || !value) return 0;
+  if (value->count == 0) return set_u32(out, 0);
+  if (value->count >= XRAY_BIGINT_SPARSE_SQUARE_MIN_LIMBS) {
+    size_t nonzero_count = count_nonzero_limbs(value);
+    if (should_use_sparse_square(value, nonzero_count) &&
+        square_schoolbook_sparse(out, value, nonzero_count)) {
+      return 1;
+    }
+  }
+  return square_schoolbook_dense(out, value);
+}
+
 static int square_schoolbook_fused_leaf_order(XrayScratchBigInt *out, const XrayScratchBigInt *value) {
   if (!out || !value) return 0;
   if (value->count == 0) return set_u32(out, 0);
-  size_t nonzero_count = count_nonzero_limbs(value);
-  if (should_use_sparse_square(value, nonzero_count) &&
-      square_schoolbook_sparse(out, value, nonzero_count)) {
-    return 1;
+  if (value->count >= XRAY_BIGINT_SPARSE_SQUARE_MIN_LIMBS) {
+    size_t nonzero_count = count_nonzero_limbs(value);
+    if (should_use_sparse_square(value, nonzero_count) &&
+        square_schoolbook_sparse(out, value, nonzero_count)) {
+      return 1;
+    }
   }
   size_t needed = value->count * 2U;
   if (!reserve_limbs(out, needed + 2U)) return 0;
@@ -2955,6 +3993,193 @@ static int square_schoolbook_fused_leaf_order(XrayScratchBigInt *out, const Xray
   }
   normalize(out);
   return 1;
+}
+
+static int square_schoolbook_unroll4_leaf_order(XrayScratchBigInt *out, const XrayScratchBigInt *value) {
+  if (!out || !value) return 0;
+  if (value->count == 0) return set_u32(out, 0);
+  if (value->count >= XRAY_BIGINT_SPARSE_SQUARE_MIN_LIMBS) {
+    size_t nonzero_count = count_nonzero_limbs(value);
+    if (should_use_sparse_square(value, nonzero_count) &&
+        square_schoolbook_sparse(out, value, nonzero_count)) {
+      return 1;
+    }
+  }
+  size_t needed = value->count * 2U;
+  if (!reserve_limbs(out, needed + 2U)) return 0;
+  memset(out->limbs, 0, sizeof(uint64_t) * (needed + 2U));
+  out->count = needed + 2U;
+
+  for (size_t row = 0; row < value->count; ++row) {
+    square_add_doubled_cross_row_unroll4(out, value->limbs, value->count, row);
+  }
+  for (size_t index = 0; index < value->count; ++index) {
+    square_add_diagonal_word(out, index * 2U, value->limbs[index]);
+  }
+  normalize(out);
+  return 1;
+}
+
+static int comba_acc_add_limb(uint64_t acc[3], size_t offset, uint64_t value) {
+  if (value == 0) return 1;
+  if (offset >= 3U) return 0;
+  uint64_t before = acc[offset];
+  acc[offset] += value;
+  unsigned int carry = acc[offset] < before;
+  while (carry) {
+    offset++;
+    if (offset >= 3U) return 0;
+    before = acc[offset];
+    acc[offset]++;
+    carry = acc[offset] == 0;
+  }
+  return 1;
+}
+
+static int comba_acc_add_product(uint64_t acc[3], uint64_t left, uint64_t right, int doubled) {
+  if (left == 0 || right == 0) return 1;
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  unsigned __int64 high = 0;
+  unsigned __int64 low = _umul128(left, right, &high);
+  uint64_t product_low = (uint64_t)low;
+  uint64_t product_high = (uint64_t)high;
+#else
+  __uint128_t product = (__uint128_t)left * (__uint128_t)right;
+  uint64_t product_low = (uint64_t)product;
+  uint64_t product_high = (uint64_t)(product >> XRAY_BIGINT_WORD_BITS);
+#endif
+  if (!doubled) {
+    return comba_acc_add_limb(acc, 0U, product_low) &&
+      comba_acc_add_limb(acc, 1U, product_high);
+  }
+  uint64_t doubled_low = product_low << 1U;
+  uint64_t doubled_high = (product_high << 1U) | (product_low >> 63U);
+  uint64_t extra = product_high >> 63U;
+  return comba_acc_add_limb(acc, 0U, doubled_low) &&
+    comba_acc_add_limb(acc, 1U, doubled_high) &&
+    comba_acc_add_limb(acc, 2U, extra);
+}
+
+static int square_schoolbook_comba_leaf_order(XrayScratchBigInt *out, const XrayScratchBigInt *value) {
+  if (!out || !value) return 0;
+  if (value->count == 0) return set_u32(out, 0);
+  if (value->count >= XRAY_BIGINT_SPARSE_SQUARE_MIN_LIMBS) {
+    size_t nonzero_count = count_nonzero_limbs(value);
+    if (should_use_sparse_square(value, nonzero_count) &&
+        square_schoolbook_sparse(out, value, nonzero_count)) {
+      return 1;
+    }
+  }
+  size_t count = value->count;
+  size_t needed = count * 2U;
+  if (!reserve_limbs(out, needed + 2U)) return 0;
+  memset(out->limbs, 0, sizeof(uint64_t) * (needed + 2U));
+  out->count = needed + 2U;
+
+  uint64_t acc[3] = {0, 0, 0};
+  for (size_t column_sum = 0; column_sum + 1U < needed; ++column_sum) {
+    size_t i = column_sum < count ? 0 : column_sum + 1U - count;
+    size_t j = column_sum - i;
+    while (i < j) {
+      if (!comba_acc_add_product(acc, value->limbs[i], value->limbs[j], 1)) return 0;
+      i++;
+      j--;
+    }
+    if (i == j) {
+      if (!comba_acc_add_product(acc, value->limbs[i], value->limbs[i], 0)) return 0;
+    }
+    out->limbs[column_sum] = acc[0];
+    acc[0] = acc[1];
+    acc[1] = acc[2];
+    acc[2] = 0;
+  }
+  out->limbs[needed - 1U] = acc[0];
+  if (acc[1] || acc[2]) return 0;
+  normalize(out);
+  return 1;
+}
+
+static void square_tiny_emit_column(XrayScratchBigInt *out, uint64_t acc[3], size_t column) {
+  out->limbs[column] = acc[0];
+  acc[0] = acc[1];
+  acc[1] = acc[2];
+  acc[2] = 0;
+}
+
+static int square_tiny_dense(XrayScratchBigInt *out, const XrayScratchBigInt *value) {
+  if (!out || !value) return 0;
+  size_t count = value->count;
+  if (count == 0) return set_u32(out, 0);
+  if (count > 4U) return 0;
+
+  size_t needed = count * 2U;
+  if (!reserve_limbs(out, needed)) return 0;
+  out->count = needed;
+
+  uint64_t acc[3] = {0, 0, 0};
+  switch (count) {
+    case 4U:
+      if (!comba_acc_add_product(acc, value->limbs[0], value->limbs[0], 0)) return 0;
+      square_tiny_emit_column(out, acc, 0U);
+      if (!comba_acc_add_product(acc, value->limbs[0], value->limbs[1], 1)) return 0;
+      square_tiny_emit_column(out, acc, 1U);
+      if (!comba_acc_add_product(acc, value->limbs[0], value->limbs[2], 1)) return 0;
+      if (!comba_acc_add_product(acc, value->limbs[1], value->limbs[1], 0)) return 0;
+      square_tiny_emit_column(out, acc, 2U);
+      if (!comba_acc_add_product(acc, value->limbs[0], value->limbs[3], 1)) return 0;
+      if (!comba_acc_add_product(acc, value->limbs[1], value->limbs[2], 1)) return 0;
+      square_tiny_emit_column(out, acc, 3U);
+      if (!comba_acc_add_product(acc, value->limbs[1], value->limbs[3], 1)) return 0;
+      if (!comba_acc_add_product(acc, value->limbs[2], value->limbs[2], 0)) return 0;
+      square_tiny_emit_column(out, acc, 4U);
+      if (!comba_acc_add_product(acc, value->limbs[2], value->limbs[3], 1)) return 0;
+      square_tiny_emit_column(out, acc, 5U);
+      if (!comba_acc_add_product(acc, value->limbs[3], value->limbs[3], 0)) return 0;
+      square_tiny_emit_column(out, acc, 6U);
+      break;
+    case 3U:
+      if (!comba_acc_add_product(acc, value->limbs[0], value->limbs[0], 0)) return 0;
+      square_tiny_emit_column(out, acc, 0U);
+      if (!comba_acc_add_product(acc, value->limbs[0], value->limbs[1], 1)) return 0;
+      square_tiny_emit_column(out, acc, 1U);
+      if (!comba_acc_add_product(acc, value->limbs[0], value->limbs[2], 1)) return 0;
+      if (!comba_acc_add_product(acc, value->limbs[1], value->limbs[1], 0)) return 0;
+      square_tiny_emit_column(out, acc, 2U);
+      if (!comba_acc_add_product(acc, value->limbs[1], value->limbs[2], 1)) return 0;
+      square_tiny_emit_column(out, acc, 3U);
+      if (!comba_acc_add_product(acc, value->limbs[2], value->limbs[2], 0)) return 0;
+      square_tiny_emit_column(out, acc, 4U);
+      break;
+    case 2U:
+      if (!comba_acc_add_product(acc, value->limbs[0], value->limbs[0], 0)) return 0;
+      square_tiny_emit_column(out, acc, 0U);
+      if (!comba_acc_add_product(acc, value->limbs[0], value->limbs[1], 1)) return 0;
+      square_tiny_emit_column(out, acc, 1U);
+      if (!comba_acc_add_product(acc, value->limbs[1], value->limbs[1], 0)) return 0;
+      square_tiny_emit_column(out, acc, 2U);
+      break;
+    case 1U:
+      if (!comba_acc_add_product(acc, value->limbs[0], value->limbs[0], 0)) return 0;
+      square_tiny_emit_column(out, acc, 0U);
+      break;
+    default:
+      return 0;
+  }
+  out->limbs[needed - 1U] = acc[0];
+  if (acc[1] || acc[2]) return 0;
+
+  normalize(out);
+  return 1;
+}
+
+static int try_sparse_square_dispatch_route(XrayScratchBigInt *out, const XrayScratchBigInt *value) {
+  if (!out || !value || value->count < XRAY_BIGINT_SPARSE_SQUARE_MIN_LIMBS) return 0;
+  size_t sparse_cap = value->count / XRAY_BIGINT_SPARSE_SQUARE_DENSITY_DIVISOR;
+  size_t nonzero_count = 0;
+  if (sparse_cap == 0 || !count_nonzero_limbs_bounded(value, sparse_cap, &nonzero_count)) {
+    return 0;
+  }
+  return square_schoolbook_sparse(out, value, nonzero_count);
 }
 
 static int slice_bigint(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t offset, size_t count);
@@ -2981,10 +4206,12 @@ static int square_karatsuba_threshold_mode(
 #else
     int use_unroll4 = 0;
 #endif
-    return mul_schoolbook_mode(out, value, value, use_unroll4, 1);
+    return mul_schoolbook_mode(out, value, value, use_unroll4, 0);
   }
   size_t active_threshold = threshold >= 2U ? threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
   if (value->count < active_threshold) {
+    if (use_fused_leaf_order == 3) return square_schoolbook_comba_leaf_order(out, value);
+    if (use_fused_leaf_order == 2) return square_schoolbook_unroll4_leaf_order(out, value);
     return use_fused_leaf_order ?
       square_schoolbook_fused_leaf_order(out, value) :
       square_schoolbook(out, value);
@@ -3309,6 +4536,35 @@ static int add_shifted_inplace(XrayScratchBigInt *out, const XrayScratchBigInt *
   return 1;
 }
 
+static int add_shifted_inplace_no_normalize(XrayScratchBigInt *out, const XrayScratchBigInt *addend, size_t shift) {
+  if (!out || !addend) return 0;
+  if (addend->count == 0) return 1;
+  size_t needed = shift + addend->count + 1;
+  if (!reserve_limbs(out, needed)) return 0;
+  if (out->count < shift) {
+    memset(out->limbs + out->count, 0, sizeof(uint64_t) * (shift - out->count));
+    out->count = shift;
+  }
+  if (out->count < shift + addend->count) {
+    memset(out->limbs + out->count, 0, sizeof(uint64_t) * (shift + addend->count - out->count));
+    out->count = shift + addend->count;
+  }
+  unsigned char carry = 0;
+  size_t index = 0;
+  for (; index < addend->count; ++index) {
+    carry = add_with_carry_u64(out->limbs[shift + index], addend->limbs[index], carry, &out->limbs[shift + index]);
+  }
+  size_t position = shift + index;
+  while (carry) {
+    if (position == out->count) {
+      out->limbs[out->count++] = 0;
+    }
+    carry = add_with_carry_u64(out->limbs[position], 0, carry, &out->limbs[position]);
+    position++;
+  }
+  return 1;
+}
+
 static int abs_diff_bigint(
   XrayScratchBigInt *out,
   const XrayScratchBigInt *left,
@@ -3577,7 +4833,7 @@ static int mul_karatsuba_workspace_recurse(
   size_t min_count = left_count < right_count ? left_count : right_count;
   size_t active_threshold = threshold >= 2U ? threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
   if (max_count < active_threshold || min_count * 2U < max_count) {
-    return mul_schoolbook_mode(out, left, right, use_unroll4, 1);
+    return mul_schoolbook_mode(out, left, right, use_unroll4, 0);
   }
   if (!workspace || depth >= workspace->frame_count) return 0;
 
@@ -3610,6 +4866,76 @@ static int mul_karatsuba_workspace_recurse(
       add_shifted_inplace(out, &frame->z2, split * 2U);
     if (ok) normalize(out);
   }
+  return ok;
+}
+
+static int square_karatsuba_workspace_recurse(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value,
+  size_t threshold,
+  int use_unroll4,
+  int use_mul_leaf,
+  XrayKaratsubaWorkspace *workspace,
+  size_t depth) {
+  if (!out || !value) return 0;
+  if (value->count == 0) return set_u32(out, 0);
+  if (value->count <= XRAY_BIGINT_SQUARE_SELF_MUL_MAX_LIMBS) {
+    int active_unroll4 = use_unroll4 && value->count >= XRAY_BIGINT_UNROLL4_ROUTE_MIN_LIMBS;
+    return mul_schoolbook_mode(out, value, value, active_unroll4, 0);
+  }
+  size_t active_threshold = threshold >= 2U ? threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  if (value->count < active_threshold) {
+    return use_mul_leaf ?
+      mul_schoolbook_mode(out, value, value, use_unroll4, 0) :
+      square_schoolbook(out, value);
+  }
+  if (!workspace || depth >= workspace->frame_count) return 0;
+
+  size_t split = value->count / 2U;
+  XrayScratchBigInt a0, a1;
+  view_bigint_slice(&a0, value, 0, split);
+  view_bigint_slice(&a1, value, split, value->count - split);
+
+  XrayKaratsubaWorkspaceFrame *frame = &workspace->frames[depth];
+  karatsuba_workspace_frame_reset(frame);
+  int diff_order = 0;
+  int ok = square_karatsuba_workspace_recurse(&frame->z0, &a0, active_threshold, use_unroll4, use_mul_leaf, workspace, depth + 1U) &&
+    square_karatsuba_workspace_recurse(&frame->z2, &a1, active_threshold, use_unroll4, use_mul_leaf, workspace, depth + 1U) &&
+    abs_diff_bigint(&frame->sum_a, &a1, &a0, &diff_order) &&
+    square_karatsuba_workspace_recurse(&frame->z1, &frame->sum_a, active_threshold, use_unroll4, use_mul_leaf, workspace, depth + 1U) &&
+    xray_bigint_add(&frame->sum_b, &frame->z0, &frame->z2) &&
+    xray_bigint_sub(&frame->z1, &frame->sum_b, &frame->z1);
+  (void)diff_order;
+
+  if (ok) {
+    out->count = 0;
+    ok = reserve_limbs(out, value->count * 2U + 2U) &&
+      add_shifted_inplace(out, &frame->z0, 0) &&
+      add_shifted_inplace(out, &frame->z1, split) &&
+      add_shifted_inplace(out, &frame->z2, split * 2U);
+    if (ok) normalize(out);
+  }
+  return ok;
+}
+
+static int square_karatsuba_workspace_probe_internal(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value,
+  size_t threshold,
+  int use_mul_leaf) {
+  if (!out || !value) return 0;
+  size_t active_threshold = threshold >= 2U ? threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  int use_unroll4 = 1;
+#else
+  int use_unroll4 = 0;
+#endif
+  XrayKaratsubaWorkspace workspace;
+  karatsuba_workspace_init(&workspace);
+  int ok = karatsuba_workspace_prepare(&workspace, value->count, active_threshold) &&
+    reserve_limbs(out, value->count * 2U + 2U) &&
+    square_karatsuba_workspace_recurse(out, value, active_threshold, use_unroll4, use_mul_leaf, &workspace, 0);
+  karatsuba_workspace_clear(&workspace);
   return ok;
 }
 
@@ -3716,6 +5042,23 @@ static int signed_set_unsigned(XraySignedScratchBigInt *out, const XrayScratchBi
   if (!xray_bigint_copy(&out->mag, value)) return 0;
   out->sign = out->mag.count ? 1 : 0;
   return 1;
+}
+
+static int signed_set_diff_unsigned(
+  XraySignedScratchBigInt *out,
+  const XrayScratchBigInt *left,
+  const XrayScratchBigInt *right) {
+  if (!out || !left || !right) return 0;
+  int compare = xray_bigint_compare(left, right);
+  if (compare == 0) {
+    out->sign = 0;
+    return set_u32(&out->mag, 0);
+  }
+  int ok = compare > 0 ?
+    sub_known_greater_or_equal(&out->mag, left, right) :
+    sub_known_greater_or_equal(&out->mag, right, left);
+  out->sign = ok && out->mag.count ? (compare > 0 ? 1 : -1) : 0;
+  return ok;
 }
 
 static int signed_copy(XraySignedScratchBigInt *out, const XraySignedScratchBigInt *value) {
@@ -3889,6 +5232,40 @@ static int eval_toom3_positive(
     add_scaled_unsigned(out, part0, 1) &&
     add_scaled_unsigned(out, part1, weight1) &&
     add_scaled_unsigned(out, part2, weight2);
+}
+
+static int add3_unsigned(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *part0,
+  const XrayScratchBigInt *part1,
+  const XrayScratchBigInt *part2) {
+  if (!out || !part0 || !part1 || !part2) return 0;
+  size_t count = part0->count;
+  if (part1->count > count) count = part1->count;
+  if (part2->count > count) count = part2->count;
+  if (count == 0) return set_u32(out, 0);
+  if (!reserve_limbs(out, count + 1U)) return 0;
+
+  uint64_t carry = 0;
+  for (size_t index = 0; index < count; ++index) {
+    uint64_t word01 = 0;
+    uint64_t word012 = 0;
+    uint64_t out_word = 0;
+    uint64_t value0 = index < part0->count ? part0->limbs[index] : 0;
+    uint64_t value1 = index < part1->count ? part1->limbs[index] : 0;
+    uint64_t value2 = index < part2->count ? part2->limbs[index] : 0;
+    unsigned char carry01 = add_with_carry_u64(value0, value1, 0, &word01);
+    unsigned char carry012 = add_with_carry_u64(word01, value2, 0, &word012);
+    unsigned char carry_out = carry ? add_with_carry_u64(word012, carry, 0, &out_word) : 0;
+    if (!carry) out_word = word012;
+    out->limbs[index] = out_word;
+    carry = (uint64_t)carry01 + (uint64_t)carry012 + (uint64_t)carry_out;
+  }
+
+  out->count = count;
+  if (carry) out->limbs[out->count++] = carry;
+  normalize(out);
+  return 1;
 }
 
 static int eval_toom3_minus_one(
@@ -4078,6 +5455,29 @@ typedef struct XrayToom3Workspace {
   size_t frame_count;
 } XrayToom3Workspace;
 
+typedef struct XrayToomPointProductTask {
+  XraySignedScratchBigInt *out;
+  const XraySignedScratchBigInt *left;
+  const XraySignedScratchBigInt *right;
+  size_t workspace_count;
+  size_t threshold;
+  size_t depth_limit;
+  unsigned int interp_flags;
+  int square_point;
+  int ok;
+} XrayToomPointProductTask;
+
+#if defined(_WIN32) && defined(_MSC_VER)
+static int run_toom_point_products_parallel_grouped_pool(
+  XrayToomPointProductTask *tasks,
+  size_t task_count,
+  size_t group_count);
+static int run_toom_point_products_parallel_grouped_persistent(
+  XrayToomPointProductTask *tasks,
+  size_t task_count,
+  size_t group_count);
+#endif
+
 static int mul_toom3_workspace_recurse(
   XrayScratchBigInt *out,
   const XrayScratchBigInt *left,
@@ -4089,6 +5489,19 @@ static int mul_toom3_workspace_recurse(
   XrayKaratsubaWorkspace *karatsuba_workspace,
   size_t depth,
   unsigned int interp_flags);
+static int square_toom3_workspace_recurse(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value,
+  size_t leaf_threshold,
+  int use_unroll4,
+  size_t depth_limit,
+  XrayToom3Workspace *workspace,
+  XrayKaratsubaWorkspace *karatsuba_workspace,
+  size_t depth,
+  unsigned int interp_flags,
+  int use_mul_points,
+  size_t parallel_min_count,
+  size_t parallel_group_count);
 
 static void signed_reset(XraySignedScratchBigInt *value) {
   if (!value) return;
@@ -4128,6 +5541,27 @@ static int eval_toom3_minus_one_workspace(
     } else {
       ok = xray_bigint_sub(&out->mag, part1, positive);
       out->sign = ok && out->mag.count ? -1 : 0;
+    }
+  }
+  return ok;
+}
+
+static int eval_toom3_minus_one_abs_sum02_workspace(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *part0,
+  const XrayScratchBigInt *part1,
+  const XrayScratchBigInt *part2,
+  XrayScratchBigInt *sum02) {
+  if (!out || !sum02) return 0;
+  int ok = xray_bigint_add(sum02, part0, part2);
+  if (ok) {
+    int compare = xray_bigint_compare(sum02, part1);
+    if (compare == 0) {
+      ok = set_u32(out, 0);
+    } else if (compare > 0) {
+      ok = sub_known_greater_or_equal(out, sum02, part1);
+    } else {
+      ok = sub_known_greater_or_equal(out, part1, sum02);
     }
   }
   return ok;
@@ -4492,6 +5926,29 @@ static int signed_mul_toom3_workspace_mode(
   return ok;
 }
 
+static int signed_square_toom3_workspace_mode(
+  XraySignedScratchBigInt *out,
+  const XraySignedScratchBigInt *value,
+  size_t threshold,
+  int use_unroll4,
+  size_t depth_limit,
+  XrayToom3Workspace *workspace,
+  XrayKaratsubaWorkspace *karatsuba_workspace,
+  size_t depth,
+  unsigned int interp_flags,
+  int use_mul_points) {
+  if (!out || !value) return 0;
+  if (value->sign == 0) {
+    out->sign = 0;
+    return set_u32(&out->mag, 0);
+  }
+  int ok = use_mul_points ?
+    mul_toom3_workspace_recurse(&out->mag, &value->mag, &value->mag, threshold, use_unroll4, depth_limit, workspace, karatsuba_workspace, depth, interp_flags) :
+    square_toom3_workspace_recurse(&out->mag, &value->mag, threshold, use_unroll4, depth_limit, workspace, karatsuba_workspace, depth, interp_flags, 0, 0U, 0U);
+  out->sign = ok && out->mag.count ? 1 : 0;
+  return ok;
+}
+
 static int mul_toom3_workspace_recurse(
   XrayScratchBigInt *out,
   const XrayScratchBigInt *left,
@@ -4681,6 +6138,246 @@ static int mul_toom3_workspace_recurse(
   return ok;
 }
 
+static int square_toom3_workspace_recurse(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value,
+  size_t leaf_threshold,
+  int use_unroll4,
+  size_t depth_limit,
+  XrayToom3Workspace *workspace,
+  XrayKaratsubaWorkspace *karatsuba_workspace,
+  size_t depth,
+  unsigned int interp_flags,
+  int use_mul_points,
+  size_t parallel_min_count,
+  size_t parallel_group_count) {
+  if (!out || !value) return 0;
+  if (value->count == 0) return set_u32(out, 0);
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  if (depth_limit == 0 || value->count < active_threshold * 3U) {
+    if (karatsuba_workspace) {
+      return square_karatsuba_workspace_recurse(out, value, active_threshold, use_unroll4, 0, karatsuba_workspace, 0);
+    }
+    return mul_dispatch_threshold_mode_ex(out, value, value, active_threshold, use_unroll4, 1, 1);
+  }
+  if (!workspace || depth >= workspace->frame_count) return 0;
+
+  size_t split = (value->count + 2U) / 3U;
+  XrayScratchBigInt a0, a1, a2;
+  view_bigint_slice(&a0, value, 0, split);
+  view_bigint_slice(&a1, value, split, split);
+  view_bigint_slice(&a2, value, split * 2U, value->count > split * 2U ? value->count - split * 2U : 0);
+
+  XrayToom3WorkspaceFrame *frame = &workspace->frames[depth];
+  toom3_workspace_frame_reset(frame);
+  int ok = signed_set_unsigned(&frame->x[XRAY_TOOM3_POINT_0], &a0) &&
+    signed_set_positive_eval(&frame->x[XRAY_TOOM3_POINT_1], &a0, &a1, &a2, 1, 1) &&
+    eval_toom3_minus_one_workspace(&frame->x[XRAY_TOOM3_POINT_MINUS_1], &a0, &a1, &a2, &frame->eval_temp) &&
+    ((interp_flags & XRAY_TOOM3_INTERP_EVAL_NEG2) ?
+      eval_toom3_negative_workspace(&frame->x[XRAY_TOOM3_POINT_2], &a0, &a1, &a2, 2, 4, &frame->eval_temp, &frame->div_temp) :
+      signed_set_positive_eval(&frame->x[XRAY_TOOM3_POINT_2], &a0, &a1, &a2, 2, 4)) &&
+    signed_set_unsigned(&frame->x[XRAY_TOOM3_POINT_INF], &a2);
+
+  int point_products_ready = 0;
+  if (ok && !use_mul_points && depth == 0 && parallel_min_count > 0U && value->count >= parallel_min_count) {
+#if defined(_WIN32) && defined(_MSC_VER)
+    XrayToomPointProductTask tasks[XRAY_TOOM3_POINT_COUNT];
+    for (size_t index = 0; index < XRAY_TOOM3_POINT_COUNT; ++index) {
+      tasks[index].out = &frame->v[index];
+      tasks[index].left = &frame->x[index];
+      tasks[index].right = &frame->x[index];
+      tasks[index].workspace_count = value->count;
+      tasks[index].threshold = active_threshold;
+      tasks[index].depth_limit = depth_limit > 0U ? depth_limit - 1U : 0U;
+      tasks[index].interp_flags = interp_flags;
+      tasks[index].square_point = 1;
+      tasks[index].ok = 0;
+    }
+    size_t point_group_count = parallel_group_count > 0U ? parallel_group_count : 3U;
+    point_products_ready = run_toom_point_products_parallel_grouped_persistent(
+      tasks,
+      XRAY_TOOM3_POINT_COUNT,
+      point_group_count);
+    if (!point_products_ready) {
+      point_products_ready = run_toom_point_products_parallel_grouped_pool(
+        tasks,
+        XRAY_TOOM3_POINT_COUNT,
+        point_group_count);
+    }
+    if (!point_products_ready) {
+      for (size_t index = 0; index < XRAY_TOOM3_POINT_COUNT; ++index) signed_reset(&frame->v[index]);
+    }
+#else
+    point_products_ready = 0;
+#endif
+  }
+
+  if (ok && !point_products_ready) {
+    ok = signed_square_toom3_workspace_mode(
+      &frame->v[XRAY_TOOM3_POINT_0],
+      &frame->x[XRAY_TOOM3_POINT_0],
+      active_threshold,
+      use_unroll4,
+      depth_limit - 1U,
+      workspace,
+      karatsuba_workspace,
+      depth + 1U,
+      interp_flags,
+      use_mul_points) &&
+      signed_square_toom3_workspace_mode(
+        &frame->v[XRAY_TOOM3_POINT_1],
+        &frame->x[XRAY_TOOM3_POINT_1],
+        active_threshold,
+        use_unroll4,
+        depth_limit - 1U,
+        workspace,
+        karatsuba_workspace,
+        depth + 1U,
+        interp_flags,
+        use_mul_points) &&
+      signed_square_toom3_workspace_mode(
+        &frame->v[XRAY_TOOM3_POINT_MINUS_1],
+        &frame->x[XRAY_TOOM3_POINT_MINUS_1],
+        active_threshold,
+        use_unroll4,
+        depth_limit - 1U,
+        workspace,
+        karatsuba_workspace,
+        depth + 1U,
+        interp_flags,
+        use_mul_points) &&
+      signed_square_toom3_workspace_mode(
+        &frame->v[XRAY_TOOM3_POINT_2],
+        &frame->x[XRAY_TOOM3_POINT_2],
+        active_threshold,
+        use_unroll4,
+        depth_limit - 1U,
+        workspace,
+        karatsuba_workspace,
+        depth + 1U,
+        interp_flags,
+        use_mul_points) &&
+      signed_square_toom3_workspace_mode(
+        &frame->v[XRAY_TOOM3_POINT_INF],
+        &frame->x[XRAY_TOOM3_POINT_INF],
+        active_threshold,
+        use_unroll4,
+        depth_limit - 1U,
+        workspace,
+        karatsuba_workspace,
+        depth + 1U,
+        interp_flags,
+        use_mul_points);
+  }
+
+  XraySignedScratchBigInt *v0 = &frame->v[XRAY_TOOM3_POINT_0];
+  XraySignedScratchBigInt *v1 = &frame->v[XRAY_TOOM3_POINT_1];
+  XraySignedScratchBigInt *vm1 = &frame->v[XRAY_TOOM3_POINT_MINUS_1];
+  XraySignedScratchBigInt *v2 = &frame->v[XRAY_TOOM3_POINT_2];
+  XraySignedScratchBigInt *vinf = &frame->v[XRAY_TOOM3_POINT_INF];
+
+  if (ok && (interp_flags & XRAY_TOOM3_INTERP_EVAL_NEG2)) {
+    ok = signed_sub_inplace_workspace(v2, v1, &frame->signed_temp) &&
+      ((interp_flags & XRAY_TOOM3_INTERP_INPLACE_DIV) ?
+        signed_divexact_u3_inplace_workspace(v2) :
+      ((interp_flags & XRAY_TOOM3_INTERP_EXACT_DIV3) ?
+        signed_divexact_u3_workspace(v2, &frame->div_temp) :
+        signed_divexact_u32_workspace(v2, 3, &frame->div_temp))) &&
+      signed_sub_workspace(v1, vm1, v1, &frame->signed_temp) &&
+      (((interp_flags & XRAY_TOOM3_INTERP_INPLACE_DIV) && (interp_flags & XRAY_TOOM3_INTERP_SHIFT_DIV2)) ?
+        signed_divexact_pow2_inplace_workspace(v1, 1) :
+      ((interp_flags & XRAY_TOOM3_INTERP_SHIFT_DIV2) ?
+        signed_divexact_pow2_workspace(v1, 1, &frame->div_temp) :
+        signed_divexact_u32_workspace(v1, 2, &frame->div_temp))) &&
+      signed_sub_inplace_workspace(vm1, v0, &frame->signed_temp) &&
+      signed_sub_inplace_workspace(v2, vm1, &frame->signed_temp) &&
+      (((interp_flags & XRAY_TOOM3_INTERP_INPLACE_DIV) && (interp_flags & XRAY_TOOM3_INTERP_SHIFT_DIV2)) ?
+        signed_divexact_pow2_inplace_workspace(v2, 1) :
+      ((interp_flags & XRAY_TOOM3_INTERP_SHIFT_DIV2) ?
+        signed_divexact_pow2_workspace(v2, 1, &frame->div_temp) :
+        signed_divexact_u32_workspace(v2, 2, &frame->div_temp))) &&
+      signed_sub_inplace_workspace(vm1, v1, &frame->signed_temp) &&
+      signed_sub_inplace_workspace(vm1, vinf, &frame->signed_temp) &&
+      signed_copy(&frame->twice_vinf, vinf) &&
+      signed_mul_u32_inplace(&frame->twice_vinf, 2) &&
+      signed_sub_inplace_workspace(v2, &frame->twice_vinf, &frame->signed_temp) &&
+      signed_sub_inplace_workspace(v1, v2, &frame->signed_temp);
+    if (ok) {
+      if (v1->sign) v1->sign = -v1->sign;
+      if (v2->sign) v2->sign = -v2->sign;
+      XraySignedScratchBigInt *c1 = v1;
+      XraySignedScratchBigInt *c2 = vm1;
+      vm1 = c1;
+      v1 = c2;
+    }
+  } else if (ok) {
+    if (v0->sign >= 0 && vm1->sign >= 0 && v1->sign >= 0 && v2->sign >= 0 && vinf->sign >= 0) {
+      ok = sub_known_greater_or_equal(&frame->div_temp, &v1->mag, &vm1->mag) &&
+        shift_right_bits_inplace_exact(&frame->div_temp, 1) &&
+        xray_bigint_add(&frame->eval_temp, &v1->mag, &vm1->mag) &&
+        shift_right_bits_inplace_exact(&frame->eval_temp, 1) &&
+        sub_known_greater_or_equal(&frame->eval_temp, &frame->eval_temp, &v0->mag) &&
+        sub_known_greater_or_equal(&v1->mag, &frame->eval_temp, &vinf->mag) &&
+        sub_known_greater_or_equal(&frame->eval_temp, &v2->mag, &v0->mag) &&
+        signed_copy(&frame->twice_vinf, vinf) &&
+        signed_mul_u32_inplace(&frame->twice_vinf, 16) &&
+        sub_known_greater_or_equal(&frame->eval_temp, &frame->eval_temp, &frame->twice_vinf.mag) &&
+        shift_right_bits_inplace_exact(&frame->eval_temp, 1) &&
+        signed_set_unsigned(&frame->signed_temp, &v1->mag) &&
+        signed_mul_u32_inplace(&frame->signed_temp, 2) &&
+        sub_known_greater_or_equal(&frame->eval_temp, &frame->eval_temp, &frame->div_temp) &&
+        sub_known_greater_or_equal(&frame->eval_temp, &frame->eval_temp, &frame->signed_temp.mag) &&
+        divexact_u3_inplace(&frame->eval_temp) &&
+        xray_bigint_copy(&v2->mag, &frame->eval_temp) &&
+        sub_known_greater_or_equal(&vm1->mag, &frame->div_temp, &v2->mag);
+      vm1->sign = ok && vm1->mag.count ? 1 : 0;
+      v1->sign = ok && v1->mag.count ? 1 : 0;
+      v2->sign = ok && v2->mag.count ? 1 : 0;
+    } else {
+      ok = signed_sub_inplace_workspace(v2, vm1, &frame->signed_temp) &&
+        ((interp_flags & XRAY_TOOM3_INTERP_INPLACE_DIV) ?
+          signed_divexact_u3_inplace_workspace(v2) :
+        ((interp_flags & XRAY_TOOM3_INTERP_EXACT_DIV3) ?
+          signed_divexact_u3_workspace(v2, &frame->div_temp) :
+          signed_divexact_u32_workspace(v2, 3, &frame->div_temp))) &&
+        signed_sub_workspace(vm1, v1, vm1, &frame->signed_temp) &&
+        (((interp_flags & XRAY_TOOM3_INTERP_INPLACE_DIV) && (interp_flags & XRAY_TOOM3_INTERP_SHIFT_DIV2)) ?
+          signed_divexact_pow2_inplace_workspace(vm1, 1) :
+        ((interp_flags & XRAY_TOOM3_INTERP_SHIFT_DIV2) ?
+          signed_divexact_pow2_workspace(vm1, 1, &frame->div_temp) :
+          signed_divexact_u32_workspace(vm1, 2, &frame->div_temp))) &&
+        signed_sub_inplace_workspace(v1, v0, &frame->signed_temp) &&
+        signed_sub_inplace_workspace(v2, v1, &frame->signed_temp) &&
+        (((interp_flags & XRAY_TOOM3_INTERP_INPLACE_DIV) && (interp_flags & XRAY_TOOM3_INTERP_SHIFT_DIV2)) ?
+          signed_divexact_pow2_inplace_workspace(v2, 1) :
+        ((interp_flags & XRAY_TOOM3_INTERP_SHIFT_DIV2) ?
+          signed_divexact_pow2_workspace(v2, 1, &frame->div_temp) :
+          signed_divexact_u32_workspace(v2, 2, &frame->div_temp))) &&
+        signed_sub_inplace_workspace(v1, vm1, &frame->signed_temp) &&
+        signed_sub_inplace_workspace(v1, vinf, &frame->signed_temp) &&
+        signed_copy(&frame->twice_vinf, vinf) &&
+        signed_mul_u32_inplace(&frame->twice_vinf, 2) &&
+        signed_sub_inplace_workspace(v2, &frame->twice_vinf, &frame->signed_temp) &&
+        signed_sub_inplace_workspace(vm1, v2, &frame->signed_temp);
+    }
+  }
+
+  if (ok) {
+    ok = v0->sign >= 0 && vm1->sign >= 0 && v1->sign >= 0 && v2->sign >= 0 && vinf->sign >= 0;
+  }
+  if (ok) {
+    out->count = 0;
+    ok = reserve_limbs(out, value->count * 2U + 4U) &&
+      xray_bigint_copy(out, &v0->mag) &&
+      add_shifted_inplace_no_normalize(out, &vm1->mag, split) &&
+      add_shifted_inplace_no_normalize(out, &v1->mag, split * 2U) &&
+      add_shifted_inplace_no_normalize(out, &v2->mag, split * 3U) &&
+      add_shifted_inplace_no_normalize(out, &vinf->mag, split * 4U);
+    if (ok) normalize(out);
+  }
+  return ok;
+}
+
 static int mul_toom3_workspace_probe_internal(
   XrayScratchBigInt *out,
   const XrayScratchBigInt *left,
@@ -4760,6 +6457,814 @@ static int mul_toom3_full_workspace_reuse_probe_internal(
     mul_toom3_workspace_recurse(out, left, right, active_threshold, 1, active_depth, &toom_workspace, &karatsuba_workspace, 0, interp_flags);
 }
 
+static int square_toom3_full_workspace_probe_internal(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value,
+  size_t leaf_threshold,
+  size_t depth_limit,
+  unsigned int interp_flags,
+  int use_mul_points) {
+  if (!out || !value) return 0;
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  size_t active_depth = depth_limit >= 1U ? depth_limit : 1U;
+  XrayToom3Workspace toom_workspace;
+  XrayKaratsubaWorkspace karatsuba_workspace;
+  toom3_workspace_init(&toom_workspace);
+  karatsuba_workspace_init(&karatsuba_workspace);
+  int ok = toom3_workspace_prepare(&toom_workspace, value->count, active_depth) &&
+    karatsuba_workspace_prepare(&karatsuba_workspace, value->count, active_threshold) &&
+    reserve_limbs(out, value->count * 2U + 4U) &&
+    square_toom3_workspace_recurse(out, value, active_threshold, 1, active_depth, &toom_workspace, &karatsuba_workspace, 0, interp_flags, use_mul_points, 0U, 0U);
+  karatsuba_workspace_clear(&karatsuba_workspace);
+  toom3_workspace_clear(&toom_workspace);
+  return ok;
+}
+
+static int square_toom3_full_workspace_reuse_probe_internal(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value,
+  size_t leaf_threshold,
+  size_t depth_limit,
+  unsigned int interp_flags,
+  XrayBigIntMulWorkspace *workspace,
+  int use_mul_points,
+  size_t parallel_min_count,
+  size_t parallel_group_count) {
+  if (!out || !value || !workspace) return 0;
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  size_t active_depth = depth_limit >= 1U ? depth_limit : 1U;
+  XrayToom3Workspace toom_workspace;
+  XrayKaratsubaWorkspace karatsuba_workspace;
+  toom_workspace.frames = (XrayToom3WorkspaceFrame *)workspace->toom3_frames;
+  toom_workspace.frame_count = workspace->toom3_frame_count;
+  karatsuba_workspace.frames = (XrayKaratsubaWorkspaceFrame *)workspace->karatsuba_frames;
+  karatsuba_workspace.frame_count = workspace->karatsuba_frame_count;
+  int ok = toom3_workspace_prepare(&toom_workspace, value->count, active_depth) &&
+    karatsuba_workspace_prepare(&karatsuba_workspace, value->count, active_threshold);
+  workspace->toom3_frames = toom_workspace.frames;
+  workspace->toom3_frame_count = toom_workspace.frame_count;
+  workspace->karatsuba_frames = karatsuba_workspace.frames;
+  workspace->karatsuba_frame_count = karatsuba_workspace.frame_count;
+  return ok &&
+    reserve_limbs(out, value->count * 2U + 4U) &&
+    square_toom3_workspace_recurse(
+      out,
+      value,
+      active_threshold,
+      1,
+      active_depth,
+      &toom_workspace,
+      &karatsuba_workspace,
+      0,
+      interp_flags,
+      use_mul_points,
+      parallel_min_count,
+      parallel_group_count);
+}
+
+static int square_toom3_direct_coeff_workspace_recurse(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value,
+  size_t leaf_threshold,
+  int use_unroll4,
+  size_t depth_limit,
+  XrayToom3Workspace *workspace,
+  XrayKaratsubaWorkspace *karatsuba_workspace,
+  size_t depth,
+  unsigned int interp_flags) {
+  if (!out || !value) return 0;
+  if (value->count == 0) return set_u32(out, 0);
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  if (depth_limit == 0 || value->count < active_threshold * 3U) {
+    if (karatsuba_workspace) {
+      return square_karatsuba_workspace_recurse(out, value, active_threshold, use_unroll4, 0, karatsuba_workspace, 0);
+    }
+    return mul_dispatch_threshold_mode_ex(out, value, value, active_threshold, use_unroll4, 1, 1);
+  }
+  if (!workspace || depth >= workspace->frame_count) return 0;
+  if (depth_limit > 1U && depth + 1U >= workspace->frame_count) return 0;
+
+  size_t split = (value->count + 2U) / 3U;
+  XrayScratchBigInt a0, a1, a2;
+  view_bigint_slice(&a0, value, 0, split);
+  view_bigint_slice(&a1, value, split, split);
+  view_bigint_slice(&a2, value, split * 2U, value->count > split * 2U ? value->count - split * 2U : 0);
+
+  XrayScratchBigInt c0, c1, c2, c3, c4, twice_a0a2;
+  xray_bigint_init(&c0);
+  xray_bigint_init(&c1);
+  xray_bigint_init(&c2);
+  xray_bigint_init(&c3);
+  xray_bigint_init(&c4);
+  xray_bigint_init(&twice_a0a2);
+
+  size_t child_depth_limit = depth_limit > 0U ? depth_limit - 1U : 0U;
+  int ok = square_toom3_workspace_recurse(
+      &c0,
+      &a0,
+      active_threshold,
+      use_unroll4,
+      child_depth_limit,
+      workspace,
+      karatsuba_workspace,
+      depth + 1U,
+      interp_flags,
+      0,
+      0U,
+      0U) &&
+    square_toom3_workspace_recurse(
+      &c2,
+      &a1,
+      active_threshold,
+      use_unroll4,
+      child_depth_limit,
+      workspace,
+      karatsuba_workspace,
+      depth + 1U,
+      interp_flags,
+      0,
+      0U,
+      0U) &&
+    square_toom3_workspace_recurse(
+      &c4,
+      &a2,
+      active_threshold,
+      use_unroll4,
+      child_depth_limit,
+      workspace,
+      karatsuba_workspace,
+      depth + 1U,
+      interp_flags,
+      0,
+      0U,
+      0U) &&
+    mul_toom3_workspace_recurse(
+      &c1,
+      &a0,
+      &a1,
+      active_threshold,
+      use_unroll4,
+      child_depth_limit,
+      workspace,
+      karatsuba_workspace,
+      depth + 1U,
+      interp_flags) &&
+    mul_toom3_workspace_recurse(
+      &twice_a0a2,
+      &a0,
+      &a2,
+      active_threshold,
+      use_unroll4,
+      child_depth_limit,
+      workspace,
+      karatsuba_workspace,
+      depth + 1U,
+      interp_flags) &&
+    mul_toom3_workspace_recurse(
+      &c3,
+      &a1,
+      &a2,
+      active_threshold,
+      use_unroll4,
+      child_depth_limit,
+      workspace,
+      karatsuba_workspace,
+      depth + 1U,
+      interp_flags) &&
+    xray_bigint_add(&c1, &c1, &c1) &&
+    xray_bigint_add(&twice_a0a2, &twice_a0a2, &twice_a0a2) &&
+    xray_bigint_add(&c2, &c2, &twice_a0a2) &&
+    xray_bigint_add(&c3, &c3, &c3);
+
+  if (ok) {
+    out->count = 0;
+    ok = reserve_limbs(out, value->count * 2U + 4U) &&
+      add_shifted_inplace(out, &c0, 0) &&
+      add_shifted_inplace(out, &c1, split) &&
+      add_shifted_inplace(out, &c2, split * 2U) &&
+      add_shifted_inplace(out, &c3, split * 3U) &&
+      add_shifted_inplace(out, &c4, split * 4U);
+    if (ok) normalize(out);
+  }
+
+  xray_bigint_clear(&twice_a0a2);
+  xray_bigint_clear(&c4);
+  xray_bigint_clear(&c3);
+  xray_bigint_clear(&c2);
+  xray_bigint_clear(&c1);
+  xray_bigint_clear(&c0);
+  return ok;
+}
+
+static int square_toom3_chung_sqr3_workspace_recurse(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value,
+  size_t leaf_threshold,
+  int use_unroll4,
+  size_t depth_limit,
+  XrayToom3Workspace *workspace,
+  XrayKaratsubaWorkspace *karatsuba_workspace,
+  size_t depth,
+  unsigned int interp_flags) {
+  if (!out || !value) return 0;
+  if (value->count == 0) return set_u32(out, 0);
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  if (depth_limit == 0 || value->count < active_threshold * 3U) {
+    if (karatsuba_workspace) {
+      return square_karatsuba_workspace_recurse(out, value, active_threshold, use_unroll4, 0, karatsuba_workspace, 0);
+    }
+    return mul_dispatch_threshold_mode_ex(out, value, value, active_threshold, use_unroll4, 1, 1);
+  }
+  if (!workspace || depth >= workspace->frame_count) return 0;
+  if (depth_limit > 1U && depth + 1U >= workspace->frame_count) return 0;
+
+  size_t split = (value->count + 2U) / 3U;
+  XrayScratchBigInt a0, a1, a2;
+  view_bigint_slice(&a0, value, 0, split);
+  view_bigint_slice(&a1, value, split, split);
+  view_bigint_slice(&a2, value, split * 2U, value->count > split * 2U ? value->count - split * 2U : 0);
+
+  XrayToom3WorkspaceFrame *frame = &workspace->frames[depth];
+  XraySignedScratchBigInt *c0 = &frame->v[XRAY_TOOM3_POINT_0];
+  XraySignedScratchBigInt *s1 = &frame->v[XRAY_TOOM3_POINT_1];
+  XraySignedScratchBigInt *s2 = &frame->v[XRAY_TOOM3_POINT_MINUS_1];
+  XraySignedScratchBigInt *c3 = &frame->v[XRAY_TOOM3_POINT_2];
+  XraySignedScratchBigInt *c4 = &frame->v[XRAY_TOOM3_POINT_INF];
+  XrayScratchBigInt *point1 = &frame->x[XRAY_TOOM3_POINT_1].mag;
+  XrayScratchBigInt *point_minus1 = &frame->x[XRAY_TOOM3_POINT_MINUS_1].mag;
+  XrayScratchBigInt *t1 = &frame->eval_temp;
+  XrayScratchBigInt *c1 = &frame->div_temp;
+  XrayScratchBigInt *c2 = &frame->y[XRAY_TOOM3_POINT_0].mag;
+
+  size_t child_depth_limit = depth_limit > 0U ? depth_limit - 1U : 0U;
+  int use_direct_child = child_depth_limit == 0U && karatsuba_workspace;
+  if (!use_direct_child) toom3_workspace_frame_reset(frame);
+
+  int ok = add3_unsigned(point1, &a0, &a1, &a2);
+  ok = ok &&
+    eval_toom3_minus_one_abs_sum02_workspace(point_minus1, &a0, &a1, &a2, &frame->signed_temp.mag);
+
+  if (ok && use_direct_child) {
+    ok = square_karatsuba_workspace_recurse(&c0->mag, &a0, active_threshold, use_unroll4, 0, karatsuba_workspace, 0) &&
+      square_karatsuba_workspace_recurse(&s1->mag, point1, active_threshold, use_unroll4, 0, karatsuba_workspace, 0) &&
+      square_karatsuba_workspace_recurse(&s2->mag, point_minus1, active_threshold, use_unroll4, 0, karatsuba_workspace, 0) &&
+      mul_karatsuba_workspace_recurse(&c3->mag, &a1, &a2, active_threshold, use_unroll4, karatsuba_workspace, 0) &&
+      square_karatsuba_workspace_recurse(&c4->mag, &a2, active_threshold, use_unroll4, 0, karatsuba_workspace, 0);
+  } else if (ok) {
+    ok = square_toom3_workspace_recurse(
+        &c0->mag,
+        &a0,
+        active_threshold,
+        use_unroll4,
+        child_depth_limit,
+        workspace,
+        karatsuba_workspace,
+        depth + 1U,
+        interp_flags,
+        0,
+        0U,
+        0U) &&
+      square_toom3_workspace_recurse(
+        &s1->mag,
+        point1,
+        active_threshold,
+        use_unroll4,
+        child_depth_limit,
+        workspace,
+        karatsuba_workspace,
+        depth + 1U,
+        interp_flags,
+        0,
+        0U,
+        0U) &&
+      square_toom3_workspace_recurse(
+        &s2->mag,
+        point_minus1,
+        active_threshold,
+        use_unroll4,
+        child_depth_limit,
+        workspace,
+        karatsuba_workspace,
+        depth + 1U,
+        interp_flags,
+        0,
+        0U,
+        0U) &&
+      mul_toom3_workspace_recurse(
+        &c3->mag,
+        &a1,
+        &a2,
+        active_threshold,
+        use_unroll4,
+        child_depth_limit,
+        workspace,
+        karatsuba_workspace,
+        depth + 1U,
+        interp_flags) &&
+      square_toom3_workspace_recurse(
+        &c4->mag,
+        &a2,
+        active_threshold,
+        use_unroll4,
+        child_depth_limit,
+        workspace,
+        karatsuba_workspace,
+        depth + 1U,
+        interp_flags,
+        0,
+        0U,
+        0U);
+  }
+
+  ok = ok &&
+    xray_bigint_add(&c3->mag, &c3->mag, &c3->mag) &&
+    xray_bigint_add(t1, &s1->mag, &s2->mag) &&
+    shift_right_bits_inplace_exact(t1, 1) &&
+    sub_known_greater_or_equal(c1, &s1->mag, t1) &&
+    sub_known_greater_or_equal(c1, c1, &c3->mag) &&
+    sub_known_greater_or_equal(c2, t1, &c4->mag) &&
+    sub_known_greater_or_equal(c2, c2, &c0->mag);
+
+  if (ok) {
+    out->count = 0;
+    ok = reserve_limbs(out, value->count * 2U + 4U) &&
+      xray_bigint_copy(out, &c0->mag) &&
+      add_shifted_inplace_no_normalize(out, c1, split) &&
+      add_shifted_inplace_no_normalize(out, c2, split * 2U) &&
+      add_shifted_inplace_no_normalize(out, &c3->mag, split * 3U) &&
+      add_shifted_inplace_no_normalize(out, &c4->mag, split * 4U);
+    if (ok) normalize(out);
+  }
+
+  return ok;
+}
+
+static int square_toom3_direct_coeff_full_workspace_reuse_probe_internal(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value,
+  size_t leaf_threshold,
+  size_t depth_limit,
+  unsigned int interp_flags,
+  XrayBigIntMulWorkspace *workspace) {
+  if (!out || !value || !workspace) return 0;
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  size_t active_depth = depth_limit >= 1U ? depth_limit : 1U;
+  XrayToom3Workspace toom_workspace;
+  XrayKaratsubaWorkspace karatsuba_workspace;
+  toom_workspace.frames = (XrayToom3WorkspaceFrame *)workspace->toom3_frames;
+  toom_workspace.frame_count = workspace->toom3_frame_count;
+  karatsuba_workspace.frames = (XrayKaratsubaWorkspaceFrame *)workspace->karatsuba_frames;
+  karatsuba_workspace.frame_count = workspace->karatsuba_frame_count;
+  int ok = toom3_workspace_prepare(&toom_workspace, value->count, active_depth) &&
+    karatsuba_workspace_prepare(&karatsuba_workspace, value->count, active_threshold);
+  workspace->toom3_frames = toom_workspace.frames;
+  workspace->toom3_frame_count = toom_workspace.frame_count;
+  workspace->karatsuba_frames = karatsuba_workspace.frames;
+  workspace->karatsuba_frame_count = karatsuba_workspace.frame_count;
+  return ok &&
+    reserve_limbs(out, value->count * 2U + 4U) &&
+    square_toom3_direct_coeff_workspace_recurse(
+      out,
+      value,
+      active_threshold,
+      1,
+      active_depth,
+      &toom_workspace,
+      &karatsuba_workspace,
+      0,
+      interp_flags);
+}
+
+static int square_toom3_chung_sqr3_full_workspace_reuse_probe_internal(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value,
+  size_t leaf_threshold,
+  size_t depth_limit,
+  unsigned int interp_flags,
+  XrayBigIntMulWorkspace *workspace) {
+  if (!out || !value || !workspace) return 0;
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  size_t active_depth = depth_limit >= 1U ? depth_limit : 1U;
+  XrayToom3Workspace toom_workspace;
+  XrayKaratsubaWorkspace karatsuba_workspace;
+  toom_workspace.frames = (XrayToom3WorkspaceFrame *)workspace->toom3_frames;
+  toom_workspace.frame_count = workspace->toom3_frame_count;
+  karatsuba_workspace.frames = (XrayKaratsubaWorkspaceFrame *)workspace->karatsuba_frames;
+  karatsuba_workspace.frame_count = workspace->karatsuba_frame_count;
+  int ok = toom3_workspace_prepare(&toom_workspace, value->count, active_depth) &&
+    karatsuba_workspace_prepare(&karatsuba_workspace, value->count, active_threshold);
+  workspace->toom3_frames = toom_workspace.frames;
+  workspace->toom3_frame_count = toom_workspace.frame_count;
+  workspace->karatsuba_frames = karatsuba_workspace.frames;
+  workspace->karatsuba_frame_count = karatsuba_workspace.frame_count;
+  return ok &&
+    reserve_limbs(out, value->count * 2U + 4U) &&
+    square_toom3_chung_sqr3_workspace_recurse(
+      out,
+      value,
+      active_threshold,
+      1,
+      active_depth,
+      &toom_workspace,
+      &karatsuba_workspace,
+      0,
+      interp_flags);
+}
+
+static int square_toom4_chung_sqr4_full_workspace_reuse_probe_internal(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value,
+  size_t top_leaf_threshold,
+  size_t child_leaf_threshold,
+  size_t depth_limit,
+  unsigned int interp_flags,
+  size_t parallel_group_count,
+  XrayBigIntMulWorkspace *workspace) {
+  if (!out || !value || !workspace) return 0;
+  if (value->count == 0) return set_u32(out, 0);
+  size_t active_top_threshold = top_leaf_threshold >= 2U ? top_leaf_threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  size_t active_threshold = child_leaf_threshold >= 2U ? child_leaf_threshold : active_top_threshold;
+  size_t active_depth = depth_limit >= 1U ? depth_limit : 1U;
+  if (value->count < active_top_threshold * 4U) return 0;
+
+  XrayToom3Workspace toom_workspace;
+  XrayKaratsubaWorkspace karatsuba_workspace;
+  toom_workspace.frames = (XrayToom3WorkspaceFrame *)workspace->toom3_frames;
+  toom_workspace.frame_count = workspace->toom3_frame_count;
+  karatsuba_workspace.frames = (XrayKaratsubaWorkspaceFrame *)workspace->karatsuba_frames;
+  karatsuba_workspace.frame_count = workspace->karatsuba_frame_count;
+  int ok = toom3_workspace_prepare(&toom_workspace, value->count, active_depth + 1U) &&
+    karatsuba_workspace_prepare(&karatsuba_workspace, value->count, active_threshold);
+  workspace->toom3_frames = toom_workspace.frames;
+  workspace->toom3_frame_count = toom_workspace.frame_count;
+  workspace->karatsuba_frames = karatsuba_workspace.frames;
+  workspace->karatsuba_frame_count = karatsuba_workspace.frame_count;
+  if (!ok) return 0;
+
+  size_t split = (value->count + 3U) / 4U;
+  XrayScratchBigInt a0, a1, a2, a3;
+  view_bigint_slice(&a0, value, 0, split);
+  view_bigint_slice(&a1, value, split, split);
+  view_bigint_slice(&a2, value, split * 2U, split);
+  view_bigint_slice(&a3, value, split * 3U, value->count > split * 3U ? value->count - split * 3U : 0);
+
+  XrayToom3WorkspaceFrame *frame = &toom_workspace.frames[active_depth];
+  toom3_workspace_frame_reset(frame);
+  XraySignedScratchBigInt *s1 = &frame->v[XRAY_TOOM3_POINT_0];
+  XraySignedScratchBigInt *s2 = &frame->v[XRAY_TOOM3_POINT_1];
+  XraySignedScratchBigInt *s3 = &frame->v[XRAY_TOOM3_POINT_MINUS_1];
+  XraySignedScratchBigInt *s4 = &frame->v[XRAY_TOOM3_POINT_2];
+  XraySignedScratchBigInt *s5 = &frame->v[XRAY_TOOM3_POINT_INF];
+  XraySignedScratchBigInt *s6 = &frame->x[XRAY_TOOM3_POINT_0];
+  XraySignedScratchBigInt *s7 = &frame->x[XRAY_TOOM3_POINT_1];
+  XraySignedScratchBigInt *u02 = &frame->x[XRAY_TOOM3_POINT_MINUS_1];
+  XraySignedScratchBigInt *u13 = &frame->x[XRAY_TOOM3_POINT_2];
+  XraySignedScratchBigInt *lin_plus = &frame->x[XRAY_TOOM3_POINT_INF];
+  XraySignedScratchBigInt *lin_minus = &frame->y[XRAY_TOOM3_POINT_0];
+  XraySignedScratchBigInt *sum_all = &frame->y[XRAY_TOOM3_POINT_1];
+  XraySignedScratchBigInt *t1 = &frame->y[XRAY_TOOM3_POINT_MINUS_1];
+  XraySignedScratchBigInt *t2 = &frame->y[XRAY_TOOM3_POINT_2];
+  XraySignedScratchBigInt *t3 = &frame->y[XRAY_TOOM3_POINT_INF];
+  XraySignedScratchBigInt *t4 = &frame->twice_vinf;
+  XraySignedScratchBigInt *temp = &frame->signed_temp;
+
+  ok = signed_set_diff_unsigned(u02, &a0, &a2) &&
+    signed_set_diff_unsigned(u13, &a1, &a3) &&
+    signed_add_workspace(lin_plus, u02, u13, temp) &&
+    signed_sub_workspace(lin_minus, u02, u13, temp) &&
+    add3_unsigned(&sum_all->mag, &a0, &a1, &a2) &&
+    xray_bigint_add(&sum_all->mag, &sum_all->mag, &a3);
+  sum_all->sign = ok && sum_all->mag.count ? 1 : 0;
+
+  int point_products_ready = 0;
+  if (ok && parallel_group_count > 0U) {
+#if defined(_WIN32) && defined(_MSC_VER)
+    XraySignedScratchBigInt in0, in1, in2, in3;
+    in0.sign = a0.count ? 1 : 0;
+    in0.mag = a0;
+    in1.sign = a1.count ? 1 : 0;
+    in1.mag = a1;
+    in2.sign = a2.count ? 1 : 0;
+    in2.mag = a2;
+    in3.sign = a3.count ? 1 : 0;
+    in3.mag = a3;
+    enum { XRAY_SQR4_POINT_PRODUCT_COUNT = 7 };
+    size_t child_depth_limit = active_depth > 0U ? active_depth - 1U : 0U;
+    XrayToomPointProductTask tasks[XRAY_SQR4_POINT_PRODUCT_COUNT];
+    tasks[0] = (XrayToomPointProductTask){s1, &in0, NULL, value->count, active_threshold, child_depth_limit, interp_flags, 1, 0};
+    tasks[1] = (XrayToomPointProductTask){s2, &in0, &in1, value->count, active_threshold, child_depth_limit, interp_flags, 0, 0};
+    tasks[2] = (XrayToomPointProductTask){s3, lin_plus, lin_minus, value->count, active_threshold, child_depth_limit, interp_flags, 0, 0};
+    tasks[3] = (XrayToomPointProductTask){s4, sum_all, NULL, value->count, active_threshold, child_depth_limit, interp_flags, 1, 0};
+    tasks[4] = (XrayToomPointProductTask){s5, u02, u13, value->count, active_threshold, child_depth_limit, interp_flags, 0, 0};
+    tasks[5] = (XrayToomPointProductTask){s6, &in3, &in2, value->count, active_threshold, child_depth_limit, interp_flags, 0, 0};
+    tasks[6] = (XrayToomPointProductTask){s7, &in3, NULL, value->count, active_threshold, child_depth_limit, interp_flags, 1, 0};
+    point_products_ready = run_toom_point_products_parallel_grouped_persistent(
+      tasks,
+      XRAY_SQR4_POINT_PRODUCT_COUNT,
+      parallel_group_count);
+    if (!point_products_ready) {
+      point_products_ready = run_toom_point_products_parallel_grouped_pool(
+        tasks,
+        XRAY_SQR4_POINT_PRODUCT_COUNT,
+        parallel_group_count);
+    }
+    if (point_products_ready) {
+      ok = signed_mul_u32_inplace(s2, 2U) &&
+        signed_mul_u32_inplace(s5, 2U) &&
+        signed_mul_u32_inplace(s6, 2U);
+    } else {
+      signed_reset(s1);
+      signed_reset(s2);
+      signed_reset(s3);
+      signed_reset(s4);
+      signed_reset(s5);
+      signed_reset(s6);
+      signed_reset(s7);
+    }
+#else
+    point_products_ready = 0;
+#endif
+  }
+
+  if (ok && !point_products_ready) {
+  if (ok) {
+    ok = square_toom3_workspace_recurse(
+      &s1->mag,
+      &a0,
+      active_threshold,
+      1,
+      active_depth,
+      &toom_workspace,
+      &karatsuba_workspace,
+      0,
+      interp_flags,
+      0,
+      0U,
+      0U);
+    s1->sign = ok && s1->mag.count ? 1 : 0;
+  }
+  if (ok) {
+    ok = mul_toom3_workspace_recurse(
+      &s2->mag,
+      &a0,
+      &a1,
+      active_threshold,
+      1,
+      active_depth,
+      &toom_workspace,
+      &karatsuba_workspace,
+      0,
+      interp_flags);
+    s2->sign = ok && s2->mag.count ? 1 : 0;
+    if (ok) ok = signed_mul_u32_inplace(s2, 2U);
+  }
+  if (ok) {
+    ok = signed_mul_toom3_workspace_mode(
+      s3,
+      lin_plus,
+      lin_minus,
+      active_threshold,
+      1,
+      active_depth,
+      &toom_workspace,
+      &karatsuba_workspace,
+      0,
+      interp_flags);
+  }
+  if (ok) {
+    ok = square_toom3_workspace_recurse(
+      &s4->mag,
+      &sum_all->mag,
+      active_threshold,
+      1,
+      active_depth,
+      &toom_workspace,
+      &karatsuba_workspace,
+      0,
+      interp_flags,
+      0,
+      0U,
+      0U);
+    s4->sign = ok && s4->mag.count ? 1 : 0;
+  }
+  if (ok) {
+    ok = signed_mul_toom3_workspace_mode(
+      s5,
+      u02,
+      u13,
+      active_threshold,
+      1,
+      active_depth,
+      &toom_workspace,
+      &karatsuba_workspace,
+      0,
+      interp_flags);
+    if (ok) ok = signed_mul_u32_inplace(s5, 2U);
+  }
+  if (ok) {
+    ok = mul_toom3_workspace_recurse(
+      &s6->mag,
+      &a3,
+      &a2,
+      active_threshold,
+      1,
+      active_depth,
+      &toom_workspace,
+      &karatsuba_workspace,
+      0,
+      interp_flags);
+    s6->sign = ok && s6->mag.count ? 1 : 0;
+    if (ok) ok = signed_mul_u32_inplace(s6, 2U);
+  }
+  if (ok) {
+    ok = square_toom3_workspace_recurse(
+      &s7->mag,
+      &a3,
+      active_threshold,
+      1,
+      active_depth,
+      &toom_workspace,
+      &karatsuba_workspace,
+      0,
+      interp_flags,
+      0,
+      0U,
+      0U);
+    s7->sign = ok && s7->mag.count ? 1 : 0;
+  }
+  }
+
+  XraySignedScratchBigInt *c3 = s3;
+  XraySignedScratchBigInt *c2 = sum_all;
+  XraySignedScratchBigInt *c4 = lin_minus;
+  XraySignedScratchBigInt *t6 = lin_plus;
+  ok = ok &&
+    signed_add_workspace(t1, s3, s4, temp) &&
+    signed_add_workspace(t2, t1, s5, temp) &&
+    signed_divexact_pow2_inplace_workspace(t2, 1U) &&
+    signed_add_workspace(t3, s2, s6, temp) &&
+    signed_sub_workspace(t4, t2, t3, temp) &&
+    signed_sub_workspace(t6, t4, s3, temp) &&
+    signed_sub_workspace(c4, t4, s1, temp) &&
+    signed_sub_workspace(c2, t6, s7, temp) &&
+    signed_sub_workspace(c3, t3, s5, temp);
+
+  if (ok) {
+    ok = s1->sign >= 0 && s2->sign >= 0 && c2->sign >= 0 && c3->sign >= 0 &&
+      c4->sign >= 0 && s6->sign >= 0 && s7->sign >= 0;
+  }
+  if (ok) {
+    out->count = 0;
+    ok = reserve_limbs(out, value->count * 2U + 8U) &&
+      xray_bigint_copy(out, &s1->mag) &&
+      add_shifted_inplace_no_normalize(out, &s2->mag, split) &&
+      add_shifted_inplace_no_normalize(out, &c2->mag, split * 2U) &&
+      add_shifted_inplace_no_normalize(out, &c3->mag, split * 3U) &&
+      add_shifted_inplace_no_normalize(out, &c4->mag, split * 4U) &&
+      add_shifted_inplace_no_normalize(out, &s6->mag, split * 5U) &&
+      add_shifted_inplace_no_normalize(out, &s7->mag, split * 6U);
+    if (ok) normalize(out);
+  }
+
+  return ok;
+}
+
+static int square_toom3_direct_coeff_parallel_full_workspace_reuse_probe_internal(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value,
+  size_t leaf_threshold,
+  size_t depth_limit,
+  unsigned int interp_flags,
+  XrayBigIntMulWorkspace *workspace,
+  size_t parallel_group_count) {
+  if (!out || !value || !workspace) return 0;
+  if (value->count == 0) return set_u32(out, 0);
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  size_t active_depth = depth_limit >= 1U ? depth_limit : 1U;
+  if (active_depth == 0 || value->count < active_threshold * 3U) {
+    XrayKaratsubaWorkspace karatsuba_workspace;
+    karatsuba_workspace.frames = (XrayKaratsubaWorkspaceFrame *)workspace->karatsuba_frames;
+    karatsuba_workspace.frame_count = workspace->karatsuba_frame_count;
+    int ok = karatsuba_workspace_prepare(&karatsuba_workspace, value->count, active_threshold) &&
+      square_karatsuba_workspace_recurse(out, value, active_threshold, 1, 0, &karatsuba_workspace, 0);
+    workspace->karatsuba_frames = karatsuba_workspace.frames;
+    workspace->karatsuba_frame_count = karatsuba_workspace.frame_count;
+    return ok;
+  }
+
+#if defined(_WIN32) && defined(_MSC_VER)
+  size_t split = (value->count + 2U) / 3U;
+  XrayScratchBigInt a0, a1, a2;
+  view_bigint_slice(&a0, value, 0, split);
+  view_bigint_slice(&a1, value, split, split);
+  view_bigint_slice(&a2, value, split * 2U, value->count > split * 2U ? value->count - split * 2U : 0);
+
+  XraySignedScratchBigInt in0, in1, in2;
+  in0.sign = a0.count ? 1 : 0;
+  in0.mag = a0;
+  in1.sign = a1.count ? 1 : 0;
+  in1.mag = a1;
+  in2.sign = a2.count ? 1 : 0;
+  in2.mag = a2;
+
+  enum { XRAY_DIRECT_COEFF_TERM_COUNT = 6 };
+  XraySignedScratchBigInt terms[XRAY_DIRECT_COEFF_TERM_COUNT];
+  for (size_t index = 0; index < XRAY_DIRECT_COEFF_TERM_COUNT; ++index) signed_init(&terms[index]);
+
+  size_t child_depth_limit = active_depth > 0U ? active_depth - 1U : 0U;
+  XrayToomPointProductTask tasks[XRAY_DIRECT_COEFF_TERM_COUNT];
+  tasks[0] = (XrayToomPointProductTask){&terms[0], &in0, NULL, value->count, active_threshold, child_depth_limit, interp_flags, 1, 0};
+  tasks[1] = (XrayToomPointProductTask){&terms[1], &in1, NULL, value->count, active_threshold, child_depth_limit, interp_flags, 1, 0};
+  tasks[2] = (XrayToomPointProductTask){&terms[2], &in2, NULL, value->count, active_threshold, child_depth_limit, interp_flags, 1, 0};
+  tasks[3] = (XrayToomPointProductTask){&terms[3], &in0, &in1, value->count, active_threshold, child_depth_limit, interp_flags, 0, 0};
+  tasks[4] = (XrayToomPointProductTask){&terms[4], &in0, &in2, value->count, active_threshold, child_depth_limit, interp_flags, 0, 0};
+  tasks[5] = (XrayToomPointProductTask){&terms[5], &in1, &in2, value->count, active_threshold, child_depth_limit, interp_flags, 0, 0};
+
+  size_t group_count = parallel_group_count > 0U ? parallel_group_count : 5U;
+  int ok = run_toom_point_products_parallel_grouped_persistent(tasks, XRAY_DIRECT_COEFF_TERM_COUNT, group_count);
+  if (!ok) {
+    ok = run_toom_point_products_parallel_grouped_pool(tasks, XRAY_DIRECT_COEFF_TERM_COUNT, group_count);
+  }
+  for (size_t index = 0; ok && index < XRAY_DIRECT_COEFF_TERM_COUNT; ++index) {
+    ok = terms[index].sign >= 0;
+  }
+  ok = ok &&
+    xray_bigint_add(&terms[3].mag, &terms[3].mag, &terms[3].mag) &&
+    xray_bigint_add(&terms[4].mag, &terms[4].mag, &terms[4].mag) &&
+    xray_bigint_add(&terms[1].mag, &terms[1].mag, &terms[4].mag) &&
+    xray_bigint_add(&terms[5].mag, &terms[5].mag, &terms[5].mag);
+
+  if (ok) {
+    out->count = 0;
+    ok = reserve_limbs(out, value->count * 2U + 4U) &&
+      add_shifted_inplace(out, &terms[0].mag, 0) &&
+      add_shifted_inplace(out, &terms[3].mag, split) &&
+      add_shifted_inplace(out, &terms[1].mag, split * 2U) &&
+      add_shifted_inplace(out, &terms[5].mag, split * 3U) &&
+      add_shifted_inplace(out, &terms[2].mag, split * 4U);
+    if (ok) normalize(out);
+  }
+
+  for (size_t index = XRAY_DIRECT_COEFF_TERM_COUNT; index-- > 0;) signed_clear(&terms[index]);
+  return ok;
+#else
+  (void)interp_flags;
+  (void)parallel_group_count;
+  return 0;
+#endif
+}
+
+static int square_toom3_direct_coeff_dispatch_probe_internal(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value) {
+  if (!out || !value) return 0;
+  if (value->count == 0) return set_u32(out, 0);
+
+  size_t split = (value->count + 2U) / 3U;
+  XrayScratchBigInt a0, a1, a2;
+  view_bigint_slice(&a0, value, 0, split);
+  view_bigint_slice(&a1, value, split, split);
+  view_bigint_slice(&a2, value, split * 2U, value->count > split * 2U ? value->count - split * 2U : 0);
+
+  XrayScratchBigInt c0, c1, c2, c3, c4, twice_a0a2;
+  xray_bigint_init(&c0);
+  xray_bigint_init(&c1);
+  xray_bigint_init(&c2);
+  xray_bigint_init(&c3);
+  xray_bigint_init(&c4);
+  xray_bigint_init(&twice_a0a2);
+
+  int ok = xray_bigint_square(&c0, &a0) &&
+    xray_bigint_square(&c2, &a1) &&
+    xray_bigint_square(&c4, &a2) &&
+    xray_bigint_mul(&c1, &a0, &a1) &&
+    xray_bigint_mul(&twice_a0a2, &a0, &a2) &&
+    xray_bigint_mul(&c3, &a1, &a2) &&
+    xray_bigint_add(&c1, &c1, &c1) &&
+    xray_bigint_add(&twice_a0a2, &twice_a0a2, &twice_a0a2) &&
+    xray_bigint_add(&c2, &c2, &twice_a0a2) &&
+    xray_bigint_add(&c3, &c3, &c3);
+
+  if (ok) {
+    out->count = 0;
+    ok = reserve_limbs(out, value->count * 2U + 4U) &&
+      add_shifted_inplace(out, &c0, 0) &&
+      add_shifted_inplace(out, &c1, split) &&
+      add_shifted_inplace(out, &c2, split * 2U) &&
+      add_shifted_inplace(out, &c3, split * 3U) &&
+      add_shifted_inplace(out, &c4, split * 4U);
+    if (ok) normalize(out);
+  }
+
+  xray_bigint_clear(&twice_a0a2);
+  xray_bigint_clear(&c4);
+  xray_bigint_clear(&c3);
+  xray_bigint_clear(&c2);
+  xray_bigint_clear(&c1);
+  xray_bigint_clear(&c0);
+  return ok;
+}
+
 static int eval_toom4_positive(
   XrayScratchBigInt *out,
   const XrayScratchBigInt *part0,
@@ -4774,6 +7279,31 @@ static int eval_toom4_positive(
     add_scaled_unsigned(out, part1, weight1) &&
     add_scaled_unsigned(out, part2, weight2) &&
     add_scaled_unsigned(out, part3, weight3);
+}
+
+static int eval_toom4_half_scaled(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *part0,
+  const XrayScratchBigInt *part1,
+  const XrayScratchBigInt *part2,
+  const XrayScratchBigInt *part3) {
+  return set_u32(out, 0) &&
+    add_scaled_unsigned(out, part0, 8) &&
+    add_scaled_unsigned(out, part1, 4) &&
+    add_scaled_unsigned(out, part2, 2) &&
+    add_scaled_unsigned(out, part3, 1);
+}
+
+static int signed_set_toom4_half_scaled(
+  XraySignedScratchBigInt *out,
+  const XrayScratchBigInt *part0,
+  const XrayScratchBigInt *part1,
+  const XrayScratchBigInt *part2,
+  const XrayScratchBigInt *part3) {
+  if (!out || !part0 || !part1 || !part2 || !part3) return 0;
+  int ok = eval_toom4_half_scaled(&out->mag, part0, part1, part2, part3);
+  out->sign = ok && out->mag.count ? 1 : 0;
+  return ok;
 }
 
 static int signed_set_toom4_eval(
@@ -4884,18 +7414,415 @@ static int signed_linear_combination_divexact_workspace(
         signed_divexact_u3_workspace(out, quotient) &&
         signed_divexact_u5_workspace(out, quotient);
     }
+    if (divisor == 18U) {
+      return signed_divexact_pow2_workspace(out, 1, quotient) &&
+        signed_divexact_u3_workspace(out, quotient) &&
+        signed_divexact_u3_workspace(out, quotient);
+    }
+    if (divisor == 180U) {
+      return signed_divexact_pow2_workspace(out, 2, quotient) &&
+        signed_divexact_u3_workspace(out, quotient) &&
+        signed_divexact_u3_workspace(out, quotient) &&
+        signed_divexact_u5_workspace(out, quotient);
+    }
+    if (divisor == 144U) {
+      return signed_divexact_pow2_workspace(out, 4, quotient) &&
+        signed_divexact_u3_workspace(out, quotient) &&
+        signed_divexact_u3_workspace(out, quotient);
+    }
+    if (divisor == 360U) {
+      return signed_divexact_pow2_workspace(out, 3, quotient) &&
+        signed_divexact_u3_workspace(out, quotient) &&
+        signed_divexact_u3_workspace(out, quotient) &&
+        signed_divexact_u5_workspace(out, quotient);
+    }
+    if (divisor == 420U) {
+      return signed_divexact_pow2_workspace(out, 2, quotient) &&
+        signed_divexact_u3_workspace(out, quotient) &&
+        signed_divexact_u5_workspace(out, quotient) &&
+        signed_divexact_u32_workspace(out, 7U, quotient);
+    }
+    if (divisor == 720U) {
+      return signed_divexact_pow2_workspace(out, 4, quotient) &&
+        signed_divexact_u3_workspace(out, quotient) &&
+        signed_divexact_u3_workspace(out, quotient) &&
+        signed_divexact_u5_workspace(out, quotient);
+    }
+    if (divisor == 5040U) {
+      return signed_divexact_pow2_workspace(out, 4, quotient) &&
+        signed_divexact_u3_workspace(out, quotient) &&
+        signed_divexact_u3_workspace(out, quotient) &&
+        signed_divexact_u5_workspace(out, quotient) &&
+        signed_divexact_u32_workspace(out, 7U, quotient);
+    }
   }
   return signed_divexact_u32_workspace(out, divisor, quotient);
 }
 
-static int mul_toom4_top_full_workspace_probe_internal(
+static int run_toom_point_product_task(XrayToomPointProductTask *task) {
+  if (!task || !task->out || !task->left || (!task->square_point && !task->right)) return 0;
+  if (task->left->sign == 0 || (!task->square_point && task->right->sign == 0)) {
+    task->out->sign = 0;
+    return set_u32(&task->out->mag, 0);
+  }
+  XrayToom3Workspace toom_workspace;
+  XrayKaratsubaWorkspace karatsuba_workspace;
+  toom3_workspace_init(&toom_workspace);
+  karatsuba_workspace_init(&karatsuba_workspace);
+  int ok = toom3_workspace_prepare(&toom_workspace, task->workspace_count, task->depth_limit) &&
+    karatsuba_workspace_prepare(&karatsuba_workspace, task->workspace_count, task->threshold);
+  if (ok && task->square_point) {
+    ok = square_toom3_workspace_recurse(
+      &task->out->mag,
+      &task->left->mag,
+      task->threshold,
+      1,
+      task->depth_limit,
+      &toom_workspace,
+      &karatsuba_workspace,
+      0,
+      task->interp_flags,
+      0,
+      0U,
+      0U);
+    task->out->sign = ok && task->out->mag.count ? 1 : 0;
+  } else if (ok) {
+    ok = mul_toom3_workspace_recurse(
+      &task->out->mag,
+      &task->left->mag,
+      &task->right->mag,
+      task->threshold,
+      1,
+      task->depth_limit,
+      &toom_workspace,
+      &karatsuba_workspace,
+      0,
+      task->interp_flags);
+    task->out->sign = ok && task->out->mag.count ? task->left->sign * task->right->sign : 0;
+  }
+  karatsuba_workspace_clear(&karatsuba_workspace);
+  toom3_workspace_clear(&toom_workspace);
+  return ok;
+}
+
+#if defined(_WIN32) && defined(_MSC_VER)
+static unsigned __stdcall run_toom_point_product_thread(void *context) {
+  XrayToomPointProductTask *task = (XrayToomPointProductTask *)context;
+  task->ok = run_toom_point_product_task(task);
+  return 0U;
+}
+
+typedef struct XrayToomPointProductGroupTask {
+  XrayToomPointProductTask *tasks;
+  size_t start;
+  size_t end;
+  int ok;
+} XrayToomPointProductGroupTask;
+
+static int run_toom_point_product_group_task_with_workspace(
+  XrayToomPointProductGroupTask *group,
+  XrayToom3Workspace *toom_workspace,
+  XrayKaratsubaWorkspace *karatsuba_workspace) {
+  if (!group || !group->tasks || group->start >= group->end || !toom_workspace || !karatsuba_workspace) return 0;
+  XrayToomPointProductTask *first = &group->tasks[group->start];
+  int ok = toom3_workspace_prepare(toom_workspace, first->workspace_count, first->depth_limit) &&
+    karatsuba_workspace_prepare(karatsuba_workspace, first->workspace_count, first->threshold);
+  for (size_t index = group->start; ok && index < group->end; ++index) {
+    XrayToomPointProductTask *task = &group->tasks[index];
+    if (task->left->sign == 0 || (!task->square_point && task->right->sign == 0)) {
+      task->out->sign = 0;
+      ok = set_u32(&task->out->mag, 0);
+    } else if (task->square_point) {
+      ok = square_toom3_workspace_recurse(
+        &task->out->mag,
+        &task->left->mag,
+        task->threshold,
+        1,
+        task->depth_limit,
+        toom_workspace,
+        karatsuba_workspace,
+        0,
+        task->interp_flags,
+        0,
+        0U,
+        0U);
+      task->out->sign = ok && task->out->mag.count ? 1 : 0;
+    } else {
+      ok = mul_toom3_workspace_recurse(
+        &task->out->mag,
+        &task->left->mag,
+        &task->right->mag,
+        task->threshold,
+        1,
+        task->depth_limit,
+        toom_workspace,
+        karatsuba_workspace,
+        0,
+        task->interp_flags);
+      task->out->sign = ok && task->out->mag.count ? task->left->sign * task->right->sign : 0;
+    }
+    task->ok = ok;
+  }
+  return ok;
+}
+
+static int run_toom_point_product_group_task(XrayToomPointProductGroupTask *group) {
+  XrayToom3Workspace toom_workspace;
+  XrayKaratsubaWorkspace karatsuba_workspace;
+  toom3_workspace_init(&toom_workspace);
+  karatsuba_workspace_init(&karatsuba_workspace);
+  int ok = run_toom_point_product_group_task_with_workspace(group, &toom_workspace, &karatsuba_workspace);
+  karatsuba_workspace_clear(&karatsuba_workspace);
+  toom3_workspace_clear(&toom_workspace);
+  return ok;
+}
+
+static unsigned __stdcall run_toom_point_product_group_thread(void *context) {
+  XrayToomPointProductGroupTask *group = (XrayToomPointProductGroupTask *)context;
+  group->ok = run_toom_point_product_group_task(group);
+  return 0U;
+}
+
+static void __stdcall run_toom_point_product_group_pool(
+  XrayWinThreadpoolInstance instance,
+  void *context,
+  XrayWinThreadpoolWork work) {
+  (void)instance;
+  (void)work;
+  XrayToomPointProductGroupTask *group = (XrayToomPointProductGroupTask *)context;
+  group->ok = run_toom_point_product_group_task(group);
+}
+
+static int run_toom_point_products_parallel(XrayToomPointProductTask *tasks, size_t task_count) {
+  if (!tasks || task_count == 0 || task_count > XRAY_WIN_MAXIMUM_WAIT_OBJECTS) return 0;
+  XrayWinHandle handles[XRAY_WIN_MAXIMUM_WAIT_OBJECTS];
+  size_t started = 0;
+  for (size_t index = 0; index < task_count; ++index) {
+    tasks[index].ok = 0;
+    uintptr_t handle = _beginthreadex(NULL, 0, run_toom_point_product_thread, &tasks[index], 0, NULL);
+    if (!handle) break;
+    handles[started++] = (XrayWinHandle)handle;
+  }
+  if (started > 0) {
+    WaitForMultipleObjects((unsigned long)started, handles, 1, XRAY_WIN_WAIT_INFINITE);
+    for (size_t index = 0; index < started; ++index) CloseHandle(handles[index]);
+  }
+  if (started != task_count) return 0;
+  int ok = 1;
+  for (size_t index = 0; index < task_count; ++index) ok = ok && tasks[index].ok;
+  return ok;
+}
+
+static int run_toom_point_products_parallel_grouped_pool(
+  XrayToomPointProductTask *tasks,
+  size_t task_count,
+  size_t group_count) {
+  if (!tasks || task_count == 0) return 0;
+  if (group_count == 0 || group_count > task_count) group_count = task_count;
+  if (group_count > XRAY_WIN_MAXIMUM_WAIT_OBJECTS) return 0;
+  XrayToomPointProductGroupTask groups[XRAY_WIN_MAXIMUM_WAIT_OBJECTS];
+  XrayWinThreadpoolWork works[XRAY_WIN_MAXIMUM_WAIT_OBJECTS];
+  size_t created = 0;
+  for (size_t group_index = 0; group_index < group_count; ++group_index) {
+    groups[group_index].tasks = tasks;
+    groups[group_index].start = (task_count * group_index) / group_count;
+    groups[group_index].end = (task_count * (group_index + 1U)) / group_count;
+    groups[group_index].ok = 0;
+    XrayWinThreadpoolWork work = CreateThreadpoolWork(
+      run_toom_point_product_group_pool,
+      &groups[group_index],
+      NULL);
+    if (!work) break;
+    works[created++] = work;
+  }
+  if (created != group_count) {
+    for (size_t index = 0; index < created; ++index) CloseThreadpoolWork(works[index]);
+    return 0;
+  }
+  for (size_t index = 0; index < created; ++index) SubmitThreadpoolWork(works[index]);
+  for (size_t index = 0; index < created; ++index) {
+    WaitForThreadpoolWorkCallbacks(works[index], 0);
+    CloseThreadpoolWork(works[index]);
+  }
+  int ok = 1;
+  for (size_t group_index = 0; group_index < group_count; ++group_index) ok = ok && groups[group_index].ok;
+  for (size_t index = 0; index < task_count; ++index) ok = ok && tasks[index].ok;
+  return ok;
+}
+
+typedef struct XrayToomPointWorker {
+  XrayWinHandle thread;
+  XrayWinHandle start_event;
+  XrayWinHandle done_event;
+  XrayToomPointProductGroupTask *group;
+  XrayToom3Workspace toom_workspace;
+  XrayKaratsubaWorkspace karatsuba_workspace;
+  int workspaces_initialized;
+  volatile long stop;
+} XrayToomPointWorker;
+
+typedef struct XrayToomPointWorkerPool {
+  XrayToomPointWorker workers[XRAY_TOOM_POINT_POOL_WORKERS];
+  int initialized;
+  int atexit_registered;
+} XrayToomPointWorkerPool;
+
+static XRAY_BIGINT_THREAD_LOCAL XrayToomPointWorkerPool toom_point_tls_pool;
+
+static unsigned __stdcall run_toom_point_worker_thread(void *context) {
+  XrayToomPointWorker *worker = (XrayToomPointWorker *)context;
+  if (!worker) return 0U;
+  for (;;) {
+    WaitForSingleObject(worker->start_event, XRAY_WIN_WAIT_INFINITE);
+    if (worker->stop) {
+      SetEvent(worker->done_event);
+      return 0U;
+    }
+    if (worker->group) {
+      worker->group->ok = run_toom_point_product_group_task_with_workspace(
+        worker->group,
+        &worker->toom_workspace,
+        &worker->karatsuba_workspace);
+    }
+    SetEvent(worker->done_event);
+  }
+}
+
+static void toom_point_worker_pool_clear(XrayToomPointWorkerPool *pool) {
+  if (!pool) return;
+  XrayWinHandle threads[XRAY_TOOM_POINT_POOL_WORKERS];
+  size_t thread_count = 0;
+  for (size_t index = 0; index < XRAY_TOOM_POINT_POOL_WORKERS; ++index) {
+    XrayToomPointWorker *worker = &pool->workers[index];
+    if (worker->thread && worker->start_event && worker->done_event) {
+      worker->stop = 1;
+      ResetEvent(worker->done_event);
+      SetEvent(worker->start_event);
+      threads[thread_count++] = worker->thread;
+    }
+  }
+  if (thread_count) WaitForMultipleObjects((unsigned long)thread_count, threads, 1, XRAY_WIN_WAIT_INFINITE);
+  for (size_t index = 0; index < XRAY_TOOM_POINT_POOL_WORKERS; ++index) {
+    XrayToomPointWorker *worker = &pool->workers[index];
+    if (worker->thread) CloseHandle(worker->thread);
+    if (worker->start_event) CloseHandle(worker->start_event);
+    if (worker->done_event) CloseHandle(worker->done_event);
+    if (worker->workspaces_initialized) {
+      karatsuba_workspace_clear(&worker->karatsuba_workspace);
+      toom3_workspace_clear(&worker->toom_workspace);
+    }
+    memset(worker, 0, sizeof(*worker));
+  }
+  pool->initialized = 0;
+}
+
+static void toom_point_worker_pool_clear_at_exit(void) {
+  toom_point_worker_pool_clear(&toom_point_tls_pool);
+}
+
+static int toom_point_worker_pool_prepare(XrayToomPointWorkerPool *pool) {
+  if (!pool) return 0;
+  if (pool->initialized) return 1;
+  memset(pool->workers, 0, sizeof(pool->workers));
+  for (size_t index = 0; index < XRAY_TOOM_POINT_POOL_WORKERS; ++index) {
+    XrayToomPointWorker *worker = &pool->workers[index];
+    toom3_workspace_init(&worker->toom_workspace);
+    karatsuba_workspace_init(&worker->karatsuba_workspace);
+    worker->workspaces_initialized = 1;
+    worker->start_event = CreateEventA(NULL, 0, 0, NULL);
+    worker->done_event = CreateEventA(NULL, 1, 0, NULL);
+    if (!worker->start_event || !worker->done_event) {
+      toom_point_worker_pool_clear(pool);
+      return 0;
+    }
+    uintptr_t handle = _beginthreadex(NULL, 0, run_toom_point_worker_thread, worker, 0, NULL);
+    if (!handle) {
+      toom_point_worker_pool_clear(pool);
+      return 0;
+    }
+    worker->thread = (XrayWinHandle)handle;
+  }
+  pool->initialized = 1;
+  if (!pool->atexit_registered) {
+    (void)atexit(toom_point_worker_pool_clear_at_exit);
+    pool->atexit_registered = 1;
+  }
+  return 1;
+}
+
+static int run_toom_point_products_parallel_grouped_persistent(
+  XrayToomPointProductTask *tasks,
+  size_t task_count,
+  size_t group_count) {
+  if (!tasks || task_count == 0) return 0;
+  if (group_count == 0 || group_count > task_count) group_count = task_count;
+  if (group_count > XRAY_TOOM_POINT_POOL_WORKERS) return 0;
+  XrayToomPointWorkerPool *pool = &toom_point_tls_pool;
+  if (!toom_point_worker_pool_prepare(pool)) return 0;
+  XrayToomPointProductGroupTask groups[XRAY_TOOM_POINT_POOL_WORKERS];
+  XrayWinHandle done_events[XRAY_TOOM_POINT_POOL_WORKERS];
+  for (size_t group_index = 0; group_index < group_count; ++group_index) {
+    groups[group_index].tasks = tasks;
+    groups[group_index].start = (task_count * group_index) / group_count;
+    groups[group_index].end = (task_count * (group_index + 1U)) / group_count;
+    groups[group_index].ok = 0;
+    XrayToomPointWorker *worker = &pool->workers[group_index];
+    worker->group = &groups[group_index];
+    ResetEvent(worker->done_event);
+    done_events[group_index] = worker->done_event;
+    SetEvent(worker->start_event);
+  }
+  WaitForMultipleObjects((unsigned long)group_count, done_events, 1, XRAY_WIN_WAIT_INFINITE);
+  int ok = 1;
+  for (size_t group_index = 0; group_index < group_count; ++group_index) {
+    pool->workers[group_index].group = NULL;
+    ok = ok && groups[group_index].ok;
+  }
+  for (size_t index = 0; index < task_count; ++index) ok = ok && tasks[index].ok;
+  return ok;
+}
+
+static int run_toom_point_products_parallel_grouped(
+  XrayToomPointProductTask *tasks,
+  size_t task_count,
+  size_t group_count) {
+  if (!tasks || task_count == 0) return 0;
+  if (group_count == 0 || group_count > task_count) group_count = task_count;
+  if (group_count > XRAY_WIN_MAXIMUM_WAIT_OBJECTS) return 0;
+  XrayToomPointProductGroupTask groups[XRAY_WIN_MAXIMUM_WAIT_OBJECTS];
+  XrayWinHandle handles[XRAY_WIN_MAXIMUM_WAIT_OBJECTS];
+  size_t started = 0;
+  for (size_t group_index = 0; group_index < group_count; ++group_index) {
+    groups[group_index].tasks = tasks;
+    groups[group_index].start = (task_count * group_index) / group_count;
+    groups[group_index].end = (task_count * (group_index + 1U)) / group_count;
+    groups[group_index].ok = 0;
+    uintptr_t handle = _beginthreadex(NULL, 0, run_toom_point_product_group_thread, &groups[group_index], 0, NULL);
+    if (!handle) break;
+    handles[started++] = (XrayWinHandle)handle;
+  }
+  if (started > 0) {
+    WaitForMultipleObjects((unsigned long)started, handles, 1, XRAY_WIN_WAIT_INFINITE);
+    for (size_t index = 0; index < started; ++index) CloseHandle(handles[index]);
+  }
+  if (started != group_count) return 0;
+  int ok = 1;
+  for (size_t group_index = 0; group_index < group_count; ++group_index) ok = ok && groups[group_index].ok;
+  for (size_t index = 0; index < task_count; ++index) ok = ok && tasks[index].ok;
+  return ok;
+}
+#endif
+
+static int mul_toom4_top_full_workspace_probe_internal_ex(
   XrayScratchBigInt *out,
   const XrayScratchBigInt *left,
   const XrayScratchBigInt *right,
   size_t leaf_threshold,
   size_t depth_limit,
   unsigned int interp_flags,
-  XrayBigIntMulWorkspace *reuse_workspace) {
+  XrayBigIntMulWorkspace *reuse_workspace,
+  size_t parallel_min_count,
+  size_t parallel_group_count) {
   if (!out || !left || !right) return 0;
   if (reuse_workspace &&
       (reuse_workspace == (const XrayBigIntMulWorkspace *)out ||
@@ -4928,7 +7855,11 @@ static int mul_toom4_top_full_workspace_probe_internal(
   view_bigint_slice(&b2, right, split * 2U, split);
   view_bigint_slice(&b3, right, split * 3U, right_count > split * 3U ? right_count - split * 3U : 0);
 
-  enum { T4_0 = 0, T4_1, T4_M1, T4_2, T4_M2, T4_3, T4_INF, T4_COUNT };
+  enum { T4_0 = 0, T4_1, T4_M1, T4_2, T4_M2, T4_HALF, T4_INF, T4_COUNT };
+  int use_parallel_points = 0;
+#if defined(_WIN32) && defined(_MSC_VER)
+  use_parallel_points = parallel_min_count > 0U && max_count >= parallel_min_count;
+#endif
   XraySignedScratchBigInt x[T4_COUNT];
   XraySignedScratchBigInt y[T4_COUNT];
   XraySignedScratchBigInt v[T4_COUNT];
@@ -4963,67 +7894,112 @@ static int mul_toom4_top_full_workspace_probe_internal(
     toom3_workspace_init(&toom_workspace);
     karatsuba_workspace_init(&karatsuba_workspace);
   }
-  int ok = toom3_workspace_prepare(&toom_workspace, max_count, active_depth) &&
-    karatsuba_workspace_prepare(&karatsuba_workspace, max_count, active_threshold) &&
+  int ok = (use_parallel_points ||
+      (toom3_workspace_prepare(&toom_workspace, max_count, active_depth) &&
+       karatsuba_workspace_prepare(&karatsuba_workspace, max_count, active_threshold))) &&
     signed_set_toom4_eval(&x[T4_0], &a0, &a1, &a2, &a3, 0) &&
     signed_set_toom4_eval(&x[T4_1], &a0, &a1, &a2, &a3, 1) &&
     signed_set_toom4_eval(&x[T4_M1], &a0, &a1, &a2, &a3, -1) &&
     signed_set_toom4_eval(&x[T4_2], &a0, &a1, &a2, &a3, 2) &&
     signed_set_toom4_eval(&x[T4_M2], &a0, &a1, &a2, &a3, -2) &&
-    signed_set_toom4_eval(&x[T4_3], &a0, &a1, &a2, &a3, 3) &&
+    signed_set_toom4_half_scaled(&x[T4_HALF], &a0, &a1, &a2, &a3) &&
     signed_set_unsigned(&x[T4_INF], &a3) &&
     signed_set_toom4_eval(&y[T4_0], &b0, &b1, &b2, &b3, 0) &&
     signed_set_toom4_eval(&y[T4_1], &b0, &b1, &b2, &b3, 1) &&
     signed_set_toom4_eval(&y[T4_M1], &b0, &b1, &b2, &b3, -1) &&
     signed_set_toom4_eval(&y[T4_2], &b0, &b1, &b2, &b3, 2) &&
     signed_set_toom4_eval(&y[T4_M2], &b0, &b1, &b2, &b3, -2) &&
-    signed_set_toom4_eval(&y[T4_3], &b0, &b1, &b2, &b3, 3) &&
+    signed_set_toom4_half_scaled(&y[T4_HALF], &b0, &b1, &b2, &b3) &&
     signed_set_unsigned(&y[T4_INF], &b3);
-  if (reuse_workspace) {
+  if (reuse_workspace && !use_parallel_points) {
     reuse_workspace->toom3_frames = toom_workspace.frames;
     reuse_workspace->toom3_frame_count = toom_workspace.frame_count;
     reuse_workspace->karatsuba_frames = karatsuba_workspace.frames;
     reuse_workspace->karatsuba_frame_count = karatsuba_workspace.frame_count;
   }
 
-  for (size_t index = 0; ok && index < T4_COUNT; ++index) {
-    if (x[index].sign == 0 || y[index].sign == 0) {
-      ok = set_u32(&v[index].mag, 0);
-      v[index].sign = 0;
-    } else {
-      ok = mul_toom3_workspace_recurse(
-        &v[index].mag,
-        &x[index].mag,
-        &y[index].mag,
-        active_threshold,
-        1,
-        active_depth,
-        &toom_workspace,
-        &karatsuba_workspace,
-        0,
-        interp_flags);
-      v[index].sign = ok && v[index].mag.count ? x[index].sign * y[index].sign : 0;
+  int point_products_ready = 0;
+  if (ok && use_parallel_points) {
+#if defined(_WIN32) && defined(_MSC_VER)
+    XrayToomPointProductTask tasks[T4_COUNT];
+    for (size_t index = 0; index < T4_COUNT; ++index) {
+      tasks[index].out = &v[index];
+      tasks[index].left = &x[index];
+      tasks[index].right = &y[index];
+      tasks[index].workspace_count = max_count;
+      tasks[index].threshold = active_threshold;
+      tasks[index].depth_limit = active_depth;
+      tasks[index].interp_flags = interp_flags;
+      tasks[index].square_point = 0;
+      tasks[index].ok = 0;
+    }
+    size_t point_group_count = parallel_group_count > 0U ?
+      parallel_group_count :
+      (max_count >= 3200U ? 4U : 3U);
+    point_products_ready = run_toom_point_products_parallel_grouped_persistent(tasks, T4_COUNT, point_group_count);
+    if (!point_products_ready) {
+      point_products_ready = run_toom_point_products_parallel_grouped_pool(tasks, T4_COUNT, point_group_count);
+    }
+    if (!point_products_ready) {
+      for (size_t index = 0; index < T4_COUNT; ++index) signed_reset(&v[index]);
+    }
+#else
+    point_products_ready = 0;
+#endif
+  }
+  if (ok && !point_products_ready) {
+    if (use_parallel_points) {
+      ok = toom3_workspace_prepare(&toom_workspace, max_count, active_depth) &&
+        karatsuba_workspace_prepare(&karatsuba_workspace, max_count, active_threshold);
+      if (reuse_workspace && ok) {
+        reuse_workspace->toom3_frames = toom_workspace.frames;
+        reuse_workspace->toom3_frame_count = toom_workspace.frame_count;
+        reuse_workspace->karatsuba_frames = karatsuba_workspace.frames;
+        reuse_workspace->karatsuba_frame_count = karatsuba_workspace.frame_count;
+      }
+    }
+    for (size_t index = 0; ok && index < T4_COUNT; ++index) {
+      if (x[index].sign == 0 || y[index].sign == 0) {
+        ok = set_u32(&v[index].mag, 0);
+        v[index].sign = 0;
+      } else {
+        ok = mul_toom3_workspace_recurse(
+          &v[index].mag,
+          &x[index].mag,
+          &y[index].mag,
+          active_threshold,
+          1,
+          active_depth,
+          &toom_workspace,
+          &karatsuba_workspace,
+          0,
+          interp_flags);
+        v[index].sign = ok && v[index].mag.count ? x[index].sign * y[index].sign : 0;
+      }
     }
   }
 
   if (ok) {
     const XraySignedScratchBigInt *terms[5] = {&s1, &sm1, &s2, &sm2, &s3};
-    static const int c1_coeffs[5] = {60, -30, -15, 3, 2};
+    static const int c1_coeffs[5] = {-120, -40, 5, 3, 8};
     static const int c2_coeffs[5] = {16, 16, -1, -1, 0};
-    static const int c3_coeffs[5] = {-14, -1, 7, -1, -1};
+    static const int c3_coeffs[5] = {27, -7, -1, 0, -1};
     static const int c4_coeffs[5] = {-4, -4, 1, 1, 0};
-    static const int c5_coeffs[5] = {10, 5, -5, -1, 1};
+    static const int c5_coeffs[5] = {-60, 20, 5, -3, 2};
     ok = signed_toom4_adjust_value(&s1, &v[T4_1], &v[T4_0], &v[T4_INF], 1U, &scaled, &temp) &&
       signed_toom4_adjust_value(&sm1, &v[T4_M1], &v[T4_0], &v[T4_INF], 1U, &scaled, &temp) &&
       signed_toom4_adjust_value(&s2, &v[T4_2], &v[T4_0], &v[T4_INF], 64U, &scaled, &temp) &&
       signed_toom4_adjust_value(&sm2, &v[T4_M2], &v[T4_0], &v[T4_INF], 64U, &scaled, &temp) &&
-      signed_toom4_adjust_value(&s3, &v[T4_3], &v[T4_0], &v[T4_INF], 729U, &scaled, &temp) &&
+      signed_copy(&s3, &v[T4_HALF]) &&
+      signed_scaled_copy(&scaled, &v[T4_0], 64U) &&
+      signed_sub_inplace_workspace(&s3, &scaled, &temp) &&
+      signed_sub_inplace_workspace(&s3, &v[T4_INF], &temp) &&
       signed_copy(&coeff[0], &v[T4_0]) &&
-      signed_linear_combination_divexact_workspace(&coeff[1], terms, c1_coeffs, 5U, 60U, &scaled, &temp, &quotient, interp_flags) &&
+      signed_linear_combination_divexact_workspace(&coeff[1], terms, c1_coeffs, 5U, 180U, &scaled, &temp, &quotient, interp_flags) &&
       signed_linear_combination_divexact_workspace(&coeff[2], terms, c2_coeffs, 5U, 24U, &scaled, &temp, &quotient, interp_flags) &&
-      signed_linear_combination_divexact_workspace(&coeff[3], terms, c3_coeffs, 5U, 24U, &scaled, &temp, &quotient, interp_flags) &&
+      signed_linear_combination_divexact_workspace(&coeff[3], terms, c3_coeffs, 5U, 18U, &scaled, &temp, &quotient, interp_flags) &&
       signed_linear_combination_divexact_workspace(&coeff[4], terms, c4_coeffs, 5U, 24U, &scaled, &temp, &quotient, interp_flags) &&
-      signed_linear_combination_divexact_workspace(&coeff[5], terms, c5_coeffs, 5U, 120U, &scaled, &temp, &quotient, interp_flags) &&
+      signed_linear_combination_divexact_workspace(&coeff[5], terms, c5_coeffs, 5U, 180U, &scaled, &temp, &quotient, interp_flags) &&
       signed_copy(&coeff[6], &v[T4_INF]);
   }
 
@@ -5055,6 +8031,201 @@ static int mul_toom4_top_full_workspace_probe_internal(
   for (size_t index = 0; index < T4_COUNT; ++index) {
     signed_clear(&x[index]);
     signed_clear(&y[index]);
+    signed_clear(&v[index]);
+  }
+  return ok;
+}
+
+static int mul_toom4_top_full_workspace_probe_internal(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *left,
+  const XrayScratchBigInt *right,
+  size_t leaf_threshold,
+  size_t depth_limit,
+  unsigned int interp_flags,
+  XrayBigIntMulWorkspace *reuse_workspace) {
+  return mul_toom4_top_full_workspace_probe_internal_ex(
+    out,
+    left,
+    right,
+    leaf_threshold,
+    depth_limit,
+    interp_flags,
+    reuse_workspace,
+    1800U,
+    0U);
+}
+
+static int square_toom4_top_full_workspace_probe_internal(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value,
+  size_t leaf_threshold,
+  size_t depth_limit,
+  unsigned int interp_flags,
+  XrayBigIntMulWorkspace *reuse_workspace,
+  int use_mul_points) {
+  if (!out || !value) return 0;
+  if (reuse_workspace &&
+      (reuse_workspace == (const XrayBigIntMulWorkspace *)out ||
+       reuse_workspace == (const XrayBigIntMulWorkspace *)value)) {
+    return 0;
+  }
+  if (value->count == 0) return set_u32(out, 0);
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : 48U;
+  size_t active_depth = depth_limit >= 1U ? depth_limit : 1U;
+  if (value->count < active_threshold * 4U) {
+    if (use_mul_points) {
+      return reuse_workspace ?
+        mul_toom3_full_workspace_reuse_probe_internal(out, value, value, active_threshold, active_depth, interp_flags, reuse_workspace) :
+        mul_toom3_full_workspace_probe_internal(out, value, value, active_threshold, active_depth, interp_flags);
+    }
+    return reuse_workspace ?
+      square_toom3_full_workspace_reuse_probe_internal(out, value, active_threshold, active_depth, interp_flags, reuse_workspace, 0, 0U, 0U) :
+      square_toom3_full_workspace_probe_internal(out, value, active_threshold, active_depth, interp_flags, 0);
+  }
+
+  size_t split = (value->count + 3U) / 4U;
+  XrayScratchBigInt a0, a1, a2, a3;
+  view_bigint_slice(&a0, value, 0, split);
+  view_bigint_slice(&a1, value, split, split);
+  view_bigint_slice(&a2, value, split * 2U, split);
+  view_bigint_slice(&a3, value, split * 3U, value->count > split * 3U ? value->count - split * 3U : 0);
+
+  enum { T4_0 = 0, T4_1, T4_M1, T4_2, T4_M2, T4_HALF, T4_INF, T4_COUNT };
+  XraySignedScratchBigInt x[T4_COUNT];
+  XraySignedScratchBigInt v[T4_COUNT];
+  XraySignedScratchBigInt s1, sm1, s2, sm2, s3;
+  XraySignedScratchBigInt coeff[7];
+  XraySignedScratchBigInt scaled, temp;
+  XrayScratchBigInt quotient;
+  for (size_t index = 0; index < T4_COUNT; ++index) {
+    signed_init(&x[index]);
+    signed_init(&v[index]);
+  }
+  signed_init(&s1);
+  signed_init(&sm1);
+  signed_init(&s2);
+  signed_init(&sm2);
+  signed_init(&s3);
+  for (size_t index = 0; index < 7U; ++index) signed_init(&coeff[index]);
+  signed_init(&scaled);
+  signed_init(&temp);
+  xray_bigint_init(&quotient);
+
+  XrayToom3Workspace toom_workspace;
+  XrayKaratsubaWorkspace karatsuba_workspace;
+  int owns_workspace = reuse_workspace == NULL;
+  if (reuse_workspace) {
+    toom_workspace.frames = (XrayToom3WorkspaceFrame *)reuse_workspace->toom3_frames;
+    toom_workspace.frame_count = reuse_workspace->toom3_frame_count;
+    karatsuba_workspace.frames = (XrayKaratsubaWorkspaceFrame *)reuse_workspace->karatsuba_frames;
+    karatsuba_workspace.frame_count = reuse_workspace->karatsuba_frame_count;
+  } else {
+    toom3_workspace_init(&toom_workspace);
+    karatsuba_workspace_init(&karatsuba_workspace);
+  }
+
+  int ok = toom3_workspace_prepare(&toom_workspace, value->count, active_depth) &&
+    karatsuba_workspace_prepare(&karatsuba_workspace, value->count, active_threshold) &&
+    signed_set_toom4_eval(&x[T4_0], &a0, &a1, &a2, &a3, 0) &&
+    signed_set_toom4_eval(&x[T4_1], &a0, &a1, &a2, &a3, 1) &&
+    signed_set_toom4_eval(&x[T4_M1], &a0, &a1, &a2, &a3, -1) &&
+    signed_set_toom4_eval(&x[T4_2], &a0, &a1, &a2, &a3, 2) &&
+    signed_set_toom4_eval(&x[T4_M2], &a0, &a1, &a2, &a3, -2) &&
+    signed_set_toom4_half_scaled(&x[T4_HALF], &a0, &a1, &a2, &a3) &&
+    signed_set_unsigned(&x[T4_INF], &a3);
+  if (reuse_workspace) {
+    reuse_workspace->toom3_frames = toom_workspace.frames;
+    reuse_workspace->toom3_frame_count = toom_workspace.frame_count;
+    reuse_workspace->karatsuba_frames = karatsuba_workspace.frames;
+    reuse_workspace->karatsuba_frame_count = karatsuba_workspace.frame_count;
+  }
+
+  for (size_t index = 0; ok && index < T4_COUNT; ++index) {
+    if (x[index].sign == 0) {
+      ok = set_u32(&v[index].mag, 0);
+      v[index].sign = 0;
+    } else {
+      ok = use_mul_points ?
+        mul_toom3_workspace_recurse(
+          &v[index].mag,
+          &x[index].mag,
+          &x[index].mag,
+          active_threshold,
+          1,
+          active_depth,
+          &toom_workspace,
+          &karatsuba_workspace,
+          0,
+          interp_flags) :
+        square_toom3_workspace_recurse(
+          &v[index].mag,
+          &x[index].mag,
+          active_threshold,
+          1,
+          active_depth,
+          &toom_workspace,
+          &karatsuba_workspace,
+          0,
+          interp_flags,
+          0,
+          0U,
+          0U);
+      v[index].sign = ok && v[index].mag.count ? 1 : 0;
+    }
+  }
+
+  if (ok) {
+    const XraySignedScratchBigInt *terms[5] = {&s1, &sm1, &s2, &sm2, &s3};
+    static const int c1_coeffs[5] = {-120, -40, 5, 3, 8};
+    static const int c2_coeffs[5] = {16, 16, -1, -1, 0};
+    static const int c3_coeffs[5] = {27, -7, -1, 0, -1};
+    static const int c4_coeffs[5] = {-4, -4, 1, 1, 0};
+    static const int c5_coeffs[5] = {-60, 20, 5, -3, 2};
+    ok = signed_toom4_adjust_value(&s1, &v[T4_1], &v[T4_0], &v[T4_INF], 1U, &scaled, &temp) &&
+      signed_toom4_adjust_value(&sm1, &v[T4_M1], &v[T4_0], &v[T4_INF], 1U, &scaled, &temp) &&
+      signed_toom4_adjust_value(&s2, &v[T4_2], &v[T4_0], &v[T4_INF], 64U, &scaled, &temp) &&
+      signed_toom4_adjust_value(&sm2, &v[T4_M2], &v[T4_0], &v[T4_INF], 64U, &scaled, &temp) &&
+      signed_copy(&s3, &v[T4_HALF]) &&
+      signed_scaled_copy(&scaled, &v[T4_0], 64U) &&
+      signed_sub_inplace_workspace(&s3, &scaled, &temp) &&
+      signed_sub_inplace_workspace(&s3, &v[T4_INF], &temp) &&
+      signed_copy(&coeff[0], &v[T4_0]) &&
+      signed_linear_combination_divexact_workspace(&coeff[1], terms, c1_coeffs, 5U, 180U, &scaled, &temp, &quotient, interp_flags) &&
+      signed_linear_combination_divexact_workspace(&coeff[2], terms, c2_coeffs, 5U, 24U, &scaled, &temp, &quotient, interp_flags) &&
+      signed_linear_combination_divexact_workspace(&coeff[3], terms, c3_coeffs, 5U, 18U, &scaled, &temp, &quotient, interp_flags) &&
+      signed_linear_combination_divexact_workspace(&coeff[4], terms, c4_coeffs, 5U, 24U, &scaled, &temp, &quotient, interp_flags) &&
+      signed_linear_combination_divexact_workspace(&coeff[5], terms, c5_coeffs, 5U, 180U, &scaled, &temp, &quotient, interp_flags) &&
+      signed_copy(&coeff[6], &v[T4_INF]);
+  }
+
+  if (ok) {
+    for (size_t index = 0; index < 7U; ++index) ok = ok && coeff[index].sign >= 0;
+  }
+  if (ok) {
+    out->count = 0;
+    ok = reserve_limbs(out, value->count * 2U + 8U);
+    for (size_t index = 0; ok && index < 7U; ++index) {
+      ok = add_shifted_inplace(out, &coeff[index].mag, split * index);
+    }
+    if (ok) normalize(out);
+  }
+
+  if (owns_workspace) {
+    karatsuba_workspace_clear(&karatsuba_workspace);
+    toom3_workspace_clear(&toom_workspace);
+  }
+  xray_bigint_clear(&quotient);
+  signed_clear(&scaled);
+  signed_clear(&temp);
+  for (size_t index = 0; index < 7U; ++index) signed_clear(&coeff[index]);
+  signed_clear(&s1);
+  signed_clear(&sm1);
+  signed_clear(&s2);
+  signed_clear(&sm2);
+  signed_clear(&s3);
+  for (size_t index = 0; index < T4_COUNT; ++index) {
+    signed_clear(&x[index]);
     signed_clear(&v[index]);
   }
   return ok;
@@ -5295,13 +8466,161 @@ static int mul_toom5_top_full_workspace_reuse_probe_internal(
 }
 #endif
 
-static int mul_dispatch(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
-  if (try_sparse_mul_dispatch_route(out, left, right)) return 1;
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS && XRAY_BIGINT_HAS_THREAD_LOCAL
+static XRAY_BIGINT_THREAD_LOCAL XrayBigIntMulWorkspace dense_toom4_tls_workspace;
+static XRAY_BIGINT_THREAD_LOCAL int dense_toom4_tls_workspace_initialized;
+static XRAY_BIGINT_THREAD_LOCAL int dense_toom4_tls_workspace_in_use;
+
+static void dense_toom4_tls_workspace_clear_at_exit(void) {
+  if (dense_toom4_tls_workspace_initialized && !dense_toom4_tls_workspace_in_use) {
+    xray_bigint_mul_workspace_clear(&dense_toom4_tls_workspace);
+    dense_toom4_tls_workspace_initialized = 0;
+  }
+}
+
+static XrayBigIntMulWorkspace *dense_toom4_tls_workspace_acquire(int *using_tls) {
+  if (using_tls) *using_tls = 0;
+  if (dense_toom4_tls_workspace_in_use) return NULL;
+  if (!dense_toom4_tls_workspace_initialized) {
+    xray_bigint_mul_workspace_init(&dense_toom4_tls_workspace);
+    dense_toom4_tls_workspace_initialized = 1;
+    (void)atexit(dense_toom4_tls_workspace_clear_at_exit);
+  }
+  dense_toom4_tls_workspace_in_use = 1;
+  if (using_tls) *using_tls = 1;
+  return &dense_toom4_tls_workspace;
+}
+
+static void dense_toom4_tls_workspace_release(void) {
+  dense_toom4_tls_workspace_in_use = 0;
+}
+#endif
+
+static int try_dense_toom4_l64d2_dispatch_route(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *left,
+  const XrayScratchBigInt *right) {
 #if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (!out || !left || !right || left->count == 0 || right->count == 0) return 0;
+  size_t left_count = left->count;
+  size_t right_count = right->count;
+  size_t max_count = left_count > right_count ? left_count : right_count;
+  size_t min_count = left_count < right_count ? left_count : right_count;
+  if (min_count < XRAY_BIGINT_DENSE_TOOM4_L64D2_MIN_LIMBS ||
+      max_count > XRAY_BIGINT_DENSE_TOOM4_L64D2_MAX_LIMBS ||
+      min_count * 4U < max_count * 3U) {
+    return 0;
+  }
+  unsigned int interp_flags = XRAY_TOOM3_INTERP_SHIFT_DIV2 |
+    XRAY_TOOM3_INTERP_EXACT_DIV3 |
+    XRAY_TOOM4_INTERP_FACTORED_DIV;
+  int using_tls = 0;
+  XrayBigIntMulWorkspace local_workspace;
+  XrayBigIntMulWorkspace *workspace = NULL;
+#if XRAY_BIGINT_HAS_THREAD_LOCAL
+  workspace = dense_toom4_tls_workspace_acquire(&using_tls);
+#endif
+  if (!workspace) {
+    xray_bigint_mul_workspace_init(&local_workspace);
+    workspace = &local_workspace;
+  }
+  int ok = 0;
+  if (max_count < XRAY_BIGINT_DENSE_TOOM4_TOP_MIN_LIMBS) {
+    unsigned int combo_interp_flags = XRAY_TOOM3_INTERP_SHIFT_DIV2 |
+      XRAY_TOOM3_INTERP_EXACT_DIV3;
+    const int use_upper_combo = max_count >= XRAY_BIGINT_DENSE_TOOM3_COMBO_UPPER_MIN_LIMBS;
+    ok = mul_toom3_full_workspace_reuse_probe_internal(
+      out,
+      left,
+      right,
+      use_upper_combo ? 40U : 64U,
+      use_upper_combo ? 3U : 2U,
+      combo_interp_flags,
+      workspace);
+  } else if (max_count < XRAY_BIGINT_DENSE_TOOM4_PARALLEL_LOW_MAX_LIMBS) {
+    ok = mul_toom4_top_full_workspace_probe_internal_ex(
+      out,
+      left,
+      right,
+      48U,
+      3U,
+      interp_flags,
+      workspace,
+      XRAY_BIGINT_DENSE_TOOM4_TOP_MIN_LIMBS,
+      XRAY_BIGINT_DENSE_TOOM4_PARALLEL_MID_GROUPS);
+  } else if (max_count < XRAY_BIGINT_DENSE_TOOM4_PARALLEL_MID_MAX_LIMBS) {
+    ok = mul_toom4_top_full_workspace_probe_internal_ex(
+      out,
+      left,
+      right,
+      64U,
+      2U,
+      interp_flags,
+      workspace,
+      XRAY_BIGINT_DENSE_TOOM4_PARALLEL_MID_MIN_LIMBS,
+      XRAY_BIGINT_DENSE_TOOM4_PARALLEL_MID_GROUPS);
+  } else if (max_count >= XRAY_BIGINT_DENSE_TOOM4_PARALLEL_UPPER_MIN_LIMBS &&
+             max_count < XRAY_BIGINT_DENSE_TOOM4_PARALLEL_UPPER_MAX_LIMBS) {
+    ok = mul_toom4_top_full_workspace_probe_internal_ex(
+      out,
+      left,
+      right,
+      64U,
+      2U,
+      interp_flags,
+      workspace,
+      XRAY_BIGINT_DENSE_TOOM4_PARALLEL_UPPER_MIN_LIMBS,
+      XRAY_BIGINT_DENSE_TOOM4_PARALLEL_MID_GROUPS);
+  } else {
+    ok = mul_toom4_top_full_workspace_probe_internal(
+      out,
+      left,
+      right,
+      64U,
+      2U,
+      interp_flags,
+      workspace);
+  }
+  if (using_tls) {
+#if XRAY_BIGINT_HAS_THREAD_LOCAL
+    dense_toom4_tls_workspace_release();
+#endif
+  } else {
+    xray_bigint_mul_workspace_clear(&local_workspace);
+  }
+  return ok;
+#else
+  (void)out;
+  (void)left;
+  (void)right;
+  return 0;
+#endif
+}
+
+static int mul_dispatch(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
   size_t left_count = left ? left->count : 0;
   size_t right_count = right ? right->count : 0;
   size_t max_count = left_count > right_count ? left_count : right_count;
   size_t min_count = left_count < right_count ? left_count : right_count;
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (max_count < XRAY_BIGINT_SPARSE_MUL_MIN_LIMBS) {
+    int use_unroll4 = min_count >= XRAY_BIGINT_UNROLL4_ROUTE_MIN_LIMBS &&
+        max_count <= XRAY_BIGINT_UNROLL4_ROUTE_MAX_LIMBS &&
+        min_count * 3U >= max_count * 2U;
+    return mul_schoolbook_mode(out, left, right, use_unroll4, 0);
+  }
+#endif
+  if (try_sparse_mul_dispatch_route(out, left, right)) return 1;
+  if (min_count >= XRAY_BIGINT_DENSE_NTT16_MIN_LIMBS &&
+      xray_bigint_mul_ntt32_probe(out, left, right)) {
+    return 1;
+  }
+  if (min_count >= XRAY_BIGINT_DENSE_NTT16_MIN_LIMBS &&
+      xray_bigint_mul_ntt16_probe(out, left, right)) {
+    return 1;
+  }
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (try_dense_toom4_l64d2_dispatch_route(out, left, right)) return 1;
   if (min_count >= XRAY_BIGINT_UNROLL4_ROUTE_MIN_LIMBS &&
       max_count <= XRAY_BIGINT_UNROLL4_ROUTE_MAX_LIMBS &&
       min_count * 3U >= max_count * 2U) {
@@ -5309,6 +8628,364 @@ static int mul_dispatch(XrayScratchBigInt *out, const XrayScratchBigInt *left, c
   }
 #endif
   return mul_dispatch_threshold(out, left, right, XRAY_BIGINT_KARATSUBA_THRESHOLD);
+}
+
+static int try_dense_square_chung_sqr4_dispatch_route(XrayScratchBigInt *out, const XrayScratchBigInt *value, int check_sparse) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (!out || !value || value->count == 0) return 0;
+  int in_low_window =
+    value->count >= XRAY_BIGINT_DENSE_SQUARE_CHUNG_SQR4_MIN_LIMBS &&
+    value->count < XRAY_BIGINT_DENSE_SQUARE_CHUNG_SQR4_MAX_LIMBS;
+  int in_8192_window =
+    value->count >= XRAY_BIGINT_DENSE_SQUARE_CHUNG_SQR4_8192_MIN_LIMBS &&
+    value->count < XRAY_BIGINT_DENSE_SQUARE_CHUNG_SQR4_8192_MAX_LIMBS;
+  if (!in_low_window && !in_8192_window) {
+    return 0;
+  }
+  if (check_sparse) {
+    size_t sparse_cap = value->count / XRAY_BIGINT_SPARSE_SQUARE_DENSITY_DIVISOR;
+    size_t nonzero_count = 0;
+    if (sparse_cap > 0 && count_nonzero_limbs_bounded(value, sparse_cap, &nonzero_count)) {
+      return 0;
+    }
+  }
+  unsigned int interp_flags = XRAY_TOOM3_INTERP_SHIFT_DIV2 |
+    XRAY_TOOM3_INTERP_EXACT_DIV3;
+  int using_tls = 0;
+  XrayBigIntMulWorkspace local_workspace;
+  XrayBigIntMulWorkspace *workspace = NULL;
+#if XRAY_BIGINT_HAS_THREAD_LOCAL
+  workspace = dense_toom4_tls_workspace_acquire(&using_tls);
+#endif
+  if (!workspace) {
+    xray_bigint_mul_workspace_init(&local_workspace);
+    workspace = &local_workspace;
+  }
+  size_t leaf_threshold = in_8192_window ?
+    XRAY_BIGINT_DENSE_SQUARE_CHUNG_SQR4_8192_LEAF_LIMBS :
+    XRAY_BIGINT_DENSE_SQUARE_CHUNG_SQR4_LEAF_LIMBS;
+  size_t depth_limit = in_8192_window ?
+    XRAY_BIGINT_DENSE_SQUARE_CHUNG_SQR4_8192_DEPTH :
+    XRAY_BIGINT_DENSE_SQUARE_CHUNG_SQR4_DEPTH;
+  size_t parallel_group_count = in_8192_window ?
+    XRAY_BIGINT_DENSE_SQUARE_CHUNG_SQR4_8192_GROUPS :
+    0U;
+  int ok = square_toom4_chung_sqr4_full_workspace_reuse_probe_internal(
+    out,
+    value,
+    leaf_threshold,
+    leaf_threshold,
+    depth_limit,
+    interp_flags,
+    parallel_group_count,
+    workspace);
+  if (using_tls) {
+#if XRAY_BIGINT_HAS_THREAD_LOCAL
+    dense_toom4_tls_workspace_release();
+#endif
+  } else {
+    xray_bigint_mul_workspace_clear(&local_workspace);
+  }
+  return ok;
+#else
+  (void)out;
+  (void)value;
+  (void)check_sparse;
+  return 0;
+#endif
+}
+
+static int try_dense_square_toom4_dispatch_route(XrayScratchBigInt *out, const XrayScratchBigInt *value, int check_sparse) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (!out || !value || value->count == 0) return 0;
+  if (value->count < XRAY_BIGINT_DENSE_SQUARE_TOOM4_MIN_LIMBS ||
+      value->count > XRAY_BIGINT_DENSE_TOOM4_L64D2_MAX_LIMBS) {
+    return 0;
+  }
+  if (check_sparse) {
+    size_t sparse_cap = value->count / XRAY_BIGINT_SPARSE_SQUARE_DENSITY_DIVISOR;
+    size_t nonzero_count = 0;
+    if (sparse_cap > 0 && count_nonzero_limbs_bounded(value, sparse_cap, &nonzero_count)) {
+      return 0;
+    }
+  }
+  unsigned int interp_flags = XRAY_TOOM3_INTERP_SHIFT_DIV2 |
+    XRAY_TOOM3_INTERP_EXACT_DIV3 |
+    XRAY_TOOM4_INTERP_FACTORED_DIV;
+  int using_tls = 0;
+  XrayBigIntMulWorkspace local_workspace;
+  XrayBigIntMulWorkspace *workspace = NULL;
+#if XRAY_BIGINT_HAS_THREAD_LOCAL
+  workspace = dense_toom4_tls_workspace_acquire(&using_tls);
+#endif
+  if (!workspace) {
+    xray_bigint_mul_workspace_init(&local_workspace);
+    workspace = &local_workspace;
+  }
+  size_t square_leaf_threshold = value->count >= 3200U ? 80U : 48U;
+  size_t square_depth_limit = value->count >= 3200U ? 2U : 3U;
+  int ok = mul_toom4_top_full_workspace_probe_internal(
+    out,
+    value,
+    value,
+    square_leaf_threshold,
+    square_depth_limit,
+    interp_flags,
+    workspace);
+  if (using_tls) {
+#if XRAY_BIGINT_HAS_THREAD_LOCAL
+    dense_toom4_tls_workspace_release();
+#endif
+  } else {
+    xray_bigint_mul_workspace_clear(&local_workspace);
+  }
+  return ok;
+#else
+  (void)out;
+  (void)value;
+  (void)check_sparse;
+  return 0;
+#endif
+}
+
+static int try_dense_square_self_mul_dispatch_route(XrayScratchBigInt *out, const XrayScratchBigInt *value, int check_sparse) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (!out || !value || value->count == 0) return 0;
+  if (value->count < XRAY_BIGINT_DENSE_TOOM4_L64D2_MIN_LIMBS ||
+      value->count >= XRAY_BIGINT_DENSE_SQUARE_TOOM4_MIN_LIMBS ||
+      value->count > XRAY_BIGINT_DENSE_TOOM4_L64D2_MAX_LIMBS) {
+    return 0;
+  }
+  if (check_sparse) {
+    size_t sparse_cap = value->count / XRAY_BIGINT_SPARSE_SQUARE_DENSITY_DIVISOR;
+    size_t nonzero_count = 0;
+    if (sparse_cap > 0 && count_nonzero_limbs_bounded(value, sparse_cap, &nonzero_count)) {
+      return 0;
+    }
+  }
+  return try_dense_toom4_l64d2_dispatch_route(out, value, value);
+#else
+  (void)out;
+  (void)value;
+  (void)check_sparse;
+  return 0;
+#endif
+}
+
+static int try_dense_square_toom3_dispatch_route(XrayScratchBigInt *out, const XrayScratchBigInt *value, int check_sparse) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (!out || !value || value->count == 0) return 0;
+  if (value->count < XRAY_BIGINT_DENSE_SQUARE_TOOM3_MIN_LIMBS ||
+      value->count >= XRAY_BIGINT_DENSE_SQUARE_TOOM3_MAX_LIMBS) {
+    return 0;
+  }
+  if (check_sparse) {
+    size_t sparse_cap = value->count / XRAY_BIGINT_SPARSE_SQUARE_DENSITY_DIVISOR;
+    size_t nonzero_count = 0;
+    if (sparse_cap > 0 && count_nonzero_limbs_bounded(value, sparse_cap, &nonzero_count)) {
+      return 0;
+    }
+  }
+  unsigned int interp_flags = XRAY_TOOM3_INTERP_SHIFT_DIV2 |
+    XRAY_TOOM3_INTERP_EXACT_DIV3;
+  int using_tls = 0;
+  XrayBigIntMulWorkspace local_workspace;
+  XrayBigIntMulWorkspace *workspace = NULL;
+#if XRAY_BIGINT_HAS_THREAD_LOCAL
+  workspace = dense_toom4_tls_workspace_acquire(&using_tls);
+#endif
+  if (!workspace) {
+    xray_bigint_mul_workspace_init(&local_workspace);
+    workspace = &local_workspace;
+  }
+  size_t leaf_threshold =
+    value->count < XRAY_BIGINT_DENSE_SQUARE_TOOM3_LOW_LEAF_CUT_LIMBS ? 48U :
+    (value->count < XRAY_BIGINT_DENSE_SQUARE_TOOM3_MID_LEAF_CUT_LIMBS ? 64U :
+    (value->count >= XRAY_BIGINT_DENSE_SQUARE_TOOM3_UPPER_LEAF_CUT_LIMBS ? 48U : 64U));
+  size_t depth_limit =
+    value->count < XRAY_BIGINT_DENSE_SQUARE_TOOM3_LOW_LEAF_CUT_LIMBS ? 3U :
+    (value->count >= XRAY_BIGINT_DENSE_SQUARE_TOOM3_UPPER_LEAF_CUT_LIMBS ? 3U : 2U);
+  int ok = square_toom3_full_workspace_reuse_probe_internal(
+    out,
+    value,
+    leaf_threshold,
+    depth_limit,
+    interp_flags,
+    workspace,
+    0,
+    0U,
+    0U);
+  if (using_tls) {
+#if XRAY_BIGINT_HAS_THREAD_LOCAL
+    dense_toom4_tls_workspace_release();
+#endif
+  } else {
+    xray_bigint_mul_workspace_clear(&local_workspace);
+  }
+  return ok;
+#else
+  (void)out;
+  (void)value;
+  (void)check_sparse;
+  return 0;
+#endif
+}
+
+static int try_dense_square_parallel_toom3_dispatch_route(XrayScratchBigInt *out, const XrayScratchBigInt *value, int check_sparse) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (!out || !value || value->count == 0) return 0;
+  if (value->count < XRAY_BIGINT_DENSE_SQUARE_PARALLEL_TOOM3_MIN_LIMBS ||
+      value->count >= XRAY_BIGINT_DENSE_SQUARE_PARALLEL_TOOM3_MAX_LIMBS) {
+    return 0;
+  }
+  if (check_sparse) {
+    size_t sparse_cap = value->count / XRAY_BIGINT_SPARSE_SQUARE_DENSITY_DIVISOR;
+    size_t nonzero_count = 0;
+    if (sparse_cap > 0 && count_nonzero_limbs_bounded(value, sparse_cap, &nonzero_count)) {
+      return 0;
+    }
+  }
+  unsigned int interp_flags = XRAY_TOOM3_INTERP_SHIFT_DIV2 |
+    XRAY_TOOM3_INTERP_EXACT_DIV3;
+  int using_tls = 0;
+  XrayBigIntMulWorkspace local_workspace;
+  XrayBigIntMulWorkspace *workspace = NULL;
+#if XRAY_BIGINT_HAS_THREAD_LOCAL
+  workspace = dense_toom4_tls_workspace_acquire(&using_tls);
+#endif
+  if (!workspace) {
+    xray_bigint_mul_workspace_init(&local_workspace);
+    workspace = &local_workspace;
+  }
+  size_t leaf_threshold =
+    (value->count >= XRAY_BIGINT_DENSE_SQUARE_PARALLEL_TOOM3_8192_MIN_LIMBS &&
+     value->count < XRAY_BIGINT_DENSE_SQUARE_PARALLEL_TOOM3_8192_MAX_LIMBS) ?
+      XRAY_BIGINT_DENSE_SQUARE_PARALLEL_TOOM3_8192_LEAF_LIMBS :
+    value->count < XRAY_BIGINT_DENSE_SQUARE_PARALLEL_TOOM3_LOW_LEAF_CUT_LIMBS ? 48U :
+    (value->count < XRAY_BIGINT_DENSE_SQUARE_PARALLEL_TOOM3_MID_LEAF_CUT_LIMBS ? 40U :
+    (value->count < XRAY_BIGINT_DENSE_SQUARE_PARALLEL_TOOM3_UPPER_LEAF_CUT_LIMBS ? 64U : 48U));
+  size_t depth_limit = value->count < XRAY_BIGINT_DENSE_SQUARE_PARALLEL_TOOM3_UPPER_LEAF_CUT_LIMBS ? 2U : 3U;
+  int ok = square_toom3_full_workspace_reuse_probe_internal(
+    out,
+    value,
+    leaf_threshold,
+    depth_limit,
+    interp_flags,
+    workspace,
+    0,
+    1U,
+    XRAY_BIGINT_DENSE_SQUARE_PARALLEL_TOOM3_GROUPS);
+  if (using_tls) {
+#if XRAY_BIGINT_HAS_THREAD_LOCAL
+    dense_toom4_tls_workspace_release();
+#endif
+  } else {
+    xray_bigint_mul_workspace_clear(&local_workspace);
+  }
+  return ok;
+#else
+  (void)out;
+  (void)value;
+  (void)check_sparse;
+  return 0;
+#endif
+}
+
+static int try_dense_square_parallel_toom4_dispatch_route(XrayScratchBigInt *out, const XrayScratchBigInt *value, int check_sparse) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (!out || !value || value->count == 0) return 0;
+  if (value->count < XRAY_BIGINT_DENSE_SQUARE_PARALLEL_TOOM4_MIN_LIMBS ||
+      value->count >= XRAY_BIGINT_DENSE_SQUARE_PARALLEL_TOOM4_MAX_LIMBS ||
+      value->count > XRAY_BIGINT_DENSE_TOOM4_L64D2_MAX_LIMBS) {
+    return 0;
+  }
+  if (check_sparse) {
+    size_t sparse_cap = value->count / XRAY_BIGINT_SPARSE_SQUARE_DENSITY_DIVISOR;
+    size_t nonzero_count = 0;
+    if (sparse_cap > 0 && count_nonzero_limbs_bounded(value, sparse_cap, &nonzero_count)) {
+      return 0;
+    }
+  }
+  unsigned int interp_flags = XRAY_TOOM3_INTERP_SHIFT_DIV2 |
+    XRAY_TOOM3_INTERP_EXACT_DIV3 |
+    XRAY_TOOM4_INTERP_FACTORED_DIV;
+  int using_tls = 0;
+  XrayBigIntMulWorkspace local_workspace;
+  XrayBigIntMulWorkspace *workspace = NULL;
+#if XRAY_BIGINT_HAS_THREAD_LOCAL
+  workspace = dense_toom4_tls_workspace_acquire(&using_tls);
+#endif
+  if (!workspace) {
+    xray_bigint_mul_workspace_init(&local_workspace);
+    workspace = &local_workspace;
+  }
+  int ok = mul_toom4_top_full_workspace_probe_internal_ex(
+    out,
+    value,
+    value,
+    80U,
+    2U,
+    interp_flags,
+    workspace,
+    XRAY_BIGINT_DENSE_SQUARE_PARALLEL_TOOM4_MIN_LIMBS,
+    XRAY_BIGINT_DENSE_SQUARE_PARALLEL_TOOM4_GROUPS);
+  if (using_tls) {
+#if XRAY_BIGINT_HAS_THREAD_LOCAL
+    dense_toom4_tls_workspace_release();
+#endif
+  } else {
+    xray_bigint_mul_workspace_clear(&local_workspace);
+  }
+  return ok;
+#else
+  (void)out;
+  (void)value;
+  (void)check_sparse;
+  return 0;
+#endif
+}
+
+static int square_dispatch(XrayScratchBigInt *out, const XrayScratchBigInt *value) {
+  if (value && value->count < XRAY_BIGINT_SPARSE_SQUARE_MIN_LIMBS) {
+    if (value->count == 0) return set_u32(out, 0);
+    if (value->count <= 4U) return square_tiny_dense(out, value);
+    if (value->count <= XRAY_BIGINT_SQUARE_SELF_MUL_MAX_LIMBS) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+      int use_unroll4 = value->count >= XRAY_BIGINT_UNROLL4_ROUTE_MIN_LIMBS;
+#else
+      int use_unroll4 = 0;
+#endif
+      return mul_schoolbook_mode(out, value, value, use_unroll4, 0);
+    }
+    return square_schoolbook(out, value);
+  }
+  if (try_sparse_square_dispatch_route(out, value)) return 1;
+  if (value && value->count < XRAY_BIGINT_KARATSUBA_THRESHOLD) {
+    return square_schoolbook_dense(out, value);
+  }
+  if (value &&
+      value->count >= XRAY_BIGINT_DENSE_SQUARE_NTT16_MIN_LIMBS &&
+      xray_bigint_square_ntt32_lowtailmap_probe(out, value)) {
+    return 1;
+  }
+  if (value &&
+      value->count >= XRAY_BIGINT_DENSE_SQUARE_NTT16_MIN_LIMBS &&
+      xray_bigint_square_ntt16_probe(out, value)) {
+    return 1;
+  }
+  if (try_dense_square_chung_sqr4_dispatch_route(out, value, 0)) return 1;
+  if (value &&
+      value->count >= XRAY_BIGINT_DENSE_SQUARE_TOOM3_MIN_LIMBS &&
+      value->count < XRAY_BIGINT_DENSE_SQUARE_PARALLEL_TOOM3_MIN_LIMBS &&
+      try_dense_square_toom3_dispatch_route(out, value, 0)) {
+    return 1;
+  }
+  if (try_dense_square_toom4_dispatch_route(out, value, 0)) return 1;
+  if (try_dense_square_parallel_toom3_dispatch_route(out, value, 0)) return 1;
+  if (try_dense_square_parallel_toom4_dispatch_route(out, value, 0)) return 1;
+  if (try_dense_square_toom3_dispatch_route(out, value, 0)) return 1;
+  if (try_dense_square_self_mul_dispatch_route(out, value, 0)) return 1;
+  return square_dispatch_threshold(out, value, XRAY_BIGINT_KARATSUBA_THRESHOLD);
 }
 
 int xray_bigint_mul(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
@@ -5330,12 +9007,12 @@ int xray_bigint_square(XrayScratchBigInt *out, const XrayScratchBigInt *value) {
   if (out == value) {
     XrayScratchBigInt temp;
     xray_bigint_init(&temp);
-    int ok = square_dispatch_threshold(&temp, value, XRAY_BIGINT_KARATSUBA_THRESHOLD);
+    int ok = square_dispatch(&temp, value);
     if (ok) ok = xray_bigint_copy(out, &temp);
     xray_bigint_clear(&temp);
     return ok;
   }
-  return square_dispatch_threshold(out, value, XRAY_BIGINT_KARATSUBA_THRESHOLD);
+  return square_dispatch(out, value);
 }
 
 typedef int (*XrayBigintBinaryOp)(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right);
@@ -5445,6 +9122,62 @@ int xray_bigint_square_fused_leaf_probe(XrayScratchBigInt *out, const XrayScratc
   return square_dispatch_threshold_mode(out, value, active_threshold, 1);
 }
 
+int xray_bigint_square_unroll4_leaf_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t threshold) {
+  if (!out || !value) return 0;
+  size_t active_threshold = threshold >= 2U ? threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  if (out == value) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = square_dispatch_threshold_mode(&temp, value, active_threshold, 2);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return square_dispatch_threshold_mode(out, value, active_threshold, 2);
+}
+
+int xray_bigint_square_comba_leaf_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t threshold) {
+  if (!out || !value) return 0;
+  size_t active_threshold = threshold >= 2U ? threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  if (out == value) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = square_dispatch_threshold_mode(&temp, value, active_threshold, 3);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return square_dispatch_threshold_mode(out, value, active_threshold, 3);
+}
+
+int xray_bigint_square_karatsuba_workspace_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t threshold) {
+  if (!out || !value) return 0;
+  size_t active_threshold = threshold >= 2U ? threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  if (out == value) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = square_karatsuba_workspace_probe_internal(&temp, value, active_threshold, 0);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return square_karatsuba_workspace_probe_internal(out, value, active_threshold, 0);
+}
+
+int xray_bigint_square_karatsuba_workspace_mul_leaf_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t threshold) {
+  if (!out || !value) return 0;
+  size_t active_threshold = threshold >= 2U ? threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  if (out == value) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = square_karatsuba_workspace_probe_internal(&temp, value, active_threshold, 1);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return square_karatsuba_workspace_probe_internal(out, value, active_threshold, 1);
+}
+
 int xray_bigint_mul_with_threshold(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t threshold) {
   if (!out || !left || !right) return 0;
   size_t active_threshold = threshold >= 2U ? threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
@@ -5457,6 +9190,1489 @@ int xray_bigint_mul_with_threshold(XrayScratchBigInt *out, const XrayScratchBigI
     return ok;
   }
   return mul_dispatch_threshold(out, left, right, active_threshold);
+}
+
+static uint32_t ntt16_mod_pow(uint32_t base, uint32_t exponent, uint32_t modulus) {
+  uint64_t result = 1U;
+  uint64_t factor = base % modulus;
+  while (exponent) {
+    if (exponent & 1U) result = (result * factor) % modulus;
+    factor = (factor * factor) % modulus;
+    exponent >>= 1U;
+  }
+  return (uint32_t)result;
+}
+
+static uint32_t ntt16_shoup_factor(uint32_t factor, uint32_t modulus) {
+  return (uint32_t)(((uint64_t)factor << 32U) / modulus);
+}
+
+static uint32_t ntt16_mul_shoup(uint32_t value, uint32_t factor, uint32_t factor_shoup, uint32_t modulus) {
+  uint64_t quotient = ((uint64_t)value * factor_shoup) >> 32U;
+  uint64_t reduced = (uint64_t)value * factor - quotient * modulus;
+  while (reduced >= modulus) reduced -= modulus;
+  return (uint32_t)reduced;
+}
+
+typedef struct XrayNtt16TwiddleCache {
+  size_t length;
+  uint32_t modulus;
+  int inverse;
+  uint32_t *twiddles;
+  uint32_t *twiddle_shoup;
+} XrayNtt16TwiddleCache;
+
+static XrayNtt16TwiddleCache ntt16_twiddle_caches[6];
+
+static int ntt16_twiddle_cache_slot(uint32_t modulus, int inverse) {
+  int direction = inverse ? 1 : 0;
+  if (modulus == XRAY_BIGINT_NTT16_MOD0) return direction;
+  if (modulus == XRAY_BIGINT_NTT16_MOD1) return 2 + direction;
+  if (modulus == XRAY_BIGINT_NTT32_MOD2) return 4 + direction;
+  return -1;
+}
+
+static int ntt16_prepare_twiddle_cache(size_t length, uint32_t modulus, int inverse) {
+  if (length < 32768U) return 1;
+  int slot = ntt16_twiddle_cache_slot(modulus, inverse);
+  if (slot < 0) return 1;
+  XrayNtt16TwiddleCache *cache = &ntt16_twiddle_caches[slot];
+  if (cache->length == length &&
+      cache->modulus == modulus &&
+      cache->inverse == (inverse ? 1 : 0) &&
+      cache->twiddles &&
+      cache->twiddle_shoup) {
+    return 1;
+  }
+
+  uint32_t *twiddles = (uint32_t *)malloc(sizeof(uint32_t) * (length - 1U));
+  uint32_t *twiddle_shoup = (uint32_t *)malloc(sizeof(uint32_t) * (length - 1U));
+  if (!twiddles || !twiddle_shoup) {
+    free(twiddles);
+    free(twiddle_shoup);
+    return 0;
+  }
+
+  size_t offset = 0;
+  for (size_t span = 2U; span <= length; span <<= 1U) {
+    size_t half = span >> 1U;
+    uint32_t root = ntt16_mod_pow(XRAY_BIGINT_NTT16_ROOT, (uint32_t)((modulus - 1U) / (uint32_t)span), modulus);
+    if (inverse) root = ntt16_mod_pow(root, modulus - 2U, modulus);
+    uint64_t factor = 1U;
+    for (size_t lane = 0; lane < half; ++lane) {
+      twiddles[offset + lane] = (uint32_t)factor;
+      twiddle_shoup[offset + lane] = ntt16_shoup_factor((uint32_t)factor, modulus);
+      factor = (factor * root) % modulus;
+    }
+    offset += half;
+    if (span == length) break;
+  }
+
+  free(cache->twiddles);
+  free(cache->twiddle_shoup);
+  cache->length = length;
+  cache->modulus = modulus;
+  cache->inverse = inverse ? 1 : 0;
+  cache->twiddles = twiddles;
+  cache->twiddle_shoup = twiddle_shoup;
+  return 1;
+}
+
+static int ntt16_get_twiddle_cache(
+  size_t length,
+  uint32_t modulus,
+  int inverse,
+  const uint32_t **twiddles,
+  const uint32_t **twiddle_shoup) {
+  if (!twiddles || !twiddle_shoup || length < 32768U) return 0;
+  int slot = ntt16_twiddle_cache_slot(modulus, inverse);
+  if (slot < 0) return 0;
+  XrayNtt16TwiddleCache *cache = &ntt16_twiddle_caches[slot];
+  if (cache->length != length ||
+      cache->modulus != modulus ||
+      cache->inverse != (inverse ? 1 : 0) ||
+      !cache->twiddles ||
+      !cache->twiddle_shoup) {
+    return 0;
+  }
+  *twiddles = cache->twiddles;
+  *twiddle_shoup = cache->twiddle_shoup;
+  return 1;
+}
+
+static int ntt16_transform(uint32_t *values, size_t length, uint32_t modulus, int inverse) {
+  if (!values || length == 0 || length > (size_t)XRAY_BIGINT_NTT16_MAX_LENGTH) return 0;
+  if ((length & (length - 1U)) != 0) return 0;
+  if (((uint32_t)(modulus - 1U) % (uint32_t)length) != 0) return 0;
+
+  const uint32_t *cached_twiddles = NULL;
+  const uint32_t *cached_twiddle_shoup = NULL;
+  int use_cached_twiddles = ntt16_get_twiddle_cache(
+    length,
+    modulus,
+    inverse,
+    &cached_twiddles,
+    &cached_twiddle_shoup);
+  uint32_t *twiddles = NULL;
+  uint32_t *twiddle_shoup = NULL;
+  if (!use_cached_twiddles) {
+    twiddles = (uint32_t *)malloc(sizeof(uint32_t) * (length >> 1U));
+    twiddle_shoup = (uint32_t *)malloc(sizeof(uint32_t) * (length >> 1U));
+    if (!twiddles || !twiddle_shoup) {
+      free(twiddles);
+      free(twiddle_shoup);
+      return 0;
+    }
+  }
+
+  for (size_t index = 1U, reversed = 0; index < length; ++index) {
+    size_t bit = length >> 1U;
+    while (reversed & bit) {
+      reversed ^= bit;
+      bit >>= 1U;
+    }
+    reversed ^= bit;
+    if (index < reversed) {
+      uint32_t temp = values[index];
+      values[index] = values[reversed];
+      values[reversed] = temp;
+    }
+  }
+
+  for (size_t span = 2U; span <= length; span <<= 1U) {
+    size_t half = span >> 1U;
+    const uint32_t *stage_twiddles = NULL;
+    const uint32_t *stage_twiddle_shoup = NULL;
+    if (use_cached_twiddles) {
+      size_t cache_offset = half - 1U;
+      stage_twiddles = cached_twiddles + cache_offset;
+      stage_twiddle_shoup = cached_twiddle_shoup + cache_offset;
+    } else {
+      uint32_t root = ntt16_mod_pow(XRAY_BIGINT_NTT16_ROOT, (uint32_t)((modulus - 1U) / (uint32_t)span), modulus);
+      if (inverse) root = ntt16_mod_pow(root, modulus - 2U, modulus);
+      uint64_t factor = 1U;
+      for (size_t lane = 0; lane < half; ++lane) {
+        twiddles[lane] = (uint32_t)factor;
+        twiddle_shoup[lane] = ntt16_shoup_factor((uint32_t)factor, modulus);
+        factor = (factor * root) % modulus;
+      }
+      stage_twiddles = twiddles;
+      stage_twiddle_shoup = twiddle_shoup;
+    }
+    for (size_t offset = 0; offset < length; offset += span) {
+      for (size_t lane = 0; lane < half; ++lane) {
+        uint32_t left = values[offset + lane];
+        uint32_t right = ntt16_mul_shoup(
+          values[offset + lane + half],
+          stage_twiddles[lane],
+          stage_twiddle_shoup[lane],
+          modulus);
+        uint32_t sum = left + right;
+        if (sum >= modulus) sum -= modulus;
+        values[offset + lane] = sum;
+        values[offset + lane + half] = left >= right ? left - right : (uint32_t)(left + modulus - right);
+      }
+    }
+    if (span == length) break;
+  }
+
+  if (inverse) {
+    uint32_t inverse_length = ntt16_mod_pow((uint32_t)length, modulus - 2U, modulus);
+    uint32_t inverse_length_shoup = ntt16_shoup_factor(inverse_length, modulus);
+    for (size_t index = 0; index < length; ++index) {
+      values[index] = ntt16_mul_shoup(values[index], inverse_length, inverse_length_shoup, modulus);
+    }
+  }
+  free(twiddles);
+  free(twiddle_shoup);
+  return 1;
+}
+
+typedef struct XrayNtt16TransformTask {
+  uint32_t *values;
+  size_t length;
+  uint32_t modulus;
+  int inverse;
+  int ok;
+} XrayNtt16TransformTask;
+
+#if defined(_WIN32) && defined(_MSC_VER)
+static unsigned __stdcall run_ntt16_transform_thread(void *context) {
+  XrayNtt16TransformTask *task = (XrayNtt16TransformTask *)context;
+  if (task) task->ok = ntt16_transform(task->values, task->length, task->modulus, task->inverse);
+  return 0;
+}
+
+static void __stdcall run_ntt16_transform_pool(
+  XrayWinThreadpoolInstance instance,
+  void *context,
+  XrayWinThreadpoolWork work) {
+  (void)instance;
+  (void)work;
+  XrayNtt16TransformTask *task = (XrayNtt16TransformTask *)context;
+  if (task) task->ok = ntt16_transform(task->values, task->length, task->modulus, task->inverse);
+}
+#endif
+
+static int ntt16_transform_tasks(XrayNtt16TransformTask *tasks, size_t task_count) {
+  if (!tasks || task_count == 0) return 0;
+  for (size_t index = 0; index < task_count; ++index) {
+    if (!ntt16_prepare_twiddle_cache(tasks[index].length, tasks[index].modulus, tasks[index].inverse)) return 0;
+  }
+#if defined(_WIN32) && defined(_MSC_VER)
+  if (task_count > 1U && tasks[0].length >= 32768U) {
+    if (tasks[0].length <= 65536U) {
+      XrayWinHandle handles[8] = {0};
+      size_t started = 0;
+      if (task_count > sizeof(handles) / sizeof(handles[0])) return 0;
+      for (size_t index = 0; index < task_count; ++index) {
+        tasks[index].ok = 0;
+        uintptr_t handle = _beginthreadex(NULL, 0, run_ntt16_transform_thread, &tasks[index], 0, NULL);
+        if (!handle) break;
+        handles[started++] = (XrayWinHandle)handle;
+      }
+      if (started) {
+        WaitForMultipleObjects((unsigned long)started, handles, 1, XRAY_WIN_WAIT_INFINITE);
+        for (size_t index = 0; index < started; ++index) CloseHandle(handles[index]);
+      }
+      if (started == task_count) {
+        int ok = 1;
+        for (size_t index = 0; index < task_count; ++index) ok = ok && tasks[index].ok;
+        return ok;
+      }
+    }
+    XrayWinThreadpoolWork works[8] = {0};
+    size_t created = 0;
+    if (task_count > sizeof(works) / sizeof(works[0])) return 0;
+    for (size_t index = 0; index < task_count; ++index) {
+      tasks[index].ok = 0;
+      XrayWinThreadpoolWork work = CreateThreadpoolWork(
+        run_ntt16_transform_pool,
+        &tasks[index],
+        NULL);
+      if (!work) break;
+      works[created++] = work;
+    }
+    if (created == task_count) {
+      for (size_t index = 0; index < created; ++index) SubmitThreadpoolWork(works[index]);
+      for (size_t index = 0; index < created; ++index) {
+        WaitForThreadpoolWorkCallbacks(works[index], 0);
+        CloseThreadpoolWork(works[index]);
+      }
+      int ok = 1;
+      for (size_t index = 0; index < task_count; ++index) ok = ok && tasks[index].ok;
+      return ok;
+    }
+    for (size_t index = 0; index < created; ++index) CloseThreadpoolWork(works[index]);
+  }
+#endif
+  int ok = 1;
+  for (size_t index = 0; ok && index < task_count; ++index) {
+    tasks[index].ok = ntt16_transform(tasks[index].values, tasks[index].length, tasks[index].modulus, tasks[index].inverse);
+    ok = ok && tasks[index].ok;
+  }
+  return ok;
+}
+
+#if defined(_WIN32) && defined(_MSC_VER) && XRAY_BIGINT_HAS_THREAD_LOCAL
+typedef struct XrayNtt16TransformWorker {
+  XrayWinHandle thread;
+  XrayWinHandle start_event;
+  XrayWinHandle done_event;
+  XrayNtt16TransformTask *task;
+  volatile long stop;
+} XrayNtt16TransformWorker;
+
+typedef struct XrayNtt16TransformWorkerPool {
+  XrayNtt16TransformWorker workers[XRAY_NTT16_TRANSFORM_POOL_WORKERS];
+  int initialized;
+  int atexit_registered;
+} XrayNtt16TransformWorkerPool;
+
+static XRAY_BIGINT_THREAD_LOCAL XrayNtt16TransformWorkerPool ntt16_transform_tls_pool;
+
+static unsigned __stdcall run_ntt16_transform_worker_thread(void *context) {
+  XrayNtt16TransformWorker *worker = (XrayNtt16TransformWorker *)context;
+  if (!worker) return 0U;
+  for (;;) {
+    WaitForSingleObject(worker->start_event, XRAY_WIN_WAIT_INFINITE);
+    if (worker->stop) {
+      SetEvent(worker->done_event);
+      return 0U;
+    }
+    if (worker->task) {
+      XrayNtt16TransformTask *task = worker->task;
+      task->ok = ntt16_transform(task->values, task->length, task->modulus, task->inverse);
+    }
+    SetEvent(worker->done_event);
+  }
+}
+
+static void ntt16_transform_worker_pool_clear(XrayNtt16TransformWorkerPool *pool) {
+  if (!pool) return;
+  XrayWinHandle threads[XRAY_NTT16_TRANSFORM_POOL_WORKERS];
+  size_t thread_count = 0;
+  for (size_t index = 0; index < XRAY_NTT16_TRANSFORM_POOL_WORKERS; ++index) {
+    XrayNtt16TransformWorker *worker = &pool->workers[index];
+    if (worker->thread && worker->start_event && worker->done_event) {
+      worker->stop = 1;
+      ResetEvent(worker->done_event);
+      SetEvent(worker->start_event);
+      threads[thread_count++] = worker->thread;
+    }
+  }
+  if (thread_count) WaitForMultipleObjects((unsigned long)thread_count, threads, 1, XRAY_WIN_WAIT_INFINITE);
+  for (size_t index = 0; index < XRAY_NTT16_TRANSFORM_POOL_WORKERS; ++index) {
+    XrayNtt16TransformWorker *worker = &pool->workers[index];
+    if (worker->thread) CloseHandle(worker->thread);
+    if (worker->start_event) CloseHandle(worker->start_event);
+    if (worker->done_event) CloseHandle(worker->done_event);
+    memset(worker, 0, sizeof(*worker));
+  }
+  pool->initialized = 0;
+}
+
+static void ntt16_transform_worker_pool_clear_at_exit(void) {
+  ntt16_transform_worker_pool_clear(&ntt16_transform_tls_pool);
+}
+
+static int ntt16_transform_worker_pool_prepare(XrayNtt16TransformWorkerPool *pool) {
+  if (!pool) return 0;
+  if (pool->initialized) return 1;
+  memset(pool->workers, 0, sizeof(pool->workers));
+  for (size_t index = 0; index < XRAY_NTT16_TRANSFORM_POOL_WORKERS; ++index) {
+    XrayNtt16TransformWorker *worker = &pool->workers[index];
+    worker->start_event = CreateEventA(NULL, 0, 0, NULL);
+    worker->done_event = CreateEventA(NULL, 1, 0, NULL);
+    if (!worker->start_event || !worker->done_event) {
+      ntt16_transform_worker_pool_clear(pool);
+      return 0;
+    }
+    uintptr_t handle = _beginthreadex(NULL, 0, run_ntt16_transform_worker_thread, worker, 0, NULL);
+    if (!handle) {
+      ntt16_transform_worker_pool_clear(pool);
+      return 0;
+    }
+    worker->thread = (XrayWinHandle)handle;
+  }
+  pool->initialized = 1;
+  if (!pool->atexit_registered) {
+    (void)atexit(ntt16_transform_worker_pool_clear_at_exit);
+    pool->atexit_registered = 1;
+  }
+  return 1;
+}
+
+static int ntt16_transform_tasks_persistent(XrayNtt16TransformTask *tasks, size_t task_count) {
+  if (!tasks || task_count == 0 || task_count > XRAY_NTT16_TRANSFORM_POOL_WORKERS) return 0;
+  if (tasks[0].length < 32768U) return ntt16_transform_tasks(tasks, task_count);
+  for (size_t index = 0; index < task_count; ++index) {
+    if (!ntt16_prepare_twiddle_cache(tasks[index].length, tasks[index].modulus, tasks[index].inverse)) return 0;
+  }
+  XrayNtt16TransformWorkerPool *pool = &ntt16_transform_tls_pool;
+  if (!ntt16_transform_worker_pool_prepare(pool)) return 0;
+  XrayWinHandle done_events[XRAY_NTT16_TRANSFORM_POOL_WORKERS];
+  for (size_t index = 0; index < task_count; ++index) {
+    XrayNtt16TransformWorker *worker = &pool->workers[index];
+    tasks[index].ok = 0;
+    worker->task = &tasks[index];
+    ResetEvent(worker->done_event);
+    done_events[index] = worker->done_event;
+    SetEvent(worker->start_event);
+  }
+  WaitForMultipleObjects((unsigned long)task_count, done_events, 1, XRAY_WIN_WAIT_INFINITE);
+  int ok = 1;
+  for (size_t index = 0; index < task_count; ++index) {
+    pool->workers[index].task = NULL;
+    ok = ok && tasks[index].ok;
+  }
+  return ok;
+}
+#endif
+
+static int ntt16_transform_tasks_select(
+  XrayNtt16TransformTask *tasks,
+  size_t task_count,
+  int persistent_transforms) {
+#if defined(_WIN32) && defined(_MSC_VER) && XRAY_BIGINT_HAS_THREAD_LOCAL
+  if (persistent_transforms) return ntt16_transform_tasks_persistent(tasks, task_count);
+#else
+  (void)persistent_transforms;
+#endif
+  return ntt16_transform_tasks(tasks, task_count);
+}
+
+typedef struct XrayNtt16PointwiseTask {
+  uint32_t *left;
+  const uint32_t *right;
+  size_t length;
+  uint32_t modulus;
+  int square;
+} XrayNtt16PointwiseTask;
+
+static void run_ntt16_pointwise_task(XrayNtt16PointwiseTask *task) {
+  if (!task || !task->left) return;
+  if (task->square) {
+    for (size_t index = 0; index < task->length; ++index) {
+      task->left[index] = (uint32_t)(((uint64_t)task->left[index] * task->left[index]) % task->modulus);
+    }
+  } else {
+    for (size_t index = 0; index < task->length; ++index) {
+      task->left[index] = (uint32_t)(((uint64_t)task->left[index] * task->right[index]) % task->modulus);
+    }
+  }
+}
+
+#if defined(_WIN32) && defined(_MSC_VER)
+static unsigned __stdcall run_ntt16_pointwise_thread(void *context) {
+  run_ntt16_pointwise_task((XrayNtt16PointwiseTask *)context);
+  return 0;
+}
+#endif
+
+static int ntt16_pointwise_tasks(XrayNtt16PointwiseTask *tasks, size_t task_count) {
+  if (!tasks || task_count == 0) return 0;
+#if defined(_WIN32) && defined(_MSC_VER)
+  if (task_count > 1U && tasks[0].length >= 32768U) {
+    XrayWinHandle handles[8] = {0};
+    size_t started = 0;
+    if (task_count > sizeof(handles) / sizeof(handles[0])) return 0;
+    for (size_t index = 0; index < task_count; ++index) {
+      uintptr_t handle = _beginthreadex(NULL, 0, run_ntt16_pointwise_thread, &tasks[index], 0, NULL);
+      if (!handle) break;
+      handles[started++] = (XrayWinHandle)handle;
+    }
+    if (started) {
+      WaitForMultipleObjects((unsigned long)started, handles, 1, XRAY_WIN_WAIT_INFINITE);
+      for (size_t index = 0; index < started; ++index) CloseHandle(handles[index]);
+    }
+    return started == task_count;
+  }
+#endif
+  for (size_t index = 0; index < task_count; ++index) run_ntt16_pointwise_task(&tasks[index]);
+  return 1;
+}
+
+static size_t ntt16_digit_count(const XrayScratchBigInt *value) {
+  if (!value || value->count == 0) return 0;
+  if (value->count > SIZE_MAX / 4U) return SIZE_MAX;
+  size_t digits = value->count * 4U;
+  while (digits) {
+    size_t digit_index = digits - 1U;
+    size_t limb_index = digit_index >> 2U;
+    unsigned int shift = (unsigned int)((digit_index & 3U) * XRAY_BIGINT_NTT16_BASE_BITS);
+    if (((value->limbs[limb_index] >> shift) & XRAY_BIGINT_NTT16_BASE_MASK) != 0) break;
+    digits--;
+  }
+  return digits;
+}
+
+static int ntt16_coefficient_bound_supported(size_t left_digits, size_t right_digits) {
+  size_t min_digits = left_digits < right_digits ? left_digits : right_digits;
+  uint64_t max_digit_product = XRAY_BIGINT_NTT16_BASE_MASK * XRAY_BIGINT_NTT16_BASE_MASK;
+  uint64_t crt_modulus = (uint64_t)XRAY_BIGINT_NTT16_MOD0 * (uint64_t)XRAY_BIGINT_NTT16_MOD1;
+  return min_digits <= (size_t)((crt_modulus - 1U) / max_digit_product);
+}
+
+static int ntt16_next_length(size_t required, size_t *out_length) {
+  if (!out_length || required == 0) return 0;
+  size_t length = 1U;
+  while (length < required) {
+    if (length > (size_t)XRAY_BIGINT_NTT16_MAX_LENGTH / 2U) return 0;
+    length <<= 1U;
+  }
+  if (length > (size_t)XRAY_BIGINT_NTT16_MAX_LENGTH) return 0;
+  *out_length = length;
+  return 1;
+}
+
+static void ntt16_fill_digits(uint32_t *digits, const XrayScratchBigInt *value, size_t digit_count) {
+  for (size_t index = 0; index < digit_count; ++index) {
+    size_t limb_index = index >> 2U;
+    unsigned int shift = (unsigned int)((index & 3U) * XRAY_BIGINT_NTT16_BASE_BITS);
+    digits[index] = (uint32_t)((value->limbs[limb_index] >> shift) & XRAY_BIGINT_NTT16_BASE_MASK);
+  }
+}
+
+static uint64_t ntt16_crt_coefficient(uint32_t residue0, uint32_t residue1, uint32_t inverse_mod0_mod1) {
+  uint64_t left = residue0;
+  uint64_t right = residue1;
+  uint64_t delta = right >= left ? right - left : right + XRAY_BIGINT_NTT16_MOD1 - left;
+  uint64_t scale = (delta * inverse_mod0_mod1) % XRAY_BIGINT_NTT16_MOD1;
+  return left + (uint64_t)XRAY_BIGINT_NTT16_MOD0 * scale;
+}
+
+static int ntt16_store_digit(XrayScratchBigInt *out, size_t digit_index, uint32_t digit, size_t digit_capacity) {
+  if (!out || digit_index >= digit_capacity) return 0;
+  size_t limb_index = digit_index >> 2U;
+  unsigned int shift = (unsigned int)((digit_index & 3U) * XRAY_BIGINT_NTT16_BASE_BITS);
+  out->limbs[limb_index] |= (uint64_t)digit << shift;
+  return 1;
+}
+
+static int ntt16_reconstruct_to_bigint(
+  XrayScratchBigInt *out,
+  const uint32_t *residue0,
+  const uint32_t *residue1,
+  size_t coefficient_count,
+  size_t left_digits,
+  size_t right_digits) {
+  if (!out || !residue0 || !residue1 || coefficient_count == 0) return 0;
+  if (left_digits > SIZE_MAX - right_digits) return 0;
+  size_t digit_capacity = left_digits + right_digits;
+  if (digit_capacity > SIZE_MAX - 4U) return 0;
+  digit_capacity += 4U;
+  size_t limb_capacity = (digit_capacity + 3U) >> 2U;
+  if (!reserve_limbs(out, limb_capacity)) return 0;
+  memset(out->limbs, 0, sizeof(uint64_t) * limb_capacity);
+
+  uint32_t inverse_mod0_mod1 = ntt16_mod_pow(XRAY_BIGINT_NTT16_MOD0, XRAY_BIGINT_NTT16_MOD1 - 2U, XRAY_BIGINT_NTT16_MOD1);
+  uint64_t carry = 0;
+  size_t digit_index = 0;
+  for (size_t coeff_index = 0; coeff_index < coefficient_count; ++coeff_index) {
+    uint64_t coefficient = ntt16_crt_coefficient(residue0[coeff_index], residue1[coeff_index], inverse_mod0_mod1);
+    if (carry > UINT64_MAX - coefficient) return 0;
+    uint64_t value = coefficient + carry;
+    if (!ntt16_store_digit(out, digit_index++, (uint32_t)(value & XRAY_BIGINT_NTT16_BASE_MASK), digit_capacity)) return 0;
+    carry = value >> XRAY_BIGINT_NTT16_BASE_BITS;
+  }
+  while (carry) {
+    if (!ntt16_store_digit(out, digit_index++, (uint32_t)(carry & XRAY_BIGINT_NTT16_BASE_MASK), digit_capacity)) return 0;
+    carry >>= XRAY_BIGINT_NTT16_BASE_BITS;
+  }
+
+  out->count = (digit_index + 3U) >> 2U;
+  normalize(out);
+  return 1;
+}
+
+typedef struct XrayNtt32Uint128 {
+  uint64_t low;
+  uint64_t high;
+} XrayNtt32Uint128;
+
+static XrayNtt32Uint128 ntt32_u128_from_u64(uint64_t value) {
+  XrayNtt32Uint128 result;
+  result.low = value;
+  result.high = 0;
+  return result;
+}
+
+static XrayNtt32Uint128 ntt32_mul_u64_u32(uint64_t left, uint32_t right) {
+  XrayNtt32Uint128 result;
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  unsigned __int64 high = 0;
+  unsigned __int64 low = _umul128(left, right, &high);
+  result.low = (uint64_t)low;
+  result.high = (uint64_t)high;
+#else
+  __uint128_t product = (__uint128_t)left * (__uint128_t)right;
+  result.low = (uint64_t)product;
+  result.high = (uint64_t)(product >> 64);
+#endif
+  return result;
+}
+
+static void ntt32_u128_add_u64(XrayNtt32Uint128 *value, uint64_t addend) {
+  uint64_t before = value->low;
+  value->low += addend;
+  if (value->low < before) value->high++;
+}
+
+static void ntt32_u128_add(XrayNtt32Uint128 *value, XrayNtt32Uint128 addend) {
+  uint64_t before = value->low;
+  value->low += addend.low;
+  value->high += addend.high + (value->low < before ? 1U : 0U);
+}
+
+static size_t ntt32_digit_count(const XrayScratchBigInt *value) {
+  if (!value || value->count == 0) return 0;
+  if (value->count > SIZE_MAX / 2U) return SIZE_MAX;
+  size_t digits = value->count * 2U;
+  while (digits) {
+    size_t digit_index = digits - 1U;
+    size_t limb_index = digit_index >> 1U;
+    unsigned int shift = (unsigned int)((digit_index & 1U) * 32U);
+    if ((uint32_t)(value->limbs[limb_index] >> shift) != 0) break;
+    digits--;
+  }
+  return digits;
+}
+
+static int ntt32_coefficient_bound_supported(size_t left_digits, size_t right_digits) {
+  size_t min_digits = left_digits < right_digits ? left_digits : right_digits;
+  return min_digits <= XRAY_BIGINT_NTT32_MAX_SAFE_DIGITS;
+}
+
+static void ntt32_fill_digits_all_mods(
+  uint32_t *digits0,
+  uint32_t *digits1,
+  uint32_t *digits2,
+  const XrayScratchBigInt *value,
+  size_t digit_count) {
+  for (size_t index = 0; index < digit_count; ++index) {
+    size_t limb_index = index >> 1U;
+    unsigned int shift = (unsigned int)((index & 1U) * 32U);
+    uint32_t digit = (uint32_t)(value->limbs[limb_index] >> shift);
+    digits0[index] = (uint32_t)(digit % XRAY_BIGINT_NTT16_MOD0);
+    digits1[index] = (uint32_t)(digit % XRAY_BIGINT_NTT16_MOD1);
+    digits2[index] = (uint32_t)(digit % XRAY_BIGINT_NTT32_MOD2);
+  }
+}
+
+static int ntt32_store_digit(XrayScratchBigInt *out, size_t digit_index, uint32_t digit, size_t digit_capacity) {
+  if (!out || digit_index >= digit_capacity) return 0;
+  size_t limb_index = digit_index >> 1U;
+  unsigned int shift = (unsigned int)((digit_index & 1U) * 32U);
+  out->limbs[limb_index] |= (uint64_t)digit << shift;
+  return 1;
+}
+
+static uint32_t ntt32_reduce_mod2_u32(uint32_t value) {
+  if (value >= XRAY_BIGINT_NTT32_MOD2) value -= XRAY_BIGINT_NTT32_MOD2;
+  if (value >= XRAY_BIGINT_NTT32_MOD2) value -= XRAY_BIGINT_NTT32_MOD2;
+  return value;
+}
+
+static XrayNtt32Uint128 ntt32_crt_coefficient(
+  uint32_t residue0,
+  uint32_t residue1,
+  uint32_t residue2,
+  uint32_t inverse_mod0_mod1,
+  uint32_t inverse_mod0_mod1_shoup,
+  uint32_t inverse_mod0mod1_mod2,
+  uint32_t inverse_mod0mod1_mod2_shoup,
+  uint32_t mod0_mod2,
+  uint32_t mod0_mod2_shoup,
+  uint64_t mod0_mod1) {
+  uint64_t delta1 = residue1 >= residue0 ?
+    (uint64_t)residue1 - residue0 :
+    (uint64_t)residue1 + XRAY_BIGINT_NTT16_MOD1 - residue0;
+  uint32_t t1 = ntt16_mul_shoup(
+    (uint32_t)delta1,
+    inverse_mod0_mod1,
+    inverse_mod0_mod1_shoup,
+    XRAY_BIGINT_NTT16_MOD1);
+  uint32_t mod2_product = ntt16_mul_shoup(
+    ntt32_reduce_mod2_u32(t1),
+    mod0_mod2,
+    mod0_mod2_shoup,
+    XRAY_BIGINT_NTT32_MOD2);
+  uint32_t x_mod2 = ntt32_reduce_mod2_u32(residue0);
+  x_mod2 += mod2_product;
+  if (x_mod2 >= XRAY_BIGINT_NTT32_MOD2) x_mod2 -= XRAY_BIGINT_NTT32_MOD2;
+  uint64_t delta2 = residue2 >= x_mod2 ?
+    (uint64_t)residue2 - x_mod2 :
+    (uint64_t)residue2 + XRAY_BIGINT_NTT32_MOD2 - x_mod2;
+  uint32_t t2 = ntt16_mul_shoup(
+    (uint32_t)delta2,
+    inverse_mod0mod1_mod2,
+    inverse_mod0mod1_mod2_shoup,
+    XRAY_BIGINT_NTT32_MOD2);
+
+  XrayNtt32Uint128 coefficient = ntt32_u128_from_u64(residue0);
+  ntt32_u128_add_u64(&coefficient, (uint64_t)XRAY_BIGINT_NTT16_MOD0 * t1);
+  ntt32_u128_add(&coefficient, ntt32_mul_u64_u32(mod0_mod1, t2));
+  return coefficient;
+}
+
+typedef struct XrayNtt32CrtTask {
+  const uint32_t *residue0;
+  const uint32_t *residue1;
+  const uint32_t *residue2;
+  uint64_t *coefficient_low;
+  uint64_t *coefficient_high;
+  size_t start;
+  size_t end;
+  uint32_t inverse_mod0_mod1;
+  uint32_t inverse_mod0_mod1_shoup;
+  uint32_t inverse_mod0mod1_mod2;
+  uint32_t inverse_mod0mod1_mod2_shoup;
+  uint32_t mod0_mod2;
+  uint32_t mod0_mod2_shoup;
+  uint64_t mod0_mod1;
+} XrayNtt32CrtTask;
+
+static void run_ntt32_crt_task(XrayNtt32CrtTask *task) {
+  if (!task) return;
+  for (size_t index = task->start; index < task->end; ++index) {
+    XrayNtt32Uint128 coefficient = ntt32_crt_coefficient(
+      task->residue0[index],
+      task->residue1[index],
+      task->residue2[index],
+      task->inverse_mod0_mod1,
+      task->inverse_mod0_mod1_shoup,
+      task->inverse_mod0mod1_mod2,
+      task->inverse_mod0mod1_mod2_shoup,
+      task->mod0_mod2,
+      task->mod0_mod2_shoup,
+      task->mod0_mod1);
+    task->coefficient_low[index] = coefficient.low;
+    task->coefficient_high[index] = coefficient.high;
+  }
+}
+
+#if defined(_WIN32) && defined(_MSC_VER)
+static void __stdcall run_ntt32_crt_pool(
+  XrayWinThreadpoolInstance instance,
+  void *context,
+  XrayWinThreadpoolWork work) {
+  (void)instance;
+  (void)work;
+  run_ntt32_crt_task((XrayNtt32CrtTask *)context);
+}
+#endif
+
+static int ntt32_compute_crt_coefficients(
+  const uint32_t *residue0,
+  const uint32_t *residue1,
+  const uint32_t *residue2,
+  uint64_t *coefficient_low,
+  uint64_t *coefficient_high,
+  size_t coefficient_count,
+  uint32_t inverse_mod0_mod1,
+  uint32_t inverse_mod0_mod1_shoup,
+  uint32_t inverse_mod0mod1_mod2,
+  uint32_t inverse_mod0mod1_mod2_shoup,
+  uint32_t mod0_mod2,
+  uint32_t mod0_mod2_shoup,
+  uint64_t mod0_mod1) {
+  if (!residue0 || !residue1 || !residue2 || !coefficient_low || !coefficient_high) return 0;
+  size_t task_count = coefficient_count >= 32768U ? 4U : 1U;
+  XrayNtt32CrtTask tasks[4];
+  memset(tasks, 0, sizeof(tasks));
+  for (size_t task_index = 0; task_index < task_count; ++task_index) {
+    size_t start = (coefficient_count * task_index) / task_count;
+    size_t end = (coefficient_count * (task_index + 1U)) / task_count;
+    tasks[task_index].residue0 = residue0;
+    tasks[task_index].residue1 = residue1;
+    tasks[task_index].residue2 = residue2;
+    tasks[task_index].coefficient_low = coefficient_low;
+    tasks[task_index].coefficient_high = coefficient_high;
+    tasks[task_index].start = start;
+    tasks[task_index].end = end;
+    tasks[task_index].inverse_mod0_mod1 = inverse_mod0_mod1;
+    tasks[task_index].inverse_mod0_mod1_shoup = inverse_mod0_mod1_shoup;
+    tasks[task_index].inverse_mod0mod1_mod2 = inverse_mod0mod1_mod2;
+    tasks[task_index].inverse_mod0mod1_mod2_shoup = inverse_mod0mod1_mod2_shoup;
+    tasks[task_index].mod0_mod2 = mod0_mod2;
+    tasks[task_index].mod0_mod2_shoup = mod0_mod2_shoup;
+    tasks[task_index].mod0_mod1 = mod0_mod1;
+  }
+#if defined(_WIN32) && defined(_MSC_VER)
+  if (task_count > 1U) {
+    XrayWinThreadpoolWork works[4] = {0};
+    size_t created = 0;
+    for (size_t index = 0; index < task_count; ++index) {
+      XrayWinThreadpoolWork work = CreateThreadpoolWork(
+        run_ntt32_crt_pool,
+        &tasks[index],
+        NULL);
+      if (!work) break;
+      works[created++] = work;
+    }
+    if (created == task_count) {
+      for (size_t index = 0; index < created; ++index) SubmitThreadpoolWork(works[index]);
+      for (size_t index = 0; index < created; ++index) {
+        WaitForThreadpoolWorkCallbacks(works[index], 0);
+        CloseThreadpoolWork(works[index]);
+      }
+      return 1;
+    }
+    for (size_t index = 0; index < created; ++index) CloseThreadpoolWork(works[index]);
+  }
+#endif
+  for (size_t index = 0; index < task_count; ++index) run_ntt32_crt_task(&tasks[index]);
+  return 1;
+}
+
+static int ntt32_reconstruct_to_bigint(
+  XrayScratchBigInt *out,
+  const uint32_t *residue0,
+  const uint32_t *residue1,
+  const uint32_t *residue2,
+  size_t coefficient_count,
+  size_t left_digits,
+  size_t right_digits,
+  uint64_t *coefficient_low_buffer,
+  uint64_t *coefficient_high_buffer,
+  size_t coefficient_buffer_capacity) {
+  if (!out || !residue0 || !residue1 || !residue2 || coefficient_count == 0) return 0;
+  if (left_digits > SIZE_MAX - right_digits) return 0;
+  size_t digit_capacity = left_digits + right_digits;
+  if (digit_capacity > SIZE_MAX - 2U) return 0;
+  digit_capacity += 2U;
+  size_t limb_capacity = (digit_capacity + 1U) >> 1U;
+  if (!reserve_limbs(out, limb_capacity)) return 0;
+  memset(out->limbs, 0, sizeof(uint64_t) * limb_capacity);
+
+  uint32_t inverse_mod0_mod1 = ntt16_mod_pow(XRAY_BIGINT_NTT16_MOD0, XRAY_BIGINT_NTT16_MOD1 - 2U, XRAY_BIGINT_NTT16_MOD1);
+  uint32_t inverse_mod0_mod1_shoup = ntt16_shoup_factor(inverse_mod0_mod1, XRAY_BIGINT_NTT16_MOD1);
+  uint32_t mod0_mod2 = XRAY_BIGINT_NTT16_MOD0 % XRAY_BIGINT_NTT32_MOD2;
+  uint32_t mod0_mod2_shoup = ntt16_shoup_factor(mod0_mod2, XRAY_BIGINT_NTT32_MOD2);
+  uint32_t mod1_mod2 = XRAY_BIGINT_NTT16_MOD1 % XRAY_BIGINT_NTT32_MOD2;
+  uint32_t mod0mod1_mod2 = (uint32_t)(((uint64_t)mod0_mod2 * mod1_mod2) % XRAY_BIGINT_NTT32_MOD2);
+  uint32_t inverse_mod0mod1_mod2 = ntt16_mod_pow(mod0mod1_mod2, XRAY_BIGINT_NTT32_MOD2 - 2U, XRAY_BIGINT_NTT32_MOD2);
+  uint32_t inverse_mod0mod1_mod2_shoup = ntt16_shoup_factor(inverse_mod0mod1_mod2, XRAY_BIGINT_NTT32_MOD2);
+  uint64_t mod0_mod1 = (uint64_t)XRAY_BIGINT_NTT16_MOD0 * XRAY_BIGINT_NTT16_MOD1;
+
+  int owns_coefficient_buffers = 0;
+  uint64_t *coefficient_low = coefficient_low_buffer;
+  uint64_t *coefficient_high = coefficient_high_buffer;
+  if (!coefficient_low || !coefficient_high || coefficient_buffer_capacity < coefficient_count) {
+    coefficient_low = (uint64_t *)malloc(sizeof(uint64_t) * coefficient_count);
+    coefficient_high = (uint64_t *)malloc(sizeof(uint64_t) * coefficient_count);
+    owns_coefficient_buffers = 1;
+  }
+  if (!coefficient_low || !coefficient_high) {
+    if (owns_coefficient_buffers) {
+      free(coefficient_low);
+      free(coefficient_high);
+    }
+    return 0;
+  }
+  int ok = ntt32_compute_crt_coefficients(
+    residue0,
+    residue1,
+    residue2,
+    coefficient_low,
+    coefficient_high,
+    coefficient_count,
+    inverse_mod0_mod1,
+    inverse_mod0_mod1_shoup,
+    inverse_mod0mod1_mod2,
+    inverse_mod0mod1_mod2_shoup,
+    mod0_mod2,
+    mod0_mod2_shoup,
+    mod0_mod1);
+
+  uint64_t carry = 0;
+  size_t digit_index = 0;
+  for (size_t coeff_index = 0; ok && coeff_index < coefficient_count; ++coeff_index) {
+    XrayNtt32Uint128 value;
+    value.low = coefficient_low[coeff_index];
+    value.high = coefficient_high[coeff_index];
+    ntt32_u128_add_u64(&value, carry);
+    if (value.high >> 32U) {
+      ok = 0;
+      break;
+    }
+    if (!ntt32_store_digit(out, digit_index++, (uint32_t)value.low, digit_capacity)) {
+      ok = 0;
+      break;
+    }
+    carry = (value.low >> 32U) | (value.high << 32U);
+  }
+  while (ok && carry) {
+    if (!ntt32_store_digit(out, digit_index++, (uint32_t)carry, digit_capacity)) {
+      ok = 0;
+      break;
+    }
+    carry >>= 32U;
+  }
+
+  if (owns_coefficient_buffers) {
+    free(coefficient_low);
+    free(coefficient_high);
+  }
+  if (!ok) return 0;
+  out->count = (digit_index + 1U) >> 1U;
+  normalize(out);
+  return 1;
+}
+
+static int ntt32_reconstruct_to_bigint_direct(
+  XrayScratchBigInt *out,
+  const uint32_t *residue0,
+  const uint32_t *residue1,
+  const uint32_t *residue2,
+  size_t coefficient_count,
+  size_t left_digits,
+  size_t right_digits) {
+  if (!out || !residue0 || !residue1 || !residue2 || coefficient_count == 0) return 0;
+  if (left_digits > SIZE_MAX - right_digits) return 0;
+  size_t digit_capacity = left_digits + right_digits;
+  if (digit_capacity > SIZE_MAX - 2U) return 0;
+  digit_capacity += 2U;
+  size_t limb_capacity = (digit_capacity + 1U) >> 1U;
+  if (!reserve_limbs(out, limb_capacity)) return 0;
+  memset(out->limbs, 0, sizeof(uint64_t) * limb_capacity);
+
+  uint32_t inverse_mod0_mod1 = ntt16_mod_pow(XRAY_BIGINT_NTT16_MOD0, XRAY_BIGINT_NTT16_MOD1 - 2U, XRAY_BIGINT_NTT16_MOD1);
+  uint32_t inverse_mod0_mod1_shoup = ntt16_shoup_factor(inverse_mod0_mod1, XRAY_BIGINT_NTT16_MOD1);
+  uint32_t mod0_mod2 = XRAY_BIGINT_NTT16_MOD0 % XRAY_BIGINT_NTT32_MOD2;
+  uint32_t mod0_mod2_shoup = ntt16_shoup_factor(mod0_mod2, XRAY_BIGINT_NTT32_MOD2);
+  uint32_t mod1_mod2 = XRAY_BIGINT_NTT16_MOD1 % XRAY_BIGINT_NTT32_MOD2;
+  uint32_t mod0mod1_mod2 = (uint32_t)(((uint64_t)mod0_mod2 * mod1_mod2) % XRAY_BIGINT_NTT32_MOD2);
+  uint32_t inverse_mod0mod1_mod2 = ntt16_mod_pow(mod0mod1_mod2, XRAY_BIGINT_NTT32_MOD2 - 2U, XRAY_BIGINT_NTT32_MOD2);
+  uint32_t inverse_mod0mod1_mod2_shoup = ntt16_shoup_factor(inverse_mod0mod1_mod2, XRAY_BIGINT_NTT32_MOD2);
+  uint64_t mod0_mod1 = (uint64_t)XRAY_BIGINT_NTT16_MOD0 * XRAY_BIGINT_NTT16_MOD1;
+
+  uint64_t carry = 0;
+  size_t digit_index = 0;
+  for (size_t coeff_index = 0; coeff_index < coefficient_count; ++coeff_index) {
+    XrayNtt32Uint128 value = ntt32_crt_coefficient(
+      residue0[coeff_index],
+      residue1[coeff_index],
+      residue2[coeff_index],
+      inverse_mod0_mod1,
+      inverse_mod0_mod1_shoup,
+      inverse_mod0mod1_mod2,
+      inverse_mod0mod1_mod2_shoup,
+      mod0_mod2,
+      mod0_mod2_shoup,
+      mod0_mod1);
+    ntt32_u128_add_u64(&value, carry);
+    if (value.high >> 32U) return 0;
+    if (!ntt32_store_digit(out, digit_index++, (uint32_t)value.low, digit_capacity)) return 0;
+    carry = (value.low >> 32U) | (value.high << 32U);
+  }
+  while (carry) {
+    if (!ntt32_store_digit(out, digit_index++, (uint32_t)carry, digit_capacity)) return 0;
+    carry >>= 32U;
+  }
+
+  out->count = (digit_index + 1U) >> 1U;
+  normalize(out);
+  return 1;
+}
+
+typedef struct XrayNtt32SquareWorkspace {
+  uint32_t *value0;
+  uint32_t *value1;
+  uint32_t *value2;
+  size_t transform_capacity;
+  uint64_t *coefficient_low;
+  uint64_t *coefficient_high;
+  size_t coefficient_capacity;
+  int atexit_registered;
+} XrayNtt32SquareWorkspace;
+
+#if XRAY_BIGINT_HAS_THREAD_LOCAL
+static XRAY_BIGINT_THREAD_LOCAL XrayNtt32SquareWorkspace ntt32_square_tls_workspace;
+
+static void ntt32_square_workspace_clear(XrayNtt32SquareWorkspace *workspace) {
+  if (!workspace) return;
+  free(workspace->value0);
+  free(workspace->value1);
+  free(workspace->value2);
+  free(workspace->coefficient_low);
+  free(workspace->coefficient_high);
+  workspace->value0 = NULL;
+  workspace->value1 = NULL;
+  workspace->value2 = NULL;
+  workspace->transform_capacity = 0;
+  workspace->coefficient_low = NULL;
+  workspace->coefficient_high = NULL;
+  workspace->coefficient_capacity = 0;
+}
+
+static void ntt32_square_tls_workspace_clear_at_exit(void) {
+  ntt32_square_workspace_clear(&ntt32_square_tls_workspace);
+}
+
+static int ntt32_square_workspace_prepare(
+  XrayNtt32SquareWorkspace *workspace,
+  size_t transform_length,
+  size_t coefficient_count) {
+  if (!workspace || transform_length == 0 || coefficient_count == 0) return 0;
+  if (!workspace->atexit_registered) {
+    (void)atexit(ntt32_square_tls_workspace_clear_at_exit);
+    workspace->atexit_registered = 1;
+  }
+  if (workspace->transform_capacity < transform_length) {
+    uint32_t *value0 = (uint32_t *)malloc(sizeof(uint32_t) * transform_length);
+    uint32_t *value1 = (uint32_t *)malloc(sizeof(uint32_t) * transform_length);
+    uint32_t *value2 = (uint32_t *)malloc(sizeof(uint32_t) * transform_length);
+    if (!value0 || !value1 || !value2) {
+      free(value0);
+      free(value1);
+      free(value2);
+      return 0;
+    }
+    free(workspace->value0);
+    free(workspace->value1);
+    free(workspace->value2);
+    workspace->value0 = value0;
+    workspace->value1 = value1;
+    workspace->value2 = value2;
+    workspace->transform_capacity = transform_length;
+  }
+  if (workspace->coefficient_capacity < coefficient_count) {
+    uint64_t *coefficient_low = (uint64_t *)malloc(sizeof(uint64_t) * coefficient_count);
+    uint64_t *coefficient_high = (uint64_t *)malloc(sizeof(uint64_t) * coefficient_count);
+    if (!coefficient_low || !coefficient_high) {
+      free(coefficient_low);
+      free(coefficient_high);
+      return 0;
+    }
+    free(workspace->coefficient_low);
+    free(workspace->coefficient_high);
+    workspace->coefficient_low = coefficient_low;
+    workspace->coefficient_high = coefficient_high;
+    workspace->coefficient_capacity = coefficient_count;
+  }
+  return 1;
+}
+#endif
+
+static int mul_ntt16_probe_internal(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
+  if (!out || !left || !right) return 0;
+  if (left->count == 0 || right->count == 0) return set_u32(out, 0);
+
+  size_t left_digits = ntt16_digit_count(left);
+  size_t right_digits = ntt16_digit_count(right);
+  if (left_digits == SIZE_MAX || right_digits == SIZE_MAX) return 0;
+  if (left_digits == 0 || right_digits == 0) return set_u32(out, 0);
+  if (left_digits > SIZE_MAX - right_digits) return 0;
+  size_t coefficient_count = left_digits + right_digits - 1U;
+  if (!ntt16_coefficient_bound_supported(left_digits, right_digits)) return 0;
+
+  size_t transform_length = 0;
+  if (!ntt16_next_length(coefficient_count, &transform_length)) return 0;
+
+  uint32_t *left0 = (uint32_t *)calloc(transform_length, sizeof(uint32_t));
+  uint32_t *right0 = (uint32_t *)calloc(transform_length, sizeof(uint32_t));
+  uint32_t *left1 = (uint32_t *)calloc(transform_length, sizeof(uint32_t));
+  uint32_t *right1 = (uint32_t *)calloc(transform_length, sizeof(uint32_t));
+  if (!left0 || !right0 || !left1 || !right1) {
+    free(left0);
+    free(right0);
+    free(left1);
+    free(right1);
+    return 0;
+  }
+
+  ntt16_fill_digits(left0, left, left_digits);
+  ntt16_fill_digits(right0, right, right_digits);
+  memcpy(left1, left0, sizeof(uint32_t) * left_digits);
+  memcpy(right1, right0, sizeof(uint32_t) * right_digits);
+
+  XrayNtt16TransformTask forward_tasks[] = {
+    {left0, transform_length, XRAY_BIGINT_NTT16_MOD0, 0, 0},
+    {right0, transform_length, XRAY_BIGINT_NTT16_MOD0, 0, 0},
+    {left1, transform_length, XRAY_BIGINT_NTT16_MOD1, 0, 0},
+    {right1, transform_length, XRAY_BIGINT_NTT16_MOD1, 0, 0}
+  };
+  int ok = ntt16_transform_tasks(forward_tasks, sizeof(forward_tasks) / sizeof(forward_tasks[0]));
+  if (ok) {
+    for (size_t index = 0; index < transform_length; ++index) {
+      left0[index] = (uint32_t)(((uint64_t)left0[index] * right0[index]) % XRAY_BIGINT_NTT16_MOD0);
+      left1[index] = (uint32_t)(((uint64_t)left1[index] * right1[index]) % XRAY_BIGINT_NTT16_MOD1);
+    }
+    XrayNtt16TransformTask inverse_tasks[] = {
+      {left0, transform_length, XRAY_BIGINT_NTT16_MOD0, 1, 0},
+      {left1, transform_length, XRAY_BIGINT_NTT16_MOD1, 1, 0}
+    };
+    ok =
+      ntt16_transform_tasks(inverse_tasks, sizeof(inverse_tasks) / sizeof(inverse_tasks[0])) &&
+      ntt16_reconstruct_to_bigint(out, left0, left1, coefficient_count, left_digits, right_digits);
+  }
+
+  free(left0);
+  free(right0);
+  free(left1);
+  free(right1);
+  return ok;
+}
+
+int xray_bigint_mul_ntt16_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
+  if (!out || !left || !right) return 0;
+  if (out == left || out == right) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = mul_ntt16_probe_internal(&temp, left, right);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return mul_ntt16_probe_internal(out, left, right);
+}
+
+static int square_ntt16_probe_internal(XrayScratchBigInt *out, const XrayScratchBigInt *value) {
+  if (!out || !value) return 0;
+  if (value->count == 0) return set_u32(out, 0);
+
+  size_t digit_count = ntt16_digit_count(value);
+  if (digit_count == SIZE_MAX) return 0;
+  if (digit_count == 0) return set_u32(out, 0);
+  if (digit_count > SIZE_MAX / 2U) return 0;
+  size_t coefficient_count = digit_count * 2U - 1U;
+  if (!ntt16_coefficient_bound_supported(digit_count, digit_count)) return 0;
+
+  size_t transform_length = 0;
+  if (!ntt16_next_length(coefficient_count, &transform_length)) return 0;
+
+  uint32_t *value0 = (uint32_t *)calloc(transform_length, sizeof(uint32_t));
+  uint32_t *value1 = (uint32_t *)calloc(transform_length, sizeof(uint32_t));
+  if (!value0 || !value1) {
+    free(value0);
+    free(value1);
+    return 0;
+  }
+
+  ntt16_fill_digits(value0, value, digit_count);
+  memcpy(value1, value0, sizeof(uint32_t) * digit_count);
+
+  XrayNtt16TransformTask forward_tasks[] = {
+    {value0, transform_length, XRAY_BIGINT_NTT16_MOD0, 0, 0},
+    {value1, transform_length, XRAY_BIGINT_NTT16_MOD1, 0, 0}
+  };
+  int ok = ntt16_transform_tasks(forward_tasks, sizeof(forward_tasks) / sizeof(forward_tasks[0]));
+  if (ok) {
+    for (size_t index = 0; index < transform_length; ++index) {
+      value0[index] = (uint32_t)(((uint64_t)value0[index] * value0[index]) % XRAY_BIGINT_NTT16_MOD0);
+      value1[index] = (uint32_t)(((uint64_t)value1[index] * value1[index]) % XRAY_BIGINT_NTT16_MOD1);
+    }
+    XrayNtt16TransformTask inverse_tasks[] = {
+      {value0, transform_length, XRAY_BIGINT_NTT16_MOD0, 1, 0},
+      {value1, transform_length, XRAY_BIGINT_NTT16_MOD1, 1, 0}
+    };
+    ok =
+      ntt16_transform_tasks(inverse_tasks, sizeof(inverse_tasks) / sizeof(inverse_tasks[0])) &&
+      ntt16_reconstruct_to_bigint(out, value0, value1, coefficient_count, digit_count, digit_count);
+  }
+
+  free(value0);
+  free(value1);
+  return ok;
+}
+
+int xray_bigint_square_ntt16_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value) {
+  if (!out || !value) return 0;
+  if (out == value) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = square_ntt16_probe_internal(&temp, value);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return square_ntt16_probe_internal(out, value);
+}
+
+static int mul_ntt32_probe_internal(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
+  if (!out || !left || !right) return 0;
+  if (left->count == 0 || right->count == 0) return set_u32(out, 0);
+
+  size_t left_digits = ntt32_digit_count(left);
+  size_t right_digits = ntt32_digit_count(right);
+  if (left_digits == SIZE_MAX || right_digits == SIZE_MAX) return 0;
+  if (left_digits == 0 || right_digits == 0) return set_u32(out, 0);
+  if (left_digits > SIZE_MAX - right_digits) return 0;
+  size_t coefficient_count = left_digits + right_digits - 1U;
+  if (!ntt32_coefficient_bound_supported(left_digits, right_digits)) return 0;
+
+  size_t transform_length = 0;
+  if (!ntt16_next_length(coefficient_count, &transform_length)) return 0;
+
+  uint32_t *left0 = (uint32_t *)calloc(transform_length, sizeof(uint32_t));
+  uint32_t *right0 = (uint32_t *)calloc(transform_length, sizeof(uint32_t));
+  uint32_t *left1 = (uint32_t *)calloc(transform_length, sizeof(uint32_t));
+  uint32_t *right1 = (uint32_t *)calloc(transform_length, sizeof(uint32_t));
+  uint32_t *left2 = (uint32_t *)calloc(transform_length, sizeof(uint32_t));
+  uint32_t *right2 = (uint32_t *)calloc(transform_length, sizeof(uint32_t));
+  if (!left0 || !right0 || !left1 || !right1 || !left2 || !right2) {
+    free(left0);
+    free(right0);
+    free(left1);
+    free(right1);
+    free(left2);
+    free(right2);
+    return 0;
+  }
+
+  ntt32_fill_digits_all_mods(left0, left1, left2, left, left_digits);
+  ntt32_fill_digits_all_mods(right0, right1, right2, right, right_digits);
+
+  XrayNtt16TransformTask forward_tasks[] = {
+    {left0, transform_length, XRAY_BIGINT_NTT16_MOD0, 0, 0},
+    {right0, transform_length, XRAY_BIGINT_NTT16_MOD0, 0, 0},
+    {left1, transform_length, XRAY_BIGINT_NTT16_MOD1, 0, 0},
+    {right1, transform_length, XRAY_BIGINT_NTT16_MOD1, 0, 0},
+    {left2, transform_length, XRAY_BIGINT_NTT32_MOD2, 0, 0},
+    {right2, transform_length, XRAY_BIGINT_NTT32_MOD2, 0, 0}
+  };
+  int ok = ntt16_transform_tasks(forward_tasks, sizeof(forward_tasks) / sizeof(forward_tasks[0]));
+  if (ok) {
+    for (size_t index = 0; index < transform_length; ++index) {
+      left0[index] = (uint32_t)(((uint64_t)left0[index] * right0[index]) % XRAY_BIGINT_NTT16_MOD0);
+      left1[index] = (uint32_t)(((uint64_t)left1[index] * right1[index]) % XRAY_BIGINT_NTT16_MOD1);
+      left2[index] = (uint32_t)(((uint64_t)left2[index] * right2[index]) % XRAY_BIGINT_NTT32_MOD2);
+    }
+    XrayNtt16TransformTask inverse_tasks[] = {
+      {left0, transform_length, XRAY_BIGINT_NTT16_MOD0, 1, 0},
+      {left1, transform_length, XRAY_BIGINT_NTT16_MOD1, 1, 0},
+      {left2, transform_length, XRAY_BIGINT_NTT32_MOD2, 1, 0}
+    };
+    ok =
+      ntt16_transform_tasks(inverse_tasks, sizeof(inverse_tasks) / sizeof(inverse_tasks[0])) &&
+      ntt32_reconstruct_to_bigint(out, left0, left1, left2, coefficient_count, left_digits, right_digits, NULL, NULL, 0);
+  }
+
+  free(left0);
+  free(right0);
+  free(left1);
+  free(right1);
+  free(left2);
+  free(right2);
+  return ok;
+}
+
+int xray_bigint_mul_ntt32_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
+  if (!out || !left || !right) return 0;
+  if (out == left || out == right) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = mul_ntt32_probe_internal(&temp, left, right);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return mul_ntt32_probe_internal(out, left, right);
+}
+
+static int square_ntt32_probe_internal_mode(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value,
+  int reuse_buffers,
+  int parallel_pointwise,
+  int persistent_transforms,
+  int tailmap_policy,
+  int direct_crt) {
+  if (!out || !value) return 0;
+  if (value->count == 0) return set_u32(out, 0);
+
+  size_t digit_count = ntt32_digit_count(value);
+  if (digit_count == SIZE_MAX) return 0;
+  if (digit_count == 0) return set_u32(out, 0);
+  if (digit_count > SIZE_MAX / 2U) return 0;
+  size_t coefficient_count = digit_count * 2U - 1U;
+  if (!ntt32_coefficient_bound_supported(digit_count, digit_count)) return 0;
+
+  size_t transform_length = 0;
+  if (!ntt16_next_length(coefficient_count, &transform_length)) return 0;
+  if (tailmap_policy) {
+    parallel_pointwise = 0;
+    if (transform_length <= 65536U) {
+      reuse_buffers = 0;
+      persistent_transforms = 1;
+    } else if (transform_length <= 131072U) {
+      reuse_buffers = 1;
+      persistent_transforms = 1;
+    } else {
+      reuse_buffers = tailmap_policy == 1;
+      persistent_transforms = 0;
+    }
+  }
+
+  int using_workspace = 0;
+  uint32_t *value0 = NULL;
+  uint32_t *value1 = NULL;
+  uint32_t *value2 = NULL;
+  uint64_t *coefficient_low = NULL;
+  uint64_t *coefficient_high = NULL;
+  size_t coefficient_capacity = 0;
+#if XRAY_BIGINT_HAS_THREAD_LOCAL
+  if (reuse_buffers) {
+    XrayNtt32SquareWorkspace *workspace = &ntt32_square_tls_workspace;
+    if (!ntt32_square_workspace_prepare(workspace, transform_length, coefficient_count)) return 0;
+    using_workspace = 1;
+    value0 = workspace->value0;
+    value1 = workspace->value1;
+    value2 = workspace->value2;
+    coefficient_low = workspace->coefficient_low;
+    coefficient_high = workspace->coefficient_high;
+    coefficient_capacity = workspace->coefficient_capacity;
+    memset(value0, 0, sizeof(uint32_t) * transform_length);
+    memset(value1, 0, sizeof(uint32_t) * transform_length);
+    memset(value2, 0, sizeof(uint32_t) * transform_length);
+  }
+#else
+  (void)reuse_buffers;
+#endif
+  if (!using_workspace) {
+    value0 = (uint32_t *)calloc(transform_length, sizeof(uint32_t));
+    value1 = (uint32_t *)calloc(transform_length, sizeof(uint32_t));
+    value2 = (uint32_t *)calloc(transform_length, sizeof(uint32_t));
+  }
+  if (!value0 || !value1 || !value2) {
+    if (!using_workspace) {
+      free(value0);
+      free(value1);
+      free(value2);
+    }
+    return 0;
+  }
+
+  ntt32_fill_digits_all_mods(value0, value1, value2, value, digit_count);
+
+  XrayNtt16TransformTask forward_tasks[] = {
+    {value0, transform_length, XRAY_BIGINT_NTT16_MOD0, 0, 0},
+    {value1, transform_length, XRAY_BIGINT_NTT16_MOD1, 0, 0},
+    {value2, transform_length, XRAY_BIGINT_NTT32_MOD2, 0, 0}
+  };
+  int ok = ntt16_transform_tasks_select(forward_tasks, sizeof(forward_tasks) / sizeof(forward_tasks[0]), persistent_transforms);
+  if (ok) {
+    if (parallel_pointwise) {
+      XrayNtt16PointwiseTask pointwise_tasks[] = {
+        {value0, NULL, transform_length, XRAY_BIGINT_NTT16_MOD0, 1},
+        {value1, NULL, transform_length, XRAY_BIGINT_NTT16_MOD1, 1},
+        {value2, NULL, transform_length, XRAY_BIGINT_NTT32_MOD2, 1}
+      };
+      ok = ntt16_pointwise_tasks(pointwise_tasks, sizeof(pointwise_tasks) / sizeof(pointwise_tasks[0]));
+    } else {
+      for (size_t index = 0; index < transform_length; ++index) {
+        value0[index] = (uint32_t)(((uint64_t)value0[index] * value0[index]) % XRAY_BIGINT_NTT16_MOD0);
+        value1[index] = (uint32_t)(((uint64_t)value1[index] * value1[index]) % XRAY_BIGINT_NTT16_MOD1);
+        value2[index] = (uint32_t)(((uint64_t)value2[index] * value2[index]) % XRAY_BIGINT_NTT32_MOD2);
+      }
+    }
+  }
+  if (ok) {
+    XrayNtt16TransformTask inverse_tasks[] = {
+      {value0, transform_length, XRAY_BIGINT_NTT16_MOD0, 1, 0},
+      {value1, transform_length, XRAY_BIGINT_NTT16_MOD1, 1, 0},
+      {value2, transform_length, XRAY_BIGINT_NTT32_MOD2, 1, 0}
+    };
+    ok =
+      ntt16_transform_tasks_select(inverse_tasks, sizeof(inverse_tasks) / sizeof(inverse_tasks[0]), persistent_transforms) &&
+      (direct_crt ?
+      ntt32_reconstruct_to_bigint_direct(
+        out,
+        value0,
+        value1,
+        value2,
+        coefficient_count,
+        digit_count,
+        digit_count) :
+      ntt32_reconstruct_to_bigint(
+        out,
+        value0,
+        value1,
+        value2,
+        coefficient_count,
+        digit_count,
+        digit_count,
+        coefficient_low,
+        coefficient_high,
+        coefficient_capacity));
+    }
+
+  if (!using_workspace) {
+    free(value0);
+    free(value1);
+    free(value2);
+  }
+  return ok;
+}
+
+static int square_ntt32_probe_internal(XrayScratchBigInt *out, const XrayScratchBigInt *value) {
+  return square_ntt32_probe_internal_mode(out, value, 0, 0, 0, 0, 0);
+}
+
+int xray_bigint_square_ntt32_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value) {
+  if (!out || !value) return 0;
+  if (out == value) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = square_ntt32_probe_internal(&temp, value);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return square_ntt32_probe_internal(out, value);
+}
+
+int xray_bigint_square_ntt32_reuse_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value) {
+  if (!out || !value) return 0;
+  if (out == value) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = square_ntt32_probe_internal_mode(&temp, value, 1, 0, 0, 0, 0);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return square_ntt32_probe_internal_mode(out, value, 1, 0, 0, 0, 0);
+}
+
+int xray_bigint_square_ntt32_pointwise_parallel_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value) {
+  if (!out || !value) return 0;
+  if (out == value) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = square_ntt32_probe_internal_mode(&temp, value, 0, 1, 0, 0, 0);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return square_ntt32_probe_internal_mode(out, value, 0, 1, 0, 0, 0);
+}
+
+int xray_bigint_square_ntt32_persistent_transform_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value) {
+  if (!out || !value) return 0;
+  if (out == value) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = square_ntt32_probe_internal_mode(&temp, value, 0, 0, 1, 0, 0);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return square_ntt32_probe_internal_mode(out, value, 0, 0, 1, 0, 0);
+}
+
+int xray_bigint_square_ntt32_reuse_persistent_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value) {
+  if (!out || !value) return 0;
+  if (out == value) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = square_ntt32_probe_internal_mode(&temp, value, 1, 0, 1, 0, 0);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return square_ntt32_probe_internal_mode(out, value, 1, 0, 1, 0, 0);
+}
+
+int xray_bigint_square_ntt32_tailmap_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value) {
+  if (!out || !value) return 0;
+  if (out == value) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = square_ntt32_probe_internal_mode(&temp, value, 0, 0, 0, 1, 0);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return square_ntt32_probe_internal_mode(out, value, 0, 0, 0, 1, 0);
+}
+
+int xray_bigint_square_ntt32_lowtailmap_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value) {
+  if (!out || !value) return 0;
+  if (out == value) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = square_ntt32_probe_internal_mode(&temp, value, 0, 0, 0, 2, 0);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return square_ntt32_probe_internal_mode(out, value, 0, 0, 0, 2, 0);
+}
+
+int xray_bigint_square_ntt32_direct_crt_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value) {
+  if (!out || !value) return 0;
+  if (out == value) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = square_ntt32_probe_internal_mode(&temp, value, 0, 0, 0, 0, 1);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return square_ntt32_probe_internal_mode(out, value, 0, 0, 0, 0, 1);
 }
 
 int xray_bigint_mul_sparse_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
@@ -5722,6 +10938,30 @@ int xray_bigint_mul_toom3_unroll4_recursive_full_workspace_inplace_div2_div3_pro
 #endif
 }
 
+int xray_bigint_square_toom3_full_workspace_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t leaf_threshold, size_t depth_limit) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (!out || !value) return 0;
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  size_t active_depth = depth_limit >= 1U ? depth_limit : 1U;
+  unsigned int interp_flags = XRAY_TOOM3_INTERP_SHIFT_DIV2 | XRAY_TOOM3_INTERP_EXACT_DIV3;
+  if (out == value) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = square_toom3_full_workspace_probe_internal(&temp, value, active_threshold, active_depth, interp_flags, 0);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return square_toom3_full_workspace_probe_internal(out, value, active_threshold, active_depth, interp_flags, 0);
+#else
+  (void)out;
+  (void)value;
+  (void)leaf_threshold;
+  (void)depth_limit;
+  return 0;
+#endif
+}
+
 void xray_bigint_mul_workspace_init(XrayBigIntMulWorkspace *workspace) {
   if (!workspace) return;
   workspace->toom3_frames = NULL;
@@ -5749,6 +10989,468 @@ void xray_bigint_mul_workspace_clear(XrayBigIntMulWorkspace *workspace) {
   workspace->toom3_frame_count = 0;
   workspace->karatsuba_frames = NULL;
   workspace->karatsuba_frame_count = 0;
+}
+
+int xray_bigint_square_toom3_full_workspace_reuse_probe(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value,
+  size_t leaf_threshold,
+  size_t depth_limit,
+  XrayBigIntMulWorkspace *workspace) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (!out || !value || !workspace) return 0;
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  size_t active_depth = depth_limit >= 1U ? depth_limit : 1U;
+  unsigned int interp_flags = XRAY_TOOM3_INTERP_SHIFT_DIV2 | XRAY_TOOM3_INTERP_EXACT_DIV3;
+  if (out == value) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = square_toom3_full_workspace_reuse_probe_internal(&temp, value, active_threshold, active_depth, interp_flags, workspace, 0, 0U, 0U);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return square_toom3_full_workspace_reuse_probe_internal(out, value, active_threshold, active_depth, interp_flags, workspace, 0, 0U, 0U);
+#else
+  (void)out;
+  (void)value;
+  (void)leaf_threshold;
+  (void)depth_limit;
+  (void)workspace;
+  return 0;
+#endif
+}
+
+int xray_bigint_square_toom3_full_workspace_reuse_neg2_div2_div3_probe(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value,
+  size_t leaf_threshold,
+  size_t depth_limit,
+  XrayBigIntMulWorkspace *workspace) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (!out || !value || !workspace) return 0;
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  size_t active_depth = depth_limit >= 1U ? depth_limit : 1U;
+  unsigned int interp_flags = XRAY_TOOM3_INTERP_SHIFT_DIV2 |
+    XRAY_TOOM3_INTERP_EXACT_DIV3 |
+    XRAY_TOOM3_INTERP_EVAL_NEG2;
+  if (out == value) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = square_toom3_full_workspace_reuse_probe_internal(&temp, value, active_threshold, active_depth, interp_flags, workspace, 0, 0U, 0U);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return square_toom3_full_workspace_reuse_probe_internal(out, value, active_threshold, active_depth, interp_flags, workspace, 0, 0U, 0U);
+#else
+  (void)out;
+  (void)value;
+  (void)leaf_threshold;
+  (void)depth_limit;
+  (void)workspace;
+  return 0;
+#endif
+}
+
+int xray_bigint_square_toom3_full_workspace_reuse_parallel_probe(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value,
+  size_t leaf_threshold,
+  size_t depth_limit,
+  size_t parallel_min_limbs,
+  size_t parallel_group_count,
+  XrayBigIntMulWorkspace *workspace) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (!out || !value || !workspace) return 0;
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  size_t active_depth = depth_limit >= 1U ? depth_limit : 1U;
+  size_t active_parallel_min = parallel_min_limbs >= 1U ? parallel_min_limbs : 1U;
+  unsigned int interp_flags = XRAY_TOOM3_INTERP_SHIFT_DIV2 | XRAY_TOOM3_INTERP_EXACT_DIV3;
+  if (out == value) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = square_toom3_full_workspace_reuse_probe_internal(
+      &temp,
+      value,
+      active_threshold,
+      active_depth,
+      interp_flags,
+      workspace,
+      0,
+      active_parallel_min,
+      parallel_group_count);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return square_toom3_full_workspace_reuse_probe_internal(
+    out,
+    value,
+    active_threshold,
+    active_depth,
+    interp_flags,
+    workspace,
+    0,
+    active_parallel_min,
+    parallel_group_count);
+#else
+  (void)out;
+  (void)value;
+  (void)leaf_threshold;
+  (void)depth_limit;
+  (void)parallel_min_limbs;
+  (void)parallel_group_count;
+  (void)workspace;
+  return 0;
+#endif
+}
+
+int xray_bigint_square_toom3_direct_coeff_reuse_probe(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value,
+  size_t leaf_threshold,
+  size_t depth_limit,
+  XrayBigIntMulWorkspace *workspace) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (!out || !value || !workspace) return 0;
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  size_t active_depth = depth_limit >= 1U ? depth_limit : 1U;
+  unsigned int interp_flags = XRAY_TOOM3_INTERP_SHIFT_DIV2 | XRAY_TOOM3_INTERP_EXACT_DIV3;
+  if (out == value) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = square_toom3_direct_coeff_full_workspace_reuse_probe_internal(
+      &temp,
+      value,
+      active_threshold,
+      active_depth,
+      interp_flags,
+      workspace);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return square_toom3_direct_coeff_full_workspace_reuse_probe_internal(
+    out,
+    value,
+    active_threshold,
+    active_depth,
+    interp_flags,
+    workspace);
+#else
+  (void)out;
+  (void)value;
+  (void)leaf_threshold;
+  (void)depth_limit;
+  (void)workspace;
+  return 0;
+#endif
+}
+
+int xray_bigint_square_toom3_chung_sqr3_reuse_probe(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value,
+  size_t leaf_threshold,
+  size_t depth_limit,
+  XrayBigIntMulWorkspace *workspace) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (!out || !value || !workspace) return 0;
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  size_t active_depth = depth_limit >= 1U ? depth_limit : 1U;
+  unsigned int interp_flags = XRAY_TOOM3_INTERP_SHIFT_DIV2 | XRAY_TOOM3_INTERP_EXACT_DIV3;
+  if (out == value) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = square_toom3_chung_sqr3_full_workspace_reuse_probe_internal(
+      &temp,
+      value,
+      active_threshold,
+      active_depth,
+      interp_flags,
+      workspace);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return square_toom3_chung_sqr3_full_workspace_reuse_probe_internal(
+    out,
+    value,
+    active_threshold,
+    active_depth,
+    interp_flags,
+    workspace);
+#else
+  (void)out;
+  (void)value;
+  (void)leaf_threshold;
+  (void)depth_limit;
+  (void)workspace;
+  return 0;
+#endif
+}
+
+int xray_bigint_square_toom4_chung_sqr4_reuse_probe(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value,
+  size_t leaf_threshold,
+  size_t depth_limit,
+  XrayBigIntMulWorkspace *workspace) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (!out || !value || !workspace) return 0;
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  size_t active_depth = depth_limit >= 1U ? depth_limit : 1U;
+  unsigned int interp_flags = XRAY_TOOM3_INTERP_SHIFT_DIV2 | XRAY_TOOM3_INTERP_EXACT_DIV3;
+  if (out == value) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = square_toom4_chung_sqr4_full_workspace_reuse_probe_internal(
+      &temp,
+      value,
+      active_threshold,
+      active_threshold,
+      active_depth,
+      interp_flags,
+      0U,
+      workspace);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return square_toom4_chung_sqr4_full_workspace_reuse_probe_internal(
+    out,
+    value,
+    active_threshold,
+    active_threshold,
+    active_depth,
+    interp_flags,
+    0U,
+    workspace);
+#else
+  (void)out;
+  (void)value;
+  (void)leaf_threshold;
+  (void)depth_limit;
+  (void)workspace;
+  return 0;
+#endif
+}
+
+int xray_bigint_square_toom4_chung_sqr4_split_leaf_reuse_probe(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value,
+  size_t top_leaf_threshold,
+  size_t child_leaf_threshold,
+  size_t depth_limit,
+  XrayBigIntMulWorkspace *workspace) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (!out || !value || !workspace) return 0;
+  size_t active_top_threshold = top_leaf_threshold >= 2U ? top_leaf_threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  size_t active_child_threshold = child_leaf_threshold >= 2U ? child_leaf_threshold : active_top_threshold;
+  size_t active_depth = depth_limit >= 1U ? depth_limit : 1U;
+  unsigned int interp_flags = XRAY_TOOM3_INTERP_SHIFT_DIV2 | XRAY_TOOM3_INTERP_EXACT_DIV3;
+  if (out == value) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = square_toom4_chung_sqr4_full_workspace_reuse_probe_internal(
+      &temp,
+      value,
+      active_top_threshold,
+      active_child_threshold,
+      active_depth,
+      interp_flags,
+      0U,
+      workspace);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return square_toom4_chung_sqr4_full_workspace_reuse_probe_internal(
+    out,
+    value,
+    active_top_threshold,
+    active_child_threshold,
+    active_depth,
+    interp_flags,
+    0U,
+    workspace);
+#else
+  (void)out;
+  (void)value;
+  (void)top_leaf_threshold;
+  (void)child_leaf_threshold;
+  (void)depth_limit;
+  (void)workspace;
+  return 0;
+#endif
+}
+
+int xray_bigint_square_toom4_chung_sqr4_parallel_reuse_probe(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value,
+  size_t leaf_threshold,
+  size_t depth_limit,
+  size_t parallel_group_count,
+  XrayBigIntMulWorkspace *workspace) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (!out || !value || !workspace) return 0;
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  size_t active_depth = depth_limit >= 1U ? depth_limit : 1U;
+  size_t active_groups = parallel_group_count >= 1U ? parallel_group_count : 1U;
+  unsigned int interp_flags = XRAY_TOOM3_INTERP_SHIFT_DIV2 | XRAY_TOOM3_INTERP_EXACT_DIV3;
+  if (out == value) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = square_toom4_chung_sqr4_full_workspace_reuse_probe_internal(
+      &temp,
+      value,
+      active_threshold,
+      active_threshold,
+      active_depth,
+      interp_flags,
+      active_groups,
+      workspace);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return square_toom4_chung_sqr4_full_workspace_reuse_probe_internal(
+    out,
+    value,
+    active_threshold,
+    active_threshold,
+    active_depth,
+    interp_flags,
+    active_groups,
+    workspace);
+#else
+  (void)out;
+  (void)value;
+  (void)leaf_threshold;
+  (void)depth_limit;
+  (void)parallel_group_count;
+  (void)workspace;
+  return 0;
+#endif
+}
+
+int xray_bigint_square_toom3_direct_coeff_parallel_reuse_probe(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value,
+  size_t leaf_threshold,
+  size_t depth_limit,
+  size_t parallel_group_count,
+  XrayBigIntMulWorkspace *workspace) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (!out || !value || !workspace) return 0;
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  size_t active_depth = depth_limit >= 1U ? depth_limit : 1U;
+  unsigned int interp_flags = XRAY_TOOM3_INTERP_SHIFT_DIV2 | XRAY_TOOM3_INTERP_EXACT_DIV3;
+  if (out == value) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = square_toom3_direct_coeff_parallel_full_workspace_reuse_probe_internal(
+      &temp,
+      value,
+      active_threshold,
+      active_depth,
+      interp_flags,
+      workspace,
+      parallel_group_count);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return square_toom3_direct_coeff_parallel_full_workspace_reuse_probe_internal(
+    out,
+    value,
+    active_threshold,
+    active_depth,
+    interp_flags,
+    workspace,
+    parallel_group_count);
+#else
+  (void)out;
+  (void)value;
+  (void)leaf_threshold;
+  (void)depth_limit;
+  (void)parallel_group_count;
+  (void)workspace;
+  return 0;
+#endif
+}
+
+int xray_bigint_square_toom3_direct_coeff_dispatch_probe(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value) {
+  if (!out || !value) return 0;
+  if (out == value) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = square_toom3_direct_coeff_dispatch_probe_internal(&temp, value);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return square_toom3_direct_coeff_dispatch_probe_internal(out, value);
+}
+
+int xray_bigint_square_toom3_full_workspace_mul_points_probe(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value,
+  size_t leaf_threshold,
+  size_t depth_limit) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (!out || !value) return 0;
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  size_t active_depth = depth_limit >= 1U ? depth_limit : 1U;
+  unsigned int interp_flags = XRAY_TOOM3_INTERP_SHIFT_DIV2 | XRAY_TOOM3_INTERP_EXACT_DIV3;
+  if (out == value) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = square_toom3_full_workspace_probe_internal(&temp, value, active_threshold, active_depth, interp_flags, 1);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return square_toom3_full_workspace_probe_internal(out, value, active_threshold, active_depth, interp_flags, 1);
+#else
+  (void)out;
+  (void)value;
+  (void)leaf_threshold;
+  (void)depth_limit;
+  return 0;
+#endif
+}
+
+int xray_bigint_square_toom3_full_workspace_reuse_mul_points_probe(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value,
+  size_t leaf_threshold,
+  size_t depth_limit,
+  XrayBigIntMulWorkspace *workspace) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (!out || !value || !workspace) return 0;
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : XRAY_BIGINT_KARATSUBA_THRESHOLD;
+  size_t active_depth = depth_limit >= 1U ? depth_limit : 1U;
+  unsigned int interp_flags = XRAY_TOOM3_INTERP_SHIFT_DIV2 | XRAY_TOOM3_INTERP_EXACT_DIV3;
+  if (out == value) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = square_toom3_full_workspace_reuse_probe_internal(&temp, value, active_threshold, active_depth, interp_flags, workspace, 1, 0U, 0U);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return square_toom3_full_workspace_reuse_probe_internal(out, value, active_threshold, active_depth, interp_flags, workspace, 1, 0U, 0U);
+#else
+  (void)out;
+  (void)value;
+  (void)leaf_threshold;
+  (void)depth_limit;
+  (void)workspace;
+  return 0;
+#endif
 }
 
 int xray_bigint_mul_toom3_unroll4_recursive_full_workspace_reuse_div2_div3_probe(
@@ -5844,6 +11546,130 @@ int xray_bigint_mul_toom3_unroll4_recursive_full_workspace_reuse_inplace_div2_di
   (void)out;
   (void)left;
   (void)right;
+  (void)leaf_threshold;
+  (void)depth_limit;
+  (void)workspace;
+  return 0;
+#endif
+}
+
+int xray_bigint_square_toom4_top_full_workspace_probe(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value,
+  size_t leaf_threshold,
+  size_t depth_limit) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (!out || !value) return 0;
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : 48U;
+  size_t active_depth = depth_limit >= 1U ? depth_limit : 1U;
+  unsigned int interp_flags = XRAY_TOOM3_INTERP_SHIFT_DIV2 |
+    XRAY_TOOM3_INTERP_EXACT_DIV3 |
+    XRAY_TOOM4_INTERP_FACTORED_DIV;
+  if (out == value) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = square_toom4_top_full_workspace_probe_internal(&temp, value, active_threshold, active_depth, interp_flags, NULL, 0);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return square_toom4_top_full_workspace_probe_internal(out, value, active_threshold, active_depth, interp_flags, NULL, 0);
+#else
+  (void)out;
+  (void)value;
+  (void)leaf_threshold;
+  (void)depth_limit;
+  return 0;
+#endif
+}
+
+int xray_bigint_square_toom4_top_full_workspace_reuse_probe(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value,
+  size_t leaf_threshold,
+  size_t depth_limit,
+  XrayBigIntMulWorkspace *workspace) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (!out || !value || !workspace) return 0;
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : 48U;
+  size_t active_depth = depth_limit >= 1U ? depth_limit : 1U;
+  unsigned int interp_flags = XRAY_TOOM3_INTERP_SHIFT_DIV2 |
+    XRAY_TOOM3_INTERP_EXACT_DIV3 |
+    XRAY_TOOM4_INTERP_FACTORED_DIV;
+  if (out == value) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = square_toom4_top_full_workspace_probe_internal(&temp, value, active_threshold, active_depth, interp_flags, workspace, 0);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return square_toom4_top_full_workspace_probe_internal(out, value, active_threshold, active_depth, interp_flags, workspace, 0);
+#else
+  (void)out;
+  (void)value;
+  (void)leaf_threshold;
+  (void)depth_limit;
+  (void)workspace;
+  return 0;
+#endif
+}
+
+int xray_bigint_square_toom4_top_full_workspace_mul_points_probe(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value,
+  size_t leaf_threshold,
+  size_t depth_limit) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (!out || !value) return 0;
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : 48U;
+  size_t active_depth = depth_limit >= 1U ? depth_limit : 1U;
+  unsigned int interp_flags = XRAY_TOOM3_INTERP_SHIFT_DIV2 |
+    XRAY_TOOM3_INTERP_EXACT_DIV3 |
+    XRAY_TOOM4_INTERP_FACTORED_DIV;
+  if (out == value) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = square_toom4_top_full_workspace_probe_internal(&temp, value, active_threshold, active_depth, interp_flags, NULL, 1);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return square_toom4_top_full_workspace_probe_internal(out, value, active_threshold, active_depth, interp_flags, NULL, 1);
+#else
+  (void)out;
+  (void)value;
+  (void)leaf_threshold;
+  (void)depth_limit;
+  return 0;
+#endif
+}
+
+int xray_bigint_square_toom4_top_full_workspace_reuse_mul_points_probe(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value,
+  size_t leaf_threshold,
+  size_t depth_limit,
+  XrayBigIntMulWorkspace *workspace) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (!out || !value || !workspace) return 0;
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : 48U;
+  size_t active_depth = depth_limit >= 1U ? depth_limit : 1U;
+  unsigned int interp_flags = XRAY_TOOM3_INTERP_SHIFT_DIV2 |
+    XRAY_TOOM3_INTERP_EXACT_DIV3 |
+    XRAY_TOOM4_INTERP_FACTORED_DIV;
+  if (out == value) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = square_toom4_top_full_workspace_probe_internal(&temp, value, active_threshold, active_depth, interp_flags, workspace, 1);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return square_toom4_top_full_workspace_probe_internal(out, value, active_threshold, active_depth, interp_flags, workspace, 1);
+#else
+  (void)out;
+  (void)value;
   (void)leaf_threshold;
   (void)depth_limit;
   (void)workspace;
@@ -5947,6 +11773,64 @@ int xray_bigint_mul_toom4_top_full_workspace_reuse_factored_div_probe(
 #endif
 }
 
+int xray_bigint_mul_toom4_top_full_workspace_reuse_factored_div_parallel_probe(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *left,
+  const XrayScratchBigInt *right,
+  size_t leaf_threshold,
+  size_t depth_limit,
+  size_t parallel_min_limbs,
+  size_t parallel_group_count,
+  XrayBigIntMulWorkspace *workspace) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (!out || !left || !right || !workspace) return 0;
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : 48U;
+  size_t active_depth = depth_limit >= 1U ? depth_limit : 1U;
+  size_t active_parallel_min = parallel_min_limbs >= 1U ? parallel_min_limbs : 1800U;
+  size_t active_parallel_groups = parallel_group_count;
+  unsigned int interp_flags = XRAY_TOOM3_INTERP_SHIFT_DIV2 |
+    XRAY_TOOM3_INTERP_EXACT_DIV3 |
+    XRAY_TOOM4_INTERP_FACTORED_DIV;
+  if (out == left || out == right) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = mul_toom4_top_full_workspace_probe_internal_ex(
+      &temp,
+      left,
+      right,
+      active_threshold,
+      active_depth,
+      interp_flags,
+      workspace,
+      active_parallel_min,
+      active_parallel_groups);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return mul_toom4_top_full_workspace_probe_internal_ex(
+    out,
+    left,
+    right,
+    active_threshold,
+    active_depth,
+    interp_flags,
+    workspace,
+    active_parallel_min,
+    active_parallel_groups);
+#else
+  (void)out;
+  (void)left;
+  (void)right;
+  (void)leaf_threshold;
+  (void)depth_limit;
+  (void)parallel_min_limbs;
+  (void)parallel_group_count;
+  (void)workspace;
+  return 0;
+#endif
+}
+
 int xray_bigint_mul_toom5_top_full_workspace_reuse_probe(
   XrayScratchBigInt *out,
   const XrayScratchBigInt *left,
@@ -5959,6 +11843,40 @@ int xray_bigint_mul_toom5_top_full_workspace_reuse_probe(
   size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : 48U;
   size_t active_depth = depth_limit >= 1U ? depth_limit : 1U;
   unsigned int interp_flags = XRAY_TOOM3_INTERP_SHIFT_DIV2 | XRAY_TOOM3_INTERP_EXACT_DIV3;
+  if (out == left || out == right) {
+    XrayScratchBigInt temp;
+    xray_bigint_init(&temp);
+    int ok = mul_toom5_top_full_workspace_reuse_probe_internal(&temp, left, right, active_threshold, active_depth, interp_flags, workspace);
+    if (ok) ok = xray_bigint_copy(out, &temp);
+    xray_bigint_clear(&temp);
+    return ok;
+  }
+  return mul_toom5_top_full_workspace_reuse_probe_internal(out, left, right, active_threshold, active_depth, interp_flags, workspace);
+#else
+  (void)out;
+  (void)left;
+  (void)right;
+  (void)leaf_threshold;
+  (void)depth_limit;
+  (void)workspace;
+  return 0;
+#endif
+}
+
+int xray_bigint_mul_toom5_top_full_workspace_reuse_factored_div_probe(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *left,
+  const XrayScratchBigInt *right,
+  size_t leaf_threshold,
+  size_t depth_limit,
+  XrayBigIntMulWorkspace *workspace) {
+#if XRAY_BIGINT_HAS_MSVC_UINT128_HELPERS
+  if (!out || !left || !right || !workspace) return 0;
+  size_t active_threshold = leaf_threshold >= 2U ? leaf_threshold : 48U;
+  size_t active_depth = depth_limit >= 1U ? depth_limit : 1U;
+  unsigned int interp_flags = XRAY_TOOM3_INTERP_SHIFT_DIV2 |
+    XRAY_TOOM3_INTERP_EXACT_DIV3 |
+    XRAY_TOOM4_INTERP_FACTORED_DIV;
   if (out == left || out == right) {
     XrayScratchBigInt temp;
     xray_bigint_init(&temp);

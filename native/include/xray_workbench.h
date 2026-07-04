@@ -367,6 +367,52 @@ XRAY_API int xray_bigint_square_karatsuba_probe(XrayScratchBigInt *out, const Xr
 XRAY_API int xray_bigint_square_fused_leaf_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t threshold);
 
 /**
+ * Compute a square with Karatsuba recursion and an unrolled square leaf row.
+ *
+ * This diagnostic probe keeps production square routing unchanged and exists to
+ * test whether the measured multiply unroll benefit transfers to square leaves.
+ * out may alias value.
+ */
+XRAY_API int xray_bigint_square_unroll4_leaf_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t threshold);
+
+/**
+ * Compute a square with Karatsuba recursion and a Comba-style square leaf.
+ *
+ * This diagnostic probe accumulates each square leaf output column locally
+ * before writing it, to test whether fewer output read/modify/write steps close
+ * the mid-size dense square gap. Production square routing is unchanged; out
+ * may alias value.
+ */
+XRAY_API int xray_bigint_square_comba_leaf_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t threshold);
+
+/**
+ * Compute a square with reusable-frame Karatsuba recursion for benchmarking.
+ *
+ * This diagnostic probe uses slice views plus reusable temporaries and the
+ * exact middle product identity `a^2 + b^2 - (a-b)^2`. Production square
+ * routing is unchanged; out may alias value.
+ */
+XRAY_API int xray_bigint_square_karatsuba_workspace_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t threshold);
+
+/**
+ * Compute a reusable-frame Karatsuba square while forcing full multiply leaves.
+ *
+ * This diagnostic sibling isolates whether the MSVC unroll4 multiply leaf helps
+ * the workspace square recursion floor. Production square routing is unchanged;
+ * out may alias value.
+ */
+XRAY_API int xray_bigint_square_karatsuba_workspace_mul_leaf_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t threshold);
+
+/**
+ * Compute a square through the benchmark-only Toom-3 full-workspace route.
+ *
+ * This diagnostic route evaluates the operand once, squares each Toom point,
+ * and reuses the existing exact div-by-2/div-by-3 interpolation. Production
+ * square routing is unchanged; out may alias value.
+ */
+XRAY_API int xray_bigint_square_toom3_full_workspace_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t leaf_threshold, size_t depth_limit);
+
+/**
  * Format value using an explicit Horner handoff threshold for benchmarking.
  *
  * The caller owns the returned string and must release it with xray_free().
@@ -560,6 +606,39 @@ XRAY_API char *xray_bigint_get_decimal_dc_workspace_probe(const XrayScratchBigIn
 XRAY_API char *xray_bigint_get_decimal_dc_preinv_qhat_probe(const XrayScratchBigInt *value, size_t leaf_chunks);
 
 /**
+ * Format value through a benchmark-only top-level parallel D&C probe.
+ *
+ * The route performs one split with pre-inverted qhat division and formats the
+ * quotient and remainder branches concurrently where platform threading is
+ * available. Production formatting is unchanged.
+ */
+XRAY_API char *xray_bigint_get_decimal_dc_parallel_probe(const XrayScratchBigInt *value, size_t leaf_chunks);
+
+/**
+ * Format value through a benchmark-only cached decimal D&C probe.
+ *
+ * The route reuses a per-thread split-power cache and pre-inverted qhat
+ * division across calls. Production formatting is unchanged.
+ */
+XRAY_API char *xray_bigint_get_decimal_dc_cached_preinv_probe(const XrayScratchBigInt *value, size_t leaf_chunks);
+
+/**
+ * Format value through a benchmark-only decimal D&C probe that caches divisor
+ * contexts for split powers during the conversion.
+ *
+ * Production formatting is unchanged.
+ */
+XRAY_API char *xray_bigint_get_decimal_dc_cached_context_probe(const XrayScratchBigInt *value, size_t leaf_chunks);
+
+/**
+ * Format value through the cached-context D&C probe while reusing a division
+ * workspace for normalized numerator and remainder storage.
+ *
+ * Production formatting is unchanged.
+ */
+XRAY_API char *xray_bigint_get_decimal_dc_cached_context_workspace_probe(const XrayScratchBigInt *value, size_t leaf_chunks);
+
+/**
  * Format value through the 19-digit decimal chunk probe route.
  *
  * The caller owns the returned string and must release it with xray_free().
@@ -588,6 +667,102 @@ XRAY_API int xray_bigint_mul_with_threshold(XrayScratchBigInt *out, const XraySc
  * 0 on allocation failure.
  */
 XRAY_API int xray_bigint_mul_sparse_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right);
+
+/**
+ * Multiply through a benchmark-only exact base-2^16 NTT probe.
+ *
+ * This diagnostic route splits each 64-bit limb into four 16-bit digits,
+ * convolves them with two NTT primes, reconstructs coefficients with CRT, and
+ * carries the result back into normal 64-bit limbs. Production multiply
+ * remains unchanged, and unsupported coefficient bounds or transform lengths
+ * return 0 instead of silently falling back. out may alias either input.
+ */
+XRAY_API int xray_bigint_mul_ntt16_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right);
+
+/**
+ * Square through a benchmark-only exact base-2^16 NTT probe.
+ *
+ * This diagnostic sibling transforms the operand once under each NTT prime,
+ * squares the point values, reconstructs coefficients with CRT, and carries the
+ * result back into normal 64-bit limbs. Production square remains unchanged,
+ * and unsupported coefficient bounds or transform lengths return 0. out may
+ * alias value.
+ */
+XRAY_API int xray_bigint_square_ntt16_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value);
+
+/**
+ * Multiply through a benchmark-only exact base-2^32 NTT probe.
+ *
+ * This diagnostic route uses three NTT primes, reconstructs coefficients with
+ * Garner CRT, and carries base-2^32 digits back into normal 64-bit limbs.
+ * Production multiply remains unchanged unless dispatch explicitly opts in.
+ * out may alias either input.
+ */
+XRAY_API int xray_bigint_mul_ntt32_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right);
+
+/**
+ * Square through a benchmark-only exact base-2^32 NTT probe.
+ *
+ * This diagnostic route transforms the operand once under each of three NTT
+ * primes, squares point values, reconstructs with Garner CRT, and carries
+ * base-2^32 digits back into normal 64-bit limbs. out may alias value.
+ */
+XRAY_API int xray_bigint_square_ntt32_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value);
+
+/**
+ * Square through the exact base-2^32 NTT route while reusing thread-local
+ * transform and CRT buffers between calls. Production square routing is
+ * unchanged; this probe isolates allocator and large-buffer residency effects.
+ * out may alias value.
+ */
+XRAY_API int xray_bigint_square_ntt32_reuse_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value);
+
+/**
+ * Square through the exact base-2^32 NTT route while evaluating the three
+ * modular pointwise square passes in parallel. Production square routing is
+ * unchanged; this probe isolates pointwise-loop scheduling effects.
+ * out may alias value.
+ */
+XRAY_API int xray_bigint_square_ntt32_pointwise_parallel_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value);
+
+/**
+ * Square through the exact base-2^32 NTT route while reusing persistent worker
+ * threads for the modular transforms. Production square routing is unchanged;
+ * this probe isolates transform scheduling effects. out may alias value.
+ */
+XRAY_API int xray_bigint_square_ntt32_persistent_transform_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value);
+
+/**
+ * Square through the exact base-2^32 NTT route while reusing both large
+ * thread-local buffers and persistent transform worker threads. Production
+ * square routing is unchanged; this probe tests the combined tail-latency
+ * hypothesis. out may alias value.
+ */
+XRAY_API int xray_bigint_square_ntt32_reuse_persistent_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value);
+
+/**
+ * Square through the exact base-2^32 NTT route using a diagnostic tail-latency
+ * map: persistent transforms at the 1M-bit pocket, reuse plus persistent
+ * transforms at the 2M-bit pocket, and reusable buffers at the 4M-bit pocket.
+ * Production square routing is unchanged; out may alias value.
+ */
+XRAY_API int xray_bigint_square_ntt32_tailmap_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value);
+
+/**
+ * Square through the exact base-2^32 NTT route using the diagnostic tail map
+ * only for transform lengths up to 131072, falling back to current NTT32 square
+ * for larger transforms. Production square routing is unchanged; out may alias
+ * value.
+ */
+XRAY_API int xray_bigint_square_ntt32_lowtailmap_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value);
+
+/**
+ * Square through the exact base-2^32 NTT route while reconstructing CRT
+ * coefficients directly into the carry pass instead of materializing separate
+ * coefficient buffers. Production square routing is unchanged; out may alias
+ * value.
+ */
+XRAY_API int xray_bigint_square_ntt32_direct_crt_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value);
 
 /**
  * Multiply through the classic sum-middle Karatsuba probe route.
@@ -767,6 +942,116 @@ XRAY_API int xray_bigint_mul_toom3_unroll4_recursive_full_workspace_reuse_neg2_d
 XRAY_API int xray_bigint_mul_toom3_unroll4_recursive_full_workspace_reuse_inplace_div2_div3_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold, size_t depth_limit, XrayBigIntMulWorkspace *workspace);
 
 /**
+ * Square through the benchmark-only Toom-3 full-workspace route while reusing
+ * caller-owned recursive workspaces. Production square routing is unchanged;
+ * out may alias value.
+ */
+XRAY_API int xray_bigint_square_toom3_full_workspace_reuse_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t leaf_threshold, size_t depth_limit, XrayBigIntMulWorkspace *workspace);
+
+/**
+ * Square through the benchmark-only Toom-3 reusable route while forcing
+ * top-level point-square parallelism at or above parallel_min_limbs. When
+ * parallel_group_count is nonzero, it overrides the diagnostic worker grouping.
+ * Production square routing is unchanged; out may alias value.
+ */
+XRAY_API int xray_bigint_square_toom3_full_workspace_reuse_parallel_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t leaf_threshold, size_t depth_limit, size_t parallel_min_limbs, size_t parallel_group_count, XrayBigIntMulWorkspace *workspace);
+
+/**
+ * Square through a benchmark-only Toom-3 direct coefficient reconstruction:
+ * a = a0 + a1*B + a2*B^2, then c0..c4 are assembled directly. Production
+ * square routing is unchanged; out may alias value.
+ */
+XRAY_API int xray_bigint_square_toom3_direct_coeff_reuse_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t leaf_threshold, size_t depth_limit, XrayBigIntMulWorkspace *workspace);
+
+/**
+ * Square through the benchmark-only Chung-Hasan SQR3 Toom-3 formula:
+ * four child squares plus one child product, avoiding the usual non-power-of-2
+ * Toom-3 interpolation division. Production square routing is unchanged; out
+ * may alias value.
+ */
+XRAY_API int xray_bigint_square_toom3_chung_sqr3_reuse_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t leaf_threshold, size_t depth_limit, XrayBigIntMulWorkspace *workspace);
+
+/**
+ * Square through the benchmark-only Chung-Hasan SQR4 Toom-4 formula:
+ * three child squares plus four child products, avoiding non-power-of-2
+ * interpolation division. Production square routing is unchanged; out may
+ * alias value.
+ */
+XRAY_API int xray_bigint_square_toom4_chung_sqr4_reuse_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t leaf_threshold, size_t depth_limit, XrayBigIntMulWorkspace *workspace);
+
+/**
+ * Square through the benchmark-only Chung-Hasan SQR4 Toom-4 formula while
+ * decoupling the top-level SQR4 entry threshold from the child-product leaf
+ * threshold. Production square routing is unchanged; out may alias value.
+ */
+XRAY_API int xray_bigint_square_toom4_chung_sqr4_split_leaf_reuse_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t top_leaf_threshold, size_t child_leaf_threshold, size_t depth_limit, XrayBigIntMulWorkspace *workspace);
+
+/**
+ * Square through the benchmark-only Chung-Hasan SQR4 Toom-4 formula while
+ * forcing grouped parallel child products. Production square routing is
+ * unchanged; out may alias value.
+ */
+XRAY_API int xray_bigint_square_toom4_chung_sqr4_parallel_reuse_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t leaf_threshold, size_t depth_limit, size_t parallel_group_count, XrayBigIntMulWorkspace *workspace);
+
+/**
+ * Square through the benchmark-only Toom-3 direct coefficient route while
+ * forcing grouped parallel child products. Production square routing is
+ * unchanged; out may alias value.
+ */
+XRAY_API int xray_bigint_square_toom3_direct_coeff_parallel_reuse_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t leaf_threshold, size_t depth_limit, size_t parallel_group_count, XrayBigIntMulWorkspace *workspace);
+
+/**
+ * Square through a benchmark-only top-level Toom-3 direct coefficient
+ * reconstruction while delegating child squares and cross-products to current
+ * production dispatch. Production square routing is unchanged; out may alias
+ * value.
+ */
+XRAY_API int xray_bigint_square_toom3_direct_coeff_dispatch_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value);
+
+/**
+ * Square through the benchmark-only Toom-3 route while evaluating one operand
+ * and using generic Toom-3 self-multiply point products. Production square
+ * routing is unchanged; out may alias value.
+ */
+XRAY_API int xray_bigint_square_toom3_full_workspace_mul_points_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t leaf_threshold, size_t depth_limit);
+
+/**
+ * Square through the benchmark-only Toom-3 generic-point route while reusing
+ * caller-owned recursive workspaces. Production square routing is unchanged;
+ * out may alias value.
+ */
+XRAY_API int xray_bigint_square_toom3_full_workspace_reuse_mul_points_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t leaf_threshold, size_t depth_limit, XrayBigIntMulWorkspace *workspace);
+
+/**
+ * Square through the benchmark-only top-level Toom-4 route. The route
+ * evaluates one operand, squares each signed Toom point, and reuses the
+ * existing factored Toom-4 interpolation. Production square routing is
+ * unchanged; out may alias value.
+ */
+XRAY_API int xray_bigint_square_toom4_top_full_workspace_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t leaf_threshold, size_t depth_limit);
+
+/**
+ * Square through the benchmark-only top-level Toom-4 route while reusing
+ * caller-owned recursive workspaces. Production square routing is unchanged;
+ * out may alias value.
+ */
+XRAY_API int xray_bigint_square_toom4_top_full_workspace_reuse_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t leaf_threshold, size_t depth_limit, XrayBigIntMulWorkspace *workspace);
+
+/**
+ * Square through the benchmark-only top-level Toom-4 route while evaluating
+ * one operand but using generic Toom-3 self-multiply point products.
+ * Production square routing is unchanged; out may alias value.
+ */
+XRAY_API int xray_bigint_square_toom4_top_full_workspace_mul_points_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t leaf_threshold, size_t depth_limit);
+
+/**
+ * Square through the benchmark-only top-level Toom-4 generic-point route while
+ * reusing caller-owned recursive workspaces. Production square routing is
+ * unchanged; out may alias value.
+ */
+XRAY_API int xray_bigint_square_toom4_top_full_workspace_reuse_mul_points_probe(XrayScratchBigInt *out, const XrayScratchBigInt *value, size_t leaf_threshold, size_t depth_limit, XrayBigIntMulWorkspace *workspace);
+
+/**
  * Multiply through a benchmark-only top-level Toom-4 scout whose point
  * products reuse the full-workspace recursive Toom-3 combo probe.
  *
@@ -804,6 +1089,16 @@ XRAY_API int xray_bigint_mul_toom4_top_full_workspace_reuse_probe(XrayScratchBig
 XRAY_API int xray_bigint_mul_toom4_top_full_workspace_reuse_factored_div_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold, size_t depth_limit, XrayBigIntMulWorkspace *workspace);
 
 /**
+ * Multiply through the benchmark-only top-level Toom-4 factored-div scout while
+ * forcing point-product parallelism at or above parallel_min_limbs. When
+ * parallel_group_count is nonzero, it overrides the automatic worker grouping.
+ *
+ * This diagnostic route keeps production thresholds unchanged and exists only
+ * to test the point-product parallel cutover. out may alias either input.
+ */
+XRAY_API int xray_bigint_mul_toom4_top_full_workspace_reuse_factored_div_parallel_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold, size_t depth_limit, size_t parallel_min_limbs, size_t parallel_group_count, XrayBigIntMulWorkspace *workspace);
+
+/**
  * Multiply through a benchmark-only top-level Toom-5 scout while reusing
  * caller-owned recursive Toom-3 and Karatsuba workspaces for point products.
  *
@@ -816,6 +1111,16 @@ XRAY_API int xray_bigint_mul_toom4_top_full_workspace_reuse_factored_div_probe(X
  * checks.
  */
 XRAY_API int xray_bigint_mul_toom5_top_full_workspace_reuse_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold, size_t depth_limit, XrayBigIntMulWorkspace *workspace);
+
+/**
+ * Multiply through the benchmark-only top-level Toom-5 scout while reusing
+ * recursive workspaces and factoring Toom-5 interpolation exact divisions.
+ *
+ * This diagnostic probe keeps production multiply unchanged and exists only to
+ * compare factored `/144`, `/360`, `/420`, `/720`, and `/5040` interpolation
+ * division structure against the generic small-divisor Toom-5 scout.
+ */
+XRAY_API int xray_bigint_mul_toom5_top_full_workspace_reuse_factored_div_probe(XrayScratchBigInt *out, const XrayScratchBigInt *left, const XrayScratchBigInt *right, size_t leaf_threshold, size_t depth_limit, XrayBigIntMulWorkspace *workspace);
 
 /**
  * Multiply with the unroll4 basecase probe route.
@@ -1462,11 +1767,63 @@ XRAY_API int xray_benchmark_run(XrayBenchmarkReport *report);
  * This is intended for local novelty scouting, not promotion evidence. The
  * default benchmark ladder is unchanged; callers must opt in with a focus name.
  * Supported focus names are implementation-defined diagnostic labels such as
- * "mul-large", "mul-full-audit-pocket", "mul-combo-lower",
- * "mul-combo-transition", "mul-combo-handoff-pocket",
- * "mul-combo-handoff-boundary", "mul-combo-upper", "mul-combo-reuse", and
- * "mul-sparse". "mul-novelty" is a rotating bundle that may include several
- * diagnostic focus families.
+ * "gmp-gap-audit", "format-gmp-gap", "format-current-gmp", "format-tight-gap", "format-150-hill", "format-1000-hill", "divmod-tight-gap", "mul-large", "mul-sparse",
+ * "mul-backend-gap", "mul-full-audit-pocket", "mul-toom5-smoke",
+ * "mul-toom-div-transition", "mul-toom-div", "mul-toom4-top",
+ * "mul-combo-handoff-pocket", "mul-combo-handoff-boundary",
+ * "mul-combo-lower", "mul-combo-transition",
+ * "mul-combo-upper", "mul-combo-reuse", "mul-dense-current-gmp",
+ * "mul-dense-frontier-gmp", "dense-gmp-proof", "dense-million-bit-frontier", "dense-million-bit-gate",
+ * "dense-million-bit-floor-gate", "dense-million-bit-floor-interleaved-gate", "mul-dense-hill", "mul-dense-finalist-gate",
+ * "mul-dense-hill-frontier", "mul-dense-best-hill", "mul-dense-climb",
+ * "mul-dense-climb-gate", "mul-dense-best-gate",
+ * "mul-dense-best-options", "mul-big-hill", "mul-big-hill-smoke",
+ * "mul-big-hill-gate", "mul-big-hill-climb-gate",
+ * "mul-dense-65536-hill-gate", "mul-dense-65536-hill-smoke",
+ * "mul-dense-neighbor-hill", "mul-dense-tight-climb", "mul-dense-32768-proof",
+ * "mul-dense-32768-parallel", "mul-dense-parallel-gate",
+ * "square-dense-hill", "square-dense-frontier-current-gmp",
+ * "square-dense-frontier-gmp", "square-dense-upper-gmp", "square-dense-route-hill",
+ * "square-toom3-hill", "square-toom3-gate", "square-route-current-gate",
+ * "square-toom3-current-low-gate", "square-toom3-frontier-gate",
+ * "square-toom3-frontier-final-gate", "square-toom3-low-final-gate",
+ * "square-toom3-low-seed-gate", "square-toom3-mid-tune",
+ * "square-toom3-mid-final-gate", "square-toom3-parallel-scout",
+ * "square-toom3-parallel-tune", "square-toom3-parallel-hillseed",
+ * "square-toom3-parallel-hillseed-gate", "square-toom3-parallel-gate",
+ * "square-8192-parallel-leaf-gate", "square-8192-parallel-ridge-gate",
+ * "square-8192-parallel-leaf56-proof-gate", "square-8192-parallel-final-gate",
+ * "square-8192-sqr4-ridge-gate", "square-8192-sqr4-parallel-final-gate",
+ * "square-8192-all-options-hillclimb",
+ * "square-4096-toom3-leaf-gate",
+ * "square-4096-margin-smoke", "square-4096-margin-gate",
+ * "square-4096-paper-smoke", "square-4096-paper-gate",
+ * "square-4096-sqr3-tune", "square-4096-sqr4-smoke",
+ * "square-4096-sqr4-gate", "square-4096-sqr4-ridge",
+ * "square-4096-sqr4-childleaf-smoke", "square-4096-sqr4-childleaf-gate",
+ * "square-4096-sqr4-parallel-smoke", "square-4096-all-options-hillclimb",
+ * "square-route-hillseed-options", "square-route-current-final-gate",
+ * "square-best-gate",
+ * "square-dense-selfmap", "square-toom5-tune", "square-toom5-gate",
+ * "square-toom4-parallel", "square-toom4-parallel-tune",
+ * "square-toom4-parallel-gate", "square-toom4-parallel-low",
+ * "square-toom4-hill",
+ * "square-dense-upper-route-gate", "square-threshold-hill", "square-1000-leaf-gate",
+ * "square-threshold-frontier",
+ * "square-workspace-hill", "square-workspace-gate", "square-leaf-gate",
+ * "square-comba-gate",
+ * "mul-ntt", "mul-ntt-smoke", "mul-ntt-million", "square-ntt-million",
+ * "square-ntt32-million-tail-gate", "square-ntt32-current-control-gate",
+ * "square-ntt32-tailmap-final-gate", "square-ntt32-lowtailmap-final-gate",
+ * "square-ntt32-lowtailmap-control-gate", "square-ntt32-lowtailmap-control-long-gate",
+ * "square-ntt32-lowtailmap-control-nogmp-long-gate",
+ * "square-ntt32-lowtailmap-control-interleaved-gate",
+ * "square-ntt32-directcrt-control-gate",
+ * "mul-toom-upper", "mul-toom-upper-smoke", "mul-toom-upper-gate",
+ * "mul-toom5-tune", "mul-toom5-window-gate", "mul-toom5-final-gate",
+ * "mul-toom5-fdiv-gate", "mul-dense-prodstyle-gate",
+ * "mul-toom4-prod-tune", "mul-dense-prodstyle-l80d2-gate",
+ * and "mul-novelty".
  */
 XRAY_API int xray_benchmark_run_focus(XrayBenchmarkReport *report, const char *focus);
 

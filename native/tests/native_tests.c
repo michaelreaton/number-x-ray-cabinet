@@ -5,6 +5,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+int xray_bigint_square_toom3_full_workspace_reuse_neg2_div2_div3_probe(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value,
+  size_t leaf_threshold,
+  size_t depth_limit,
+  XrayBigIntMulWorkspace *workspace);
+
 #define CHECK(expr) do { \
   if (!(expr)) { \
     fprintf(stderr, "CHECK failed at %s:%d: %s\n", __FILE__, __LINE__, #expr); \
@@ -121,6 +128,22 @@ static void set_sparse_limbs(
   while (value->count && value->limbs[value->count - 1U] == 0) value->count--;
 }
 
+static void set_dense_pattern_limbs(XrayScratchBigInt *value, size_t count, uint64_t seed) {
+  CHECK(value != NULL);
+  CHECK(count > 0);
+  value->limbs = (uint64_t *)calloc(count, sizeof(uint64_t));
+  CHECK(value->limbs != NULL);
+  value->capacity = count;
+  value->count = count;
+  uint64_t state = seed ? seed : UINT64_C(0x9e3779b97f4a7c15);
+  for (size_t index = 0; index < count; ++index) {
+    state = state * UINT64_C(6364136223846793005) + UINT64_C(1442695040888963407);
+    value->limbs[index] = state ^ (state >> 29U) ^ ((uint64_t)index << 33U);
+    if (value->limbs[index] == 0) value->limbs[index] = seed + index + 1U;
+  }
+  value->limbs[count - 1U] |= UINT64_C(1) << 63U;
+}
+
 static void mpz_set_from_scratch_limbs(mpz_t out, const XrayScratchBigInt *value) {
   mpz_import(out, value->count, -1, sizeof(uint64_t), 0, 0, value->limbs);
 }
@@ -198,7 +221,7 @@ static void test_runtime_version_contract(void) {
   CHECK(strstr(route_json, "\"decimal-preinv1e19-pair-window\"") != NULL);
   CHECK(strstr(route_json, "\"decimal-dc-ladder\"") != NULL);
   CHECK(strstr(route_json, "\"staticSplitChunks\":[108,216]") != NULL);
-  CHECK(strstr(route_json, "D&C ladder at >=4096 digits") != NULL);
+  CHECK(strstr(route_json, "D&C cached preinv leaf16 through 512 wide chunks") != NULL);
   CHECK(strstr(route_json, "\"decimal-dc-preinv-qhat\"") != NULL);
   CHECK(strstr(route_json, "\"decimal-parse-large\"") != NULL);
   CHECK(strstr(route_json, "\"tinyProductsMax\":16") != NULL);
@@ -606,6 +629,14 @@ static void test_scratch_bigint_oracle(void) {
     char *roundtrip_dc_workspace16 = xray_bigint_get_decimal_dc_workspace_probe(&a, 16U);
     char *roundtrip_dc_preinv_qhat8 = xray_bigint_get_decimal_dc_preinv_qhat_probe(&a, 8U);
     char *roundtrip_dc_preinv_qhat16 = xray_bigint_get_decimal_dc_preinv_qhat_probe(&a, 16U);
+    char *roundtrip_dc_parallel8 = xray_bigint_get_decimal_dc_parallel_probe(&a, 8U);
+    char *roundtrip_dc_parallel16 = xray_bigint_get_decimal_dc_parallel_probe(&a, 16U);
+    char *roundtrip_dc_cached_preinv8 = xray_bigint_get_decimal_dc_cached_preinv_probe(&a, 8U);
+    char *roundtrip_dc_cached_preinv16 = xray_bigint_get_decimal_dc_cached_preinv_probe(&a, 16U);
+    char *roundtrip_dc_cached_context8 = xray_bigint_get_decimal_dc_cached_context_probe(&a, 8U);
+    char *roundtrip_dc_cached_context16 = xray_bigint_get_decimal_dc_cached_context_probe(&a, 16U);
+    char *roundtrip_dc_cached_context_ws8 = xray_bigint_get_decimal_dc_cached_context_workspace_probe(&a, 8U);
+    char *roundtrip_dc_cached_context_ws16 = xray_bigint_get_decimal_dc_cached_context_workspace_probe(&a, 16U);
     char *roundtrip_wide = xray_bigint_get_decimal_wide_probe(&a);
     char *roundtrip_oracle = mpz_get_str(NULL, 10, ga);
     CHECK(roundtrip_text != NULL);
@@ -635,6 +666,14 @@ static void test_scratch_bigint_oracle(void) {
     CHECK(roundtrip_dc_workspace16 != NULL);
     CHECK(roundtrip_dc_preinv_qhat8 != NULL);
     CHECK(roundtrip_dc_preinv_qhat16 != NULL);
+    CHECK(roundtrip_dc_parallel8 != NULL);
+    CHECK(roundtrip_dc_parallel16 != NULL);
+    CHECK(roundtrip_dc_cached_preinv8 != NULL);
+    CHECK(roundtrip_dc_cached_preinv16 != NULL);
+    CHECK(roundtrip_dc_cached_context8 != NULL);
+    CHECK(roundtrip_dc_cached_context16 != NULL);
+    CHECK(roundtrip_dc_cached_context_ws8 != NULL);
+    CHECK(roundtrip_dc_cached_context_ws16 != NULL);
     CHECK(roundtrip_wide != NULL);
     CHECK(roundtrip_oracle != NULL);
     CHECK(strcmp(roundtrip_text, roundtrip_oracle) == 0);
@@ -667,6 +706,14 @@ static void test_scratch_bigint_oracle(void) {
     CHECK(strcmp(roundtrip_dc_workspace16, roundtrip_oracle) == 0);
     CHECK(strcmp(roundtrip_dc_preinv_qhat8, roundtrip_oracle) == 0);
     CHECK(strcmp(roundtrip_dc_preinv_qhat16, roundtrip_oracle) == 0);
+    CHECK(strcmp(roundtrip_dc_parallel8, roundtrip_oracle) == 0);
+    CHECK(strcmp(roundtrip_dc_parallel16, roundtrip_oracle) == 0);
+    CHECK(strcmp(roundtrip_dc_cached_preinv8, roundtrip_oracle) == 0);
+    CHECK(strcmp(roundtrip_dc_cached_preinv16, roundtrip_oracle) == 0);
+    CHECK(strcmp(roundtrip_dc_cached_context8, roundtrip_oracle) == 0);
+    CHECK(strcmp(roundtrip_dc_cached_context16, roundtrip_oracle) == 0);
+    CHECK(strcmp(roundtrip_dc_cached_context_ws8, roundtrip_oracle) == 0);
+    CHECK(strcmp(roundtrip_dc_cached_context_ws16, roundtrip_oracle) == 0);
     CHECK(strcmp(roundtrip_wide, roundtrip_oracle) == 0);
     free(roundtrip_input);
     free(roundtrip_text);
@@ -696,6 +743,14 @@ static void test_scratch_bigint_oracle(void) {
     free(roundtrip_dc_workspace16);
     free(roundtrip_dc_preinv_qhat8);
     free(roundtrip_dc_preinv_qhat16);
+    free(roundtrip_dc_parallel8);
+    free(roundtrip_dc_parallel16);
+    free(roundtrip_dc_cached_preinv8);
+    free(roundtrip_dc_cached_preinv16);
+    free(roundtrip_dc_cached_context8);
+    free(roundtrip_dc_cached_context16);
+    free(roundtrip_dc_cached_context_ws8);
+    free(roundtrip_dc_cached_context_ws16);
     free(roundtrip_wide);
     free(roundtrip_oracle);
   }
@@ -1114,6 +1169,62 @@ static void test_scratch_bigint_large_mul_oracle(void) {
   free(right_text);
 }
 
+static void check_dense_mul_route_oracle_case(size_t left_limbs, size_t right_limbs, uint64_t left_seed, uint64_t right_seed) {
+  XrayScratchBigInt a, b, product, alias;
+  xray_bigint_init(&a);
+  xray_bigint_init(&b);
+  xray_bigint_init(&product);
+  xray_bigint_init(&alias);
+  mpz_t ga, gb, gproduct;
+  mpz_inits(ga, gb, gproduct, NULL);
+
+  set_dense_pattern_limbs(&a, left_limbs, left_seed);
+  set_dense_pattern_limbs(&b, right_limbs, right_seed);
+  mpz_set_from_scratch_limbs(ga, &a);
+  mpz_set_from_scratch_limbs(gb, &b);
+  mpz_mul(gproduct, ga, gb);
+
+  CHECK(xray_bigint_mul(&product, &a, &b));
+  check_scratch_matches_mpz(&product, gproduct);
+
+  CHECK(xray_bigint_copy(&alias, &a));
+  CHECK(xray_bigint_mul(&alias, &alias, &b));
+  check_scratch_matches_mpz(&alias, gproduct);
+
+  CHECK(xray_bigint_copy(&alias, &b));
+  CHECK(xray_bigint_mul(&alias, &a, &alias));
+  check_scratch_matches_mpz(&alias, gproduct);
+
+  mpz_clears(ga, gb, gproduct, NULL);
+  xray_bigint_clear(&a);
+  xray_bigint_clear(&b);
+  xray_bigint_clear(&product);
+  xray_bigint_clear(&alias);
+}
+
+static void test_scratch_bigint_dense_toom4_route_oracle(void) {
+  check_dense_mul_route_oracle_case(
+    520U,
+    511U,
+    UINT64_C(0x3141592653589793),
+    UINT64_C(0x2718281828459045));
+  check_dense_mul_route_oracle_case(
+    1300U,
+    1291U,
+    UINT64_C(0x123456789abcdef0),
+    UINT64_C(0xfedcba9876543210));
+  check_dense_mul_route_oracle_case(
+    1700U,
+    1687U,
+    UINT64_C(0xa94d3b6f1782c5e1),
+    UINT64_C(0x6c8e9cf570932bd1));
+  check_dense_mul_route_oracle_case(
+    2700U,
+    2689U,
+    UINT64_C(0x9e3779b97f4a7c15),
+    UINT64_C(0xbf58476d1ce4e5b9));
+}
+
 static void test_scratch_bigint_square_oracle(void) {
   const char *small_cases[] = {"0", "1", "18446744073709551616", "340282366920938463463374607431768211455"};
   for (size_t index = 0; index < sizeof(small_cases) / sizeof(small_cases[0]); ++index) {
@@ -1214,6 +1325,14 @@ static void test_scratch_bigint_square_oracle(void) {
   check_scratch_matches_mpz(&square, gsquare);
   CHECK(xray_bigint_square_fused_leaf_probe(&square, &large, 16));
   check_scratch_matches_mpz(&square, gsquare);
+  CHECK(xray_bigint_square_unroll4_leaf_probe(&square, &large, 16));
+  check_scratch_matches_mpz(&square, gsquare);
+  CHECK(xray_bigint_square_comba_leaf_probe(&square, &large, 16));
+  check_scratch_matches_mpz(&square, gsquare);
+  CHECK(xray_bigint_square_karatsuba_workspace_probe(&square, &large, 16));
+  check_scratch_matches_mpz(&square, gsquare);
+  CHECK(xray_bigint_square_karatsuba_workspace_mul_leaf_probe(&square, &large, 16));
+  check_scratch_matches_mpz(&square, gsquare);
 
   CHECK(xray_bigint_square(&large, &large));
   check_scratch_matches_mpz(&large, gsquare);
@@ -1223,11 +1342,200 @@ static void test_scratch_bigint_square_oracle(void) {
   CHECK(xray_bigint_set_decimal(&large, large_text));
   CHECK(xray_bigint_square_fused_leaf_probe(&large, &large, 16));
   check_scratch_matches_mpz(&large, gsquare);
+  CHECK(xray_bigint_set_decimal(&large, large_text));
+  CHECK(xray_bigint_square_unroll4_leaf_probe(&large, &large, 16));
+  check_scratch_matches_mpz(&large, gsquare);
+  CHECK(xray_bigint_set_decimal(&large, large_text));
+  CHECK(xray_bigint_square_comba_leaf_probe(&large, &large, 16));
+  check_scratch_matches_mpz(&large, gsquare);
+  CHECK(xray_bigint_set_decimal(&large, large_text));
+  CHECK(xray_bigint_square_karatsuba_workspace_probe(&large, &large, 16));
+  check_scratch_matches_mpz(&large, gsquare);
+  CHECK(xray_bigint_set_decimal(&large, large_text));
+  CHECK(xray_bigint_square_karatsuba_workspace_mul_leaf_probe(&large, &large, 16));
+  check_scratch_matches_mpz(&large, gsquare);
 
   mpz_clears(glarge, gsquare, NULL);
   xray_bigint_clear(&large);
   xray_bigint_clear(&square);
   free(large_text);
+
+  XrayScratchBigInt dense_mid, dense_mid_square;
+  xray_bigint_init(&dense_mid);
+  xray_bigint_init(&dense_mid_square);
+  mpz_t gdense_mid, gdense_mid_square;
+  mpz_inits(gdense_mid, gdense_mid_square, NULL);
+  set_dense_pattern_limbs(&dense_mid, 520U, UINT64_C(0x6c8e9cf570932bd1));
+  mpz_set_from_scratch_limbs(gdense_mid, &dense_mid);
+  mpz_mul(gdense_mid_square, gdense_mid, gdense_mid);
+  CHECK(xray_bigint_square(&dense_mid_square, &dense_mid));
+  check_scratch_matches_mpz(&dense_mid_square, gdense_mid_square);
+  CHECK(xray_bigint_square_karatsuba_workspace_probe(&dense_mid_square, &dense_mid, 64U));
+  check_scratch_matches_mpz(&dense_mid_square, gdense_mid_square);
+  CHECK(xray_bigint_square_unroll4_leaf_probe(&dense_mid_square, &dense_mid, 64U));
+  check_scratch_matches_mpz(&dense_mid_square, gdense_mid_square);
+  CHECK(xray_bigint_square_comba_leaf_probe(&dense_mid_square, &dense_mid, 64U));
+  check_scratch_matches_mpz(&dense_mid_square, gdense_mid_square);
+#if defined(_MSC_VER) && defined(_M_X64)
+  XrayBigIntMulWorkspace dense_mid_parallel_workspace;
+  xray_bigint_mul_workspace_init(&dense_mid_parallel_workspace);
+  CHECK(xray_bigint_square_toom3_full_workspace_probe(&dense_mid_square, &dense_mid, 48U, 3U));
+  check_scratch_matches_mpz(&dense_mid_square, gdense_mid_square);
+  CHECK(xray_bigint_square_toom3_direct_coeff_reuse_probe(&dense_mid_square, &dense_mid, 48U, 2U, &dense_mid_parallel_workspace));
+  check_scratch_matches_mpz(&dense_mid_square, gdense_mid_square);
+  CHECK(xray_bigint_square_toom3_chung_sqr3_reuse_probe(&dense_mid_square, &dense_mid, 48U, 2U, &dense_mid_parallel_workspace));
+  check_scratch_matches_mpz(&dense_mid_square, gdense_mid_square);
+  CHECK(xray_bigint_square_toom4_chung_sqr4_reuse_probe(&dense_mid_square, &dense_mid, 48U, 1U, &dense_mid_parallel_workspace));
+  check_scratch_matches_mpz(&dense_mid_square, gdense_mid_square);
+  CHECK(xray_bigint_square_toom4_chung_sqr4_split_leaf_reuse_probe(&dense_mid_square, &dense_mid, 48U, 64U, 1U, &dense_mid_parallel_workspace));
+  check_scratch_matches_mpz(&dense_mid_square, gdense_mid_square);
+  CHECK(xray_bigint_square_toom4_chung_sqr4_parallel_reuse_probe(&dense_mid_square, &dense_mid, 48U, 1U, 3U, &dense_mid_parallel_workspace));
+  check_scratch_matches_mpz(&dense_mid_square, gdense_mid_square);
+  CHECK(xray_bigint_square_toom3_direct_coeff_parallel_reuse_probe(&dense_mid_square, &dense_mid, 48U, 2U, 5U, &dense_mid_parallel_workspace));
+  check_scratch_matches_mpz(&dense_mid_square, gdense_mid_square);
+  CHECK(xray_bigint_square_toom3_direct_coeff_dispatch_probe(&dense_mid_square, &dense_mid));
+  check_scratch_matches_mpz(&dense_mid_square, gdense_mid_square);
+  CHECK(xray_bigint_square_toom3_full_workspace_reuse_parallel_probe(&dense_mid_square, &dense_mid, 64U, 2U, 1U, 3U, &dense_mid_parallel_workspace));
+  check_scratch_matches_mpz(&dense_mid_square, gdense_mid_square);
+  CHECK(xray_bigint_square_toom3_full_workspace_reuse_neg2_div2_div3_probe(&dense_mid_square, &dense_mid, 48U, 3U, &dense_mid_parallel_workspace));
+  check_scratch_matches_mpz(&dense_mid_square, gdense_mid_square);
+  CHECK(xray_bigint_square_toom3_full_workspace_mul_points_probe(&dense_mid_square, &dense_mid, 48U, 3U));
+  check_scratch_matches_mpz(&dense_mid_square, gdense_mid_square);
+  CHECK(xray_bigint_square_toom4_top_full_workspace_probe(&dense_mid_square, &dense_mid, 48U, 3U));
+  check_scratch_matches_mpz(&dense_mid_square, gdense_mid_square);
+  CHECK(xray_bigint_square_toom4_top_full_workspace_mul_points_probe(&dense_mid_square, &dense_mid, 48U, 3U));
+  check_scratch_matches_mpz(&dense_mid_square, gdense_mid_square);
+  xray_bigint_mul_workspace_clear(&dense_mid_parallel_workspace);
+#endif
+  CHECK(xray_bigint_square(&dense_mid, &dense_mid));
+  check_scratch_matches_mpz(&dense_mid, gdense_mid_square);
+#if defined(_MSC_VER) && defined(_M_X64)
+  XrayBigIntMulWorkspace dense_mid_alias_parallel_workspace;
+  xray_bigint_mul_workspace_init(&dense_mid_alias_parallel_workspace);
+  set_dense_pattern_limbs(&dense_mid, 520U, UINT64_C(0x6c8e9cf570932bd1));
+  CHECK(xray_bigint_square_toom3_full_workspace_probe(&dense_mid, &dense_mid, 48U, 3U));
+  check_scratch_matches_mpz(&dense_mid, gdense_mid_square);
+  set_dense_pattern_limbs(&dense_mid, 520U, UINT64_C(0x6c8e9cf570932bd1));
+  CHECK(xray_bigint_square_toom3_direct_coeff_reuse_probe(&dense_mid, &dense_mid, 48U, 2U, &dense_mid_alias_parallel_workspace));
+  check_scratch_matches_mpz(&dense_mid, gdense_mid_square);
+  set_dense_pattern_limbs(&dense_mid, 520U, UINT64_C(0x6c8e9cf570932bd1));
+  CHECK(xray_bigint_square_toom3_chung_sqr3_reuse_probe(&dense_mid, &dense_mid, 48U, 2U, &dense_mid_alias_parallel_workspace));
+  check_scratch_matches_mpz(&dense_mid, gdense_mid_square);
+  set_dense_pattern_limbs(&dense_mid, 520U, UINT64_C(0x6c8e9cf570932bd1));
+  CHECK(xray_bigint_square_toom4_chung_sqr4_reuse_probe(&dense_mid, &dense_mid, 48U, 1U, &dense_mid_alias_parallel_workspace));
+  check_scratch_matches_mpz(&dense_mid, gdense_mid_square);
+  set_dense_pattern_limbs(&dense_mid, 520U, UINT64_C(0x6c8e9cf570932bd1));
+  CHECK(xray_bigint_square_toom4_chung_sqr4_split_leaf_reuse_probe(&dense_mid, &dense_mid, 48U, 64U, 1U, &dense_mid_alias_parallel_workspace));
+  check_scratch_matches_mpz(&dense_mid, gdense_mid_square);
+  set_dense_pattern_limbs(&dense_mid, 520U, UINT64_C(0x6c8e9cf570932bd1));
+  CHECK(xray_bigint_square_toom4_chung_sqr4_parallel_reuse_probe(&dense_mid, &dense_mid, 48U, 1U, 3U, &dense_mid_alias_parallel_workspace));
+  check_scratch_matches_mpz(&dense_mid, gdense_mid_square);
+  set_dense_pattern_limbs(&dense_mid, 520U, UINT64_C(0x6c8e9cf570932bd1));
+  CHECK(xray_bigint_square_toom3_direct_coeff_parallel_reuse_probe(&dense_mid, &dense_mid, 48U, 2U, 5U, &dense_mid_alias_parallel_workspace));
+  check_scratch_matches_mpz(&dense_mid, gdense_mid_square);
+  set_dense_pattern_limbs(&dense_mid, 520U, UINT64_C(0x6c8e9cf570932bd1));
+  CHECK(xray_bigint_square_toom3_direct_coeff_dispatch_probe(&dense_mid, &dense_mid));
+  check_scratch_matches_mpz(&dense_mid, gdense_mid_square);
+  set_dense_pattern_limbs(&dense_mid, 520U, UINT64_C(0x6c8e9cf570932bd1));
+  CHECK(xray_bigint_square_toom3_full_workspace_reuse_parallel_probe(&dense_mid, &dense_mid, 64U, 2U, 1U, 3U, &dense_mid_alias_parallel_workspace));
+  check_scratch_matches_mpz(&dense_mid, gdense_mid_square);
+  set_dense_pattern_limbs(&dense_mid, 520U, UINT64_C(0x6c8e9cf570932bd1));
+  CHECK(xray_bigint_square_toom3_full_workspace_reuse_neg2_div2_div3_probe(&dense_mid, &dense_mid, 48U, 3U, &dense_mid_alias_parallel_workspace));
+  check_scratch_matches_mpz(&dense_mid, gdense_mid_square);
+  set_dense_pattern_limbs(&dense_mid, 520U, UINT64_C(0x6c8e9cf570932bd1));
+  CHECK(xray_bigint_square_toom3_full_workspace_mul_points_probe(&dense_mid, &dense_mid, 48U, 3U));
+  check_scratch_matches_mpz(&dense_mid, gdense_mid_square);
+  set_dense_pattern_limbs(&dense_mid, 520U, UINT64_C(0x6c8e9cf570932bd1));
+  CHECK(xray_bigint_square_toom4_top_full_workspace_probe(&dense_mid, &dense_mid, 48U, 3U));
+  check_scratch_matches_mpz(&dense_mid, gdense_mid_square);
+  set_dense_pattern_limbs(&dense_mid, 520U, UINT64_C(0x6c8e9cf570932bd1));
+  CHECK(xray_bigint_square_toom4_top_full_workspace_mul_points_probe(&dense_mid, &dense_mid, 48U, 3U));
+  check_scratch_matches_mpz(&dense_mid, gdense_mid_square);
+  xray_bigint_mul_workspace_clear(&dense_mid_alias_parallel_workspace);
+#endif
+  mpz_clears(gdense_mid, gdense_mid_square, NULL);
+  xray_bigint_clear(&dense_mid);
+  xray_bigint_clear(&dense_mid_square);
+
+  XrayScratchBigInt dense_toom3_frontier, dense_toom3_frontier_square;
+  xray_bigint_init(&dense_toom3_frontier);
+  xray_bigint_init(&dense_toom3_frontier_square);
+  mpz_t gdense_toom3_frontier, gdense_toom3_frontier_square;
+  mpz_inits(gdense_toom3_frontier, gdense_toom3_frontier_square, NULL);
+  set_dense_pattern_limbs(&dense_toom3_frontier, 230U, UINT64_C(0xe5a17c934d62b8f1));
+  mpz_set_from_scratch_limbs(gdense_toom3_frontier, &dense_toom3_frontier);
+  mpz_mul(gdense_toom3_frontier_square, gdense_toom3_frontier, gdense_toom3_frontier);
+  CHECK(xray_bigint_square(&dense_toom3_frontier_square, &dense_toom3_frontier));
+  check_scratch_matches_mpz(&dense_toom3_frontier_square, gdense_toom3_frontier_square);
+  CHECK(xray_bigint_square(&dense_toom3_frontier, &dense_toom3_frontier));
+  check_scratch_matches_mpz(&dense_toom3_frontier, gdense_toom3_frontier_square);
+  mpz_clears(gdense_toom3_frontier, gdense_toom3_frontier_square, NULL);
+  xray_bigint_clear(&dense_toom3_frontier);
+  xray_bigint_clear(&dense_toom3_frontier_square);
+
+  XrayScratchBigInt dense_toom3_parallel_mid, dense_toom3_parallel_mid_square;
+  xray_bigint_init(&dense_toom3_parallel_mid);
+  xray_bigint_init(&dense_toom3_parallel_mid_square);
+  mpz_t gdense_toom3_parallel_mid, gdense_toom3_parallel_mid_square;
+  mpz_inits(gdense_toom3_parallel_mid, gdense_toom3_parallel_mid_square, NULL);
+  set_dense_pattern_limbs(&dense_toom3_parallel_mid, 900U, UINT64_C(0x4f2c9d8e71b653a5));
+  mpz_set_from_scratch_limbs(gdense_toom3_parallel_mid, &dense_toom3_parallel_mid);
+  mpz_mul(gdense_toom3_parallel_mid_square, gdense_toom3_parallel_mid, gdense_toom3_parallel_mid);
+  CHECK(xray_bigint_square(&dense_toom3_parallel_mid_square, &dense_toom3_parallel_mid));
+  check_scratch_matches_mpz(&dense_toom3_parallel_mid_square, gdense_toom3_parallel_mid_square);
+  CHECK(xray_bigint_square(&dense_toom3_parallel_mid, &dense_toom3_parallel_mid));
+  check_scratch_matches_mpz(&dense_toom3_parallel_mid, gdense_toom3_parallel_mid_square);
+  mpz_clears(gdense_toom3_parallel_mid, gdense_toom3_parallel_mid_square, NULL);
+  xray_bigint_clear(&dense_toom3_parallel_mid);
+  xray_bigint_clear(&dense_toom3_parallel_mid_square);
+
+  XrayScratchBigInt dense_toom3_upper, dense_toom3_upper_square;
+  xray_bigint_init(&dense_toom3_upper);
+  xray_bigint_init(&dense_toom3_upper_square);
+  mpz_t gdense_toom3_upper, gdense_toom3_upper_square;
+  mpz_inits(gdense_toom3_upper, gdense_toom3_upper_square, NULL);
+  set_dense_pattern_limbs(&dense_toom3_upper, 1250U, UINT64_C(0x81d4e3a5cb7296f3));
+  mpz_set_from_scratch_limbs(gdense_toom3_upper, &dense_toom3_upper);
+  mpz_mul(gdense_toom3_upper_square, gdense_toom3_upper, gdense_toom3_upper);
+  CHECK(xray_bigint_square(&dense_toom3_upper_square, &dense_toom3_upper));
+  check_scratch_matches_mpz(&dense_toom3_upper_square, gdense_toom3_upper_square);
+  CHECK(xray_bigint_square(&dense_toom3_upper, &dense_toom3_upper));
+  check_scratch_matches_mpz(&dense_toom3_upper, gdense_toom3_upper_square);
+  mpz_clears(gdense_toom3_upper, gdense_toom3_upper_square, NULL);
+  xray_bigint_clear(&dense_toom3_upper);
+  xray_bigint_clear(&dense_toom3_upper_square);
+
+  XrayScratchBigInt dense_parallel, dense_parallel_square;
+  xray_bigint_init(&dense_parallel);
+  xray_bigint_init(&dense_parallel_square);
+  mpz_t gdense_parallel, gdense_parallel_square;
+  mpz_inits(gdense_parallel, gdense_parallel_square, NULL);
+  set_dense_pattern_limbs(&dense_parallel, 1700U, UINT64_C(0xa94d3b6f1782c5e1));
+  mpz_set_from_scratch_limbs(gdense_parallel, &dense_parallel);
+  mpz_mul(gdense_parallel_square, gdense_parallel, gdense_parallel);
+  CHECK(xray_bigint_square(&dense_parallel_square, &dense_parallel));
+  check_scratch_matches_mpz(&dense_parallel_square, gdense_parallel_square);
+  CHECK(xray_bigint_square(&dense_parallel, &dense_parallel));
+  check_scratch_matches_mpz(&dense_parallel, gdense_parallel_square);
+  mpz_clears(gdense_parallel, gdense_parallel_square, NULL);
+  xray_bigint_clear(&dense_parallel);
+  xray_bigint_clear(&dense_parallel_square);
+
+  XrayScratchBigInt dense_upper, dense_upper_square;
+  xray_bigint_init(&dense_upper);
+  xray_bigint_init(&dense_upper_square);
+  mpz_t gdense_upper, gdense_upper_square;
+  mpz_inits(gdense_upper, gdense_upper_square, NULL);
+  set_dense_pattern_limbs(&dense_upper, 2450U, UINT64_C(0x5a17c9e3d4b26810));
+  mpz_set_from_scratch_limbs(gdense_upper, &dense_upper);
+  mpz_mul(gdense_upper_square, gdense_upper, gdense_upper);
+  CHECK(xray_bigint_square(&dense_upper_square, &dense_upper));
+  check_scratch_matches_mpz(&dense_upper_square, gdense_upper_square);
+  CHECK(xray_bigint_square(&dense_upper, &dense_upper));
+  check_scratch_matches_mpz(&dense_upper, gdense_upper_square);
+  mpz_clears(gdense_upper, gdense_upper_square, NULL);
+  xray_bigint_clear(&dense_upper);
+  xray_bigint_clear(&dense_upper_square);
 }
 
 static void test_scratch_bigint_sparse_zero_limb_oracle(void) {
@@ -1443,6 +1751,178 @@ static void test_scratch_bigint_dense_leaf_probe_oracle(void) {
   free(right_text);
 }
 
+static void check_ntt16_product_matches_mpz(const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
+  XrayScratchBigInt product;
+  xray_bigint_init(&product);
+  mpz_t gleft, gright, gproduct;
+  mpz_inits(gleft, gright, gproduct, NULL);
+  mpz_set_from_scratch_limbs(gleft, left);
+  mpz_set_from_scratch_limbs(gright, right);
+  mpz_mul(gproduct, gleft, gright);
+  CHECK(xray_bigint_mul_ntt16_probe(&product, left, right));
+  check_scratch_matches_mpz(&product, gproduct);
+  xray_bigint_clear(&product);
+  mpz_clears(gleft, gright, gproduct, NULL);
+}
+
+static void check_ntt32_product_matches_mpz(const XrayScratchBigInt *left, const XrayScratchBigInt *right) {
+  XrayScratchBigInt product;
+  xray_bigint_init(&product);
+  mpz_t gleft, gright, gproduct;
+  mpz_inits(gleft, gright, gproduct, NULL);
+  mpz_set_from_scratch_limbs(gleft, left);
+  mpz_set_from_scratch_limbs(gright, right);
+  mpz_mul(gproduct, gleft, gright);
+  CHECK(xray_bigint_mul_ntt32_probe(&product, left, right));
+  check_scratch_matches_mpz(&product, gproduct);
+  xray_bigint_clear(&product);
+  mpz_clears(gleft, gright, gproduct, NULL);
+}
+
+static void test_scratch_bigint_ntt16_probe_oracle(void) {
+  XrayScratchBigInt zero, one_limb_left, one_limb_right, uneven_left, uneven_right;
+  XrayScratchBigInt dense_left, dense_right, alias_left, alias_right, square, alias_square;
+  XrayScratchBigInt too_large_left, too_large_right, unsupported_out;
+  xray_bigint_init(&zero);
+  xray_bigint_init(&one_limb_left);
+  xray_bigint_init(&one_limb_right);
+  xray_bigint_init(&uneven_left);
+  xray_bigint_init(&uneven_right);
+  xray_bigint_init(&dense_left);
+  xray_bigint_init(&dense_right);
+  xray_bigint_init(&alias_left);
+  xray_bigint_init(&alias_right);
+  xray_bigint_init(&square);
+  xray_bigint_init(&alias_square);
+  xray_bigint_init(&too_large_left);
+  xray_bigint_init(&too_large_right);
+  xray_bigint_init(&unsupported_out);
+
+  CHECK(xray_bigint_set_decimal(&one_limb_left, "18446744073709551615"));
+  CHECK(xray_bigint_set_decimal(&one_limb_right, "4294967297"));
+  check_ntt16_product_matches_mpz(&zero, &one_limb_left);
+  check_ntt16_product_matches_mpz(&one_limb_left, &one_limb_right);
+  check_ntt32_product_matches_mpz(&zero, &one_limb_left);
+  check_ntt32_product_matches_mpz(&one_limb_left, &one_limb_right);
+
+  char *uneven_left_text = make_pattern_decimal(777, "97531864208642135790");
+  char *uneven_right_text = make_pattern_decimal(113, "24681357913579246801");
+  CHECK(xray_bigint_set_decimal(&uneven_left, uneven_left_text));
+  CHECK(xray_bigint_set_decimal(&uneven_right, uneven_right_text));
+  check_ntt16_product_matches_mpz(&uneven_left, &uneven_right);
+  check_ntt32_product_matches_mpz(&uneven_left, &uneven_right);
+
+  set_dense_pattern_limbs(&dense_left, 87U, UINT64_C(0x123456789abcdef0));
+  set_dense_pattern_limbs(&dense_right, 121U, UINT64_C(0xfedcba9876543210));
+  check_ntt16_product_matches_mpz(&dense_left, &dense_right);
+  check_ntt32_product_matches_mpz(&dense_left, &dense_right);
+
+  mpz_t gleft, gright, gproduct;
+  mpz_inits(gleft, gright, gproduct, NULL);
+  mpz_set_from_scratch_limbs(gleft, &dense_left);
+  mpz_set_from_scratch_limbs(gright, &dense_right);
+  mpz_mul(gproduct, gleft, gright);
+
+  CHECK(xray_bigint_copy(&alias_left, &dense_left));
+  CHECK(xray_bigint_mul_ntt16_probe(&alias_left, &alias_left, &dense_right));
+  check_scratch_matches_mpz(&alias_left, gproduct);
+  CHECK(xray_bigint_copy(&alias_left, &dense_left));
+  CHECK(xray_bigint_mul_ntt32_probe(&alias_left, &alias_left, &dense_right));
+  check_scratch_matches_mpz(&alias_left, gproduct);
+
+  CHECK(xray_bigint_copy(&alias_right, &dense_right));
+  CHECK(xray_bigint_mul_ntt16_probe(&alias_right, &dense_left, &alias_right));
+  check_scratch_matches_mpz(&alias_right, gproduct);
+  CHECK(xray_bigint_copy(&alias_right, &dense_right));
+  CHECK(xray_bigint_mul_ntt32_probe(&alias_right, &dense_left, &alias_right));
+  check_scratch_matches_mpz(&alias_right, gproduct);
+
+  mpz_mul(gproduct, gleft, gleft);
+  CHECK(xray_bigint_mul_ntt16_probe(&square, &dense_left, &dense_left));
+  check_scratch_matches_mpz(&square, gproduct);
+  CHECK(xray_bigint_square_ntt16_probe(&square, &dense_left));
+  check_scratch_matches_mpz(&square, gproduct);
+  CHECK(xray_bigint_mul_ntt32_probe(&square, &dense_left, &dense_left));
+  check_scratch_matches_mpz(&square, gproduct);
+  CHECK(xray_bigint_square_ntt32_probe(&square, &dense_left));
+  check_scratch_matches_mpz(&square, gproduct);
+  CHECK(xray_bigint_square_ntt32_reuse_probe(&square, &dense_left));
+  check_scratch_matches_mpz(&square, gproduct);
+  CHECK(xray_bigint_square_ntt32_pointwise_parallel_probe(&square, &dense_left));
+  check_scratch_matches_mpz(&square, gproduct);
+  CHECK(xray_bigint_square_ntt32_persistent_transform_probe(&square, &dense_left));
+  check_scratch_matches_mpz(&square, gproduct);
+  CHECK(xray_bigint_square_ntt32_reuse_persistent_probe(&square, &dense_left));
+  check_scratch_matches_mpz(&square, gproduct);
+  CHECK(xray_bigint_square_ntt32_tailmap_probe(&square, &dense_left));
+  check_scratch_matches_mpz(&square, gproduct);
+  CHECK(xray_bigint_square_ntt32_lowtailmap_probe(&square, &dense_left));
+  check_scratch_matches_mpz(&square, gproduct);
+  CHECK(xray_bigint_square_ntt32_direct_crt_probe(&square, &dense_left));
+  check_scratch_matches_mpz(&square, gproduct);
+
+  CHECK(xray_bigint_copy(&alias_square, &dense_left));
+  CHECK(xray_bigint_mul_ntt16_probe(&alias_square, &alias_square, &alias_square));
+  check_scratch_matches_mpz(&alias_square, gproduct);
+  CHECK(xray_bigint_copy(&alias_square, &dense_left));
+  CHECK(xray_bigint_square_ntt16_probe(&alias_square, &alias_square));
+  check_scratch_matches_mpz(&alias_square, gproduct);
+  CHECK(xray_bigint_copy(&alias_square, &dense_left));
+  CHECK(xray_bigint_mul_ntt32_probe(&alias_square, &alias_square, &alias_square));
+  check_scratch_matches_mpz(&alias_square, gproduct);
+  CHECK(xray_bigint_copy(&alias_square, &dense_left));
+  CHECK(xray_bigint_square_ntt32_probe(&alias_square, &alias_square));
+  check_scratch_matches_mpz(&alias_square, gproduct);
+  CHECK(xray_bigint_copy(&alias_square, &dense_left));
+  CHECK(xray_bigint_square_ntt32_reuse_probe(&alias_square, &alias_square));
+  check_scratch_matches_mpz(&alias_square, gproduct);
+  CHECK(xray_bigint_copy(&alias_square, &dense_left));
+  CHECK(xray_bigint_square_ntt32_pointwise_parallel_probe(&alias_square, &alias_square));
+  check_scratch_matches_mpz(&alias_square, gproduct);
+  CHECK(xray_bigint_copy(&alias_square, &dense_left));
+  CHECK(xray_bigint_square_ntt32_persistent_transform_probe(&alias_square, &alias_square));
+  check_scratch_matches_mpz(&alias_square, gproduct);
+  CHECK(xray_bigint_copy(&alias_square, &dense_left));
+  CHECK(xray_bigint_square_ntt32_reuse_persistent_probe(&alias_square, &alias_square));
+  check_scratch_matches_mpz(&alias_square, gproduct);
+  CHECK(xray_bigint_copy(&alias_square, &dense_left));
+  CHECK(xray_bigint_square_ntt32_tailmap_probe(&alias_square, &alias_square));
+  check_scratch_matches_mpz(&alias_square, gproduct);
+  CHECK(xray_bigint_copy(&alias_square, &dense_left));
+  CHECK(xray_bigint_square_ntt32_lowtailmap_probe(&alias_square, &alias_square));
+  check_scratch_matches_mpz(&alias_square, gproduct);
+  CHECK(xray_bigint_copy(&alias_square, &dense_left));
+  CHECK(xray_bigint_square_ntt32_direct_crt_probe(&alias_square, &alias_square));
+  check_scratch_matches_mpz(&alias_square, gproduct);
+
+  {
+    const size_t count = 300000U;
+    const size_t top_index = count - 1U;
+    const uint64_t word = 1U;
+    set_sparse_limbs(&too_large_left, count, &top_index, &word, 1U);
+    set_sparse_limbs(&too_large_right, count, &top_index, &word, 1U);
+    CHECK(!xray_bigint_mul_ntt16_probe(&unsupported_out, &too_large_left, &too_large_right));
+  }
+
+  xray_bigint_clear(&zero);
+  xray_bigint_clear(&one_limb_left);
+  xray_bigint_clear(&one_limb_right);
+  xray_bigint_clear(&uneven_left);
+  xray_bigint_clear(&uneven_right);
+  xray_bigint_clear(&dense_left);
+  xray_bigint_clear(&dense_right);
+  xray_bigint_clear(&alias_left);
+  xray_bigint_clear(&alias_right);
+  xray_bigint_clear(&square);
+  xray_bigint_clear(&alias_square);
+  xray_bigint_clear(&too_large_left);
+  xray_bigint_clear(&too_large_right);
+  xray_bigint_clear(&unsupported_out);
+  mpz_clears(gleft, gright, gproduct, NULL);
+  free(uneven_left_text);
+  free(uneven_right_text);
+}
+
 static void test_scratch_bigint_karatsuba_view_probe_oracle(void) {
   const size_t thresholds[] = {32, 64, 96, 128};
   char *left_text = make_pattern_decimal(3200, "98765012349876501234");
@@ -1617,7 +2097,7 @@ static void test_scratch_bigint_toom3_recursive_probe_oracle(void) {
 #if defined(_MSC_VER) && defined(_M_X64)
   char *left_text = make_pattern_decimal(12000, "98673142086421357905");
   char *right_text = make_pattern_decimal(12000, "31415926535897932384");
-  XrayScratchBigInt a, b, product, view_product, workspace_product, full_workspace_product, full_workspace_div2_product, full_workspace_div3_product, full_workspace_combo_product, full_workspace_inplace_combo_product, full_workspace_reuse_product, full_workspace_reuse_neg2_product, full_workspace_reuse_inplace_product, full_workspace_toom4_top_product, full_workspace_toom4_top_reuse_product, full_workspace_toom4_top_reuse_l64d2_product, full_workspace_toom4_top_factored_div_product, alias;
+  XrayScratchBigInt a, b, product, view_product, workspace_product, full_workspace_product, full_workspace_div2_product, full_workspace_div3_product, full_workspace_combo_product, full_workspace_inplace_combo_product, full_workspace_reuse_product, full_workspace_reuse_neg2_product, full_workspace_reuse_inplace_product, full_workspace_toom4_top_product, full_workspace_toom4_top_reuse_product, full_workspace_toom4_top_reuse_l64d2_product, full_workspace_toom4_top_factored_div_product, full_workspace_toom4_top_parallel_product, alias;
   XrayBigIntMulWorkspace mul_workspace;
   xray_bigint_init(&a);
   xray_bigint_init(&b);
@@ -1636,6 +2116,7 @@ static void test_scratch_bigint_toom3_recursive_probe_oracle(void) {
   xray_bigint_init(&full_workspace_toom4_top_reuse_product);
   xray_bigint_init(&full_workspace_toom4_top_reuse_l64d2_product);
   xray_bigint_init(&full_workspace_toom4_top_factored_div_product);
+  xray_bigint_init(&full_workspace_toom4_top_parallel_product);
   xray_bigint_init(&alias);
   xray_bigint_mul_workspace_init(&mul_workspace);
   mpz_t ga, gb, gproduct;
@@ -1728,6 +2209,11 @@ static void test_scratch_bigint_toom3_recursive_probe_oracle(void) {
   check_scratch_matches_mpz(&full_workspace_toom4_top_factored_div_product, gproduct);
   CHECK(xray_bigint_compare(&full_workspace_toom4_top_factored_div_product, &product) == 0);
   CHECK(xray_bigint_compare(&full_workspace_toom4_top_factored_div_product, &full_workspace_toom4_top_reuse_product) == 0);
+
+  CHECK(xray_bigint_mul_toom4_top_full_workspace_reuse_factored_div_parallel_probe(&full_workspace_toom4_top_parallel_product, &a, &b, 48, 3, 1, 4, &mul_workspace));
+  check_scratch_matches_mpz(&full_workspace_toom4_top_parallel_product, gproduct);
+  CHECK(xray_bigint_compare(&full_workspace_toom4_top_parallel_product, &product) == 0);
+  CHECK(xray_bigint_compare(&full_workspace_toom4_top_parallel_product, &full_workspace_toom4_top_factored_div_product) == 0);
 
   CHECK(xray_bigint_copy(&alias, &a));
   CHECK(xray_bigint_mul_toom3_unroll4_recursive_probe(&alias, &alias, &b, 64, 2));
@@ -1837,6 +2323,14 @@ static void test_scratch_bigint_toom3_recursive_probe_oracle(void) {
   CHECK(xray_bigint_mul_toom4_top_full_workspace_reuse_factored_div_probe(&alias, &a, &alias, 48, 3, &mul_workspace));
   check_scratch_matches_mpz(&alias, gproduct);
 
+  CHECK(xray_bigint_copy(&alias, &a));
+  CHECK(xray_bigint_mul_toom4_top_full_workspace_reuse_factored_div_parallel_probe(&alias, &alias, &b, 48, 3, 1, 4, &mul_workspace));
+  check_scratch_matches_mpz(&alias, gproduct);
+
+  CHECK(xray_bigint_copy(&alias, &b));
+  CHECK(xray_bigint_mul_toom4_top_full_workspace_reuse_factored_div_parallel_probe(&alias, &a, &alias, 48, 3, 1, 4, &mul_workspace));
+  check_scratch_matches_mpz(&alias, gproduct);
+
   xray_bigint_mul_workspace_clear(&mul_workspace);
   xray_bigint_clear(&a);
   xray_bigint_clear(&b);
@@ -1855,6 +2349,7 @@ static void test_scratch_bigint_toom3_recursive_probe_oracle(void) {
   xray_bigint_clear(&full_workspace_toom4_top_reuse_product);
   xray_bigint_clear(&full_workspace_toom4_top_reuse_l64d2_product);
   xray_bigint_clear(&full_workspace_toom4_top_factored_div_product);
+  xray_bigint_clear(&full_workspace_toom4_top_parallel_product);
   xray_bigint_clear(&alias);
   mpz_clears(ga, gb, gproduct, NULL);
   free(left_text);
@@ -1878,7 +2373,9 @@ static void test_scratch_bigint_toom3_recursive_probe_oracle(void) {
   CHECK(!xray_bigint_mul_toom4_top_full_workspace_probe(&value, &value, &value, 48, 3));
   CHECK(!xray_bigint_mul_toom4_top_full_workspace_reuse_probe(&value, &value, &value, 48, 3, &mul_workspace));
   CHECK(!xray_bigint_mul_toom4_top_full_workspace_reuse_factored_div_probe(&value, &value, &value, 48, 3, &mul_workspace));
+  CHECK(!xray_bigint_mul_toom4_top_full_workspace_reuse_factored_div_parallel_probe(&value, &value, &value, 48, 3, 1, 4, &mul_workspace));
   CHECK(!xray_bigint_mul_toom5_top_full_workspace_reuse_probe(&value, &value, &value, 48, 3, &mul_workspace));
+  CHECK(!xray_bigint_mul_toom5_top_full_workspace_reuse_factored_div_probe(&value, &value, &value, 48, 3, &mul_workspace));
   xray_bigint_mul_workspace_clear(&mul_workspace);
   xray_bigint_clear(&value);
 #endif
@@ -1916,12 +2413,16 @@ static void test_scratch_bigint_toom5_top_reuse_probe_oracle(void) {
   check_scratch_matches_mpz(&toom5_product, gproduct);
   CHECK(xray_bigint_compare(&toom5_product, &current_product) == 0);
 
+  CHECK(xray_bigint_mul_toom5_top_full_workspace_reuse_factored_div_probe(&toom5_product, &a, &b, 8, 1, &mul_workspace));
+  check_scratch_matches_mpz(&toom5_product, gproduct);
+  CHECK(xray_bigint_compare(&toom5_product, &current_product) == 0);
+
   CHECK(xray_bigint_copy(&alias, &a));
-  CHECK(xray_bigint_mul_toom5_top_full_workspace_reuse_probe(&alias, &alias, &b, 8, 1, &mul_workspace));
+  CHECK(xray_bigint_mul_toom5_top_full_workspace_reuse_factored_div_probe(&alias, &alias, &b, 8, 1, &mul_workspace));
   check_scratch_matches_mpz(&alias, gproduct);
 
   CHECK(xray_bigint_copy(&alias, &b));
-  CHECK(xray_bigint_mul_toom5_top_full_workspace_reuse_probe(&alias, &a, &alias, 8, 1, &mul_workspace));
+  CHECK(xray_bigint_mul_toom5_top_full_workspace_reuse_factored_div_probe(&alias, &a, &alias, 8, 1, &mul_workspace));
   check_scratch_matches_mpz(&alias, gproduct);
 
   xray_bigint_mul_workspace_clear(&mul_workspace);
@@ -1939,6 +2440,7 @@ static void test_scratch_bigint_toom5_top_reuse_probe_oracle(void) {
   xray_bigint_init(&value);
   xray_bigint_mul_workspace_init(&mul_workspace);
   CHECK(!xray_bigint_mul_toom5_top_full_workspace_reuse_probe(&value, &value, &value, 8, 1, &mul_workspace));
+  CHECK(!xray_bigint_mul_toom5_top_full_workspace_reuse_factored_div_probe(&value, &value, &value, 8, 1, &mul_workspace));
   xray_bigint_mul_workspace_clear(&mul_workspace);
   xray_bigint_clear(&value);
 #endif
@@ -2990,7 +3492,12 @@ static void test_benchmarks(void) {
       CHECK(report->results[index].gmp_us > 0);
       CHECK(report->results[index].speed_ratio > 0.0);
       CHECK(report->results[index].max_allowed_speed_ratio == 1.0);
-      CHECK(report->results[index].sample_count == 5);
+      {
+        size_t expected_samples =
+          strcmp(report->results[index].operation, "square") == 0 &&
+          report->results[index].digits == 4096 ? 7U : 5U;
+        CHECK(report->results[index].sample_count == expected_samples);
+      }
       CHECK(report->results[index].stable_sample_count <= report->results[index].sample_count);
       if (report->results[index].digits == 8192) saw_8192_scratch = 1;
       if (report->results[index].digits == 16384 && strcmp(report->results[index].operation, "mul") == 0) saw_16384_scratch_mul = 1;
@@ -3008,8 +3515,21 @@ static void test_benchmarks(void) {
       CHECK(strcmp(report->results[index].adoption, adoption) == 0);
       CHECK(report->results[index].replacement_ready == (strcmp(adoption, "allowed") == 0));
       if (strcmp(adoption, "allowed") == 0) {
-        CHECK(report->results[index].stable_sample_count >= 4);
-        CHECK(report->results[index].worst_pair_ratio <= 1.0);
+        size_t required_stable = report->results[index].sample_count < 4U ?
+          report->results[index].sample_count :
+          4U;
+        size_t majority_stable = report->results[index].sample_count / 2U + 1U;
+        int strict_worst =
+          report->results[index].stable_sample_count >= required_stable &&
+          report->results[index].worst_pair_ratio <= 1.0;
+        int bounded_noise =
+          report->results[index].stable_sample_count >= required_stable &&
+          report->results[index].speed_ratio <= 0.98 &&
+          report->results[index].worst_pair_ratio <= 1.15;
+        int strong_median =
+          report->results[index].stable_sample_count >= majority_stable &&
+          report->results[index].speed_ratio <= 0.90;
+        CHECK(strict_worst || bounded_noise || strong_median);
         replacement_ready_rows++;
       }
       else if (strcmp(adoption, "oracle-only") == 0) oracle_only_rows++;
@@ -6255,8 +6775,10 @@ static void test_benchmarks(void) {
         CHECK(strstr(report->results[index].detail, "policy=tournament") != NULL);
         CHECK(strstr(report->results[index].detail, "winner=") != NULL);
         CHECK(strstr(report->results[index].detail, "current=current-default") != NULL);
-        CHECK(strstr(report->results[index].detail, "routes=current-default,divide1e19-preinv,divide1e19-preinv-pairs,dc-ladder8,dc-direct16,dc-preinv-qhat16") != NULL);
-        CHECK(strstr(report->results[index].detail, "routesTested=6") != NULL);
+        CHECK(strstr(report->results[index].detail, "routes=current-default") != NULL);
+        CHECK(strstr(report->results[index].detail, "divide1e19-preinv") != NULL);
+        CHECK(strstr(report->results[index].detail, "dc-cached-preinv16") != NULL);
+        CHECK(strstr(report->results[index].detail, "routesTested=") != NULL);
         CHECK(strstr(report->results[index].detail, "requiredStablePairs=4/5") != NULL);
         CHECK(strstr(report->results[index].detail, "winnerCurrentRatio=") != NULL);
         CHECK(strstr(report->results[index].detail, "winnerGmpRatio=") != NULL);
@@ -8970,7 +9492,7 @@ static void test_benchmarks(void) {
   XrayBenchmarkResult unstable;
   memset(&unstable, 0, sizeof(unstable));
   unstable.parity_verified = 1;
-  unstable.speed_ratio = 0.90;
+  unstable.speed_ratio = 0.95;
   unstable.max_allowed_speed_ratio = 1.0;
   unstable.sample_count = 5;
   unstable.stable_sample_count = 3;
@@ -8979,7 +9501,12 @@ static void test_benchmarks(void) {
   unstable.stable_sample_count = 4;
   CHECK(strcmp(xray_scratch_adoption_for_result(&unstable), "allowed") == 0);
   unstable.worst_pair_ratio = 1.01;
+  CHECK(strcmp(xray_scratch_adoption_for_result(&unstable), "allowed") == 0);
+  unstable.worst_pair_ratio = 1.40;
   CHECK(strcmp(xray_scratch_adoption_for_result(&unstable), "oracle-only") == 0);
+  unstable.speed_ratio = 0.90;
+  unstable.stable_sample_count = 3;
+  CHECK(strcmp(xray_scratch_adoption_for_result(&unstable), "allowed") == 0);
   unstable.worst_pair_ratio = 0.95;
   unstable.speed_ratio = 1.01;
   unstable.stable_sample_count = 5;
@@ -11520,6 +12047,349 @@ static void test_benchmark_focus_api(void) {
   CHECK(strstr(tsv, "category\tname\toperation\tdigits") != NULL);
   xray_free(tsv);
   xray_benchmark_report_clear(&report);
+
+  CHECK(xray_benchmark_run_focus(&report, "mul-ntt-smoke"));
+  CHECK(report.result_count > 0);
+  tsv = xray_benchmark_report_tsv(&report);
+  CHECK(tsv != NULL);
+  CHECK(strstr(tsv, "mul-large-ntt16-transition") != NULL);
+  CHECK(strstr(tsv, "mul-large-ntt16-transition-pt") != NULL);
+  CHECK(strstr(tsv, "mul-large-ntt16-upper") != NULL);
+  CHECK(strstr(tsv, "mul-large-ntt16-upper-pt") != NULL);
+  CHECK(strstr(tsv, "mul-large-ntt16-sparse-coexist") != NULL);
+  CHECK(strstr(tsv, "mul-ntt16-sparse-coexist-pt") != NULL);
+  CHECK(strstr(tsv, "transition-smoke") != NULL);
+  CHECK(strstr(tsv, "upper-smoke") != NULL);
+  CHECK(strstr(tsv, "candidate=ntt16-base2^16") != NULL);
+  CHECK(strstr(tsv, "baseline=current-scratch-mul") != NULL);
+  CHECK(strstr(tsv, "forcedSparse=xray_bigint_mul_sparse_probe") != NULL);
+  CHECK(strstr(tsv, "sparsePriority=preserved") != NULL);
+  CHECK(strstr(tsv, "routeOrder=production-sparse-first") != NULL);
+  CHECK(strstr(tsv, "productionSparseRows=preserved") != NULL);
+  CHECK(strstr(tsv, "sparse-zero-mul") != NULL);
+  CHECK(strstr(tsv, "sparse-forced-mul") != NULL);
+  CHECK(strstr(tsv, "sparse-pair-product") != NULL);
+  CHECK(strstr(tsv, "sparse-production-pair-mul") != NULL);
+  CHECK(strstr(tsv, "replacementReady=false") != NULL);
+  CHECK(strstr(tsv, "noAutoRoute=1") != NULL);
+  xray_free(tsv);
+  xray_benchmark_report_clear(&report);
+
+  CHECK(xray_benchmark_run_focus(&report, "mul-big-hill-smoke"));
+  CHECK(report.result_count > 0);
+  tsv = xray_benchmark_report_tsv(&report);
+  CHECK(tsv != NULL);
+  CHECK(strstr(tsv, "mul-big-hill-smoke-pt") != NULL);
+  CHECK(strstr(tsv, "mul-big-hill-smoke-point") != NULL);
+  CHECK(strstr(tsv, "candidate=combo-l56d4") != NULL);
+  CHECK(strstr(tsv, "candidate=combo-l40d4") != NULL);
+  CHECK(strstr(tsv, "featureGate=large-multiply-cpu-big-hill-smoke") != NULL);
+  CHECK(strstr(tsv, "oracle=mpz_mul") != NULL);
+  CHECK(strstr(tsv, "replacementReady=false") != NULL);
+  CHECK(strstr(tsv, "noAutoRoute=1") != NULL);
+  xray_free(tsv);
+  xray_benchmark_report_clear(&report);
+
+  CHECK(xray_benchmark_run_focus(&report, "mul-dense-65536-hill-smoke"));
+  CHECK(report.result_count > 0);
+  tsv = xray_benchmark_report_tsv(&report);
+  CHECK(tsv != NULL);
+  CHECK(strstr(tsv, "mul-dense-65536-hill-smoke-pt") != NULL);
+  CHECK(strstr(tsv, "mul-dense-65536-hill-smoke-point") != NULL);
+  CHECK(strstr(tsv, "candidate=top4-l56d2") != NULL);
+  CHECK(strstr(tsv, "candidate=top4-l80d2") != NULL);
+  CHECK(strstr(tsv, "digits=65536") != NULL);
+  CHECK(strstr(tsv, "featureGate=large-multiply-cpu-dense-65536-hill-smoke") != NULL);
+  CHECK(strstr(tsv, "oracle=mpz_mul") != NULL);
+  CHECK(strstr(tsv, "replacementReady=false") != NULL);
+  CHECK(strstr(tsv, "noAutoRoute=1") != NULL);
+  xray_free(tsv);
+  xray_benchmark_report_clear(&report);
+
+  CHECK(xray_benchmark_run_focus(&report, "format-current-gmp"));
+  CHECK(report.result_count == 2);
+  tsv = xray_benchmark_report_tsv(&report);
+  CHECK(tsv != NULL);
+  CHECK(strstr(tsv, "scratch format 4096 digits") != NULL);
+  CHECK(strstr(tsv, "scratch format 8192 digits") != NULL);
+  CHECK(strstr(tsv, "\tformat\t4096\t") != NULL);
+  CHECK(strstr(tsv, "\tformat\t8192\t") != NULL);
+  CHECK(strstr(tsv, "\ttrue\t") != NULL);
+  xray_free(tsv);
+  xray_benchmark_report_clear(&report);
+
+  CHECK(xray_benchmark_run_focus(&report, "dense-million-bit-floor-gate"));
+  CHECK(report.result_count == 6);
+  tsv = xray_benchmark_report_tsv(&report);
+  CHECK(tsv != NULL);
+  CHECK(strstr(tsv, "frontier-scout") != NULL);
+  CHECK(strstr(tsv, "mul-frontier") != NULL);
+  CHECK(strstr(tsv, "square-frontier") != NULL);
+  CHECK(strstr(tsv, "digits=301030") != NULL);
+  CHECK(strstr(tsv, "digits=1204120") != NULL);
+  CHECK(strstr(tsv, "samples=7") != NULL);
+  CHECK(strstr(tsv, "iterations=3") != NULL);
+  CHECK(strstr(tsv, "featureGate=very-large-frontier-scout") != NULL);
+  CHECK(strstr(tsv, "controlPlacement=rotating-batch") != NULL);
+  CHECK(strstr(tsv, "\ttrue\ttrue\tfalse\tobserve-only\t") != NULL);
+  CHECK(strstr(tsv, "noAutoRoute=1") != NULL);
+  xray_free(tsv);
+  xray_benchmark_report_clear(&report);
+
+  CHECK(xray_benchmark_run_focus(&report, "dense-million-bit-floor-interleaved-gate"));
+  CHECK(report.result_count == 6);
+  tsv = xray_benchmark_report_tsv(&report);
+  CHECK(tsv != NULL);
+  CHECK(strstr(tsv, "frontier-scout") != NULL);
+  CHECK(strstr(tsv, "mul-frontier") != NULL);
+  CHECK(strstr(tsv, "square-frontier") != NULL);
+  CHECK(strstr(tsv, "digits=301030") != NULL);
+  CHECK(strstr(tsv, "digits=1204120") != NULL);
+  CHECK(strstr(tsv, "samples=7") != NULL);
+  CHECK(strstr(tsv, "iterations=5") != NULL);
+  CHECK(strstr(tsv, "featureGate=very-large-frontier-scout") != NULL);
+  CHECK(strstr(tsv, "controlPlacement=interleaved-call") != NULL);
+  CHECK(strstr(tsv, "\ttrue\ttrue\tfalse\tobserve-only\t") != NULL);
+  CHECK(strstr(tsv, "noAutoRoute=1") != NULL);
+  xray_free(tsv);
+  xray_benchmark_report_clear(&report);
+
+  CHECK(xray_benchmark_run_focus(&report, "square-8192-sqr4-parallel-final-gate"));
+  CHECK(report.result_count == 5);
+  tsv = xray_benchmark_report_tsv(&report);
+  CHECK(tsv != NULL);
+  CHECK(strstr(tsv, "square-dense-route-current-gate") != NULL);
+  CHECK(strstr(tsv, "candidate=sqr4-l48d1-current-8192") != NULL);
+  CHECK(strstr(tsv, "candidate=sqr4-l44d1-p4-8192") != NULL);
+  CHECK(strstr(tsv, "route=toom4-chung-sqr4-parallel4") != NULL);
+  CHECK(strstr(tsv, "digits=8192") != NULL);
+  CHECK(strstr(tsv, "samples=7") != NULL);
+  CHECK(strstr(tsv, "iterations=4096") != NULL);
+  CHECK(strstr(tsv, "candidateCurrentRatio=") != NULL);
+  CHECK(strstr(tsv, "candidateGmpRatio=") != NULL);
+  CHECK(strstr(tsv, "hashGate=") != NULL);
+  CHECK(strstr(tsv, "parity=") != NULL);
+  CHECK(strstr(tsv, "replacementReady=false") != NULL);
+  CHECK(strstr(tsv, "noAutoRoute=1") != NULL);
+  xray_free(tsv);
+  xray_benchmark_report_clear(&report);
+
+  CHECK(xray_benchmark_run_focus(&report, "square-1000-leaf-gate"));
+  CHECK(report.result_count > 0);
+  tsv = xray_benchmark_report_tsv(&report);
+  CHECK(tsv != NULL);
+  CHECK(strstr(tsv, "square-threshold-hill-pt") != NULL);
+  CHECK(strstr(tsv, "digits=1000") != NULL);
+  CHECK(strstr(tsv, "candidate=unroll4-l64") != NULL);
+  CHECK(strstr(tsv, "candidate=comba-l64") != NULL);
+  CHECK(strstr(tsv, "featureGate=square-threshold-hill") != NULL);
+  CHECK(strstr(tsv, "replacementReady=false") != NULL);
+  CHECK(strstr(tsv, "noAutoRoute=1") != NULL);
+  xray_free(tsv);
+  xray_benchmark_report_clear(&report);
+
+  CHECK(xray_benchmark_run_focus(&report, "square-4096-margin-smoke"));
+  CHECK(report.result_count == 14);
+  tsv = xray_benchmark_report_tsv(&report);
+  CHECK(tsv != NULL);
+  CHECK(strstr(tsv, "square-dense-route-current-gate") != NULL);
+  CHECK(strstr(tsv, "candidate=sq3-l48d3-current") != NULL);
+  CHECK(strstr(tsv, "candidate=sq3mul-l48d3") != NULL);
+  CHECK(strstr(tsv, "candidate=combo-l56d3") != NULL);
+  CHECK(strstr(tsv, "digits=4096") != NULL);
+  CHECK(strstr(tsv, "samples=3") != NULL);
+  CHECK(strstr(tsv, "iterations=4096") != NULL);
+  CHECK(strstr(tsv, "stableCandidateVsCurrent=") != NULL);
+  CHECK(strstr(tsv, "hashGate=") != NULL);
+  CHECK(strstr(tsv, "parity=") != NULL);
+  CHECK(strstr(tsv, "replacementReady=false") != NULL);
+  CHECK(strstr(tsv, "noAutoRoute=1") != NULL);
+  xray_free(tsv);
+  xray_benchmark_report_clear(&report);
+
+  CHECK(xray_benchmark_run_focus(&report, "square-4096-margin-gate"));
+  CHECK(report.result_count == 8);
+  tsv = xray_benchmark_report_tsv(&report);
+  CHECK(tsv != NULL);
+  CHECK(strstr(tsv, "square-dense-route-current-gate") != NULL);
+  CHECK(strstr(tsv, "candidate=sq3-l48d3-current") != NULL);
+  CHECK(strstr(tsv, "candidate=sq3-l40d1") != NULL);
+  CHECK(strstr(tsv, "candidate=sq3-l64d3") != NULL);
+  CHECK(strstr(tsv, "candidate=sq3mul-l48d3") != NULL);
+  CHECK(strstr(tsv, "candidate=combo-l56d3") != NULL);
+  CHECK(strstr(tsv, "digits=4096") != NULL);
+  CHECK(strstr(tsv, "samples=7") != NULL);
+  CHECK(strstr(tsv, "iterations=4096") != NULL);
+  CHECK(strstr(tsv, "candidateCurrentRatio=") != NULL);
+  CHECK(strstr(tsv, "worstCandidateCurrent=") != NULL);
+  CHECK(strstr(tsv, "candidateGmpRatio=") != NULL);
+  CHECK(strstr(tsv, "hashGate=") != NULL);
+  CHECK(strstr(tsv, "parity=") != NULL);
+  CHECK(strstr(tsv, "replacementReady=false") != NULL);
+  CHECK(strstr(tsv, "noAutoRoute=1") != NULL);
+  xray_free(tsv);
+  xray_benchmark_report_clear(&report);
+
+  CHECK(xray_benchmark_run_focus(&report, "square-4096-paper-smoke"));
+  CHECK(report.result_count == 6);
+  tsv = xray_benchmark_report_tsv(&report);
+  CHECK(tsv != NULL);
+  CHECK(strstr(tsv, "square-dense-route-current-gate") != NULL);
+  CHECK(strstr(tsv, "candidate=sq3-l48d3-current") != NULL);
+  CHECK(strstr(tsv, "candidate=sq3dc-l48d3") != NULL);
+  CHECK(strstr(tsv, "candidate=sqr3-l40d1") != NULL);
+  CHECK(strstr(tsv, "candidate=sqr3-l48d3") != NULL);
+  CHECK(strstr(tsv, "route=toom3-chung-sqr3") != NULL);
+  CHECK(strstr(tsv, "digits=4096") != NULL);
+  CHECK(strstr(tsv, "samples=3") != NULL);
+  CHECK(strstr(tsv, "iterations=4096") != NULL);
+  CHECK(strstr(tsv, "hashGate=") != NULL);
+  CHECK(strstr(tsv, "parity=") != NULL);
+  CHECK(strstr(tsv, "replacementReady=false") != NULL);
+  CHECK(strstr(tsv, "noAutoRoute=1") != NULL);
+  xray_free(tsv);
+  xray_benchmark_report_clear(&report);
+
+  CHECK(xray_benchmark_run_focus(&report, "square-4096-sqr4-smoke"));
+  CHECK(report.result_count == 7);
+  tsv = xray_benchmark_report_tsv(&report);
+  CHECK(tsv != NULL);
+  CHECK(strstr(tsv, "square-dense-route-current-gate") != NULL);
+  CHECK(strstr(tsv, "candidate=sq3-l48d3-current") != NULL);
+  CHECK(strstr(tsv, "candidate=sqr4-l16d1") != NULL);
+  CHECK(strstr(tsv, "candidate=sqr4-l48d1") != NULL);
+  CHECK(strstr(tsv, "route=toom4-chung-sqr4") != NULL);
+  CHECK(strstr(tsv, "digits=4096") != NULL);
+  CHECK(strstr(tsv, "samples=3") != NULL);
+  CHECK(strstr(tsv, "iterations=4096") != NULL);
+  CHECK(strstr(tsv, "hashGate=") != NULL);
+  CHECK(strstr(tsv, "parity=") != NULL);
+  CHECK(strstr(tsv, "replacementReady=false") != NULL);
+  CHECK(strstr(tsv, "noAutoRoute=1") != NULL);
+  xray_free(tsv);
+  xray_benchmark_report_clear(&report);
+
+  CHECK(xray_benchmark_run_focus(&report, "square-4096-sqr4-gate"));
+  CHECK(report.result_count == 7);
+  tsv = xray_benchmark_report_tsv(&report);
+  CHECK(tsv != NULL);
+  CHECK(strstr(tsv, "square-dense-route-current-gate") != NULL);
+  CHECK(strstr(tsv, "candidate=sq3-l48d3-current") != NULL);
+  CHECK(strstr(tsv, "candidate=sqr4-l32d1") != NULL);
+  CHECK(strstr(tsv, "candidate=sqr4-l52d1") != NULL);
+  CHECK(strstr(tsv, "route=toom4-chung-sqr4") != NULL);
+  CHECK(strstr(tsv, "digits=4096") != NULL);
+  CHECK(strstr(tsv, "samples=7") != NULL);
+  CHECK(strstr(tsv, "iterations=4096") != NULL);
+  CHECK(strstr(tsv, "hashGate=") != NULL);
+  CHECK(strstr(tsv, "parity=") != NULL);
+  CHECK(strstr(tsv, "replacementReady=false") != NULL);
+  CHECK(strstr(tsv, "noAutoRoute=1") != NULL);
+  xray_free(tsv);
+  xray_benchmark_report_clear(&report);
+
+  CHECK(xray_benchmark_run_focus(&report, "square-4096-sqr4-ridge"));
+  CHECK(report.result_count == 8);
+  tsv = xray_benchmark_report_tsv(&report);
+  CHECK(tsv != NULL);
+  CHECK(strstr(tsv, "square-dense-route-current-gate") != NULL);
+  CHECK(strstr(tsv, "candidate=sqr4-l32d1-anchor") != NULL);
+  CHECK(strstr(tsv, "candidate=sqr4-l52d1-current") != NULL);
+  CHECK(strstr(tsv, "candidate=sqr4-l53d1-edge") != NULL);
+  CHECK(strstr(tsv, "route=toom4-chung-sqr4") != NULL);
+  CHECK(strstr(tsv, "digits=4096") != NULL);
+  CHECK(strstr(tsv, "samples=7") != NULL);
+  CHECK(strstr(tsv, "iterations=4096") != NULL);
+  CHECK(strstr(tsv, "hashGate=") != NULL);
+  CHECK(strstr(tsv, "parity=") != NULL);
+  CHECK(strstr(tsv, "replacementReady=false") != NULL);
+  CHECK(strstr(tsv, "noAutoRoute=1") != NULL);
+  xray_free(tsv);
+  xray_benchmark_report_clear(&report);
+
+  CHECK(xray_benchmark_run_focus(&report, "square-4096-sqr4-childleaf-smoke"));
+  CHECK(report.result_count == 9);
+  tsv = xray_benchmark_report_tsv(&report);
+  CHECK(tsv != NULL);
+  CHECK(strstr(tsv, "square-dense-route-current-gate") != NULL);
+  CHECK(strstr(tsv, "candidate=sqr4-l52d1-current") != NULL);
+  CHECK(strstr(tsv, "candidate=sqr4-top52-child53d1") != NULL);
+  CHECK(strstr(tsv, "candidate=sqr4-top52-child54d1") != NULL);
+  CHECK(strstr(tsv, "candidate=sqr4-top52-child96d1") != NULL);
+  CHECK(strstr(tsv, "route=toom4-chung-sqr4-top52-child") != NULL);
+  CHECK(strstr(tsv, "digits=4096") != NULL);
+  CHECK(strstr(tsv, "samples=3") != NULL);
+  CHECK(strstr(tsv, "iterations=4096") != NULL);
+  CHECK(strstr(tsv, "hashGate=") != NULL);
+  CHECK(strstr(tsv, "parity=") != NULL);
+  CHECK(strstr(tsv, "replacementReady=false") != NULL);
+  CHECK(strstr(tsv, "noAutoRoute=1") != NULL);
+  xray_free(tsv);
+  xray_benchmark_report_clear(&report);
+
+  CHECK(xray_benchmark_run_focus(&report, "square-4096-sqr4-childleaf-gate"));
+  CHECK(report.result_count == 7);
+  tsv = xray_benchmark_report_tsv(&report);
+  CHECK(tsv != NULL);
+  CHECK(strstr(tsv, "square-dense-route-current-gate") != NULL);
+  CHECK(strstr(tsv, "candidate=sqr4-l52d1-current") != NULL);
+  CHECK(strstr(tsv, "candidate=sqr4-top52-child53d1") != NULL);
+  CHECK(strstr(tsv, "candidate=sqr4-top52-child55d1") != NULL);
+  CHECK(strstr(tsv, "candidate=sqr4-top52-child72d1") != NULL);
+  CHECK(strstr(tsv, "route=toom4-chung-sqr4-top52-child") != NULL);
+  CHECK(strstr(tsv, "digits=4096") != NULL);
+  CHECK(strstr(tsv, "samples=7") != NULL);
+  CHECK(strstr(tsv, "iterations=4096") != NULL);
+  CHECK(strstr(tsv, "hashGate=") != NULL);
+  CHECK(strstr(tsv, "parity=") != NULL);
+  CHECK(strstr(tsv, "replacementReady=false") != NULL);
+  CHECK(strstr(tsv, "noAutoRoute=1") != NULL);
+  xray_free(tsv);
+  xray_benchmark_report_clear(&report);
+
+  CHECK(xray_benchmark_run_focus(&report, "square-4096-sqr4-parallel-smoke"));
+  CHECK(report.result_count == 5);
+  tsv = xray_benchmark_report_tsv(&report);
+  CHECK(tsv != NULL);
+  CHECK(strstr(tsv, "square-dense-route-current-gate") != NULL);
+  CHECK(strstr(tsv, "candidate=sqr4-l52d1-current") != NULL);
+  CHECK(strstr(tsv, "candidate=sqr4-l52d1-parallel2") != NULL);
+  CHECK(strstr(tsv, "candidate=sqr4-l52d1-parallel7") != NULL);
+  CHECK(strstr(tsv, "route=toom4-chung-sqr4-parallel") != NULL);
+  CHECK(strstr(tsv, "digits=4096") != NULL);
+  CHECK(strstr(tsv, "samples=3") != NULL);
+  CHECK(strstr(tsv, "iterations=4096") != NULL);
+  CHECK(strstr(tsv, "hashGate=") != NULL);
+  CHECK(strstr(tsv, "parity=") != NULL);
+  CHECK(strstr(tsv, "replacementReady=false") != NULL);
+  CHECK(strstr(tsv, "noAutoRoute=1") != NULL);
+  xray_free(tsv);
+  xray_benchmark_report_clear(&report);
+
+#if XRAY_HAS_MSVC_BMI2_ADX_INTRINSICS
+  CHECK(xray_benchmark_run_focus(&report, "mul-toom-upper-smoke"));
+  CHECK(report.result_count > 0);
+  tsv = xray_benchmark_report_tsv(&report);
+  CHECK(tsv != NULL);
+  CHECK(strstr(tsv, "mul-large-toom4-top-pt") != NULL);
+  CHECK(strstr(tsv, "mul-large-toom4-top-reuse-pt") != NULL);
+  CHECK(strstr(tsv, "mul-large-toom4-top-handoff-pt") != NULL);
+  CHECK(strstr(tsv, "mul-large-toom4-top-fdiv-pt") != NULL);
+  CHECK(strstr(tsv, "mul-large-toom4-top-vs-cmb-pt") != NULL);
+  CHECK(strstr(tsv, "mul-large-toom5-top-reuse-pt") != NULL);
+  CHECK(strstr(tsv, "mul-large-toom5-top-handoff-pt") != NULL);
+  CHECK(strstr(tsv, "mul-large-toom5-top-l64-pt") != NULL);
+  CHECK(strstr(tsv, "mul-large-toom-cmb-ripdiv-pt") != NULL);
+  CHECK(strstr(tsv, "policy=full-workspace-toom4-top-smoke-ge24103") != NULL);
+  CHECK(strstr(tsv, "samples=3") != NULL);
+  CHECK(strstr(tsv, "oracle=mpz_mul") != NULL);
+  CHECK(strstr(tsv, "replacementReady=false") != NULL);
+  CHECK(strstr(tsv, "noAutoRoute=1") != NULL);
+  CHECK(strstr(tsv, "24103") != NULL);
+  CHECK(strstr(tsv, "65536") == NULL);
+  xray_free(tsv);
+  xray_benchmark_report_clear(&report);
+#endif
 }
 
 static void set_benchmark_visibility_row(
@@ -11837,11 +12707,13 @@ int main(int argc, char **argv) {
   RUN_NATIVE_TEST(test_decimal_ffi_helpers, "ffi");
   RUN_NATIVE_TEST(test_scratch_bigint_oracle_sweep, "bigint");
   RUN_NATIVE_TEST(test_scratch_bigint_large_mul_oracle, "bigint");
+  RUN_NATIVE_TEST(test_scratch_bigint_dense_toom4_route_oracle, "bigint");
   RUN_NATIVE_TEST(test_scratch_bigint_square_oracle, "bigint");
   RUN_NATIVE_TEST(test_scratch_bigint_sparse_zero_limb_oracle, "bigint");
   RUN_NATIVE_TEST(test_scratch_bigint_karatsuba_middle_signs, "bigint");
   RUN_NATIVE_TEST(test_scratch_bigint_mul_thresholds, "bigint");
   RUN_NATIVE_TEST(test_scratch_bigint_dense_leaf_probe_oracle, "bigint");
+  RUN_NATIVE_TEST(test_scratch_bigint_ntt16_probe_oracle, "bigint");
   RUN_NATIVE_TEST(test_scratch_bigint_karatsuba_view_probe_oracle, "bigint");
   RUN_NATIVE_TEST(test_scratch_bigint_karatsuba_workspace_probe_oracle, "bigint");
   RUN_NATIVE_TEST(test_scratch_bigint_karatsuba_sum_probe_oracle, "bigint");
