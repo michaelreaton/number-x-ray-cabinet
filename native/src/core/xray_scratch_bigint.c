@@ -7214,57 +7214,6 @@ static int square_toom3_direct_coeff_parallel_full_workspace_reuse_probe_interna
 #endif
 }
 
-static int square_toom3_direct_coeff_dispatch_probe_internal(
-  XrayScratchBigInt *out,
-  const XrayScratchBigInt *value) {
-  if (!out || !value) return 0;
-  if (value->count == 0) return set_u32(out, 0);
-
-  size_t split = (value->count + 2U) / 3U;
-  XrayScratchBigInt a0, a1, a2;
-  view_bigint_slice(&a0, value, 0, split);
-  view_bigint_slice(&a1, value, split, split);
-  view_bigint_slice(&a2, value, split * 2U, value->count > split * 2U ? value->count - split * 2U : 0);
-
-  XrayScratchBigInt c0, c1, c2, c3, c4, twice_a0a2;
-  xray_bigint_init(&c0);
-  xray_bigint_init(&c1);
-  xray_bigint_init(&c2);
-  xray_bigint_init(&c3);
-  xray_bigint_init(&c4);
-  xray_bigint_init(&twice_a0a2);
-
-  int ok = xray_bigint_square(&c0, &a0) &&
-    xray_bigint_square(&c2, &a1) &&
-    xray_bigint_square(&c4, &a2) &&
-    xray_bigint_mul(&c1, &a0, &a1) &&
-    xray_bigint_mul(&twice_a0a2, &a0, &a2) &&
-    xray_bigint_mul(&c3, &a1, &a2) &&
-    xray_bigint_add(&c1, &c1, &c1) &&
-    xray_bigint_add(&twice_a0a2, &twice_a0a2, &twice_a0a2) &&
-    xray_bigint_add(&c2, &c2, &twice_a0a2) &&
-    xray_bigint_add(&c3, &c3, &c3);
-
-  if (ok) {
-    out->count = 0;
-    ok = reserve_limbs(out, value->count * 2U + 4U) &&
-      add_shifted_inplace(out, &c0, 0) &&
-      add_shifted_inplace(out, &c1, split) &&
-      add_shifted_inplace(out, &c2, split * 2U) &&
-      add_shifted_inplace(out, &c3, split * 3U) &&
-      add_shifted_inplace(out, &c4, split * 4U);
-    if (ok) normalize(out);
-  }
-
-  xray_bigint_clear(&twice_a0a2);
-  xray_bigint_clear(&c4);
-  xray_bigint_clear(&c3);
-  xray_bigint_clear(&c2);
-  xray_bigint_clear(&c1);
-  xray_bigint_clear(&c0);
-  return ok;
-}
-
 static int eval_toom4_positive(
   XrayScratchBigInt *out,
   const XrayScratchBigInt *part0,
@@ -11378,6 +11327,57 @@ int xray_bigint_square_toom3_direct_coeff_parallel_reuse_probe(
   (void)workspace;
   return 0;
 #endif
+}
+
+static int square_toom3_direct_coeff_dispatch_probe_internal(
+  XrayScratchBigInt *out,
+  const XrayScratchBigInt *value) {
+  if (!out || !value) return 0;
+  if (value->count == 0) return set_u32(out, 0);
+
+  size_t split = (value->count + 2U) / 3U;
+  XrayScratchBigInt a0, a1, a2;
+  view_bigint_slice(&a0, value, 0, split);
+  view_bigint_slice(&a1, value, split, split);
+  view_bigint_slice(&a2, value, split * 2U, value->count > split * 2U ? value->count - split * 2U : 0);
+
+  XrayScratchBigInt c0, c1, c2, c3, c4, twice_a0a2;
+  xray_bigint_init(&c0);
+  xray_bigint_init(&c1);
+  xray_bigint_init(&c2);
+  xray_bigint_init(&c3);
+  xray_bigint_init(&c4);
+  xray_bigint_init(&twice_a0a2);
+
+  int ok = xray_bigint_square(&c0, &a0) &&
+    xray_bigint_square(&c2, &a1) &&
+    xray_bigint_square(&c4, &a2) &&
+    xray_bigint_mul(&c1, &a0, &a1) &&
+    xray_bigint_mul(&twice_a0a2, &a0, &a2) &&
+    xray_bigint_mul(&c3, &a1, &a2) &&
+    xray_bigint_add(&c1, &c1, &c1) &&
+    xray_bigint_add(&twice_a0a2, &twice_a0a2, &twice_a0a2) &&
+    xray_bigint_add(&c2, &c2, &twice_a0a2) &&
+    xray_bigint_add(&c3, &c3, &c3);
+
+  if (ok) {
+    out->count = 0;
+    ok = reserve_limbs(out, value->count * 2U + 4U) &&
+      add_shifted_inplace(out, &c0, 0) &&
+      add_shifted_inplace(out, &c1, split) &&
+      add_shifted_inplace(out, &c2, split * 2U) &&
+      add_shifted_inplace(out, &c3, split * 3U) &&
+      add_shifted_inplace(out, &c4, split * 4U);
+    if (ok) normalize(out);
+  }
+
+  xray_bigint_clear(&twice_a0a2);
+  xray_bigint_clear(&c4);
+  xray_bigint_clear(&c3);
+  xray_bigint_clear(&c2);
+  xray_bigint_clear(&c1);
+  xray_bigint_clear(&c0);
+  return ok;
 }
 
 int xray_bigint_square_toom3_direct_coeff_dispatch_probe(
