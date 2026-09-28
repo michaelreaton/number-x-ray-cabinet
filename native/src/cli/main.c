@@ -16,8 +16,11 @@ static void usage(const char *argv0) {
   fprintf(stderr, "       %s [--bench-min-digits N] [--bench-max-digits N] [--bench-filter TEXT] --bench-progress-tsv artifact.tsv\n", argv0);
   fprintf(stderr, "       %s [--bench-min-digits N] [--bench-max-digits N] [--bench-filter TEXT] --bench-compare left.tsv right.tsv\n", argv0);
   fprintf(stderr, "Focus examples: gmp-gap-audit, format-current-gmp, mul-large,\n");
-  fprintf(stderr, "                mul-sparse, mul-backend-gap, mul-combo-transition,\n");
-  fprintf(stderr, "                mul-combo-upper, mul-combo-reuse, mul-big-hill,\n");
+  fprintf(stderr, "                mul-sparse, mul-backend-gap, mul-full-audit-pocket,\n");
+  fprintf(stderr, "                mul-toom5-smoke, mul-toom-div, mul-toom-div-transition,\n");
+  fprintf(stderr, "                mul-toom4-top, mul-combo-lower, mul-combo-transition,\n");
+  fprintf(stderr, "                mul-combo-upper, mul-combo-reuse, mul-combo-handoff-pocket,\n");
+  fprintf(stderr, "                mul-combo-handoff-boundary, mul-big-hill,\n");
   fprintf(stderr, "                mul-dense-65536-hill-gate,\n");
   fprintf(stderr, "                square-4096-margin-gate,\n");
   fprintf(stderr, "                dense-million-bit-floor-interleaved-gate,\n");
